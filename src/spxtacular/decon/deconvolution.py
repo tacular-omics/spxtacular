@@ -79,7 +79,10 @@ def deconvolute(
         raise ValueError("mz and intensity arrays must have same length")
 
     # Efficient convert to list of SpectrumPeak
-    spectrum_peaks = [SpectrumPeak(mz=m, intensity=i) for m, i in zip(mz, intensity)]
+    spectrum_peaks = [
+        SpectrumPeak(mz=m, intensity=i)
+        for m, i in zip(mz, intensity, strict=True)
+    ]
 
     graph = construct_graph(spectrum_peaks, tolerance, tolerance_type, charge_range, isotope_mass)
 
@@ -112,12 +115,13 @@ def deconvolute(
             results[charge] = (decon_peak, peaks_in_profile)
 
         # Pick the best (highest combined score) result among tested charges
-        def get_score(charge: int) -> float:
-            """Get combined score for a charge, handling None case."""
-            decon_peak = results[charge][0]
-            return decon_peak.combined_score if decon_peak.combined_score is not None else -1.0
+        best_charge = max(
+            results,
+            key=lambda c: results[c][0].combined_score
+            if results[c][0].combined_score is not None
+            else -1.0,
+        )
 
-        best_charge = max(results, key=get_score)
         best_result, best_node_indices = results[best_charge]
 
         # If only a single peak is found, we treat charge as unknown (None).

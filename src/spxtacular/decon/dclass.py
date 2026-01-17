@@ -3,7 +3,7 @@ Data structure classes and constants used throughout the package.
 """
 
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Protocol, TypeVar
+from typing import NamedTuple, Protocol, TypeVar
 
 import peptacular as pt
 
@@ -60,7 +60,7 @@ class SpectrumPeak:
 
 
 @dataclass
-class DeconvolutedPeak(Generic[P]):
+class DeconvolutedPeak[P: PeakLike]:
     """
     Represents the result of deconvolution on an isotopic envelope.
     Generic over peak type P.
@@ -126,6 +126,8 @@ class DeconvolutedPeak(Generic[P]):
     @property
     def isotope_gaps_neutral_mass(self) -> list[float]:
         """Returns a list of neutral mass gaps between peaks."""
+        if self.charge is None:
+            return []
         isotope_gaps = self.isotope_gaps_mz
         gaps: list[float] = []
         for gap in isotope_gaps:
@@ -135,6 +137,8 @@ class DeconvolutedPeak(Generic[P]):
     @property
     def isotope_gaps_ppm_error(self) -> list[float]:
         """Returns a list of ppm errors associated with isotope gaps."""
+        if self.charge is None:
+            return []
         gap_errors: list[float] = []
         for i in range(1, len(self.peaks)):
             theo_mz = self.peaks[i - 1].mz + (C13_NEUTRON_MASS / self.charge)
@@ -161,10 +165,8 @@ class DeconvolutedPeak(Generic[P]):
             else estimate_isotopic_distribution(
                 self.largest_peak_neutral_mass,
                 max_isotopes=20,
-                output_masses_for_neutron_offset=False,
                 min_abundance_threshold=0.005,
                 use_neutron_count=True,
-                is_abundance_sum=True,
             )
         )
 
@@ -176,14 +178,28 @@ class DeconvolutedPeak(Generic[P]):
         self.score = score
 
     def __repr__(self) -> str:
-        return f"DeconvolutedPeak(peaks={len(self.peaks)}, charge={int(self.charge) if self.charge is not None else 'None'}, score={self.score.combined_score if self.score is not None else 'None'})"
+        charge_str = str(int(self.charge)) if self.charge is not None else "None"
+        score_val = (
+            f"{self.score.combined_score:.4f}" if self.score is not None else "None"
+        )
+        return (
+            f"DeconvolutedPeak(peaks={len(self.peaks)}, charge={charge_str}, "
+            f"score={score_val})"
+        )
 
     def __str__(self) -> str:
-        return f"DeconvolutedPeak: charge={int(self.charge) if self.charge is not None else 'None'}, peaks={len(self.peaks)}, score={self.score.combined_score if self.score is not None else 'None'}"
+        charge_str = str(int(self.charge)) if self.charge is not None else "None"
+        score_val = (
+            f"{self.score.combined_score:.4f}" if self.score is not None else "None"
+        )
+        return (
+            f"DeconvolutedPeak: charge={charge_str}, peaks={len(self.peaks)}, "
+            f"score={score_val}"
+        )
 
 
 @dataclass
-class GraphNode(Generic[P]):
+class GraphNode[P: PeakLike]:
     """
     Node wrapper for graph nodes, tagging each node with
     the original peak data and an index.
@@ -210,7 +226,7 @@ class GraphEdge:
         return f"GraphEdge: {self.value} @ index: {self.index}"
 
 
-class Graph(Generic[P]):
+class Graph[P: PeakLike]:
     """
     Pure Python graph implementation, generic over peak type P.
     P must satisfy the PeakLike protocol (have mz and intensity attributes).

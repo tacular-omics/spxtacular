@@ -2,7 +2,8 @@
 Graph construction and subgraph separation utilities.
 """
 
-from typing import Callable, Literal, TypeVar
+from collections.abc import Callable
+from typing import Literal, TypeVar
 
 from .dclass import Graph, GraphEdge, GraphNode, IsotopeGap, PeakLike
 

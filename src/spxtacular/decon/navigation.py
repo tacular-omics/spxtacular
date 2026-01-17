@@ -3,7 +3,9 @@ Functions to traverse (navigate) left or right in the graph based on
 peak intensity and m/z relationships.
 """
 
-from .dclass import Graph, PeakLike
+from typing import cast
+
+from .dclass import Graph, GraphEdge, PeakLike
 
 
 def navigate_left(
@@ -29,7 +31,15 @@ def navigate_left(
             edge_data_list = graph.get_edge_data(current_node, n)
             if edge_data_list is None:
                 continue
-            for edge_data in edge_data_list if isinstance(edge_data_list, list) else [edge_data_list]:
+
+            # help type checker by explicit typing
+            edges: list[GraphEdge] = []
+            if isinstance(edge_data_list, list):
+                edges.extend(cast(list[GraphEdge], edge_data_list))
+            else:
+                edges.append(cast(GraphEdge, edge_data_list))
+
+            for edge_data in edges:
                 if (
                     edge_data.value.charge == charge
                     and graph[n].value.intensity < graph[current_node].value.intensity
@@ -80,7 +90,15 @@ def navigate_right(
             edge_data_list = graph.get_edge_data(current_node, n)
             if edge_data_list is None:
                 continue
-            for edge_data in edge_data_list if isinstance(edge_data_list, list) else [edge_data_list]:
+
+            # help type checker by explicit typing
+            edges: list[GraphEdge] = []
+            if isinstance(edge_data_list, list):
+                edges.extend(cast(list[GraphEdge], edge_data_list))
+            else:
+                edges.append(cast(GraphEdge, edge_data_list))
+
+            for edge_data in edges:
                 if (
                     edge_data.value.charge == charge
                     and graph[n].value.intensity < graph[current_node].value.intensity

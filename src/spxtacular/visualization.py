@@ -6,8 +6,6 @@ import functools
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal
 
-import peptacular as pt
-
 if TYPE_CHECKING:
     from .core import Spectrum
     # from peptacular import Annotation # Assuming this might be available later
@@ -19,7 +17,7 @@ def requires_plotly(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            import plotly.graph_objects as go
+            import plotly.graph_objects as go  # type: ignore
         except ImportError:
             raise ImportError("plotly required for plotting: pip install plotly")
         return func(*args, **kwargs)
@@ -40,7 +38,7 @@ def plot_spectrum(
 
 
 def plot_df(
-    peptide: pt.Annotation,
+    peptide: str,
     ion_types: Sequence[str] = ("b", "y"),
     charges: Sequence[int] = (1, 2),
     losses: Sequence[str] | None = None,
@@ -54,7 +52,7 @@ def plot_df(
 
 def annotate_spectrum(
     spectrum: "Spectrum",
-    peptide: pt.Annotation,
+    peptide: str,
     ion_types: Sequence[str] = ("b", "y"),
     charges: Sequence[int] = (1, 2),
     losses: Sequence[str] | None = None,

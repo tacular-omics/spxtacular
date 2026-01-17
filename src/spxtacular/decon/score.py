@@ -96,10 +96,10 @@ def score_isotopic_pattern(
         # Create masks
         theo_detectable_mask = [t >= min_intensity for t in scaled_theo]
         obs_detectable_mask = [o > 0.0 for o in obs_aligned]
-        detectable_mask = [t or o for t, o in zip(theo_detectable_mask, obs_detectable_mask)]
+        detectable_mask = [t or o for t, o in zip(theo_detectable_mask, obs_detectable_mask, strict=True)]
 
         # Apply mask
-        scaled_theo = [t if m else 0.0 for t, m in zip(scaled_theo, detectable_mask)]
+        scaled_theo = [t if m else 0.0 for t, m in zip(scaled_theo, detectable_mask, strict=True)]
 
         # Normalize both to sum to 1
         sum_obs = sum(obs_aligned)
@@ -110,29 +110,29 @@ def score_isotopic_pattern(
         # Calculate metrics
 
         # 1. Bhattacharyya coefficient
-        bhattacharyya = sum(math.sqrt(o * t) for o, t in zip(obs_normalized, theo_normalized))
+        bhattacharyya = sum(math.sqrt(o * t) for o, t in zip(obs_normalized, theo_normalized, strict=True))
 
         # 2. Cosine similarity
         obs_norm = math.sqrt(sum(o**2 for o in obs_normalized))
         theo_norm = math.sqrt(sum(t**2 for t in theo_normalized))
-        dot_product = sum(o * t for o, t in zip(obs_normalized, theo_normalized))
+        dot_product = sum(o * t for o, t in zip(obs_normalized, theo_normalized, strict=True))
         cosine_sim = dot_product / (obs_norm * theo_norm) if obs_norm > 0 and theo_norm > 0 else 0.0
 
         # 3. Ratio score
-        min_sum = sum(min(o, t) for o, t in zip(obs_normalized, theo_normalized))
-        max_sum = sum(max(o, t) for o, t in zip(obs_normalized, theo_normalized))
+        min_sum = sum(min(o, t) for o, t in zip(obs_normalized, theo_normalized, strict=True))
+        max_sum = sum(max(o, t) for o, t in zip(obs_normalized, theo_normalized, strict=True))
         ratio_score = min_sum / max_sum if max_sum > 0 else 0.0
 
         # 4. Coverage
         num_expected = sum(theo_detectable_mask)
-        num_detected = sum(1 for o, t in zip(obs_detectable_mask, theo_detectable_mask) if o and t)
+        num_detected = sum(1 for o, t in zip(obs_detectable_mask, theo_detectable_mask, strict=True) if o and t)
         coverage = num_detected / num_expected if num_expected > 0 else 0.0
 
         # 5. Missed penalty
         missed_intensity = sum(
-            t for t, td, od in zip(scaled_theo, theo_detectable_mask, obs_detectable_mask) if td and not od
+            t for t, td, od in zip(scaled_theo, theo_detectable_mask, obs_detectable_mask, strict=True) if td and not od
         )
-        total_theo_intensity = sum(t for t, td in zip(scaled_theo, theo_detectable_mask) if td)
+        total_theo_intensity = sum(t for t, td in zip(scaled_theo, theo_detectable_mask, strict=True) if td)
         missed_penalty = missed_intensity / total_theo_intensity if total_theo_intensity > 0 else 1.0
 
         # Combined score

@@ -25,7 +25,9 @@ def compress_with_method(data_bytes: bytes, method: str) -> bytes:
 
             return brotli.compress(data_bytes, quality=11)
         except ImportError:
-            raise ImportError("brotli library not available. Install with: pip install brotli")
+            raise ImportError(
+                "brotli library not available. Install with: pip install brotli"
+            ) from None
     else:
         raise ValueError(f"Unknown compression method: {method}")
 
@@ -42,7 +44,7 @@ def decompress_with_method(data_bytes: bytes, method: str) -> bytes:
 
             return brotli.decompress(data_bytes)
         except ImportError:
-            raise ImportError("brotli library not available")
+            raise ImportError("brotli library not available") from None
     else:
         raise ValueError(f"Unknown compression method: {method}")
 
@@ -200,8 +202,7 @@ def _hex_decode(s: str) -> Generator[float, None, None]:
         b = bytes.fromhex(s)
         # >f4 is big-endian float32
         arr = np.frombuffer(b, dtype=">f4").astype(np.float64)
-        for x in arr:
-            yield x
+        yield from arr
     except ValueError:
         # Fallback if weird length (though fromhex handles even length)
         # The previous implementation processed in chunks of 8 chars.
