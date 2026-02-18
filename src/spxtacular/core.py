@@ -2,12 +2,16 @@
 Spectacular: A peptacular companion for mass spectrometry data
 Core data structures for spectra
 """
+from pandas.tests.arrays.boolean.test_arithmetic import data
 
 from dataclasses import dataclass
+from enum import StrEnum
+from tkinter import N
 from typing import Literal, Self
 
 import numpy as np
 import peptacular as pt
+from numpy.linalg import norm
 from numpy.typing import NDArray
 
 from .compress import compress_spectra, decompress_spectra
@@ -25,32 +29,34 @@ class Peak:
     mz: float
     intensity: float
     charge: int | None = None
-    ion_mobility: float | None = None
+    im: float | None = None
 
     def __repr__(self) -> str:
         parts = [f"mz={self.mz:.4f}", f"int={self.intensity:.2e}"]
         if self.charge is not None:
             parts.append(f"z={self.charge}")
-        if self.ion_mobility is not None:
-            parts.append(f"im={self.ion_mobility:.3f}")
+        if self.im is not None:
+            parts.append(f"im={self.im:.3f}")
         return f"Peak({', '.join(parts)})"
 
 
-@dataclass(frozen=True, slots=True)
+class SpectrumType(StrEnum):
+    CENTROID: str = "centroid"
+    PROFILE: str = "profile"
+    DECONVOLUTED: str = "deconvoluted"
+
+
+@dataclass(slots=True)
 class Spectrum:
     """Mass spectrum with optional charge and ion mobility dimensions."""
 
     mz: NDArray[np.float64]  # Shape: (n,)
     intensity: NDArray[np.float64]  # Shape: (n,)
     charge: NDArray[np.int32] | None = None  # Shape: (n,)
-    ion_mobility: NDArray[np.float64] | None = None  # Shape: (n,)
-
-    # Metadata
-    scan_number: int | None = None
-    retention_time: float | None = None
-    ms_level: int = 1
-    precursor_mz: float | None = None
-    precursor_charge: int | None = None
+    im: NDArray[np.float64] | None = None  # Shape: (n,)
+    spectrum_type: SpectrumType | str | None = None
+    denoised: str | None = None
+    normalized: str | None = None
 
     def __post_init__(self):
         """Validate array shapes."""
@@ -59,8 +65,13 @@ class Spectrum:
             raise ValueError("mz and intensity must have same length")
         if self.charge is not None and len(self.charge) != n:
             raise ValueError("charge array must match mz length")
-        if self.ion_mobility is not None and len(self.ion_mobility) != n:
-            raise ValueError("ion_mobility array must match mz length")
+        if self.im is not None and len(self.im) != n:
+            raise ValueError("im array must match mz length")
+        if self.charge is not None and self.spectrum_type is None:
+            object.__setattr__(self, "spectrum_type", SpectrumType.DECONVOLUTED)
+        # if charges are present but spectrum_type is not deconvoluted raise error
+        if self.charge is not None and self.spectrum_type != SpectrumType.DECONVOLUTED:
+            raise ValueError("Spectrum with charge information must have spectrum_type=DECONVOLUTED")
 
     # -------------------------------------------------------------------------
     # Peak Access
@@ -74,7 +85,7 @@ class Spectrum:
                 mz=self.mz[i],
                 intensity=self.intensity[i],
                 charge=self.charge[i] if self.charge is not None else None,
-                ion_mobility=self.ion_mobility[i] if self.ion_mobility is not None else None,
+                im=self.im[i] if self.im is not None else None,
             )
             for i in range(len(self.mz))
         ]
@@ -100,7 +111,7 @@ class Spectrum:
                 mz=self.mz[i],
                 intensity=self.intensity[i],
                 charge=self.charge[i] if self.charge is not None else None,
-                ion_mobility=self.ion_mobility[i] if self.ion_mobility is not None else None,
+                im=self.im[i] if self.im is not None else None,
             )
             for i in indices
         ]
@@ -111,27 +122,23 @@ class Spectrum:
 
     @property
     def _argsort_mz(self) -> NDArray[np.int64]:
-        """Cached argsort by m/z."""
         return np.argsort(self.mz)
 
     @property
     def _argsort_intensity(self) -> NDArray[np.int64]:
-        """Cached argsort by intensity."""
         return np.argsort(self.intensity)
 
     @property
     def _argsort_charge(self) -> NDArray[np.int64]:
-        """Cached argsort by charge (if available)."""
         if self.charge is None:
             raise ValueError("Spectrum has no charge information")
         return np.argsort(self.charge)
 
     @property
     def _argsort_im(self) -> NDArray[np.int64]:
-        """Cached argsort by ion mobility (if available)."""
-        if self.ion_mobility is None:
+        if self.im is None:
             raise ValueError("Spectrum has no ion mobility information")
-        return np.argsort(self.ion_mobility)
+        return np.argsort(self.im)
 
     # -------------------------------------------------------------------------
     # Peak Finding
@@ -176,7 +183,7 @@ class Spectrum:
             mz=self.mz[idx],
             intensity=self.intensity[idx],
             charge=self.charge[idx] if self.charge is not None else None,
-            ion_mobility=self.ion_mobility[idx] if self.ion_mobility is not None else None,
+            im=self.im[idx] if self.im is not None else None,
         )
 
     def get_peaks(
@@ -196,7 +203,7 @@ class Spectrum:
                 mz=self.mz[i],
                 intensity=self.intensity[i],
                 charge=self.charge[i] if self.charge is not None else None,
-                ion_mobility=self.ion_mobility[i] if self.ion_mobility is not None else None,
+                im=self.im[i] if self.im is not None else None,
             )
             for i in matches
         ]
@@ -224,8 +231,8 @@ class Spectrum:
             mask &= self.charge == target_charge
 
         # Ion mobility filter
-        if target_im is not None and self.ion_mobility is not None:
-            mask &= np.abs(self.ion_mobility - target_im) <= im_tol
+        if target_im is not None and self.im is not None:
+            mask &= np.abs(self.im - target_im) <= im_tol
 
         return np.where(mask)[0]
 
@@ -244,6 +251,7 @@ class Spectrum:
         min_im: float | None = None,
         max_im: float | None = None,
         top_n: int | None = None,
+        inplace: bool = False,
     ) -> Self:
         """Filter spectrum by various criteria."""
         mask = np.ones(len(self.mz), dtype=bool)
@@ -260,10 +268,10 @@ class Spectrum:
             mask &= self.charge >= min_charge
         if max_charge is not None and self.charge is not None:
             mask &= self.charge <= max_charge
-        if min_im is not None and self.ion_mobility is not None:
-            mask &= self.ion_mobility >= min_im
-        if max_im is not None and self.ion_mobility is not None:
-            mask &= self.ion_mobility <= max_im
+        if min_im is not None and self.im is not None:
+            mask &= self.im >= min_im
+        if max_im is not None and self.im is not None:
+            mask &= self.im <= max_im
 
         # Apply top_n after other filters
         if top_n is not None:
@@ -273,10 +281,15 @@ class Spectrum:
             mask = np.zeros(len(self.mz), dtype=bool)
             mask[top_indices] = True
 
-        return self._apply_mask(mask)
+        return self._apply_mask(mask, inplace=inplace)
 
-    def normalize(self, method: Literal["max", "tic", "median"] = "max") -> Self:
+    def normalize(self, method: Literal["max", "tic", "median"] = "max", inplace: bool = False) -> Self:
         """Normalize intensities."""
+
+        # if already normalized, raise error
+        if self.normalized is not None:
+            raise ValueError(f"Spectrum is already normalized with method '{self.normalized}'")
+
         if method == "max":
             norm_factor = self.intensity.max()
         elif method == "tic":
@@ -284,31 +297,49 @@ class Spectrum:
         else:  # median
             norm_factor = np.median(self.intensity)
 
-        return self.update(intensity=self.intensity / norm_factor)
+        return self.update(intensity=self.intensity / norm_factor, normalized=method, inplace=inplace)
 
     def denoise(
         self,
         method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | int = "mad",
+        inplace: bool = False,
     ) -> Self:
         """Remove low-intensity noise peaks."""
-        threshold = estimate_noise_level(self.intensity, method=method)
-        return self.filter(min_intensity=threshold)
 
-    def _apply_mask(self, mask: NDArray[np.bool_]) -> Self:
-        return self.__class__(
+        # if already denoised, raise error
+        if self.denoised is not None:
+            raise ValueError(f"Spectrum is already denoised with method '{self.denoised}'")
+
+        threshold = estimate_noise_level(self.intensity, method=method)
+        return self.filter(min_intensity=threshold, inplace=inplace).update(denoised=str(method), inplace=inplace)
+
+    def _apply_mask(self, mask: NDArray[np.bool_], inplace: bool = False) -> Self:
+        if inplace:
+            self.mz = self.mz[mask]
+            self.intensity = self.intensity[mask]
+            if self.charge is not None:
+                self.charge = self.charge[mask]
+            if self.im is not None:
+                self.im = self.im[mask]
+            return self
+
+        from dataclasses import replace
+
+        return replace(
+            self,
             mz=self.mz[mask],
             intensity=self.intensity[mask],
             charge=self.charge[mask] if self.charge is not None else None,
-            ion_mobility=self.ion_mobility[mask] if self.ion_mobility is not None else None,
-            scan_number=self.scan_number,
-            retention_time=self.retention_time,
-            ms_level=self.ms_level,
-            precursor_mz=self.precursor_mz,
-            precursor_charge=self.precursor_charge,
+            im=self.im[mask] if self.im is not None else None,
         )
 
-    def update(self, **kwargs) -> Self:
+    def update(self, inplace: bool = False, **kwargs) -> Self:
         """Create new spectrum with updated fields."""
+        if inplace:
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+            return self
+
         from dataclasses import replace
 
         return replace(self, **kwargs)
@@ -336,10 +367,13 @@ class Spectrum:
         """
         Deconvolute spectrum to find isotopic envelopes and determine charge states.
 
-        If inplace is True, updates the current spectrum's charge array with identified charges.
-        Currently returns the spectrum (updated or not).
+        Returns a new Spectrum object with identified charges and spectrum_type=DECONVOLUTED.
         """
         from .decon.deconvolution import deconvolute
+
+        # if already deconvoluted, raise error
+        if self.spectrum_type == SpectrumType.DECONVOLUTED:
+            raise ValueError("Spectrum is already deconvoluted")
 
         # Call deconvolution logic
         dpeaks = deconvolute(
@@ -353,33 +387,7 @@ class Spectrum:
             isotope_mass=isotope_mass,
             isotope_lookup=isotope_lookup,
         )
-
-        # dpeaks is list[DeconvolutedPeak].
-        # Each DeconvolutedPeak corresponds to a group of peaks in the original spectrum.
-        # We want to assign the charge to the peaks in the spectrum.
-        # Note: A peak could theoretically belong to multiple envelopes in complex scenarios,
-        # but the greedy algorithm assigns it to one.
-
         new_charges = np.zeros_like(self.mz, dtype=np.int32)
-
-        # Map back to indices. DeconvolutedPeak has .peaks which are SpectrumPeak objects.
-        # But we need indices to update the array.
-        # Creating a map from SpectrumPeak object id to index is possible but tricky if objects are recreated.
-        # The decon logic recreated SpectrumPeak objects from input arrays.
-        # However, we passed mz/intensity arrays in parallel.
-        # The deconvolution algorithm processed them in order and construct_graph indexed them.
-        # But DeconvolutedPeak just stores the objects.
-
-        # We can perform a fuzzy match or exact match on mz/intensity to find the index.
-        # Or better: Update deconvolute to return indices!
-        # But for now without modifying decon return type deeper:
-
-        # Let's map (mz, intensity) -> index in original spectrum.
-        # Assuming unique mz/intensity pairs or stable enough.
-        # Actually, mz should be unique enough.
-
-        # But wait, deconvolute uses 'sorted_peaks' indices internally but returns objects.
-        # If we can assume exact float match:
         mz_to_idx = {mz: i for i, mz in enumerate(self.mz)}
 
         for dp in dpeaks:
@@ -391,10 +399,13 @@ class Spectrum:
                         # Ideally we overwrite.
                         new_charges[idx] = dp.charge
 
-        if inplace:
-            return self.update(charge=new_charges)
-        else:
-            return self.update(charge=new_charges)
+        return self.update(charge=new_charges, spectrum_type=SpectrumType.DECONVOLUTED, inplace=inplace)
+
+    def __str__(self) -> str:
+        return f"Spectrum(n_peaks={len(self.mz)}, type={self.spectrum_type}, denoised={self.denoised}, normalized={self.normalized})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     # -------------------------------------------------------------------------
     # Compression
@@ -426,3 +437,60 @@ class Spectrum:
         Create a Spectrum from a compressed string.
         """
         return decompress_spectra(compressed_str)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TargetIon(Peak):
+    """Represents a target ion for MS2 fragmentation."""
+
+    is_monoisotopic: bool | None
+
+@dataclass(slots=True, kw_only=True)
+class MsnSpectrum(Spectrum):
+    """
+    Base class for all MSn spectra (MS1, MS2, MS3, etc.).
+    Contains fields common to all MS levels.
+    """
+
+    # -------------------------------------------------------------------------
+    # Scan Identification
+    # -------------------------------------------------------------------------
+    scan_number: int | None = None  # Native scan number from instrument
+    ms_level: int | None = None  # 1 for MS1, 2 for MS2, etc.
+    native_id: str | None = None  # e.g., "scan=1234" or instrument-specific format
+
+    # -------------------------------------------------------------------------
+    # Timing & Chromatography
+    # -------------------------------------------------------------------------
+    rt: float | None = None  # Retention time (seconds recommended, but document units)
+    injection_time: float | None = None  # Ion injection/accumulation time (ms)
+
+    # -------------------------------------------------------------------------
+    # m/z & Ion Mobility Windows
+    # -------------------------------------------------------------------------
+    mz_range: tuple[float, float] | None = None  # Scan window (min_mz, max_mz)
+    im_range: tuple[float, float] | None = None  # Ion mobility window (for timsTOF)
+    im_type: str | None = None  # e.g., "1/K0", "drift_time_ms", etc.
+
+    # -------------------------------------------------------------------------
+    # Instrument Settings
+    # -------------------------------------------------------------------------
+    polarity: Literal["positive", "negative"] | None = None
+
+    # -------------------------------------------------------------------------
+    # Optional Metadata
+    # -------------------------------------------------------------------------
+    resolution: float | None = None  # Resolution
+    analyzer: str | None = None  # e.g., "FTMS", "ITMS", "TOFMS"
+    ramp_time: float | None = None  # Ramp time for ion mobility (ms)
+    collision_energy: float | None = None  # Collision energy for MS2 spectra
+    activation_type: str | None = None  # e.g., "HCD", "CID", "ETD"
+    precursors: list[TargetIon] | None = None  # For MS2/MSn, list of precursor peaks
+
+    def __str__(self) -> str:
+        return f"MsnSpectrum(scan={self.scan_number}, ms_level={self.ms_level}, rt={self.rt:.2f}s, polarity={self.polarity}, n_peaks={len(self.mz)})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+

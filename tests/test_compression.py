@@ -1,4 +1,3 @@
-from tkinter import E
 
 import numpy as np
 import pytest
@@ -29,7 +28,7 @@ def test_spectrum_compression_no_charge_im():
     np.testing.assert_allclose(spec_restored.mz, spec.mz)
     np.testing.assert_allclose(spec_restored.intensity, spec.intensity)
     assert spec_restored.charge is None
-    assert spec_restored.ion_mobility is None
+    assert spec_restored.im is None
 
 
 def test_spectrum_compression_charge_only():
@@ -45,4 +44,4 @@ def test_spectrum_compression_charge_only():
     np.testing.assert_allclose(spec_restored.mz, spec.mz)
     np.testing.assert_allclose(spec_restored.intensity, spec.intensity)
     np.testing.assert_array_equal(spec_restored.charge, spec.charge)
-    assert spec_restored.ion_mobility is None
+    assert spec_restored.im is None

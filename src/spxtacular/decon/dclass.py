@@ -179,23 +179,13 @@ class DeconvolutedPeak[P: PeakLike]:
 
     def __repr__(self) -> str:
         charge_str = str(int(self.charge)) if self.charge is not None else "None"
-        score_val = (
-            f"{self.score.combined_score:.4f}" if self.score is not None else "None"
-        )
-        return (
-            f"DeconvolutedPeak(peaks={len(self.peaks)}, charge={charge_str}, "
-            f"score={score_val})"
-        )
+        score_val = f"{self.score.combined_score:.4f}" if self.score is not None else "None"
+        return f"DeconvolutedPeak(peaks={len(self.peaks)}, charge={charge_str}, score={score_val})"
 
     def __str__(self) -> str:
         charge_str = str(int(self.charge)) if self.charge is not None else "None"
-        score_val = (
-            f"{self.score.combined_score:.4f}" if self.score is not None else "None"
-        )
-        return (
-            f"DeconvolutedPeak: charge={charge_str}, peaks={len(self.peaks)}, "
-            f"score={score_val}"
-        )
+        score_val = f"{self.score.combined_score:.4f}" if self.score is not None else "None"
+        return f"DeconvolutedPeak: charge={charge_str}, peaks={len(self.peaks)}, score={score_val}"
 
 
 @dataclass

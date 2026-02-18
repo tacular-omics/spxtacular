@@ -42,7 +42,7 @@ def navigate_left(
             for edge_data in edges:
                 if (
                     edge_data.value.charge == charge
-                    and graph[n].value.intensity < graph[current_node].value.intensity
+                    and graph[n].value.intensity < graph[current_node].value.intensity*1.1
                     and graph[n].value.mz < current_mz
                     and not graph[n].seen
                     and (
@@ -101,7 +101,7 @@ def navigate_right(
             for edge_data in edges:
                 if (
                     edge_data.value.charge == charge
-                    and graph[n].value.intensity < graph[current_node].value.intensity
+                    and graph[n].value.intensity < graph[current_node].value.intensity*1.1
                     and graph[n].value.mz > current_mz
                     and not graph[n].seen
                     and (

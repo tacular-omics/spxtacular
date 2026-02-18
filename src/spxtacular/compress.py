@@ -25,9 +25,7 @@ def compress_with_method(data_bytes: bytes, method: str) -> bytes:
 
             return brotli.compress(data_bytes, quality=11)
         except ImportError:
-            raise ImportError(
-                "brotli library not available. Install with: pip install brotli"
-            ) from None
+            raise ImportError("brotli library not available. Install with: pip install brotli") from None
     else:
         raise ValueError(f"Unknown compression method: {method}")
 
@@ -329,7 +327,7 @@ def compress_spectra(
     mzs = spectrum.mz
     intensities = spectrum.intensity
     charges = spectrum.charge
-    ims = spectrum.ion_mobility
+    ims = spectrum.im
 
     if mz_precision is not None:
         mzs = np.round(mzs, mz_precision)
@@ -393,21 +391,19 @@ def decompress_spectra(
     binary_payload = decompress_with_method(compressed_bytes, compression_scheme)
     mz_str, intensity_str, charge_str, im_str = _decode_binary_payload(binary_payload)
 
-    mzs = np.fromiter(_delta_decode_single_string(mz_str), dtype=float) if mz_str else np.array([], dtype=float)
-    intensities = np.fromiter(_hex_decode(intensity_str), dtype=float) if intensity_str else np.array([], dtype=float)
+    mz = np.fromiter(_delta_decode_single_string(mz_str), dtype=float) if mz_str else np.array([], dtype=float)
+    intensity = np.fromiter(_hex_decode(intensity_str), dtype=float) if intensity_str else np.array([], dtype=float)
 
-    charges = None
+    charge = None
     if charge_str:
         # Charges can be None, so we decode to list first, then handle None -> 0 conversion for numpy array
         # or keep as None if user expects list? But Spectrum usually desires numpy arrays.
         # Assuming 0 is used for missing charge in numpy array context often.
         decoded_charges = list(_decode_charges(charge_str))
-        charges = np.array([c if c is not None else 0 for c in decoded_charges], dtype=int)
+        charge = np.array([c if c is not None else 0 for c in decoded_charges], dtype=int)
 
-    ims = None
+    im = None
     if im_str:
-        ims = np.fromiter(_hex_decode(im_str), dtype=float)
+        im = np.fromiter(_hex_decode(im_str), dtype=float)
 
-    return Spectrum(mz=mzs, intensity=intensities, charge=charges, ion_mobility=ims)
-
-    return Spectrum(mz=mzs, intensity=intensities, charge=charges, ion_mobility=ims)
+    return Spectrum(mz=mz, intensity=intensity, charge=charge, im=im)
