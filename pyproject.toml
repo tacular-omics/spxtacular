@@ -5,7 +5,7 @@ description = "A short description of the project."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "numpy>=2.4.1",
+    "numpy",
     "peptacular",
     "tdfpy",
     "mzmlpy",

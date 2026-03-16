@@ -26,11 +26,25 @@ class IsotopicPatternScore:
         )
 
 
+def base_isotope_score() -> IsotopicPatternScore:
+    """Return a default IsotopicPatternScore with zeroed metrics."""
+    return IsotopicPatternScore(
+        combined_score=0.0,
+        offset=0,
+        bhattacharyya=0.0,
+        cosine_similarity=0.0,
+        ratio_score=0.0,
+        coverage=0.0,
+        missed_penalty=1.0,
+        normalized_theo=[],
+    )
+
+
 def score_isotopic_pattern(
     observed: list[float],
     theoretical: list[float],
     min_intensity: float = 0.0,
-    offset_range: int = 1,
+    offset_range: tuple[int, int] | int = (-1, 1),
     offset_zero_bonus: float = 0.02,  # Prefer offset=0 when scores are close
     min_score_threshold: float = 0.1,  # Don't accept terrible matches
 ) -> IsotopicPatternScore:
@@ -56,6 +70,9 @@ def score_isotopic_pattern(
     if not observed or not theoretical:
         return IsotopicPatternScore(0.0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, [])
 
+    if isinstance(offset_range, int):
+        offset_range = (-offset_range, offset_range)
+
     best_score = -1.0
     best_offset = 0
     best_bhattacharyya = 0.0
@@ -69,7 +86,7 @@ def score_isotopic_pattern(
     all_results: dict[int, tuple[float, float, float, float, float, float, list[float]]] = {}
 
     # Try different offsets
-    for offset in range(-offset_range, offset_range + 1):
+    for offset in range(-offset_range[0], offset_range[1] + 1):
         # Keep theoretical pattern intact, adjust observed based on offset
         theo_aligned = theoretical[:]
 

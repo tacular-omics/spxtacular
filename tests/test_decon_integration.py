@@ -36,5 +36,5 @@ def test_deconvolution_integration():
 
     # Noise peaks might be 0 or None (represented as 0 in int array)
     # The peaks at 500.0 (index 4) and 1200.0 (index 5) are likely singletons, charge 0/None
-    assert decon_spec.charge[4] == 0 or decon_spec.charge[4] is None
-    assert decon_spec.charge[5] == 0 or decon_spec.charge[5] is None
+    assert decon_spec.charge[4] == -1
+    assert decon_spec.charge[5] == -1

@@ -305,7 +305,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mzmlpy", editable = "../mzmlpy" },
-    { name = "numpy", specifier = ">=2.4.1" },
+    { name = "numpy" },
     { name = "peptacular", editable = "../peptacular" },
     { name = "tdfpy", editable = "../tdfpy" },
 ]
