@@ -17,7 +17,7 @@ def requires_plotly(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            import plotly.graph_objects as go
+            import plotly.graph_objects as go  # type: ignore[import]
         except ImportError:
             raise ImportError("plotly required for plotting: pip install plotly")
         return func(*args, **kwargs)

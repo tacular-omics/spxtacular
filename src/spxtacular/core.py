@@ -9,11 +9,10 @@ from enum import StrEnum
 from typing import Literal, Self
 
 import numpy as np
-import peptacular as pt
 from numpy.typing import NDArray
 
 from .compress import compress_spectra, decompress_spectra
-from .decon.deconvolution import deconvolute
+from .decon.greedy import deconvolve_spectrum
 from .noise import estimate_noise_level
 
 # ============================================================================
@@ -134,13 +133,8 @@ class Spectrum:
             raise ValueError("charge array must match mz length")
         if self.im is not None and len(self.im) != n:
             raise ValueError("im array must match mz length")
-        if self.charge is not None and self.spectrum_type is None:
-            object.__setattr__(self, "spectrum_type", SpectrumType.DECONVOLUTED)
-        # if charges are present but spectrum_type is not deconvoluted raise error
         if self.charge is not None and self.spectrum_type != SpectrumType.DECONVOLUTED:
-            raise ValueError(
-                "Spectrum with charge information must have spectrum_type=DECONVOLUTED"
-            )
+            object.__setattr__(self, "spectrum_type", SpectrumType.DECONVOLUTED)
 
     # -------------------------------------------------------------------------
     # Peak Access
@@ -647,11 +641,8 @@ class Spectrum:
         tolerance: float = 50,
         tolerance_type: Literal["ppm", "da"] = "ppm",
         charge_range: tuple[int, int] = (1, 3),
-        max_left_decrease: float = 0.6,
-        max_right_decrease: float = 0.9,
-        isotope_mass: float = pt.C13_NEUTRON_MASS,
-        isotope_lookup: pt.IsotopeLookup | None = None,
-        intensity: Literal["base", "largest", "total"] = "total",
+        intensity: Literal["base", "total"] = "total",
+        max_dpeaks: int = 2000,
         inplace: bool = False,
     ) -> Self:
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
@@ -662,55 +653,16 @@ class Spectrum:
             )
             return self
 
-        dpeaks = deconvolute(
+        is_ppm = tolerance_type == "ppm"
+        new_mz, new_charge, new_intensity = deconvolve_spectrum(
             mz=self.mz,
             intensity=self.intensity,
-            tolerance=tolerance,
-            tolerance_type=tolerance_type,
             charge_range=charge_range,
-            max_left_decrease=max_left_decrease,
-            max_right_decrease=max_right_decrease,
-            isotope_mass=isotope_mass,
-            isotope_lookup=isotope_lookup,
+            tolerance=tolerance,
+            is_ppm=is_ppm,
+            max_dpeaks=max_dpeaks,
+            intensity_mode=intensity,
         )
-
-        # Track which original peaks were consumed by any envelope
-        consumed_mz: set[float] = set()
-        for dp in dpeaks:
-            if dp.charge is not None:
-                for p in dp.peaks:
-                    consumed_mz.add(p.mz)
-
-        # Build collapsed peaks from assigned envelopes
-        new_mz, new_intensity, new_charge = [], [], []
-
-        for dp in dpeaks:
-            if dp.charge is None:
-                continue
-            new_mz.append(dp.base_peak.mz)
-            new_charge.append(dp.charge)
-            if intensity == "base":
-                new_intensity.append(dp.base_peak.intensity)
-            elif intensity == "largest":
-                new_intensity.append(dp.largest_peak.intensity)
-            else:
-                new_intensity.append(dp.total_intensity)
-
-        # Keep unassigned original peaks with charge=-1
-        for i, mz in enumerate(self.mz):
-            if mz not in consumed_mz:
-                new_mz.append(mz)
-                new_intensity.append(float(self.intensity[i]))
-                new_charge.append(-1)
-
-        new_mz = np.array(new_mz, dtype=np.float64)
-        new_intensity = np.array(new_intensity, dtype=np.float64)
-        new_charge = np.array(new_charge, dtype=np.int32)
-
-        order = np.argsort(new_mz)
-        new_mz = new_mz[order]
-        new_intensity = new_intensity[order]
-        new_charge = new_charge[order]
 
         return self.update(
             mz=new_mz,
@@ -726,15 +678,12 @@ class Spectrum:
         Decharge spectrum by converting m/z to neutral mass using charge information.
 
         Peaks with charge == 0 are dropped (charge unknown).
-        Requires spectrum_type == DECONVOLUTED (charge array must be present).
+        If the spectrum is not yet deconvoluted, deconvolute() is called first with default parameters.
 
         Returns a new Spectrum with m/z values as neutral masses, sorted ascending.
         """
         if self.spectrum_type != SpectrumType.DECONVOLUTED or self.charge is None:
-            raise ValueError(
-                "Spectrum must be deconvoluted (spectrum_type=DECONVOLUTED, charge array present) "
-                "before decharging. Call .deconvolute() first."
-            )
+            return self.deconvolute(inplace=inplace).decharge(inplace=inplace)
 
         proton = 1.007276
 

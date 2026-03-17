@@ -1,7 +1,7 @@
 [project]
 name = "spxtacular"
 version = "0.1.0"
-description = "A short description of the project."
+description = "Mass spectrometry spectrum processing library."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -17,7 +17,11 @@ maintainers = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }
 ]
 classifiers = [
-    # TODO
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
 ]
 
 [build-system]
@@ -30,6 +34,8 @@ packages = ["src/spxtacular"]
 [tool.uv]
 package = true
 dev-dependencies = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.5",
     "pytest>=9.0.2",
     "ruff>=0.14.11",
     "ty>=0.0.11",

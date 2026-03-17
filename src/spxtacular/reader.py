@@ -1,6 +1,6 @@
 import warnings
 from enum import StrEnum
-from typing import Generator, Literal, Self
+from typing import Generator, Literal, Self, cast
 
 import mzmlpy as mzp
 import numpy as np
@@ -120,7 +120,7 @@ class DReader:
 
         match self.aquisition_type:
             case AcquisitionType.DDA:
-                reader = self._reader
+                reader = cast(tdf.DDA, self._reader)
                 for ms2_spec in reader.precursors:
                     peaks = ms2_spec.peaks
 
@@ -172,7 +172,7 @@ class DReader:
                     )
 
             case AcquisitionType.DIA:
-                reader = self._reader
+                reader = cast(tdf.DIA, self._reader)
                 for ms2_spec in reader.windows:
                     peaks = ms2_spec.centroid()
 

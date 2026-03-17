@@ -1,0 +1,19 @@
+site_name: spxtacular
+site_description: A single wrapper for MSN Spectrum from various vendors.
+repo_url: https://github.com/tacular-omics/spxtacular
+repo_name: tacular-omics/spxtacular
+theme:
+  name: material
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+
+nav:
+  - Home: index.md
+  - Spectrum: spectrum.md
+  - Deconvolution: deconvolution.md
+  - Readers: readers.md
+  - API Reference: api.md

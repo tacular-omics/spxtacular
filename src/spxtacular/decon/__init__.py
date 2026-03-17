@@ -1,9 +1,3 @@
-from .dclass import DeconvolutedPeak, SpectrumPeak
+from .greedy import deconvolve_spectrum
 
-# from .deconvolution import deconvolute
-
-__all__ = [
-    "deconvolution",
-    "DeconvolutedPeak",
-    "SpectrumPeak",
-]
+__all__ = ["deconvolve_spectrum"]

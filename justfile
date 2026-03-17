@@ -23,3 +23,11 @@ check:
 # Run tests
 test:
     uv run pytest tests
+
+# Build and serve docs
+docs:  
+    uv run mkdocs serve --dev-addr=localhost:8003
+
+# Build docs to site/
+docs-build:  
+    uv run mkdocs build
