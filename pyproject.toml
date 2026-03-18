@@ -11,7 +11,7 @@ dependencies = [
     "pandas>=2.0",
     "peptacular==3.0.0",
     "paftacular[sequence]==1.0.0",
-    "tdfpy==1.0.0",
+    "tdfpy==1.0.2",
     "mzmlpy==0.3.0",
     "plotly>=6.6.0",
 ]
@@ -54,6 +54,7 @@ dev-dependencies = [
     "mkdocs-material>=9.7.5",
     "numba>=0.64.0",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "ruff>=0.14.11",
     "ty>=0.0.11",
 ]
@@ -72,7 +73,7 @@ select = [
     "UP",  # pyupgrade
 ]
 
-#[tool.uv.sources]
+[tool.uv.sources]
 #peptacular = { path = "../peptacular", editable = true }
-#tdfpy = { path = "../tdfpy", editable = true }
+tdfpy = { path = "../tdfpy", editable = false }
 #mzmlpy = { path = "../mzmlpy", editable = true }

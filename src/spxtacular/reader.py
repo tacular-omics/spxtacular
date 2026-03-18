@@ -5,7 +5,6 @@ from typing import Self, cast
 
 import mzmlpy as mzp
 import numpy as np
-import tdfpy as tdf
 
 from .core import MsnSpectrum, SpectrumType, TargetIon
 
@@ -25,7 +24,10 @@ class AcquisitionType(StrEnum):
 
 class DReader:
     def __init__(self, analysis_dir: str):
+        import tdfpy as tdf
+
         self.analysis_dir = analysis_dir
+        self._tdf = tdf
         _aqui = tdf.get_acquisition_type(str(analysis_dir))
         self.acquisition_type: AcquisitionType
         match _aqui:
@@ -42,9 +44,9 @@ class DReader:
     def __enter__(self):
         match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.PRM | AcquisitionType.UNKNOWN:
-                self._reader = tdf.DDA(self.analysis_dir)
+                self._reader = self._tdf.DDA(self.analysis_dir)
             case AcquisitionType.DIA:
-                self._reader = tdf.DIA(self.analysis_dir)
+                self._reader = self._tdf.DIA(self.analysis_dir)
             case _:
                 raise ValueError(
                     f"Unsupported acquisition type: {self.acquisition_type}"
@@ -72,7 +74,6 @@ class DReader:
                 reader = self._reader
                 mz_range = reader.metadata.mz_acq_range
                 im_range = reader.metadata.one_over_k0_acq_range
-
                 for ms1_spec in reader.ms1:
                     centroided_peaks = ms1_spec.centroid()
 
@@ -120,7 +121,7 @@ class DReader:
 
         match self.acquisition_type:
             case AcquisitionType.DDA:
-                reader = cast(tdf.DDA, self._reader)
+                reader = cast(self._tdf.DDA, self._reader)
                 for ms2_spec in reader.precursors:
                     peaks = ms2_spec.peaks
 
@@ -172,7 +173,7 @@ class DReader:
                     )
 
             case AcquisitionType.DIA:
-                reader = cast(tdf.DIA, self._reader)
+                reader = cast(self._tdf.DIA, self._reader)
                 for ms2_spec in reader.windows:
                     peaks = ms2_spec.centroid()
 

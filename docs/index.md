@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="spxtacular_logo.svg" alt="spxtacular logo" width="400"/>
+</p>
+
 # spxtacular
 
 Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/pgarrett-scripps/peptacular).

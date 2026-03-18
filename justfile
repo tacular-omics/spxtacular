@@ -24,6 +24,14 @@ check:
 test:
     uv run pytest tests
 
+# Run tests with coverage (XML + JUnit XML for Codecov)
+test-cov:
+    uv run pytest tests --cov=src/spxtacular --cov-report=xml
+
+# Run tests with JUnit XML report for Codecov test results upload
+codecov-tests:
+    uv run pytest tests --junit-xml=junit.xml
+
 # Build and serve docs
 docs:  
     uv run mkdocs serve --dev-addr=localhost:8003
