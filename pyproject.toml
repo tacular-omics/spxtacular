@@ -32,10 +32,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pgarrett-scripps/spxtacular"
-Repository = "https://github.com/pgarrett-scripps/spxtacular"
-Documentation = "https://pgarrett-scripps.github.io/spxtacular"
-"Bug Tracker" = "https://github.com/pgarrett-scripps/spxtacular/issues"
+Homepage = "https://github.com/tacular-omics/spxtacular"
+Repository = "https://github.com/tacular-omics/spxtacular"
+Documentation = "https://tacular-omics.github.io/spxtacular"
+"Bug Tracker" = "https://github.com/tacular-omics/spxtacular/issues"
 
 [build-system]
 requires = ["hatchling"]

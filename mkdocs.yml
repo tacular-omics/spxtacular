@@ -1,7 +1,8 @@
 site_name: spxtacular
 hooks:
   - hooks.py
-site_description: A single wrapper for MSN Spectrum from various vendors.
+site_description: Mass spectrometry spectrum processing library.
+site_url: https://tacular-omics.github.io/spxtacular/
 repo_url: https://github.com/tacular-omics/spxtacular
 repo_name: tacular-omics/spxtacular
 theme:
