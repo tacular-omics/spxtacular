@@ -18,15 +18,21 @@ src/spxtacular/
 ├── core.py          # Spectrum, MsnSpectrum, Peak — all processing lives here
 ├── reader.py        # DReader (Bruker timsTOF via tdfpy), MzmlReader
 ├── decon/
-│   └── greedy.py    # greedy numpy deconvolution (no numba, no graph)
+│   ├── greedy.py    # isotope cluster finder (optionally JIT'd with numba)
+│   └── scored.py    # scored deconvolution entry point (Bhattacharyya scoring)
+├── matching.py      # fragment peak matching (match_fragments)
+├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
 ├── compress.py      # spectrum matrix compression/decompression
 ├── noise.py         # noise estimation (MAD, fixed threshold)
-└── visualization.py # plotly-based plotting (stub)
+├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table)
+└── visualization.py # plotly-based plotting (plot_spectrum, mirror_plot, annotate_spectrum)
 ```
 
 ## Core concepts
 
-**`Spectrum`** — central class. Holds `mz`, `intensity`, and optionally `charge` (int32 array) and `im` (ion mobility). Methods return a new `Spectrum` (or mutate inplace) and are chainable:
+**`Spectrum`** — central class. Holds `mz`, `intensity`, and optionally `charge` (int32 array),
+`im` (ion mobility), and `score` (per-peak isotopic profile score from deconvolution). Methods
+return a new `Spectrum` (or mutate inplace) and are chainable:
 
 ```python
 spec.filter(min_mz=100).normalize().deconvolute(charge_range=(1, 5)).decharge()
@@ -36,25 +42,30 @@ spec.filter(min_mz=100).normalize().deconvolute(charge_range=(1, 5)).decharge()
 
 **`MsnSpectrum`** — extends `Spectrum` with MS metadata: `scan_number`, `ms_level`, `rt`, `precursors`, `collision_energy`, etc.
 
-**`Peak`** — frozen dataclass for a single peak `(mz, intensity, charge, im)`.
+**`Peak`** — frozen dataclass for a single peak `(mz, intensity, charge, im, score)`.
 
 ## Deconvolution pipeline
 
 ```python
-# 1. identify isotope clusters → monoisotopic m/z + charge state
+# 1. identify isotope clusters → monoisotopic m/z + charge state + isotopic profile score
 decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
 # decon.charge: -1 = singleton/unassigned, >0 = assigned charge state
+# decon.score:  0.0 for singletons, Bhattacharyya score (0–1) for clusters
 
-# 2. convert charged peaks to neutral masses (drops singletons)
-neutral = decon.decharge()
+# 2. filter by score quality
+filtered = decon.filter(min_score=0.5)
+
+# 3. convert charged peaks to neutral masses (drops singletons)
+neutral = filtered.decharge()
 ```
 
-**How the greedy algorithm works** (`decon/greedy.py`):
+**How the scored algorithm works** (`decon/scored.py` + `decon/greedy.py`):
 - Seeds on the most-intense unused peak, tries every charge in `charge_range`
-- For each charge, extends forward in m/z space by `NEUTRON_MASS / charge` steps (10 peaks max, no skips)
-- Picks the charge that yields the longest chain; ties broken by total intensity
-- Singletons (no neighbours found at any charge) get `charge = -1`
-- Every input peak is consumed exactly once
+- For each charge, `_find_isotope_cluster` extends forward by `NEUTRON_MASS / charge` steps (10 peaks max)
+- Each candidate cluster is scored by Bhattacharyya coefficient against a theoretical isotope template, penalised for missed detectable peaks (score range 0–1)
+- Picks the charge with the highest score; ties broken by cluster size
+- Clusters below `min_score` are recorded as singletons (`charge = -1`, `score = 0.0`); their peaks remain available for future seeds
+- Singletons (no neighbours found at any charge) also get `charge = -1`
 
 ## Charge conventions
 
@@ -66,13 +77,16 @@ neutral = decon.decharge()
 
 ## Key dependencies
 
-- **peptacular** — `pt.C13_NEUTRON_MASS`, `pt.PROTON_MASS` (editable local install)
-- **tdfpy** — Bruker `.d` file reading (editable local install)
-- **mzmlpy** — mzML reading (editable local install)
-- **numpy** — all numeric operations; no numba, no scipy
+- **peptacular** — isotope distribution estimation, `pt.PROTON_MASS`
+- **paftacular** — fragment label serialisation (mzPAF format)
+- **tdfpy** — Bruker `.d` file reading
+- **mzmlpy** — mzML reading
+- **numpy** — all numeric operations
+- **pandas** — plot table DataFrames (`plot_table.py`)
+- **plotly** — interactive visualisation
+- **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
 
 ## What NOT to do
 
-- Do not add numba to the deconvolution — the greedy implementation is intentionally pure numpy.
-- Do not introduce isotopic pattern scoring into `greedy.py` — scoring belongs in a separate layer if added.
 - Do not call `decharge()` on a non-deconvoluted spectrum — it will raise `ValueError`.
+- Do not move isotope scoring logic into `greedy.py` — keep cluster finding and scoring separate.

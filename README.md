@@ -1,81 +1,57 @@
-# This will be spectacular
-# A peptacular companion for handling spectra and such (with optional plotting)
-# will use numpy
-# will also use tdfpy and pymzml
+# spxtacular
+
+Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/pgarrett-scripps/peptacular).
+
+## Install
+
+```bash
+pip install spxtacular
+
+# Optional: Numba JIT acceleration for deconvolution (~3-4x faster)
+pip install spxtacular[numba]
+```
+
+## Quick start
 
 ```python
-import spectacular as st
+import numpy as np
+import spxtacular as spx
 
+# Build a spectrum
+spec = spx.Spectrum(mz=mz_array, intensity=intensity_array)
 
-mzml_file = "blaaaa"
-reader = st.reader(mzml_file)
-spec = reader[0] # first spectra
+# Denoise -> deconvolute -> decharge
+neutral = (
+    spec
+    .denoise(method="mad", snr=3.0)
+    .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm", min_score=0.4)
+    .decharge()
+)
 
-or 
+# Plot
+neutral.plot(title="Neutral masses").show()
+```
 
-dfolder = "blass"
-reader = st.reader(dfolder)
-spec = reader[0] # first spectra
+## Features
 
-spec_plotter
+- **Isotope deconvolution** — Bhattacharyya-scored greedy algorithm; optional numba acceleration
+- **Quality filtering** — reject low-confidence clusters with `min_score`, filter by m/z, intensity, charge, or ion mobility
+- **Neutral mass conversion** — `decharge()` converts charged clusters to neutral masses
+- **Fragment matching** — `match_fragments()` with ppm/Da tolerance, closest/largest/all peak selection
+- **PSM scoring** — `score()` returns hyperscore, spectral angle, matched fraction, and more
+- **Visualization** — stick plots, mirror plots (raw vs deconvoluted), annotated fragment spectra
+- **File reading** — Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`)
 
-    ions: tuple[str, set(int)]
+## Documentation
 
-    add_ion(ion_type, charge)
+Full API reference and guides: [docs/](docs/)
 
-    # plotly 
-    plot(title: str)
-    
+- [Spectrum API](docs/spectrum.md)
+- [Deconvolution](docs/deconvolution.md)
+- [Readers](docs/readers.md)
+- [Visualization](docs/visualization.md)
+- [Scoring](docs/scoring.md)
 
+## License
 
-@frozen
-peak:
-    mz
-    int
-    charge
-    im
-
-@frozen
-spec
-    mz_arr # 1d
-    intensity_arr #2d
-    charge_array | None #3d
-    im_arr | None #4d
-
-    def deconvolute() -> self
-        pass
-
-    def peaks -> list[Peak]
-
-    def top_peaks(n, by='intensity', reverse=False) -> list[Peak]
-
-    @cached_property
-    def _argsort_mz -> list[int]
-    
-    @cached_property
-    def _argsort_intensity -> list[int]
-
-    @cached_property
-    def _argsort_charge -> list[int]
-
-    @cached_property
-    def _argsort_im_ -> list[int]
-
-    def has_peak(target_mz, mz_tol, mz_tol_type, match_charg: bool, target_im | None, im_tol, im_tol_type) -> Bool
-
-    def get_peak(target_mz, mz_tol, mz_tol_type, match_charg: bool, target_im | None, im_tol, im_tol_type, collision: Literal[largest, closest]) -> Peak
-
-    def get_peaks(target_mz, mz_tol, mz_tol_type, match_charg: bool, target_im | None, im_tol, im_tol_type) -> List[Peak]
-
-    def filter(min_mz, max_mz, min_int, max_int, ...) -> Self
-
-    # plot annotate spec
-    def annotate(peptide, ion_types, loss, isotopes) -> plot
-
-    # plot spec
-    def plot(title) -> plot
-        pass
-
-    
-
-```# spextacular
+See [LICENSE](LICENSE).

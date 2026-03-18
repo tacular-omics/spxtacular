@@ -22,9 +22,12 @@ class Peak:
     intensity: float
     charge: int | None = None
     im: float | None = None
+    score: float | None = None
 ```
 
-A frozen dataclass representing a single detected peak. `charge` and `im` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
+A frozen dataclass representing a single detected peak. `charge`, `im`, and `score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
+
+`score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
 
 ```python
 >>> peak = Peak(mz=500.1, intensity=1e5, charge=2)
@@ -51,17 +54,32 @@ class Spectrum:
     intensity: NDArray[np.float64]
     charge: NDArray[np.int32] | None = None
     im: NDArray[np.float64] | None = None
+    score: NDArray[np.float64] | None = None
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
 ```
 
-The central data structure. `mz` and `intensity` must have the same length. `charge` and `im` must also match that length when provided.
+The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `score` must also match that length when provided.
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `mz` | `NDArray[np.float64]` | Peak m/z values, sorted ascending |
+| `intensity` | `NDArray[np.float64]` | Parallel peak intensities |
+| `charge` | `NDArray[np.int32] \| None` | Charge state per peak. `None` before deconvolution |
+| `im` | `NDArray[np.float64] \| None` | Ion mobility per peak. `None` if not acquired |
+| `score` | `NDArray[np.float64] \| None` | Per-peak isotopic profile score (0–1). Populated after `deconvolute()`; `None` otherwise. Singletons have `score=0.0`. |
+| `spectrum_type` | `SpectrumType \| str \| None` | Stage tag: `CENTROID`, `PROFILE`, or `DECONVOLUTED` |
+| `denoised` | `str \| None` | Name of the denoising method applied, or `None` |
+| `normalized` | `str \| None` | Name of the normalization method applied, or `None` |
 
 **Validation rules enforced in `__post_init__`:**
 
 - `len(charge) == len(mz)` when `charge` is not `None`
 - `len(im) == len(mz)` when `im` is not `None`
+- `len(score) == len(mz)` when `score` is not `None`
 - A `charge` array may only be present when `spectrum_type == DECONVOLUTED`
 
 ```python
@@ -213,7 +231,14 @@ def filter(
 
 Removes peaks outside the given bounds. All parameters are optional and combinable. `top_n` is applied last — after all range filters — keeping the `top_n` most intense survivors.
 
-Charge and ion mobility filters are silently ignored if the spectrum lacks those arrays.
+Charge, ion mobility, and score filters are silently ignored if the spectrum lacks those arrays.
+
+**Score filter parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `min_score` | `float \| None` | Keep peaks with score >= this value. Only effective when `score` array is present. |
+| `max_score` | `float \| None` | Keep peaks with score <= this value. Only effective when `score` array is present. |
 
 ```python
 # Keep peaks between 200 and 1500 Da with intensity >= 1000
@@ -335,6 +360,8 @@ Assigns each peak to an isotope cluster and records the charge state. Returns a 
 | `charge_range` | `(min_charge, max_charge)` inclusive; default `(1, 3)` |
 | `intensity` | `"total"` (default) sums the whole cluster; `"base"` uses only the monoisotopic peak |
 | `max_dpeaks` | Maximum output peaks (default 2000) |
+| `min_intensity` | `float \| "min"` — Absolute intensity floor for isotope detectability. The sentinel `"min"` (default) uses the spectrum's own minimum intensity as the S/N floor. |
+| `min_score` | `float` — Clusters whose best isotopic profile score falls below this threshold are recorded as singletons. Default `0.0` accepts all clusters. |
 
 After deconvolution the `charge` array follows the [charge conventions](#charge-conventions) table: `> 0` for assigned clusters, `-1` for singletons.
 
@@ -354,10 +381,13 @@ Converts deconvoluted m/z values to neutral monoisotopic masses using `neutral_m
 
 Raises `ValueError` if the spectrum is not in `DECONVOLUTED` state.
 
+> The `score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
+
 ```python
 neutral = decon.decharge()
 # neutral.mz now contains neutral masses sorted ascending
 # neutral.charge is all zeros
+# neutral.score carries through from the deconvoluted spectrum
 ```
 
 #### `update`
@@ -410,6 +440,81 @@ Round-trips a string produced by `.compress()` back to a `Spectrum`.
 ```python
 recovered = Spectrum.from_compressed(blob)
 ```
+
+---
+
+### Visualization
+
+#### `plot`
+
+```python
+def plot(
+    self,
+    title: str | None = None,
+    show_charges: bool = True,
+    show_scores: bool = True,
+    **layout_kwargs,
+) -> Figure
+```
+
+Returns a Plotly `Figure` (stick plot). Requires `plotly` (`pip install plotly`).
+
+| Parameter | Description |
+|---|---|
+| `title` | Plot title |
+| `show_charges` | Colour sticks by charge state when a `charge` array is present |
+| `show_scores` | Annotate scored peaks with their score value when a `score` array is present |
+
+```python
+spec.plot(title="My spectrum").show()
+decon.plot(show_charges=True, show_scores=True).show()
+```
+
+See [Visualization](visualization.md) for `mirror_plot()` and `annotate_spectrum()`.
+
+#### `plot_table`
+
+```python
+def plot_table(
+    self,
+    show_charges: bool = True,
+    show_scores: bool = True,
+) -> pd.DataFrame
+```
+
+Returns a `pandas.DataFrame` with one row per peak. Each row contains both the raw peak data (`mz`, `intensity`, `charge`, `score`, `im`) and all visual properties (`color`, `linewidth`, `opacity`, `series`, `label`, `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor`, `hover`). Modify the table freely, then render it with `plot_from_table()`.
+
+```python
+tbl = decon.plot_table()
+tbl.loc[tbl["charge"] == 2, "color"] = "red"
+tbl.loc[tbl["intensity"] > 1e5, "linewidth"] = 2.0
+fig = plot_from_table(tbl, title="Custom plot")
+fig.show()
+```
+
+#### `annot_plot_table`
+
+```python
+def annot_plot_table(
+    self,
+    fragments,
+    mz_tol: float = 0.02,
+    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
+) -> pd.DataFrame
+```
+
+Like `plot_table()` but matched peaks are coloured by ion series and labelled with their fragment identifier. Unmatched peaks are grey. Modify the returned table and call `plot_from_table()` to render.
+
+```python
+tbl = spec.annot_plot_table(fragments, mz_tol=10, mz_tol_type="ppm")
+tbl.loc[tbl["label"] != "", "label_size"] = 14
+fig = plot_from_table(tbl, title="Annotated")
+fig.show()
+```
+
+See [Visualization — Plot table API](visualization.md#plot-table-api) for full column reference.
 
 ---
 

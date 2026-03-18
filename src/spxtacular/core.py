@@ -6,13 +6,16 @@ Core data structures for spectra
 import warnings
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Literal, Self
+from typing import TYPE_CHECKING, Literal, Self
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .compress import compress_spectra, decompress_spectra
-from .decon.greedy import deconvolve_spectrum
+from .decon.scored import deconvolve_spectrum as _deconvolve
 from .noise import estimate_noise_level
 
 # ============================================================================
@@ -96,6 +99,7 @@ class Peak:
     intensity: float
     charge: int | None = None
     im: float | None = None
+    score: float | None = None
 
     def __repr__(self) -> str:
         parts = [f"mz={self.mz:.4f}", f"int={self.intensity:.2e}"]
@@ -103,6 +107,8 @@ class Peak:
             parts.append(f"z={self.charge}")
         if self.im is not None:
             parts.append(f"im={self.im:.3f}")
+        if self.score is not None:
+            parts.append(f"score={self.score:.3f}")
         return f"Peak({', '.join(parts)})"
 
 
@@ -120,6 +126,7 @@ class Spectrum:
     intensity: NDArray[np.float64]  # Shape: (n,)
     charge: NDArray[np.int32] | None = None  # Shape: (n,)
     im: NDArray[np.float64] | None = None  # Shape: (n,)
+    score: NDArray[np.float64] | None = None  # Shape: (n,) — isotope profile scores from scored deconvolution
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
@@ -133,6 +140,8 @@ class Spectrum:
             raise ValueError("charge array must match mz length")
         if self.im is not None and len(self.im) != n:
             raise ValueError("im array must match mz length")
+        if self.score is not None and len(self.score) != n:
+            raise ValueError("score array must match mz length")
         if self.charge is not None and self.spectrum_type != SpectrumType.DECONVOLUTED:
             object.__setattr__(self, "spectrum_type", SpectrumType.DECONVOLUTED)
 
@@ -149,6 +158,7 @@ class Spectrum:
                 intensity=float(self.intensity[i]),
                 charge=self.charge[i] if self.charge is not None else None,
                 im=self.im[i] if self.im is not None else None,
+                score=float(self.score[i]) if self.score is not None else None,
             )
             for i in range(len(self.mz))
         ]
@@ -156,16 +166,22 @@ class Spectrum:
     def top_peaks(
         self,
         n: int,
-        by: Literal["intensity", "mz", "charge", "im"] = "intensity",
+        by: Literal["intensity", "mz", "charge", "im", "score"] = "intensity",
         reverse: bool = True,
     ) -> list[Peak]:
         """Get top N peaks sorted by specified attribute."""
-        sort_key = {
-            "intensity": self._argsort_intensity,
-            "mz": self._argsort_mz,
-            "charge": self._argsort_charge,
-            "im": self._argsort_im,
-        }[by]
+        if by == "intensity":
+            sort_key = self._argsort_intensity
+        elif by == "mz":
+            sort_key = self._argsort_mz
+        elif by == "charge":
+            sort_key = self._argsort_charge
+        elif by == "im":
+            sort_key = self._argsort_im
+        elif by == "score":
+            sort_key = self._argsort_score
+        else:
+            raise ValueError(f"Unknown sort key: {by!r}")
 
         indices = sort_key[:n] if not reverse else sort_key[-n:][::-1]
 
@@ -175,6 +191,7 @@ class Spectrum:
                 intensity=float(self.intensity[i]),
                 charge=int(self.charge[i]) if self.charge is not None else None,
                 im=float(self.im[i]) if self.im is not None else None,
+                score=float(self.score[i]) if self.score is not None else None,
             )
             for i in indices
         ]
@@ -202,6 +219,12 @@ class Spectrum:
         if self.im is None:
             raise ValueError("Spectrum has no ion mobility information")
         return np.argsort(self.im)
+
+    @property
+    def _argsort_score(self) -> NDArray[np.int64]:
+        if self.score is None:
+            raise ValueError("Spectrum has no score information")
+        return np.argsort(self.score)
 
     # -------------------------------------------------------------------------
     # Peak Finding
@@ -319,6 +342,8 @@ class Spectrum:
         max_charge: int | None = None,
         min_im: float | None = None,
         max_im: float | None = None,
+        min_score: float | None = None,
+        max_score: float | None = None,
         top_n: int | None = None,
         inplace: bool = False,
     ) -> Self:
@@ -341,6 +366,10 @@ class Spectrum:
             mask &= self.im >= min_im
         if max_im is not None and self.im is not None:
             mask &= self.im <= max_im
+        if min_score is not None and self.score is not None:
+            mask &= self.score >= min_score
+        if max_score is not None and self.score is not None:
+            mask &= self.score <= max_score
 
         # Apply top_n after other filters
         if top_n is not None:
@@ -466,7 +495,6 @@ class Spectrum:
                 continue
 
             current_mz = mz[idx]
-            current_int = intensity[idx]
             current_charge = charge[idx] if charge is not None else None
 
             # Calculate tolerance
@@ -608,6 +636,8 @@ class Spectrum:
                 self.charge = self.charge[mask]
             if self.im is not None:
                 self.im = self.im[mask]
+            if self.score is not None:
+                self.score = self.score[mask]
             return self
 
         return replace(
@@ -616,6 +646,7 @@ class Spectrum:
             intensity=self.intensity[mask],
             charge=self.charge[mask] if self.charge is not None else None,
             im=self.im[mask] if self.im is not None else None,
+            score=self.score[mask] if self.score is not None else None,
         )
 
     def update(self, inplace: bool = False, **kwargs) -> Self:
@@ -631,10 +662,90 @@ class Spectrum:
     # Plotting (requires plotly)
     # -------------------------------------------------------------------------
 
-    def plot(self, **kwargs):
-        """Plot spectrum."""
-        # TODO: Implement plotting with plotly
-        raise NotImplementedError("Plotting not yet implemented")
+    def plot(self, title: str | None = None, show_charges: bool = True, show_scores: bool = True, **layout_kwargs):
+        """Plot spectrum as a stick plot (requires plotly).
+
+        Parameters
+        ----------
+        title:
+            Plot title. Defaults to the spectrum type.
+        show_charges:
+            Colour sticks by charge state when charge data is present.
+        show_scores:
+            Annotate peaks with isotope profile scores when score data is present.
+        **layout_kwargs:
+            Forwarded to ``fig.update_layout``.
+        """
+        from .visualization import plot_spectrum
+
+        return plot_spectrum(self, title=title, show_charges=show_charges, show_scores=show_scores, **layout_kwargs)
+
+    def plot_table(
+        self,
+        show_charges: bool = True,
+        show_scores: bool = True,
+    ) -> "pd.DataFrame":
+        """Return an editable plot table (one row per peak) for this spectrum.
+
+        The returned :class:`pandas.DataFrame` contains every data field
+        (``mz``, ``intensity``, ``charge``, ``score``, ``im``) plus visual
+        properties (``color``, ``linewidth``, ``opacity``, ``series``,
+        ``label``, ``label_size``, ``label_font``, ``label_color``,
+        ``label_yshift``, ``label_xanchor``, ``hover``).
+
+        Modify the DataFrame freely, then pass it to
+        :func:`spxtacular.plot_from_table` to produce a plotly Figure.
+
+        Parameters
+        ----------
+        show_charges:
+            Colour peaks by charge state when charge data is present.
+        show_scores:
+            Label peaks with their isotope profile score (score > 0 only).
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        from .plot_table import build_plot_table
+
+        return build_plot_table(self, show_charges=show_charges, show_scores=show_scores)
+
+    def annot_plot_table(
+        self,
+        fragments,
+        mz_tol: float = 0.02,
+        mz_tol_type: Literal["Da", "ppm"] = "Da",
+        peak_selection: Literal["closest", "largest", "all"] = "closest",
+        include_sequence: bool = False,
+    ) -> "pd.DataFrame":
+        """Return an editable annotated plot table for this spectrum.
+
+        Like :meth:`plot_table` but matched peaks are coloured by ion series
+        and labelled with their fragment identifier.
+
+        Parameters
+        ----------
+        fragments:
+            Fragment objects from peptacular to match against peaks.
+        mz_tol:
+            Matching tolerance.
+        mz_tol_type:
+            ``"Da"`` or ``"ppm"``.
+        peak_selection:
+            ``"closest"``, ``"largest"``, or ``"all"``.
+        include_sequence:
+            Embed residue sequence in labels (e.g. ``b3{PEP}``).
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        from .plot_table import build_annot_plot_table
+
+        return build_annot_plot_table(
+            self, fragments, mz_tol, mz_tol_type, peak_selection, include_sequence
+        )
 
     def deconvolute(
         self,
@@ -644,6 +755,8 @@ class Spectrum:
         intensity: Literal["base", "total"] = "total",
         max_dpeaks: int = 2000,
         inplace: bool = False,
+        min_intensity: float | Literal["min"] = "min",
+        min_score: float = 0.0,
     ) -> Self:
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
             warnings.warn(
@@ -654,7 +767,9 @@ class Spectrum:
             return self
 
         is_ppm = tolerance_type == "ppm"
-        new_mz, new_charge, new_intensity = deconvolve_spectrum(
+        resolved_min_intensity: float = float(self.intensity.min()) if min_intensity == "min" else min_intensity
+
+        new_mz, new_charge, new_intensity, new_score = _deconvolve(
             mz=self.mz,
             intensity=self.intensity,
             charge_range=charge_range,
@@ -662,6 +777,8 @@ class Spectrum:
             is_ppm=is_ppm,
             max_dpeaks=max_dpeaks,
             intensity_mode=intensity,
+            min_intensity=resolved_min_intensity,
+            min_score=min_score,
         )
 
         return self.update(
@@ -669,6 +786,7 @@ class Spectrum:
             intensity=new_intensity,
             charge=new_charge,
             im=None,
+            score=new_score,
             spectrum_type=SpectrumType.DECONVOLUTED,
             inplace=inplace,
         )
@@ -692,6 +810,7 @@ class Spectrum:
         known_charge = self.charge[known]
         known_int = self.intensity[known]
         known_im = self.im[known] if self.im is not None else None
+        known_score = self.score[known] if self.score is not None else None
 
         neutral_mz = (known_mz * known_charge) - (known_charge * proton)
 
@@ -700,15 +819,17 @@ class Spectrum:
         return self.update(
             mz=neutral_mz[order],
             intensity=known_int[order],
-            charge=np.zeros_like(
-                known_charge[order], dtype=np.int32
-            ),  # set charge to 0 (unknown)
+            charge=np.zeros_like(known_charge[order], dtype=np.int32),
             im=known_im[order] if known_im is not None else None,
+            score=known_score[order] if known_score is not None else None,
             inplace=inplace,
         )
 
     def __str__(self) -> str:
-        return f"Spectrum(n_peaks={len(self.mz)}, type={self.spectrum_type}, denoised={self.denoised}, normalized={self.normalized})"
+        return (
+            f"Spectrum(n_peaks={len(self.mz)}, type={self.spectrum_type}, "
+            f"denoised={self.denoised}, normalized={self.normalized})"
+        )
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -798,7 +919,10 @@ class MsnSpectrum(Spectrum):
     precursors: list[TargetIon] | None = None  # For MS2/MSn, list of precursor peaks
 
     def __str__(self) -> str:
-        return f"MsnSpectrum(scan={self.scan_number}, ms_level={self.ms_level}, rt={self.rt:.2f}s, polarity={self.polarity}, n_peaks={len(self.mz)})"
+        return (
+            f"MsnSpectrum(scan={self.scan_number}, ms_level={self.ms_level}, "
+            f"rt={self.rt:.2f}s, polarity={self.polarity}, n_peaks={len(self.mz)})"
+        )
 
     def __repr__(self) -> str:
         return self.__str__()

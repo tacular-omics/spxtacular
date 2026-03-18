@@ -31,29 +31,33 @@ The output has **one peak per identified cluster**, not one peak per input peak.
 
 ---
 
-## How the greedy algorithm works
+## How the algorithm works
 
-The implementation is in `src/spxtacular/decon/greedy.py` — pure NumPy, no graph construction, no scoring.
+The implementation lives in `src/spxtacular/decon/` — pure NumPy, no graph construction.
 
 ### 1. Seed selection
 
 Pick the **most intense unused peak** as the seed for the next cluster. High-intensity clusters are therefore assigned first.
 
-### 2. Cluster extension
+### 2. Cluster building
 
 For each charge state in `charge_range`, extend forward from the seed in steps of `NEUTRON_MASS / z` Da, where `NEUTRON_MASS` is the C13 neutron mass (~1.00335 Da). Up to 9 additional peaks are added (maximum cluster size: 10).
 
 At each step, the algorithm looks for an unused peak within the tolerance window. The closest candidate is chosen. If none exists, the cluster terminates — **no skips are allowed**.
 
-### 3. Charge selection
+### 3. Scoring
 
-The charge that produced the **longest chain** wins. Ties are broken by **total cluster intensity**.
+Each candidate cluster is scored against a theoretical isotope distribution using the **Bhattacharyya coefficient**, penalised for missed peaks that should have been detectable above `min_intensity`. The score is in the range 0–1, where 1 is a perfect match to the theoretical envelope.
 
-### 4. Singleton handling
+### 4. Charge assignment
 
-If no charge produced a chain longer than 1 (the seed has no isotope neighbours at any tested charge), the peak is kept as-is with `charge = -1`.
+The charge with the **highest score** wins. Ties are broken by cluster size.
 
-### 5. Repeat
+### 5. Rejection
+
+If the winning score is below `min_score`, the seed is marked as a **singleton** (`charge=-1`, `score=0.0`). The other peaks that were tested as cluster members remain available as seeds for future iterations.
+
+### 6. Repeat
 
 All peaks in the winning cluster are marked as used. The cycle restarts from the next most-intense unused peak until every input peak has been consumed or `max_dpeaks` is reached.
 
@@ -69,6 +73,8 @@ def deconvolute(
     charge_range: tuple[int, int] = (1, 3),
     intensity: Literal["base", "total"] = "total",
     max_dpeaks: int = 2000,
+    min_intensity: float | str = "min",
+    min_score: float = 0.0,
     inplace: bool = False,
 ) -> Self
 ```
@@ -80,7 +86,27 @@ def deconvolute(
 | `charge_range` | `(1, 3)` | Min and max charge to try, inclusive |
 | `intensity` | `"total"` | `"total"` sums all cluster peaks; `"base"` uses only the seed (monoisotopic) peak |
 | `max_dpeaks` | `2000` | Upper bound on output peaks |
+| `min_intensity` | `"min"` | Intensity floor for detectability scoring. `"min"` uses the spectrum minimum |
+| `min_score` | `0.0` | Minimum profile score to accept a cluster; `0.0` accepts everything |
 | `inplace` | `False` | Mutate in place instead of returning a new `Spectrum` |
+
+---
+
+## Score output
+
+After deconvolution, `spectrum.score` is a `float64` array parallel to `mz`/`intensity`. Each assigned cluster carries a score in 0–1 representing how well its observed intensity distribution matches the theoretical isotope envelope. Singletons always have `score=0.0`.
+
+```python
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+print(decon.score)   # array of float64, same length as decon.mz
+
+# Keep only well-matched clusters (score >= 0.5) and assigned peaks (charge > 0)
+confident = decon.filter(min_score=0.5, min_charge=1)
+```
+
+The `score` array is propagated through `.decharge()`, so neutral-mass peaks retain their cluster score.
+
+---
 
 **`charge_range`:** Cover the full range you expect. A wider range increases runtime linearly. For tryptic peptides `(1, 5)` is typical; for intact proteins `(5, 50)` or wider.
 

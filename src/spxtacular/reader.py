@@ -1,6 +1,7 @@
 import warnings
+from collections.abc import Generator
 from enum import StrEnum
-from typing import Generator, Literal, Self, cast
+from typing import Self, cast
 
 import mzmlpy as mzp
 import numpy as np
@@ -10,9 +11,8 @@ from .core import MsnSpectrum, SpectrumType, TargetIon
 
 """
 
-This module is meant to make a single API for different filetype, so that the rest of the codebase can be agnostic to file format.
-
-Should support DDA and DIA data, and ideally also support MS3 spectra if they are present in the data.
+Unified reader API for different mass-spectrometry file formats.
+Supports DDA and DIA data from Bruker timsTOF (.d) and mzML.
 """
 
 
@@ -27,27 +27,27 @@ class DReader:
     def __init__(self, analysis_dir: str):
         self.analysis_dir = analysis_dir
         _aqui = tdf.get_acquisition_type(str(analysis_dir))
-        self.aquisition_type: AcquisitionType
+        self.acquisition_type: AcquisitionType
         match _aqui:
             case "DDA":
-                self.aquisition_type = AcquisitionType.DDA
+                self.acquisition_type = AcquisitionType.DDA
             case "DIA":
-                self.aquisition_type = AcquisitionType.DIA
+                self.acquisition_type = AcquisitionType.DIA
             case "PRM":
-                self.aquisition_type = AcquisitionType.PRM
+                self.acquisition_type = AcquisitionType.PRM
             case _:
-                self.aquisition_type = AcquisitionType.UNKNOWN
+                self.acquisition_type = AcquisitionType.UNKNOWN
         self._reader = None
 
     def __enter__(self):
-        match self.aquisition_type:
+        match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.PRM | AcquisitionType.UNKNOWN:
                 self._reader = tdf.DDA(self.analysis_dir)
             case AcquisitionType.DIA:
                 self._reader = tdf.DIA(self.analysis_dir)
             case _:
                 raise ValueError(
-                    f"Unsupported acquisition type: {self.aquisition_type}"
+                    f"Unsupported acquisition type: {self.acquisition_type}"
                 )
 
         self._reader.__enter__()
@@ -62,7 +62,7 @@ class DReader:
         if self._reader is None:
             raise RuntimeError("DReader must be used as a context manager")
 
-        match self.aquisition_type:
+        match self.acquisition_type:
             case (
                 AcquisitionType.DDA
                 | AcquisitionType.DIA
@@ -109,7 +109,7 @@ class DReader:
                     )
             case _:
                 raise ValueError(
-                    f"Unsupported acquisition type: {self.aquisition_type}"
+                    f"Unsupported acquisition type: {self.acquisition_type}"
                 )
 
     @property
@@ -118,7 +118,7 @@ class DReader:
         if self._reader is None:
             raise RuntimeError("DReader must be used as a context manager")
 
-        match self.aquisition_type:
+        match self.acquisition_type:
             case AcquisitionType.DDA:
                 reader = cast(tdf.DDA, self._reader)
                 for ms2_spec in reader.precursors:
@@ -212,7 +212,7 @@ class DReader:
                     )
             case _:
                 raise ValueError(
-                    f"Unsupported acquisition type: {self.aquisition_type}"
+                    f"Unsupported acquisition type: {self.acquisition_type}"
                 )
 
 
@@ -266,13 +266,15 @@ class MzmlReader:
                         )
                 elif len(im_types) > 1:
                     warnings.warn(
-                        f"Spectrum {spec} has multiple ion mobility arrays, but only one is supported. Using the first one: {im_types[0]}"
+                        f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
+                        stacklevel=2,
                     )
                     for im_type in im_types:
                         darr = spec.get_binary_array(im_type)
                         if darr is None:
                             raise RuntimeError(
-                                f"Spectrum {spec} has multiple ion mobility arrays, and the first one is not None, which is unexpected. Array types: {im_types}"
+                                f"Spectrum {spec}: multiple IM arrays, first is not None. "
+                                f"Array types: {im_types}"
                             )
                         im_array = darr.data.astype(np.float64)
                         if len(im_array) != len(mz_array):
@@ -280,7 +282,8 @@ class MzmlReader:
                             continue
                     if im_array is None:
                         warnings.warn(
-                            f"Spectrum {spec} has multiple ion mobility arrays, but none of them have the same length as the m/z array, which is unexpected. Array types: {im_types}"
+                            f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
+                            stacklevel=2,
                         )
 
                 match spec.spectrum_type:
@@ -369,13 +372,15 @@ class MzmlReader:
                         )
                 elif len(im_types) > 1:
                     warnings.warn(
-                        f"Spectrum {spec} has multiple ion mobility arrays, but only one is supported. Using the first one: {im_types[0]}"
+                        f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
+                        stacklevel=2,
                     )
                     for im_type in im_types:
                         darr = spec.get_binary_array(im_type)
                         if darr is None:
                             raise RuntimeError(
-                                f"Spectrum {spec} has multiple ion mobility arrays, and the first one is not None, which is unexpected. Array types: {im_types}"
+                                f"Spectrum {spec}: multiple IM arrays, first is not None. "
+                                f"Array types: {im_types}"
                             )
                         im_array = darr.data.astype(np.float64)
                         if len(im_array) != len(mz_array):
@@ -383,7 +388,8 @@ class MzmlReader:
                             continue
                     if im_array is None:
                         warnings.warn(
-                            f"Spectrum {spec} has multiple ion mobility arrays, but none of them have the same length as the m/z array, which is unexpected. Array types: {im_types}"
+                            f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
+                            stacklevel=2,
                         )
 
                 match spec.spectrum_type:
@@ -410,25 +416,29 @@ class MzmlReader:
                     ions = precursor.selected_ions
                     if len(ions) == 0:
                         warnings.warn(
-                            f"Spectrum {spec} has precursor with no selected ions, which is unexpected. Precursor info: {precursor}"
+                            f"Spectrum {spec} has precursor with no selected ions (unexpected). Precursor: {precursor}",
+                            stacklevel=2,
                         )
                         continue
                     if len(ions) > 1:
                         warnings.warn(
-                            f"Spectrum {spec} has precursor with multiple selected ions, which is unexpected. Using the first one. Precursor info: {precursor}"
+                            f"Spectrum {spec} has multiple selected ions; using first. Precursor: {precursor}",
+                            stacklevel=2,
                         )
                     ion = ions[0]
 
                     mz = ion.selected_ion_mz
                     if mz is None:
                         warnings.warn(
-                            f"Spectrum {spec} has precursor with selected ion missing m/z, which is unexpected. Precursor info: {precursor}"
+                            f"Spectrum {spec} precursor selected ion missing m/z (unexpected). Precursor: {precursor}",
+                            stacklevel=2,
                         )
                         continue
                     intensity = ion.peak_intensity
                     if intensity is None:
                         warnings.warn(
-                            f"Spectrum {spec} has precursor with selected ion missing intensity, which is unexpected. Precursor info: {precursor}"
+                            f"Spectrum {spec} precursor missing intensity (unexpected). Precursor: {precursor}",
+                            stacklevel=2,
                         )
                         continue
                     charge = ion.charge_state
@@ -454,11 +464,13 @@ class MzmlReader:
                             activation_types.append(activation_type)
                 if len(set(collision_energies)) > 1:
                     warnings.warn(
-                        f"Spectrum {spec} has multiple collision energies across precursors, which is unexpected. Collision energies: {set(collision_energies)}"
+                        f"Spectrum {spec} has multiple collision energies (unexpected): {set(collision_energies)}",
+                        stacklevel=2,
                     )
                 if len(set(activation_types)) > 1:
                     warnings.warn(
-                        f"Spectrum {spec} has multiple activation types across precursors, which is unexpected. Activation types: {set(activation_types)}"
+                        f"Spectrum {spec} has multiple activation types (unexpected): {set(activation_types)}",
+                        stacklevel=2,
                     )
 
                 ce = collision_energies[0] if len(collision_energies) > 0 else None
@@ -488,7 +500,7 @@ class MzmlReader:
                     collision_energy=ce,
                     activation_type=activation_type,
                     ramp_time=None,
-                    precursors=precursors,  # This will be a list of precursor info objects, which could be further processed if needed
+                    precursors=precursors,
                 )
 
     def __enter__(self) -> Self:

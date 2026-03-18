@@ -3,7 +3,13 @@
 All public names importable from `spxtacular`:
 
 ```python
-from spxtacular import Spectrum, MsnSpectrum, Peak, DReader, MzmlReader, plot_spectrum
+from spxtacular import (
+    Spectrum, MsnSpectrum, Peak,
+    DReader, MzmlReader,
+    match_fragments, score,
+    plot_spectrum, mirror_plot, annotate_spectrum,
+    build_plot_table, build_annot_plot_table, plot_from_table,
+)
 ```
 
 ---
@@ -47,6 +53,8 @@ Spectrum(
 | `.compress(...)` | `str` | Serialise to compact ASCII string |
 | `.from_compressed(s)` | `Spectrum` | Deserialise from compressed string (classmethod) |
 | `.update(**kwargs)` | `Spectrum` | Return copy with specified fields replaced |
+| `.plot_table(show_charges, show_scores)` | `pd.DataFrame` | Build an editable plot table (one row per peak) |
+| `.annot_plot_table(fragments, ...)` | `pd.DataFrame` | Build an editable annotated plot table with fragment labels |
 
 Full documentation: [Spectrum reference](spectrum.md)
 
@@ -150,7 +158,7 @@ DReader(analysis_dir: str)
 |---|---|---|
 | `.ms1` | `Generator[MsnSpectrum]` | All MS1 frames |
 | `.ms2` | `Generator[MsnSpectrum]` | All MS2 spectra |
-| `.aquisition_type` | `AcquisitionType` | DDA / DIA / PRM / UNKNOWN |
+| `.acquisition_type` | `AcquisitionType` | DDA / DIA / PRM / UNKNOWN |
 
 Full documentation: [Readers — DReader](readers.md#dreader)
 
@@ -208,19 +216,148 @@ Prefer the `Spectrum.compress()` / `Spectrum.from_compressed()` API instead.
 
 ## Visualization
 
+Requires `plotly` (`pip install plotly`). All three functions return a `plotly.graph_objects.Figure`.
+
+Full documentation: [Visualization](visualization.md)
+
 ### `plot_spectrum`
 
 ```python
 from spxtacular import plot_spectrum
 ```
 
-Requires `plotly` (`pip install plotly`). Currently a stub — implementation pending.
-
 ```python
 plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
     show_charges: bool = True,
+    show_scores: bool = True,
     **layout_kwargs,
 )
+```
+
+### `mirror_plot`
+
+```python
+from spxtacular import mirror_plot
+```
+
+```python
+mirror_plot(
+    raw: Spectrum,
+    decon: Spectrum,
+    title: str | None = None,
+    normalize: bool = True,
+    show_scores: bool = True,
+    **layout_kwargs,
+)
+```
+
+### `annotate_spectrum`
+
+```python
+from spxtacular import annotate_spectrum
+```
+
+```python
+annotate_spectrum(
+    spectrum: Spectrum,
+    fragments,
+    mz_tol: float = 0.02,
+    mz_tol_type: str = "da",
+    title: str | None = None,
+    **layout_kwargs,
+)
+```
+
+---
+
+## Matching and scoring
+
+Full documentation: [Fragment matching and scoring](scoring.md)
+
+### `match_fragments`
+
+```python
+from spxtacular import match_fragments
+```
+
+```python
+match_fragments(
+    spectrum: Spectrum,
+    fragments,
+    mz_tol: float = 0.02,
+    mz_tol_type: str = "Da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+)
+```
+
+### `score`
+
+```python
+from spxtacular import score
+```
+
+```python
+score(
+    spectrum: Spectrum,
+    fragments,
+    mz_tol: float = 10,
+    mz_tol_type: str = "ppm",
+) -> dict
+```
+
+Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
+
+---
+
+## Plot table API
+
+Provides an intermediate `pandas.DataFrame` that holds all data and visual properties for a spectrum plot. Users can freely modify the DataFrame before passing it to `plot_from_table`.
+
+Full documentation: [Visualization — Plot table API](visualization.md#plot-table-api)
+
+### `build_plot_table`
+
+```python
+from spxtacular import build_plot_table
+```
+
+```python
+build_plot_table(
+    spectrum: Spectrum,
+    show_charges: bool = True,
+    show_scores: bool = True,
+) -> pd.DataFrame
+```
+
+### `build_annot_plot_table`
+
+```python
+from spxtacular import build_annot_plot_table
+```
+
+```python
+build_annot_plot_table(
+    spectrum: Spectrum,
+    fragments,
+    mz_tol: float = 0.02,
+    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
+) -> pd.DataFrame
+```
+
+### `plot_from_table`
+
+```python
+from spxtacular import plot_from_table
+```
+
+```python
+plot_from_table(
+    table: pd.DataFrame,
+    title: str | None = None,
+    **layout_kwargs,
+) -> go.Figure
 ```

@@ -4,11 +4,16 @@ version = "0.1.0"
 description = "Mass spectrometry spectrum processing library."
 readme = "README.md"
 requires-python = ">=3.12"
+license = { file = "LICENSE" }
+keywords = ["mass spectrometry", "proteomics", "deconvolution", "bioinformatics", "peptide"]
 dependencies = [
     "numpy",
-    "peptacular",
-    "tdfpy",
-    "mzmlpy",
+    "pandas>=2.0",
+    "peptacular==3.0.0",
+    "paftacular[sequence]==1.0.0",
+    "tdfpy==1.0.0",
+    "mzmlpy==0.3.0",
+    "plotly>=6.6.0",
 ]
 authors = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }
@@ -17,12 +22,20 @@ maintainers = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }
 ]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Chemistry",
 ]
+
+[project.urls]
+Homepage = "https://github.com/pgarrett-scripps/spxtacular"
+Repository = "https://github.com/pgarrett-scripps/spxtacular"
+Documentation = "https://pgarrett-scripps.github.io/spxtacular"
+"Bug Tracker" = "https://github.com/pgarrett-scripps/spxtacular/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,11 +44,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/spxtacular"]
 
+[project.optional-dependencies]
+numba = ["numba>=0.64.0"]
+
 [tool.uv]
 package = true
 dev-dependencies = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
+    "numba>=0.64.0",
     "pytest>=9.0.2",
     "ruff>=0.14.11",
     "ty>=0.0.11",
@@ -55,7 +72,7 @@ select = [
     "UP",  # pyupgrade
 ]
 
-[tool.uv.sources]
-peptacular = { path = "../peptacular", editable = true }
-tdfpy = { path = "../tdfpy", editable = true }
-mzmlpy = { path = "../mzmlpy", editable = true }
+#[tool.uv.sources]
+#peptacular = { path = "../peptacular", editable = true }
+#tdfpy = { path = "../tdfpy", editable = true }
+#mzmlpy = { path = "../mzmlpy", editable = true }
