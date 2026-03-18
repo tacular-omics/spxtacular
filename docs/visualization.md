@@ -31,6 +31,18 @@ state (z=1, z=2, ... in different colours; z=-1 singletons in grey). When `score
 spec.plot(title="My spectrum", show_charges=True).show()
 ```
 
+**Raw spectrum:**
+
+<iframe src="../plots/raw.html" width="100%" height="500" frameborder="0"></iframe>
+
+**Deconvoluted spectrum (coloured by charge state):**
+
+<iframe src="../plots/deconvoluted.html" width="100%" height="500" frameborder="0"></iframe>
+
+**Deconvoluted + filtered (score ≥ 0.5):**
+
+<iframe src="../plots/deconvoluted_filtered.html" width="100%" height="500" frameborder="0"></iframe>
+
 ---
 
 ## `mirror_plot()`
@@ -65,6 +77,22 @@ fig = mirror_plot(spec, decon, title="Raw vs deconvoluted")
 fig.show()
 ```
 
+**Raw vs deconvoluted:**
+
+<iframe src="../plots/mirror.html" width="100%" height="500" frameborder="0"></iframe>
+
+**Raw vs deconvoluted + filtered:**
+
+<iframe src="../plots/mirror_filtered.html" width="100%" height="500" frameborder="0"></iframe>
+
+**Neutral mass spectrum:**
+
+<iframe src="../plots/neutral_mass.html" width="100%" height="500" frameborder="0"></iframe>
+
+**Neutral mass + filtered:**
+
+<iframe src="../plots/neutral_mass_filtered.html" width="100%" height="500" frameborder="0"></iframe>
+
 ---
 
 ## `annotate_spectrum()`
@@ -98,16 +126,6 @@ by ion type). Unmatched peaks are shown in grey.
 | `mz_tol_type` | `"da"` | `"da"` or `"ppm"` |
 | `title` | `None` | Plot title |
 
-**Example — annotating a deconvoluted spectrum:**
+**Annotated spectrum:**
 
-```python
-import numpy as np
-import peptacular as pt
-import spxtacular as spx
-from spxtacular.visualization import annotate_spectrum
-
-spec = spx.MzmlReader("run.mzML").ms2.__next__()
-fragments = pt.fragment("ACDEFGHIK", ion_types=("b", "y"), charges=(1, 2))
-fig = annotate_spectrum(spec, fragments, mz_tol=10, mz_tol_type="ppm", title="ACDEFGHIK")
-fig.show()
-```
+<iframe src="../plots/annotated.html" width="100%" height="500" frameborder="0"></iframe>

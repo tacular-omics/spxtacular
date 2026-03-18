@@ -15,9 +15,11 @@ import peptacular as pt
 import spxtacular as spx
 from tests.data import EXAMPLE_SPECTRUM
 
-OUT_DIR = Path("plots")
-OUT_DIR.mkdir(exist_ok=True)
 SHOW = "--show" in sys.argv
+
+_out_arg = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--out"), None)
+OUT_DIR = Path(_out_arg) if _out_arg else Path("plots")
+OUT_DIR.mkdir(exist_ok=True)
 
 
 def save_or_show(fig, name: str) -> None:
