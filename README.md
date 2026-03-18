@@ -6,6 +6,9 @@
   <a href="https://github.com/tacular-omics/spxtacular/actions/workflows/python-package.yml">
     <img src="https://github.com/tacular-omics/spxtacular/actions/workflows/python-package.yml/badge.svg" alt="CI"/>
   </a>
+  <a href="https://codecov.io/gh/tacular-omics/spxtacular" > 
+ <img src="https://codecov.io/gh/tacular-omics/spxtacular/graph/badge.svg?token=QbHHfY504R"/> 
+ </a>
   <a href="https://pypi.org/project/spxtacular/">
     <img src="https://img.shields.io/pypi/v/spxtacular.svg" alt="PyPI"/>
   </a>
