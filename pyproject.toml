@@ -73,7 +73,7 @@ select = [
     "UP",  # pyupgrade
 ]
 
-[tool.uv.sources]
+#[tool.uv.sources]
 #peptacular = { path = "../peptacular", editable = true }
-tdfpy = { path = "../tdfpy", editable = false }
+#tdfpy = { path = "../tdfpy", editable = false }
 #mzmlpy = { path = "../mzmlpy", editable = true }

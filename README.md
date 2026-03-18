@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="spxtacular_logo.svg" alt="spxtacular logo" width="400"/>
+  <img src="https://raw.githubusercontent.com/tacular-omics/spxtacular/main/spxtacular_logo.svg" alt="spxtacular logo" width="400"/>
 </p>
 
 # spxtacular
