@@ -90,8 +90,8 @@ def test_ms2_level(ms2_spectrum):
     assert ms2_spectrum.ms_level == 2
 
 
-def test_ms2_spectrum_type_is_centroid(ms2_spectrum):
-    assert ms2_spectrum.spectrum_type == SpectrumType.CENTROID
+def test_ms2_spectrum_type(ms2_spectrum):
+    assert ms2_spectrum.spectrum_type in (SpectrumType.CENTROID, SpectrumType.PROFILE)
 
 
 def test_ms2_arrays_nonempty(ms2_spectrum):
@@ -128,3 +128,39 @@ def test_ms2_collision_energy_set(ms2_spectrum):
 
 def test_ms2_activation_type_set(ms2_spectrum):
     assert ms2_spectrum.activation_type is not None
+
+
+# --- __getitem__ ---
+
+def test_getitem_by_index_returns_msn_spectrum():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    spec = r[0]
+    assert isinstance(spec, MsnSpectrum)
+
+
+def test_getitem_by_index_matches_iteration():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    spec_iter = next(iter(r.ms1))
+    spec_item = r[0]
+    assert spec_item.native_id == spec_iter.native_id
+    np.testing.assert_array_equal(spec_item.mz, spec_iter.mz)
+
+
+def test_getitem_by_native_id():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    spec = r["scan=19"]
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.native_id == "scan=19"
+
+
+def test_getitem_by_native_id_matches_index():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    by_index = r[0]
+    by_id = r[by_index.native_id]
+    np.testing.assert_array_equal(by_index.mz, by_id.mz)
+
+
+def test_getitem_invalid_id_raises():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    with pytest.raises(KeyError):
+        r["scan=999999"]

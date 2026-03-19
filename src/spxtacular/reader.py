@@ -1,7 +1,7 @@
 import warnings
-from collections.abc import Generator
+from collections.abc import Iterator
 from enum import StrEnum
-from typing import Self, cast
+from typing import Self
 
 import mzmlpy as mzp
 import numpy as np
@@ -20,6 +20,91 @@ class AcquisitionType(StrEnum):
     DIA = "DIA"
     PRM = "PRM"
     UNKNOWN = "UNKNOWN"
+
+
+# ---------------------------------------------------------------------------
+# DReader lookup objects
+# ---------------------------------------------------------------------------
+
+
+class DReaderMs1Lookup:
+    """Iterable + index-accessible MS1 spectra from a DReader.
+
+    Iteration yields all MS1 spectra. Index access (``lookup[frame_id]``)
+    fetches a single spectrum by tdfpy ``frame_id``.
+    """
+
+    def __init__(self, dreader: "DReader") -> None:
+        self._dr = dreader
+
+    def _require_open(self) -> None:
+        if self._dr._reader is None:
+            raise RuntimeError("DReader must be used as a context manager")
+
+    def __iter__(self) -> Iterator[MsnSpectrum]:
+        self._require_open()
+        reader = self._dr._reader
+        mz_range = reader.metadata.mz_acq_range
+        im_range = reader.metadata.one_over_k0_acq_range
+        for frame in reader.ms1:
+            yield DReader._parse_ms1_frame(frame, mz_range, im_range)
+
+    def __getitem__(self, frame_id: int) -> MsnSpectrum:
+        """Fetch a single MS1 spectrum by tdfpy frame_id."""
+        self._require_open()
+        reader = self._dr._reader
+        mz_range = reader.metadata.mz_acq_range
+        im_range = reader.metadata.one_over_k0_acq_range
+        frame = reader.ms1[frame_id]  # raises KeyError if not found
+        return DReader._parse_ms1_frame(frame, mz_range, im_range)
+
+
+class DReaderMs2Lookup:
+    """Iterable + index-accessible MS2 spectra from a DReader.
+
+    Iteration yields all MS2 spectra. Index access (``lookup[precursor_id]``)
+    fetches a single spectrum by tdfpy ``precursor_id`` (DDA only).
+    """
+
+    def __init__(self, dreader: "DReader") -> None:
+        self._dr = dreader
+
+    def _require_open(self) -> None:
+        if self._dr._reader is None:
+            raise RuntimeError("DReader must be used as a context manager")
+
+    def __iter__(self) -> Iterator[MsnSpectrum]:
+        self._require_open()
+        reader = self._dr._reader
+        match self._dr.acquisition_type:
+            case AcquisitionType.DDA:
+                for precursor in reader.precursors:
+                    yield DReader._parse_dda_precursor(precursor)
+            case AcquisitionType.DIA:
+                for window in reader.windows:
+                    yield DReader._parse_dia_window(window)
+            case _:
+                raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
+
+    def __getitem__(self, precursor_id: int) -> MsnSpectrum:
+        """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
+        self._require_open()
+        match self._dr.acquisition_type:
+            case AcquisitionType.DDA:
+                precursor = self._dr._reader.precursors[precursor_id]  # KeyError if not found
+                return DReader._parse_dda_precursor(precursor)
+            case AcquisitionType.DIA:
+                raise NotImplementedError(
+                    "DIA MS2 lookup by ID is not supported: DIA windows map to multiple frames. "
+                    "Iterate reader.ms2 instead."
+                )
+            case _:
+                raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
+
+
+# ---------------------------------------------------------------------------
+# DReader
+# ---------------------------------------------------------------------------
 
 
 class DReader:
@@ -48,10 +133,7 @@ class DReader:
             case AcquisitionType.DIA:
                 self._reader = self._tdf.DIA(self.analysis_dir)
             case _:
-                raise ValueError(
-                    f"Unsupported acquisition type: {self.acquisition_type}"
-                )
-
+                raise ValueError(f"Unsupported acquisition type: {self.acquisition_type}")
         self._reader.__enter__()
         return self
 
@@ -59,450 +141,336 @@ class DReader:
         if self._reader:
             self._reader.__exit__(exc_type, exc_val, exc_tb)
 
-    @property
-    def ms1(self) -> Generator[MsnSpectrum, None, None]:
-        if self._reader is None:
-            raise RuntimeError("DReader must be used as a context manager")
+    # ------------------------------------------------------------------
+    # Conversion helpers (shared by iteration and __getitem__)
+    # ------------------------------------------------------------------
 
-        match self.acquisition_type:
-            case (
-                AcquisitionType.DDA
-                | AcquisitionType.DIA
-                | AcquisitionType.PRM
-                | AcquisitionType.UNKNOWN
-            ):
-                reader = self._reader
-                mz_range = reader.metadata.mz_acq_range
-                im_range = reader.metadata.one_over_k0_acq_range
-                for ms1_spec in reader.ms1:
-                    centroided_peaks = ms1_spec.centroid()
-
-                    match ms1_spec.polarity:
-                        case "positive":
-                            polarity = "positive"
-                        case "negative":
-                            polarity = "negative"
-                        case _:
-                            polarity = None
-
-                    yield MsnSpectrum(
-                        mz=centroided_peaks[:, 0],
-                        intensity=centroided_peaks[:, 1],
-                        charge=None,
-                        im=centroided_peaks[:, 2],
-                        spectrum_type=SpectrumType.CENTROID,
-                        denoised=None,
-                        normalized=None,
-                        scan_number=ms1_spec.frame_id,
-                        ms_level=1,
-                        native_id=None,
-                        rt=ms1_spec.time,
-                        injection_time=ms1_spec.accumulation_time,
-                        mz_range=mz_range,
-                        im_range=im_range,
-                        polarity=polarity,
-                        resolution=None,
-                        analyzer="TOF",
-                        collision_energy=None,
-                        activation_type=None,
-                        ramp_time=ms1_spec.ramp_time,
-                        precursors=None,
-                    )
+    @staticmethod
+    def _parse_ms1_frame(frame, mz_range, im_range) -> MsnSpectrum:
+        centroided_peaks = frame.centroid()
+        match frame.polarity:
+            case "positive":
+                polarity = "positive"
+            case "negative":
+                polarity = "negative"
             case _:
-                raise ValueError(
-                    f"Unsupported acquisition type: {self.acquisition_type}"
-                )
+                polarity = None
+        return MsnSpectrum(
+            mz=centroided_peaks[:, 0],
+            intensity=centroided_peaks[:, 1],
+            charge=None,
+            im=centroided_peaks[:, 2],
+            spectrum_type=SpectrumType.CENTROID,
+            denoised=None,
+            normalized=None,
+            scan_number=frame.frame_id,
+            ms_level=1,
+            native_id=None,
+            rt=frame.time,
+            injection_time=frame.accumulation_time,
+            mz_range=mz_range,
+            im_range=im_range,
+            polarity=polarity,
+            resolution=None,
+            analyzer="TOF",
+            collision_energy=None,
+            activation_type=None,
+            ramp_time=frame.ramp_time,
+            precursors=None,
+        )
+
+    @staticmethod
+    def _parse_dda_precursor(precursor) -> MsnSpectrum:
+        peaks = precursor.peaks
+        match precursor.polarity:
+            case "positive":
+                polarity = "positive"
+            case "negative":
+                polarity = "negative"
+            case _:
+                polarity = None
+        target_mz = precursor.monoisotopic_mz
+        is_monoisotopic = True
+        if target_mz is None:
+            target_mz = precursor.largest_peak_mz
+            is_monoisotopic = False
+        prec = TargetIon(
+            mz=target_mz,
+            intensity=precursor.intensity,
+            charge=precursor.charge,
+            im=precursor.ook0,
+            is_monoisotopic=is_monoisotopic,
+        )
+        return MsnSpectrum(
+            mz=peaks[:, 0],
+            intensity=peaks[:, 1],
+            charge=None,
+            im=None,
+            spectrum_type=SpectrumType.CENTROID,
+            denoised=None,
+            normalized=None,
+            scan_number=precursor.precursor_id,
+            ms_level=2,
+            native_id=None,
+            rt=precursor.rt,
+            injection_time=None,
+            mz_range=precursor.mz_range,
+            im_range=precursor.ook0_range,
+            polarity=polarity,
+            resolution=None,
+            analyzer="TOF",
+            collision_energy=precursor.collision_energy,
+            activation_type="MS:1002481",
+            ramp_time=None,
+            precursors=[prec],
+        )
+
+    @staticmethod
+    def _parse_dia_window(window) -> MsnSpectrum:
+        peaks = window.centroid()
+        match window.polarity:
+            case "positive":
+                polarity = "positive"
+            case "negative":
+                polarity = "negative"
+            case _:
+                polarity = None
+        native_id = f"{window.frame_id}@w{window.window_index}"
+        return MsnSpectrum(
+            mz=peaks[:, 0],
+            intensity=peaks[:, 1],
+            charge=None,
+            im=peaks[:, 2],
+            spectrum_type=SpectrumType.CENTROID,
+            denoised=None,
+            normalized=None,
+            scan_number=window.frame_id,
+            ms_level=2,
+            native_id=native_id,
+            rt=window.rt,
+            injection_time=None,
+            mz_range=window.mz_range,
+            im_range=None,
+            polarity=polarity,
+            resolution=None,
+            analyzer="TOF",
+            collision_energy=window.collision_energy,
+            activation_type="MS:1002481",
+            ramp_time=None,
+            precursors=None,
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     @property
-    def ms2(self) -> Generator[MsnSpectrum, None, None]:
-        """Yields MS2 spectra."""
-        if self._reader is None:
-            raise RuntimeError("DReader must be used as a context manager")
+    def ms1(self) -> DReaderMs1Lookup:
+        """MS1 spectra — supports iteration and frame_id-based access."""
+        return DReaderMs1Lookup(self)
 
-        match self.acquisition_type:
-            case AcquisitionType.DDA:
-                reader = cast(self._tdf.DDA, self._reader)
-                for ms2_spec in reader.precursors:
-                    peaks = ms2_spec.peaks
+    @property
+    def ms2(self) -> DReaderMs2Lookup:
+        """MS2 spectra — supports iteration and precursor_id-based access (DDA only)."""
+        return DReaderMs2Lookup(self)
 
-                    # polarity
-                    match ms2_spec.polarity:
-                        case "positive":
-                            polarity = "positive"
-                        case "negative":
-                            polarity = "negative"
-                        case _:
-                            polarity = None
 
-                    target_mz = ms2_spec.monoisotopic_mz
-                    is_monoisotopic = True
-                    if target_mz is None:
-                        target_mz = ms2_spec.largest_peak_mz
-                        is_monoisotopic = False
+# ---------------------------------------------------------------------------
+# MzmlReader lookup object
+# ---------------------------------------------------------------------------
 
-                    prec = TargetIon(
-                        mz=target_mz,
-                        intensity=ms2_spec.intensity,
-                        charge=ms2_spec.charge,
-                        im=ms2_spec.ook0,
-                        is_monoisotopic=is_monoisotopic,
-                    )
 
-                    yield MsnSpectrum(
-                        mz=peaks[:, 0],
-                        intensity=peaks[:, 1],
-                        charge=None,
-                        im=None,
-                        spectrum_type=SpectrumType.CENTROID,  # TimsData spectra are already centroided
-                        denoised=None,
-                        normalized=None,
-                        scan_number=ms2_spec.precursor_id,
-                        ms_level=2,
-                        native_id=None,
-                        rt=ms2_spec.rt,
-                        injection_time=None,
-                        mz_range=ms2_spec.mz_range,
-                        im_range=ms2_spec.ook0_range,
-                        polarity=polarity,
-                        resolution=None,
-                        analyzer="TOF",
-                        collision_energy=ms2_spec.collision_energy,
-                        activation_type="MS:1002481",
-                        ramp_time=None,
-                        precursors=[prec],
-                    )
+class MzmlSpectraLookup:
+    """Iterable + index-accessible spectra from an mzML file.
 
-            case AcquisitionType.DIA:
-                reader = cast(self._tdf.DIA, self._reader)
-                for ms2_spec in reader.windows:
-                    peaks = ms2_spec.centroid()
+    Iteration yields spectra filtered to ``ms_level`` (if given).
+    Index access (``lookup[int]`` or ``lookup[str]``) fetches by overall
+    spectrum index or native ID — no level filtering applied on random access.
+    """
 
-                    # polarity
-                    match ms2_spec.polarity:
-                        case "positive":
-                            polarity = "positive"
-                        case "negative":
-                            polarity = "negative"
-                        case _:
-                            polarity = None
+    def __init__(self, path: str, ms_level: int | None = None) -> None:
+        self._path = path
+        self._ms_level = ms_level
 
-                    native_id = f"{ms2_spec.frame_id}@w{ms2_spec.window_index}"
+    def __iter__(self) -> Iterator[MsnSpectrum]:
+        with mzp.Mzml(self._path) as reader:
+            for spec in reader.spectra:
+                if self._ms_level is not None and spec.ms_level != self._ms_level:
+                    continue
+                yield MzmlReader._parse_spectrum(spec)
 
-                    yield MsnSpectrum(
-                        mz=peaks[:, 0],
-                        intensity=peaks[:, 1],
-                        charge=None,
-                        im=peaks[:, 2],
-                        spectrum_type=SpectrumType.CENTROID,  # TimsData spectra are already centroided
-                        denoised=None,
-                        normalized=None,
-                        scan_number=ms2_spec.frame_id,
-                        ms_level=2,
-                        native_id=native_id,
-                        rt=ms2_spec.rt,
-                        injection_time=None,
-                        mz_range=ms2_spec.mz_range,
-                        im_range=None,  # DIA spectra don't have ion mobility info
-                        polarity=polarity,
-                        resolution=None,
-                        analyzer="TOF",
-                        collision_energy=ms2_spec.collision_energy,  # DIA spectra don't have collision energy info
-                        activation_type="MS:1002481",
-                        ramp_time=None,
-                        precursors=None,  # DIA spectra don't have defined precursors
-                    )
-            case _:
-                raise ValueError(
-                    f"Unsupported acquisition type: {self.acquisition_type}"
-                )
+    def __getitem__(self, key: int | str) -> MsnSpectrum:
+        """Fetch a single spectrum by 0-based index or native ID string."""
+        with mzp.Mzml(self._path) as reader:
+            spec = reader.spectra[key]  # KeyError / IndexError if not found
+        return MzmlReader._parse_spectrum(spec)
+
+
+# ---------------------------------------------------------------------------
+# MzmlReader
+# ---------------------------------------------------------------------------
 
 
 class MzmlReader:
     def __init__(self, mzml_path: str):
         self.mzml_path = mzml_path
 
-    @property
-    def ms1(self) -> Generator[MsnSpectrum, None, None]:
-        """Yields MS1 spectra."""
-        with mzp.Mzml(self.mzml_path) as reader:
-            for spec in reader.spectra:
-                if spec.ms_level != 1:
+    @staticmethod
+    def _parse_spectrum(spec: mzp.Spectrum) -> MsnSpectrum:
+        """Convert a raw mzmlpy Spectrum into an MsnSpectrum."""
+        mz_array = spec.mz
+        if mz_array is None:
+            raise ValueError(f"Spectrum {spec} has no m/z array")
+        mz_array = mz_array.astype(np.float64)
+
+        int_array = spec.intensity
+        if int_array is None:
+            raise ValueError(f"Spectrum {spec} has no intensity array")
+        int_array = int_array.astype(np.float64)
+
+        if len(mz_array) != len(int_array):
+            raise ValueError(f"Spectrum {spec} has m/z and intensity arrays of different lengths")
+
+        charge_array = spec.charge
+        if charge_array is not None:
+            charge_array = charge_array.astype(np.int32)
+            if len(charge_array) != len(mz_array):
+                raise ValueError(f"Spectrum {spec} has charge array of different length than m/z array")
+
+        im_array: np.ndarray | None = None
+        im_types = list(spec.im_types)
+        if len(im_types) == 1:
+            darr = spec.get_binary_array(im_types[0])
+            if darr is None:
+                raise RuntimeError(f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None")
+            im_array = darr.data.astype(np.float64)
+            if len(im_array) != len(mz_array):
+                raise ValueError(f"Spectrum {spec} has ion mobility array of different length than m/z array")
+        elif len(im_types) > 1:
+            warnings.warn(
+                f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
+                stacklevel=3,
+            )
+            for im_type in im_types:
+                darr = spec.get_binary_array(im_type)
+                if darr is None:
+                    raise RuntimeError(
+                        f"Spectrum {spec}: multiple IM arrays, first is not None. Array types: {im_types}"
+                    )
+                im_array = darr.data.astype(np.float64)
+                if len(im_array) != len(mz_array):
+                    im_array = None
                     continue
-
-                mz_array = spec.mz
-                if mz_array is None:
-                    raise ValueError(f"Spectrum {spec} has no m/z array")
-                mz_array = mz_array.astype(np.float64)
-
-                int_array = spec.intensity
-                if int_array is None:
-                    raise ValueError(f"Spectrum {spec} has no intensity array")
-                int_array = int_array.astype(np.float64)
-
-                if len(mz_array) != len(int_array):
-                    raise ValueError(
-                        f"Spectrum {spec} has m/z and intensity arrays of different lengths"
-                    )
-
-                charge_array = spec.charge
-                if charge_array is not None:
-                    charge_array = charge_array.astype(np.int32)
-                    if len(charge_array) != len(mz_array):
-                        raise ValueError(
-                            f"Spectrum {spec} has charge array of different length than m/z array"
-                        )
-
-                im_types = list(spec.im_types)
-                im_array: np.ndarray | None = None
-                if len(im_types) == 1:
-                    darr = spec.get_binary_array(im_types[0])
-                    if darr is None:
-                        raise RuntimeError(
-                            f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None"
-                        )
-                    im_array = darr.data.astype(np.float64)
-                    if len(im_array) != len(mz_array):
-                        raise ValueError(
-                            f"Spectrum {spec} has ion mobility array of different length than m/z array"
-                        )
-                elif len(im_types) > 1:
-                    warnings.warn(
-                        f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
-                        stacklevel=2,
-                    )
-                    for im_type in im_types:
-                        darr = spec.get_binary_array(im_type)
-                        if darr is None:
-                            raise RuntimeError(
-                                f"Spectrum {spec}: multiple IM arrays, first is not None. "
-                                f"Array types: {im_types}"
-                            )
-                        im_array = darr.data.astype(np.float64)
-                        if len(im_array) != len(mz_array):
-                            im_array = None
-                            continue
-                    if im_array is None:
-                        warnings.warn(
-                            f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
-                            stacklevel=2,
-                        )
-
-                match spec.spectrum_type:
-                    case "centroid":
-                        spectrum_type = SpectrumType.CENTROID
-                    case "profile":
-                        spectrum_type = SpectrumType.PROFILE
-                    case _:
-                        raise ValueError(
-                            f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}"
-                        )
-
-                if charge_array is not None:
-                    spectrum_type = SpectrumType.DECONVOLUTED
-
-                mz_range = None
-                if spec.lower_mz is not None and spec.upper_mz is not None:
-                    mz_range = (spec.lower_mz, spec.upper_mz)
-
-                yield MsnSpectrum(
-                    mz=mz_array,
-                    intensity=int_array,
-                    charge=charge_array,
-                    im=im_array,
-                    spectrum_type=spectrum_type,
-                    denoised=None,
-                    normalized=None,
-                    scan_number=spec.index,
-                    ms_level=spec.ms_level,
-                    native_id=spec.id,
-                    rt=spec.scan_start_time.total_seconds()
-                    if spec.scan_start_time is not None
-                    else None,
-                    mz_range=mz_range,
-                    im_range=None,
-                    polarity=spec.polarity,
-                    resolution=None,  # Could extract from XML if needed
-                    analyzer=None,  # Could extract from XML if needed
-                    collision_energy=None,  # None
-                    activation_type=None,  # None
-                    ramp_time=None,
-                    precursors=None,  # None
+            if im_array is None:
+                warnings.warn(
+                    f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
+                    stacklevel=3,
                 )
+
+        match spec.spectrum_type:
+            case "centroid":
+                spectrum_type = SpectrumType.CENTROID
+            case "profile":
+                spectrum_type = SpectrumType.PROFILE
+            case _:
+                raise ValueError(f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}")
+
+        if charge_array is not None:
+            spectrum_type = SpectrumType.DECONVOLUTED
+
+        mz_range = None
+        if spec.lower_mz is not None and spec.upper_mz is not None:
+            mz_range = (spec.lower_mz, spec.upper_mz)
+
+        precursors: list[TargetIon] = []
+        collision_energies: list[float] = []
+        activation_types: list[str] = []
+
+        for precursor in spec.precursors:
+            ions = precursor.selected_ions
+            if len(ions) == 0:
+                warnings.warn(
+                    f"Spectrum {spec} has precursor with no selected ions. Precursor: {precursor}",
+                    stacklevel=3,
+                )
+                continue
+            if len(ions) > 1:
+                warnings.warn(
+                    f"Spectrum {spec} has multiple selected ions; using first. Precursor: {precursor}",
+                    stacklevel=3,
+                )
+            ion = ions[0]
+            mz = ion.selected_ion_mz
+            if mz is None:
+                warnings.warn(
+                    f"Spectrum {spec} precursor selected ion missing m/z. Precursor: {precursor}",
+                    stacklevel=3,
+                )
+                continue
+            intensity = ion.peak_intensity
+            if intensity is None:
+                warnings.warn(
+                    f"Spectrum {spec} precursor missing intensity. Precursor: {precursor}",
+                    stacklevel=3,
+                )
+                continue
+            precursors.append(
+                TargetIon(mz=mz, intensity=intensity, charge=ion.charge_state, im=ion.ir_im, is_monoisotopic=None)
+            )
+            activation = precursor.activation
+            if activation is not None:
+                if activation.ce is not None:
+                    collision_energies.append(activation.ce)
+                if activation.activation_type is not None:
+                    activation_types.append(activation.activation_type)
+
+        if len(set(collision_energies)) > 1:
+            warnings.warn(f"Spectrum {spec} has multiple collision energies: {set(collision_energies)}", stacklevel=3)
+        if len(set(activation_types)) > 1:
+            warnings.warn(f"Spectrum {spec} has multiple activation types: {set(activation_types)}", stacklevel=3)
+
+        return MsnSpectrum(
+            mz=mz_array,
+            intensity=int_array,
+            charge=charge_array,
+            im=im_array,
+            spectrum_type=spectrum_type,
+            denoised=None,
+            normalized=None,
+            scan_number=spec.index,
+            ms_level=spec.ms_level,
+            native_id=spec.id,
+            rt=spec.scan_start_time.total_seconds() if spec.scan_start_time is not None else None,
+            mz_range=mz_range,
+            im_range=None,
+            polarity=spec.polarity,
+            resolution=None,
+            analyzer=None,
+            collision_energy=collision_energies[0] if collision_energies else None,
+            activation_type=activation_types[0] if activation_types else None,
+            ramp_time=None,
+            precursors=precursors if precursors else None,
+        )
 
     @property
-    def ms2(self) -> Generator[MsnSpectrum, None, None]:
-        """Yields MS2 spectra."""
+    def ms1(self) -> MzmlSpectraLookup:
+        """MS1 spectra — supports iteration and index/native-ID-based access."""
+        return MzmlSpectraLookup(self.mzml_path, ms_level=1)
 
-        with mzp.Mzml(self.mzml_path) as reader:
-            for spec in reader.spectra:
-                if spec.ms_level != 2:
-                    continue
+    @property
+    def ms2(self) -> MzmlSpectraLookup:
+        """MS2 spectra — supports iteration and index/native-ID-based access."""
+        return MzmlSpectraLookup(self.mzml_path, ms_level=2)
 
-                # Similar processing as MS1, but also extract precursor info
-                mz_array = spec.mz
-                if mz_array is None:
-                    raise ValueError(f"Spectrum {spec} has no m/z array")
-                mz_array = mz_array.astype(np.float64)
-                int_array = spec.intensity
-                if int_array is None:
-                    raise ValueError(f"Spectrum {spec} has no intensity array")
-                int_array = int_array.astype(np.float64)
-                if len(mz_array) != len(int_array):
-                    raise ValueError(
-                        f"Spectrum {spec} has m/z and intensity arrays of different lengths"
-                    )
-                charge_array = spec.charge
-                if charge_array is not None:
-                    charge_array = charge_array.astype(np.int32)
-                    if len(charge_array) != len(mz_array):
-                        raise ValueError(
-                            f"Spectrum {spec} has charge array of different length than m/z array"
-                        )
-                im_types = list(spec.im_types)
-                im_array: np.ndarray | None = None
-                if len(im_types) == 1:
-                    darr = spec.get_binary_array(im_types[0])
-                    if darr is None:
-                        raise RuntimeError(
-                            f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None"
-                        )
-                    im_array = darr.data.astype(np.float64)
-                    if len(im_array) != len(mz_array):
-                        raise ValueError(
-                            f"Spectrum {spec} has ion mobility array of different length than m/z array"
-                        )
-                elif len(im_types) > 1:
-                    warnings.warn(
-                        f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
-                        stacklevel=2,
-                    )
-                    for im_type in im_types:
-                        darr = spec.get_binary_array(im_type)
-                        if darr is None:
-                            raise RuntimeError(
-                                f"Spectrum {spec}: multiple IM arrays, first is not None. "
-                                f"Array types: {im_types}"
-                            )
-                        im_array = darr.data.astype(np.float64)
-                        if len(im_array) != len(mz_array):
-                            im_array = None
-                            continue
-                    if im_array is None:
-                        warnings.warn(
-                            f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
-                            stacklevel=2,
-                        )
+    def __getitem__(self, key: int | str) -> MsnSpectrum:
+        """Fetch a single spectrum by 0-based index or native ID string.
 
-                match spec.spectrum_type:
-                    case "centroid":
-                        spectrum_type = SpectrumType.CENTROID
-                    case "profile":
-                        spectrum_type = SpectrumType.CENTROID
-                    case _:
-                        raise ValueError(
-                            f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}"
-                        )
-                if charge_array is not None:
-                    spectrum_type = SpectrumType.DECONVOLUTED
+        Examples::
 
-                mz_range = None
-                if spec.lower_mz is not None and spec.upper_mz is not None:
-                    mz_range = (spec.lower_mz, spec.upper_mz)
-
-                precursors: list[TargetIon] = []
-                collision_energies = []
-                activation_types = []
-
-                for precursor in spec.precursors:
-                    ions = precursor.selected_ions
-                    if len(ions) == 0:
-                        warnings.warn(
-                            f"Spectrum {spec} has precursor with no selected ions (unexpected). Precursor: {precursor}",
-                            stacklevel=2,
-                        )
-                        continue
-                    if len(ions) > 1:
-                        warnings.warn(
-                            f"Spectrum {spec} has multiple selected ions; using first. Precursor: {precursor}",
-                            stacklevel=2,
-                        )
-                    ion = ions[0]
-
-                    mz = ion.selected_ion_mz
-                    if mz is None:
-                        warnings.warn(
-                            f"Spectrum {spec} precursor selected ion missing m/z (unexpected). Precursor: {precursor}",
-                            stacklevel=2,
-                        )
-                        continue
-                    intensity = ion.peak_intensity
-                    if intensity is None:
-                        warnings.warn(
-                            f"Spectrum {spec} precursor missing intensity (unexpected). Precursor: {precursor}",
-                            stacklevel=2,
-                        )
-                        continue
-                    charge = ion.charge_state
-                    im = ion.ir_im
-
-                    precursors.append(
-                        TargetIon(
-                            mz=mz,
-                            intensity=intensity,
-                            charge=charge,
-                            im=im,
-                            is_monoisotopic=None,
-                        )
-                    )
-
-                    activation = precursor.activation
-                    if activation is not None:
-                        collision_energy = activation.ce
-                        if collision_energy is not None:
-                            collision_energies.append(collision_energy)
-                        activation_type = activation.activation_type
-                        if activation_type is not None:
-                            activation_types.append(activation_type)
-                if len(set(collision_energies)) > 1:
-                    warnings.warn(
-                        f"Spectrum {spec} has multiple collision energies (unexpected): {set(collision_energies)}",
-                        stacklevel=2,
-                    )
-                if len(set(activation_types)) > 1:
-                    warnings.warn(
-                        f"Spectrum {spec} has multiple activation types (unexpected): {set(activation_types)}",
-                        stacklevel=2,
-                    )
-
-                ce = collision_energies[0] if len(collision_energies) > 0 else None
-                activation_type = (
-                    activation_types[0] if len(activation_types) > 0 else None
-                )
-
-                yield MsnSpectrum(
-                    mz=mz_array,
-                    intensity=int_array,
-                    charge=charge_array,
-                    im=im_array,
-                    spectrum_type=spectrum_type,  # TimsData spectra are already centroided
-                    denoised=None,
-                    normalized=None,
-                    scan_number=spec.index,
-                    ms_level=spec.ms_level,
-                    native_id=spec.id,
-                    rt=spec.scan_start_time.total_seconds()
-                    if spec.scan_start_time is not None
-                    else None,
-                    mz_range=mz_range,
-                    im_range=None,
-                    polarity=spec.polarity,
-                    resolution=None,
-                    analyzer=None,  # Could extract from XML if needed
-                    collision_energy=ce,
-                    activation_type=activation_type,
-                    ramp_time=None,
-                    precursors=precursors,
-                )
+            reader[0]           # first spectrum by overall index
+            reader["scan=19"]   # by full native ID
+        """
+        return MzmlSpectraLookup(self.mzml_path)[key]
 
     def __enter__(self) -> Self:
         return self

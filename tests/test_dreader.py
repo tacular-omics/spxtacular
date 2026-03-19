@@ -139,3 +139,37 @@ def test_ms2_collision_energy_set(ms2_spectrum):
 
 def test_ms2_activation_type_set(ms2_spectrum):
     assert ms2_spectrum.activation_type is not None
+
+
+# --- lookup __getitem__ ---
+
+def test_ms1_lookup_by_frame_id(ms1_spectrum):
+    with DReader(str(HELA_D)) as r:
+        spec = r.ms1[ms1_spectrum.scan_number]
+    assert isinstance(spec, MsnSpectrum)
+    np.testing.assert_array_equal(spec.mz, ms1_spectrum.mz)
+
+
+def test_ms1_lookup_invalid_id_raises():
+    with DReader(str(HELA_D)) as r:
+        with pytest.raises(KeyError):
+            r.ms1[999_999_999]
+
+
+def test_ms2_lookup_by_precursor_id(ms2_spectrum):
+    with DReader(str(HELA_D)) as r:
+        spec = r.ms2[ms2_spectrum.scan_number]
+    assert isinstance(spec, MsnSpectrum)
+    np.testing.assert_array_equal(spec.mz, ms2_spectrum.mz)
+
+
+def test_ms2_lookup_invalid_id_raises():
+    with DReader(str(HELA_D)) as r:
+        with pytest.raises(KeyError):
+            r.ms2[999_999_999]
+
+
+def test_lookup_outside_context_raises():
+    r = DReader(str(HELA_D))
+    with pytest.raises(RuntimeError):
+        r.ms1[1]
