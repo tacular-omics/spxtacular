@@ -649,6 +649,63 @@ class Spectrum:
             score=self.score[mask] if self.score is not None else None,
         )
 
+    def sort(
+        self,
+        by: Literal["mz", "intensity", "charge", "im", "score"] = "mz",
+        reverse: bool = False,
+        inplace: bool = False,
+    ) -> Self:
+        """Return a spectrum with peaks sorted by the given attribute."""
+        if by == "mz":
+            order = self._argsort_mz
+        elif by == "intensity":
+            order = self._argsort_intensity
+        elif by == "charge":
+            order = self._argsort_charge
+        elif by == "im":
+            order = self._argsort_im
+        elif by == "score":
+            order = self._argsort_score
+        else:
+            raise ValueError(f"Unknown sort key: {by!r}")
+
+        if reverse:
+            order = order[::-1]
+
+        return self._apply_index(order, inplace=inplace)
+
+    def copy(self) -> Self:
+        """Return a deep copy of this spectrum with all arrays copied."""
+        return replace(
+            self,
+            mz=self.mz.copy(),
+            intensity=self.intensity.copy(),
+            charge=self.charge.copy() if self.charge is not None else None,
+            im=self.im.copy() if self.im is not None else None,
+            score=self.score.copy() if self.score is not None else None,
+        )
+
+    def _apply_index(self, idx: NDArray[np.intp], inplace: bool = False) -> Self:
+        if inplace:
+            self.mz = self.mz[idx]
+            self.intensity = self.intensity[idx]
+            if self.charge is not None:
+                self.charge = self.charge[idx]
+            if self.im is not None:
+                self.im = self.im[idx]
+            if self.score is not None:
+                self.score = self.score[idx]
+            return self
+
+        return replace(
+            self,
+            mz=self.mz[idx],
+            intensity=self.intensity[idx],
+            charge=self.charge[idx] if self.charge is not None else None,
+            im=self.im[idx] if self.im is not None else None,
+            score=self.score[idx] if self.score is not None else None,
+        )
+
     def update(self, inplace: bool = False, **kwargs) -> Self:
         """Create new spectrum with updated fields."""
         if inplace:
