@@ -1,6 +1,6 @@
 [project]
 name = "spxtacular"
-version = "0.1.0"
+version = "0.2.0"
 description = "Mass spectrometry spectrum processing library."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,11 +9,11 @@ keywords = ["mass spectrometry", "proteomics", "deconvolution", "bioinformatics"
 dependencies = [
     "numpy",
     "pandas>=2.0",
-    "peptacular==3.0.0",
-    "paftacular[sequence]==1.0.0",
-    "tdfpy==1.0.2",
-    "mzmlpy==0.3.0",
+    "peptacular>=3.1.0",
+    "paftacular[sequence]>=1.0.0",
+    "tdfpy>=1.0.2",
     "plotly>=6.6.0",
+    "mzmlpy>=0.3.1",
 ]
 authors = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }

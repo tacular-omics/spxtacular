@@ -277,7 +277,7 @@ def _decode_binary_payload(payload: bytes) -> tuple[str, str, str, str]:
     """Decode binary payload into mz, intensity, charge, and im strings."""
     offset = 0
 
-    def read_chunk(offset):
+    def read_chunk(offset: int) -> tuple[str, int]:
         if len(payload) < offset + 4:
             if offset == len(payload):
                 return "", offset

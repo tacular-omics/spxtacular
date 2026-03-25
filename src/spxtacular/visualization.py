@@ -5,8 +5,8 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Literal
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -18,11 +18,11 @@ from .core import Spectrum
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
 
 
-def requires_plotly(func):
+def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to check if plotly is installed."""
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             import plotly.graph_objects  # noqa: F401
         except ImportError as exc:
@@ -194,11 +194,11 @@ def mirror_plot(
 def annotate_spectrum(
     spectrum: Spectrum,
     fragments: Sequence[Fragment],
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["Da", "ppm"] = "Da",
     title: str | None = None,
-    include_sequence: bool = False,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
     **layout_kwargs,
 ) -> go.Figure:
     """Plot a spectrum with matched fragment ion annotations.
@@ -212,18 +212,18 @@ def annotate_spectrum(
         Centroid spectrum to plot.
     fragments:
         Fragment objects from peptacular to match against peaks.
-    mz_tol:
+    tolerance:
         Matching tolerance.
-    mz_tol_type:
+    tolerance_type:
         ``"Da"`` or ``"ppm"``.
     title:
         Plot title.
-    include_sequence:
-        Embed the residue sequence in each label (e.g. ``b3{PEP}``).
-        Set to ``False`` for compact labels (``b3``).
     peak_selection:
         Which peak(s) to annotate per fragment — ``"closest"``, ``"largest"``,
         or ``"all"``.  See :func:`~spxtacular.matching.match_fragments`.
+    include_sequence:
+        Embed the residue sequence in each label (e.g. ``b3{PEP}``).
+        Set to ``False`` for compact labels (``b3``).
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
 
@@ -232,7 +232,7 @@ def annotate_spectrum(
     plotly ``Figure``.
     """
     table = build_annot_plot_table(
-        spectrum, fragments, mz_tol, mz_tol_type, peak_selection, include_sequence
+        spectrum, fragments, tolerance, tolerance_type, peak_selection, include_sequence
     )
     fig = plot_from_table(table, title=title or "Annotated spectrum", **layout_kwargs)
     return fig

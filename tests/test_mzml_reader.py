@@ -164,3 +164,36 @@ def test_getitem_invalid_id_raises():
     r = MzmlReader(str(EXAMPLE_MZML))
     with pytest.raises(KeyError):
         r["scan=999999"]
+
+
+# --- persistent handle (open/close) ---
+
+
+def test_open_close_iter_matches_context_manager():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    r.open()
+    try:
+        specs_open = list(r.ms1)
+    finally:
+        r.close()
+
+    with MzmlReader(str(EXAMPLE_MZML)) as r2:
+        specs_cm = list(r2.ms1)
+
+    assert len(specs_open) == len(specs_cm)
+    for a, b in zip(specs_open, specs_cm, strict=True):
+        assert a.native_id == b.native_id
+        np.testing.assert_array_equal(a.mz, b.mz)
+
+
+def test_open_close_getitem_matches_no_open():
+    r = MzmlReader(str(EXAMPLE_MZML))
+    r.open()
+    try:
+        spec_open = r[0]
+    finally:
+        r.close()
+
+    spec_noop = MzmlReader(str(EXAMPLE_MZML))[0]
+    assert spec_open.native_id == spec_noop.native_id
+    np.testing.assert_array_equal(spec_open.mz, spec_noop.mz)

@@ -146,18 +146,18 @@ def test_annotate_spectrum_no_fragments_returns_figure() -> None:
 
 def test_annotate_spectrum_with_ppm_tolerance_returns_figure() -> None:
     frag = _real_frag(mz=200.0, ion_type="b", position=2)
-    fig = annotate_spectrum(_raw(), [frag], mz_tol=10, mz_tol_type="ppm")
+    fig = annotate_spectrum(_raw(), [frag], tolerance=10, tolerance_type="ppm")
     assert isinstance(fig, go.Figure)
 
 
 def test_annotate_spectrum_matched_peak_has_annotation() -> None:
     frag = _real_frag(mz=200.0, ion_type="b", position=2)
-    fig = annotate_spectrum(_raw(), [frag], mz_tol=0.02, mz_tol_type="Da")
+    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="Da")
     # Matched peaks get annotations
     assert len(fig.layout.annotations) >= 1
 
 
 def test_annotate_spectrum_no_match_has_no_annotation() -> None:
     frag = _real_frag(mz=999.0, ion_type="b", position=2)
-    fig = annotate_spectrum(_raw(), [frag], mz_tol=0.02, mz_tol_type="Da")
+    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="Da")
     assert len(fig.layout.annotations) == 0

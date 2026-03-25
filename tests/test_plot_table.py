@@ -237,14 +237,14 @@ def test_annot_plot_table_columns() -> None:
 def test_annot_plot_table_unmatched_color() -> None:
     # Fragment at 999.0 will not match any peak in _spectrum()
     frag = _make_frag(999.0)
-    table = build_annot_plot_table(_spectrum(), [frag], mz_tol=0.02)
+    table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     assert (table["color"] == "#cccccc").all()
     assert (table["series"] == "unmatched").all()
 
 
 def test_annot_plot_table_unmatched_label_empty() -> None:
     frag = _make_frag(999.0)
-    table = build_annot_plot_table(_spectrum(), [frag], mz_tol=0.02)
+    table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     assert (table["label"] == "").all()
 
 
@@ -256,7 +256,7 @@ def test_annot_plot_table_unmatched_label_empty() -> None:
 def test_annot_plot_table_matched_color() -> None:
     # Fragment at 200.005 matches peak at 200.0 within 0.02 Da
     frag = _real_frag(200.005, ion_type="b", position=2)
-    table = build_annot_plot_table(_spectrum(), [frag], mz_tol=0.02)
+    table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     matched_row = table.loc[table["mz"] == 200.0]
     assert matched_row["color"].iloc[0] == "#1f77b4"
     assert matched_row["series"].iloc[0] == "b"
@@ -264,14 +264,14 @@ def test_annot_plot_table_matched_color() -> None:
 
 def test_annot_plot_table_matched_label_nonempty() -> None:
     frag = _real_frag(200.005, ion_type="b", position=2)
-    table = build_annot_plot_table(_spectrum(), [frag], mz_tol=0.02)
+    table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     matched_label = table.loc[table["mz"] == 200.0, "label"].iloc[0]
     assert matched_label != ""
 
 
 def test_annot_plot_table_y_ion_color() -> None:
     frag = _real_frag(200.005, ion_type="y", position=2)
-    table = build_annot_plot_table(_spectrum(), [frag], mz_tol=0.02)
+    table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     matched_row = table.loc[table["mz"] == 200.0]
     assert matched_row["color"].iloc[0] == "#d62728"
     assert matched_row["series"].iloc[0] == "y"

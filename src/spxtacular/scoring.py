@@ -95,8 +95,8 @@ def _probability_score(
     spectrum: Spectrum,
     matches: list[tuple[int, Fragment]],
     n_unique: int,
-    mz_tol: float,
-    mz_tol_type: Literal["Da", "ppm"],
+    tolerance: float,
+    tolerance_type: Literal["Da", "ppm"],
 ) -> float:
     n_exp = len(spectrum.mz)
     k = len(_unique_peak_indices(matches))
@@ -105,10 +105,10 @@ def _probability_score(
     mz_range = float(spectrum.mz[-1] - spectrum.mz[0])
     if mz_range <= 0.0:
         return 0.0
-    if mz_tol_type == "ppm":
-        tol_da = mz_tol * float(np.median(spectrum.mz)) / 1e6
+    if tolerance_type == "ppm":
+        tol_da = tolerance * float(np.median(spectrum.mz)) / 1e6
     else:
-        tol_da = float(mz_tol)
+        tol_da = float(tolerance)
     p = min(1.0, 2.0 * tol_da * n_unique / mz_range)
     return float(-_binom_log10_survival(k, n_exp, p))
 
@@ -201,8 +201,8 @@ def _longest_run(matches: list[tuple[int, Fragment]]) -> int:
 def score(
     spectrum: Spectrum,
     fragments: Sequence[Fragment],
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "ppm",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["Da", "ppm"] = "ppm",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
 ) -> dict[str, float]:
     """Match fragments against a spectrum and return all scores.
@@ -218,9 +218,9 @@ def score(
         Experimental centroid spectrum.
     fragments:
         Theoretical fragment ions from peptacular.
-    mz_tol:
+    tolerance:
         Matching tolerance.
-    mz_tol_type:
+    tolerance_type:
         ``"Da"`` or ``"ppm"``.
     peak_selection:
         How to resolve multiple peaks within tolerance per fragment:
@@ -233,12 +233,12 @@ def score(
     ``matched_fraction``, ``intensity_fraction``, ``mean_ppm_error``,
     ``spectral_angle``, ``longest_run``.
     """
-    matches = match_fragments(spectrum, fragments, mz_tol, mz_tol_type, peak_selection)
+    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
     n_unique = _count_unique_ions(fragments)
 
     return {
         "hyperscore": _hyperscore(spectrum, matches),
-        "probability_score": _probability_score(spectrum, matches, n_unique, mz_tol, mz_tol_type),
+        "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tolerance_type),
         "total_matched_intensity": _total_matched_intensity(spectrum, matches),
         "matched_fraction": _matched_fraction(matches, n_unique),
         "intensity_fraction": _intensity_fraction(spectrum, matches),

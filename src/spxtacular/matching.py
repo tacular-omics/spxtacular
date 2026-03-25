@@ -16,8 +16,8 @@ from .core import Spectrum
 def match_fragments(
     spectrum: Spectrum,
     fragments: Sequence[Fragment],
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["Da", "ppm"] = "Da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
 ) -> list[tuple[int, Fragment]]:
     """Match a list of Fragment objects to spectrum peaks.
@@ -30,9 +30,9 @@ def match_fragments(
         Spectrum to search.  Must be sorted by m/z (standard for centroid data).
     fragments:
         Fragment objects from peptacular, each with a ``.mz`` property.
-    mz_tol:
+    tolerance:
         Tolerance value.
-    mz_tol_type:
+    tolerance_type:
         ``"Da"`` for absolute or ``"ppm"`` for parts-per-million.
     peak_selection:
         How to resolve multiple peaks within tolerance for a single fragment:
@@ -75,8 +75,8 @@ def match_fragments(
             for i in (idx - 1, idx):
                 if 0 <= i < len(mz) and _charge_ok(i):
                     delta = abs(mz[i] - frag_mz)
-                    err = delta / frag_mz * 1e6 if mz_tol_type == "ppm" else delta
-                    if err <= mz_tol:
+                    err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                    if err <= tolerance:
                         candidates.append((i, delta))
             if candidates:
                 best = min(candidates, key=lambda c: c[1])
@@ -85,15 +85,15 @@ def match_fragments(
             candidates = []
             for i in range(idx - 1, -1, -1):
                 delta = abs(mz[i] - frag_mz)
-                err = delta / frag_mz * 1e6 if mz_tol_type == "ppm" else delta
-                if err > mz_tol:
+                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                if err > tolerance:
                     break
                 if _charge_ok(i):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
                 delta = abs(mz[i] - frag_mz)
-                err = delta / frag_mz * 1e6 if mz_tol_type == "ppm" else delta
-                if err > mz_tol:
+                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                if err > tolerance:
                     break
                 if _charge_ok(i):
                     candidates.append((i, delta))

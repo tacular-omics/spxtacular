@@ -194,8 +194,8 @@ def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
 def build_annot_plot_table(
     spectrum: Spectrum,
     fragments: Sequence[Fragment],
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["Da", "ppm"] = "Da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
 ) -> pd.DataFrame:
@@ -210,9 +210,9 @@ def build_annot_plot_table(
         Centroid spectrum to annotate.
     fragments:
         Fragment objects from peptacular.
-    mz_tol:
+    tolerance:
         Matching tolerance.
-    mz_tol_type:
+    tolerance_type:
         ``"Da"`` or ``"ppm"``.
     peak_selection:
         How to resolve multiple peaks per fragment — ``"closest"``,
@@ -224,7 +224,7 @@ def build_annot_plot_table(
     -------
     pd.DataFrame with the same columns as :func:`build_plot_table`.
     """
-    matches = match_fragments(spectrum, fragments, mz_tol, mz_tol_type, peak_selection)
+    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
 
     # Group matches by peak index
     peak_frags: dict[int, list[Fragment]] = {}
@@ -355,7 +355,7 @@ def plot_from_table(
     traces: list[go.Scatter] = []
 
     # One trace per (series, color) — preserves legend grouping and colour
-    for (series, color), group in table.groupby(["series", "color"], sort=False):
+    for (series, color), group in table.groupby(["series", "color"], sort=False):  # type: ignore
         mz_arr = group["mz"].to_numpy(dtype=np.float64)
         int_arr = group["intensity"].to_numpy(dtype=np.float64)
         hover_arr = group["hover"].tolist()

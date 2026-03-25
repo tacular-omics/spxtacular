@@ -1,7 +1,9 @@
 import warnings
 from collections.abc import Iterator
 from enum import StrEnum
-from typing import Self
+from pathlib import Path
+from types import TracebackType
+from typing import Any, Self
 
 import mzmlpy as mzp
 import numpy as np
@@ -39,11 +41,12 @@ class DReaderMs1Lookup:
 
     def _require_open(self) -> None:
         if self._dr._reader is None:
-            raise RuntimeError("DReader must be used as a context manager")
+            raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
         self._require_open()
         reader = self._dr._reader
+        assert reader is not None
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         for frame in reader.ms1:
@@ -53,6 +56,7 @@ class DReaderMs1Lookup:
         """Fetch a single MS1 spectrum by tdfpy frame_id."""
         self._require_open()
         reader = self._dr._reader
+        assert reader is not None
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         frame = reader.ms1[frame_id]  # raises KeyError if not found
@@ -71,17 +75,18 @@ class DReaderMs2Lookup:
 
     def _require_open(self) -> None:
         if self._dr._reader is None:
-            raise RuntimeError("DReader must be used as a context manager")
+            raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
         self._require_open()
         reader = self._dr._reader
+        assert reader is not None
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                for precursor in reader.precursors:
+                for precursor in reader.precursors:  # type: ignore
                     yield DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
-                for window in reader.windows:
+                for window in reader.windows:  # type: ignore
                     yield DReader._parse_dia_window(window)
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
@@ -89,9 +94,11 @@ class DReaderMs2Lookup:
     def __getitem__(self, precursor_id: int) -> MsnSpectrum:
         """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
         self._require_open()
+        reader = self._dr._reader
+        assert reader is not None
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                precursor = self._dr._reader.precursors[precursor_id]  # KeyError if not found
+                precursor = reader.precursors[precursor_id]  # type: ignore  # KeyError if not found
                 return DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
                 raise NotImplementedError(
@@ -108,7 +115,7 @@ class DReaderMs2Lookup:
 
 
 class DReader:
-    def __init__(self, analysis_dir: str):
+    def __init__(self, analysis_dir: str | Path) -> None:
         import tdfpy as tdf
 
         self.analysis_dir = analysis_dir
@@ -126,27 +133,44 @@ class DReader:
                 self.acquisition_type = AcquisitionType.UNKNOWN
         self._reader = None
 
-    def __enter__(self):
+    def open(self) -> None:
+        """Open the underlying tdfpy reader. Call :meth:`close` when done, or use as a context manager."""
         match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.PRM | AcquisitionType.UNKNOWN:
-                self._reader = self._tdf.DDA(self.analysis_dir)
+                self._reader = self._tdf.DDA(str(self.analysis_dir))
             case AcquisitionType.DIA:
-                self._reader = self._tdf.DIA(self.analysis_dir)
+                self._reader = self._tdf.DIA(str(self.analysis_dir))
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self.acquisition_type}")
         self._reader.__enter__()
+
+    def close(self) -> None:
+        """Close the underlying tdfpy reader."""
+        if self._reader:
+            self._reader.__exit__(None, None, None)
+
+    def __enter__(self) -> "DReader":
+        self.open()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._reader:
-            self._reader.__exit__(exc_type, exc_val, exc_tb)
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Conversion helpers (shared by iteration and __getitem__)
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_ms1_frame(frame, mz_range, im_range) -> MsnSpectrum:
+    def _parse_ms1_frame(
+        frame: Any,
+        mz_range: tuple[float, float] | None,
+        im_range: tuple[float, float] | None,
+    ) -> MsnSpectrum:
         centroided_peaks = frame.centroid()
         match frame.polarity:
             case "positive":
@@ -180,7 +204,7 @@ class DReader:
         )
 
     @staticmethod
-    def _parse_dda_precursor(precursor) -> MsnSpectrum:
+    def _parse_dda_precursor(precursor: Any) -> MsnSpectrum:
         peaks = precursor.peaks
         match precursor.polarity:
             case "positive":
@@ -226,7 +250,7 @@ class DReader:
         )
 
     @staticmethod
-    def _parse_dia_window(window) -> MsnSpectrum:
+    def _parse_dia_window(window: Any) -> MsnSpectrum:
         peaks = window.centroid()
         match window.polarity:
             case "positive":
@@ -286,23 +310,37 @@ class MzmlSpectraLookup:
     Iteration yields spectra filtered to ``ms_level`` (if given).
     Index access (``lookup[int]`` or ``lookup[str]``) fetches by overall
     spectrum index or native ID — no level filtering applied on random access.
+
+    Uses the parent :class:`MzmlReader`'s open handle when available (fast path);
+    falls back to opening the file per-operation otherwise (backward-compatible).
     """
 
-    def __init__(self, path: str, ms_level: int | None = None) -> None:
-        self._path = path
+    def __init__(self, reader: "MzmlReader", ms_level: int | None = None) -> None:
+        self._reader = reader
         self._ms_level = ms_level
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        with mzp.Mzml(self._path) as reader:
-            for spec in reader.spectra:
+        handle = self._reader._mzml_handle
+        if handle is not None:
+            for spec in handle.spectra:
                 if self._ms_level is not None and spec.ms_level != self._ms_level:
                     continue
                 yield MzmlReader._parse_spectrum(spec)
+        else:
+            with mzp.Mzml(self._reader.mzml_path) as r:
+                for spec in r.spectra:
+                    if self._ms_level is not None and spec.ms_level != self._ms_level:
+                        continue
+                    yield MzmlReader._parse_spectrum(spec)
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
         """Fetch a single spectrum by 0-based index or native ID string."""
-        with mzp.Mzml(self._path) as reader:
-            spec = reader.spectra[key]  # KeyError / IndexError if not found
+        handle = self._reader._mzml_handle
+        if handle is not None:
+            spec = handle.spectra[key]
+        else:
+            with mzp.Mzml(self._reader.mzml_path) as r:
+                spec = r.spectra[key]
         return MzmlReader._parse_spectrum(spec)
 
 
@@ -312,8 +350,9 @@ class MzmlSpectraLookup:
 
 
 class MzmlReader:
-    def __init__(self, mzml_path: str):
+    def __init__(self, mzml_path: str | Path):
         self.mzml_path = mzml_path
+        self._mzml_handle = None
 
     @staticmethod
     def _parse_spectrum(spec: mzp.Spectrum) -> MsnSpectrum:
@@ -455,12 +494,12 @@ class MzmlReader:
     @property
     def ms1(self) -> MzmlSpectraLookup:
         """MS1 spectra — supports iteration and index/native-ID-based access."""
-        return MzmlSpectraLookup(self.mzml_path, ms_level=1)
+        return MzmlSpectraLookup(self, ms_level=1)
 
     @property
     def ms2(self) -> MzmlSpectraLookup:
         """MS2 spectra — supports iteration and index/native-ID-based access."""
-        return MzmlSpectraLookup(self.mzml_path, ms_level=2)
+        return MzmlSpectraLookup(self, ms_level=2)
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
         """Fetch a single spectrum by 0-based index or native ID string.
@@ -470,10 +509,95 @@ class MzmlReader:
             reader[0]           # first spectrum by overall index
             reader["scan=19"]   # by full native ID
         """
-        return MzmlSpectraLookup(self.mzml_path)[key]
+        return MzmlSpectraLookup(self)[key]
+
+    def open(self) -> None:
+        """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
+        self._mzml_handle = mzp.Mzml(self.mzml_path)
+        self._mzml_handle.__enter__()
+
+    def close(self) -> None:
+        """Close the persistent mzmlpy reader."""
+        if self._mzml_handle is not None:
+            self._mzml_handle.__exit__(None, None, None)
+            self._mzml_handle = None
 
     def __enter__(self) -> Self:
+        self.open()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# Unified Reader
+# ---------------------------------------------------------------------------
+
+
+class Reader:
+    """Format-agnostic reader — detects .d (Bruker timsTOF) or .mzML from the path.
+
+    Usage is identical regardless of the underlying format::
+
+        with Reader("data.mzML") as r:
+            for spec in r.ms1:
+                ...
+
+        with Reader("data.d") as r:
+            ms2 = r.ms2[42]
+
+    Parameters
+    ----------
+    path:
+        Path to a Bruker ``.d`` directory or an ``.mzML`` file.
+
+    Raises
+    ------
+    ValueError
+        If the path extension is not recognised.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        p = Path(path)
+        if p.suffix == ".d":
+            self._reader: DReader | MzmlReader = DReader(p)
+        elif p.suffix.lower() == ".mzml":
+            self._reader = MzmlReader(p)
+        else:
+            raise ValueError(f"Unsupported format {p.suffix!r}. Expected '.d' or '.mzml'.")
+
+    @property
+    def ms1(self) -> DReaderMs1Lookup | MzmlSpectraLookup:
+        """MS1 spectra — supports iteration and index-based access."""
+        return self._reader.ms1
+
+    @property
+    def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup:
+        """MS2 spectra — supports iteration and index-based access."""
+        return self._reader.ms2
+
+    def open(self) -> None:
+        """Open the underlying reader."""
+        self._reader.open()
+
+    def close(self) -> None:
+        """Close the underlying reader."""
+        self._reader.close()
+
+    def __enter__(self) -> "Reader":
+        self._reader.open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._reader.close()
