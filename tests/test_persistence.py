@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType, TargetIon
+from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType, Precursor
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -114,7 +114,7 @@ def test_msn_save_load_scalars(tmp_path):
 
 
 def test_msn_save_load_precursors(tmp_path):
-    precursor = TargetIon(mz=500.25, intensity=1e5, charge=2, im=None, score=None, is_monoisotopic=True)
+    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, score=None, is_monoisotopic=True)
     spec = _basic_msn(precursors=[precursor])
     spec.save(tmp_path / "msn")
     restored = MsnSpectrum.load(tmp_path / "msn.npz")

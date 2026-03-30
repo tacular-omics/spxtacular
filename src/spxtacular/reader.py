@@ -8,7 +8,8 @@ from typing import Any, Self
 import mzmlpy as mzp
 import numpy as np
 
-from .core import MsnSpectrum, SpectrumType, TargetIon
+from .core import MsnSpectrum, SpectrumType, Precursor
+import tdfpy
 
 """
 
@@ -192,19 +193,20 @@ class DReader:
             native_id=None,
             rt=frame.time,
             injection_time=frame.accumulation_time,
+            total_ion_current=None,
             mz_range=mz_range,
             im_range=im_range,
             polarity=polarity,
             resolution=None,
             analyzer="TOF",
-            collision_energy=None,
-            activation_type=None,
             ramp_time=frame.ramp_time,
             precursors=None,
+            im_type='ook0',
+
         )
 
     @staticmethod
-    def _parse_dda_precursor(precursor: Any) -> MsnSpectrum:
+    def _parse_dda_precursor(precursor: tdfpy.Precursor) -> MsnSpectrum:
         peaks = precursor.peaks
         match precursor.polarity:
             case "positive":
@@ -218,13 +220,15 @@ class DReader:
         if target_mz is None:
             target_mz = precursor.largest_peak_mz
             is_monoisotopic = False
-        prec = TargetIon(
+        prec = Precursor(
             mz=target_mz,
             intensity=precursor.intensity,
             charge=precursor.charge,
             im=precursor.ook0,
             is_monoisotopic=is_monoisotopic,
         )
+
+
         return MsnSpectrum(
             mz=peaks[:, 0],
             intensity=peaks[:, 1],
@@ -238,19 +242,23 @@ class DReader:
             native_id=None,
             rt=precursor.rt,
             injection_time=None,
-            mz_range=precursor.mz_range,
-            im_range=precursor.ook0_range,
+            total_ion_current=None, # TODO:
+            mz_range=None,
+            im_range=None,
             polarity=polarity,
             resolution=None,
             analyzer="TOF",
-            collision_energy=precursor.collision_energy,
-            activation_type="MS:1002481",
             ramp_time=None,
             precursors=[prec],
+            im_type='ook0',
+            isolation_im_range=precursor.ook0_range,
+            isolation_mz_range=precursor.mz_range,
+            collision_energy=precursor.collision_energy,
+            activation_type="MS:1002481",
         )
 
     @staticmethod
-    def _parse_dia_window(window: Any) -> MsnSpectrum:
+    def _parse_dia_window(window: tdfpy.DiaWindow) -> MsnSpectrum:
         peaks = window.centroid()
         match window.polarity:
             case "positive":
@@ -273,7 +281,8 @@ class DReader:
             native_id=native_id,
             rt=window.rt,
             injection_time=None,
-            mz_range=window.mz_range,
+            total_ion_current=None,
+            mz_range=None,
             im_range=None,
             polarity=polarity,
             resolution=None,
@@ -282,6 +291,9 @@ class DReader:
             activation_type="MS:1002481",
             ramp_time=None,
             precursors=None,
+            isolation_mz_range=window.mz_range,
+            isolation_im_range=window.ook0_range,
+            im_type='ook0',
         )
 
     # ------------------------------------------------------------------
@@ -417,13 +429,15 @@ class MzmlReader:
         if charge_array is not None:
             spectrum_type = SpectrumType.DECONVOLUTED
 
+        
         mz_range = None
         if spec.lower_mz is not None and spec.upper_mz is not None:
             mz_range = (spec.lower_mz, spec.upper_mz)
 
-        precursors: list[TargetIon] = []
+        precursors: list[Precursor] = []
         collision_energies: list[float] = []
         activation_types: list[str] = []
+        isolation_ranges: list[tuple[float, float]] = []
 
         for precursor in spec.precursors:
             ions = precursor.selected_ions
@@ -454,7 +468,7 @@ class MzmlReader:
                 )
                 continue
             precursors.append(
-                TargetIon(mz=mz, intensity=intensity, charge=ion.charge_state, im=ion.ir_im, is_monoisotopic=None)
+                Precursor(mz=mz, intensity=intensity, charge=ion.charge_state, im=ion.ir_im, is_monoisotopic=None)
             )
             activation = precursor.activation
             if activation is not None:
@@ -462,11 +476,24 @@ class MzmlReader:
                     collision_energies.append(activation.ce)
                 if activation.activation_type is not None:
                     activation_types.append(activation.activation_type)
+            if precursor.isolation_window is not None:
 
+                has_target_mz = precursor.isolation_window.target_mz is not None
+                has_lower = precursor.isolation_window.lower_offset is not None
+                has_upper = precursor.isolation_window.upper_offset is not None
+                if has_target_mz and has_lower and has_upper:
+                    isolation_ranges.append(
+                        (
+                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset, # type: ignore
+                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset, # type: ignore
+                        )
+                    )
         if len(set(collision_energies)) > 1:
             warnings.warn(f"Spectrum {spec} has multiple collision energies: {set(collision_energies)}", stacklevel=3)
         if len(set(activation_types)) > 1:
             warnings.warn(f"Spectrum {spec} has multiple activation types: {set(activation_types)}", stacklevel=3)
+        if len(set(isolation_ranges)) > 1:
+            warnings.warn(f"Spectrum {spec} has multiple isolation window ranges: {set(isolation_ranges)}", stacklevel=3)
 
         return MsnSpectrum(
             mz=mz_array,
@@ -480,6 +507,7 @@ class MzmlReader:
             ms_level=spec.ms_level,
             native_id=spec.id,
             rt=spec.scan_start_time.total_seconds() if spec.scan_start_time is not None else None,
+            total_ion_current=spec.TIC,
             mz_range=mz_range,
             im_range=None,
             polarity=spec.polarity,
@@ -489,6 +517,7 @@ class MzmlReader:
             activation_type=activation_types[0] if activation_types else None,
             ramp_time=None,
             precursors=precursors if precursors else None,
+            isolation_mz_range=isolation_ranges[0] if isolation_ranges else None,
         )
 
     @property

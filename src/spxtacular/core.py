@@ -1156,7 +1156,7 @@ class Spectrum:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class TargetIon(Peak):
+class Precursor(Peak):
     """Represents a target ion for MS2 fragmentation."""
 
     is_monoisotopic: bool | None
@@ -1175,19 +1175,20 @@ class MsnSpectrum(Spectrum):
     scan_number: int | None = None  # Native scan number from instrument
     ms_level: int | None = None  # 1 for MS1, 2 for MS2, etc.
     native_id: str | None = None  # e.g., "scan=1234" or instrument-specific format
+    im_type: str | None = None  # e.g., "1/K0", "drift_time_ms", etc.
 
     # -------------------------------------------------------------------------
     # Timing & Chromatography
     # -------------------------------------------------------------------------
     rt: float | None = None  # Retention time (seconds recommended, but document units)
     injection_time: float | None = None  # Ion injection/accumulation time (ms)
+    total_ion_current: float | None = None  # Total ion current for the scan
 
     # -------------------------------------------------------------------------
-    # m/z & Ion Mobility Windows
+    # m/z & Ion Mobility Windows (NOT ISOLATION WINDOWS, represent the full)
     # -------------------------------------------------------------------------
     mz_range: tuple[float, float] | None = None  # Scan window (min_mz, max_mz)
     im_range: tuple[float, float] | None = None  # Ion mobility window (for timsTOF)
-    im_type: str | None = None  # e.g., "1/K0", "drift_time_ms", etc.
 
     # -------------------------------------------------------------------------
     # Instrument Settings
@@ -1202,7 +1203,11 @@ class MsnSpectrum(Spectrum):
     ramp_time: float | None = None  # Ramp time for ion mobility (ms)
     collision_energy: float | None = None  # Collision energy for MS2 spectra
     activation_type: str | None = None  # e.g., "HCD", "CID", "ETD"
-    precursors: list[TargetIon] | None = None  # For MS2/MSn, list of precursor peaks
+    precursors: list[Precursor] | None = None  # For MS2/MSn, list of precursor peaks
+
+    isolation_mz_range: tuple[float, float] | None = None  # Isolation window (min_mz, max_mz) for MS2
+    isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
+
 
     def __str__(self) -> str:
         return (
@@ -1227,6 +1232,7 @@ class MsnSpectrum(Spectrum):
             "native_id": self.native_id,
             "rt": self.rt,
             "injection_time": self.injection_time,
+            "total_ion_current": self.total_ion_current,
             "mz_range": list(self.mz_range) if self.mz_range is not None else None,
             "im_range": list(self.im_range) if self.im_range is not None else None,
             "im_type": self.im_type,
@@ -1236,6 +1242,8 @@ class MsnSpectrum(Spectrum):
             "ramp_time": self.ramp_time,
             "collision_energy": self.collision_energy,
             "activation_type": self.activation_type,
+            "isolation_mz_range": list(self.isolation_mz_range) if self.isolation_mz_range is not None else None,
+            "isolation_im_range": list(self.isolation_im_range) if self.isolation_im_range is not None else None,
             "precursors": [
                 {
                     "mz": p.mz,
@@ -1270,7 +1278,7 @@ class MsnSpectrum(Spectrum):
         meta = json.loads(str(data["meta"]))
         precursors = None
         if meta.get("precursors") is not None:
-            precursors = [TargetIon(**p) for p in meta["precursors"]]
+            precursors = [Precursor(**p) for p in meta["precursors"]]
         mz_range = tuple(meta["mz_range"]) if meta.get("mz_range") is not None else None
         im_range = tuple(meta["im_range"]) if meta.get("im_range") is not None else None
         return cls(
@@ -1287,6 +1295,7 @@ class MsnSpectrum(Spectrum):
             native_id=meta.get("native_id"),
             rt=meta.get("rt"),
             injection_time=meta.get("injection_time"),
+            total_ion_current=meta.get("total_ion_current"),
             mz_range=mz_range,
             im_range=im_range,
             im_type=meta.get("im_type"),
@@ -1297,4 +1306,6 @@ class MsnSpectrum(Spectrum):
             collision_energy=meta.get("collision_energy"),
             activation_type=meta.get("activation_type"),
             precursors=precursors,
+            isolation_mz_range=tuple(meta["isolation_mz_range"]) if meta.get("isolation_mz_range") is not None else None,
+            isolation_im_range=tuple(meta["isolation_im_range"]) if meta.get("isolation_im_range") is not None else None,
         )
