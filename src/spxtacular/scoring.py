@@ -8,27 +8,26 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
-from typing import Literal
+from typing import Any, cast
 
 import numpy as np
-from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .matching import match_fragments
+from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .matching import FragmentInput, MatchedFragment, match_fragments
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _unique_peak_indices(matches: list[tuple[int, Fragment]]) -> list[int]:
+def _unique_peak_indices(matches: list[MatchedFragment]) -> list[int]:
     seen: set[int] = set()
-    return [i for i, _ in matches if not (i in seen or seen.add(i))]
+    return [m.peak_index for m in matches if not (m.peak_index in seen or seen.add(m.peak_index))]
 
 
 def _unique_series_positions(
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
 ) -> dict[str, set]:
     """Map each ion series to the set of unique positions matched.
 
@@ -36,14 +35,20 @@ def _unique_series_positions(
     collapse to one entry, preventing inflation of the hyperscore factorial.
     """
     sp: dict[str, set] = defaultdict(set)
-    for _, frag in matches:
-        sp[str(frag.ion_type)].add(frag.position)
+    for m in matches:
+        sp[str(m.fragment.ion_type)].add(m.fragment.position)
     return sp
 
 
-def _count_unique_ions(fragments: Sequence[Fragment]) -> int:
+def _count_unique_ions(fragments: FragmentInput) -> int:
     """Unique ``(ion_type, position)`` pairs — collapses loss/isotope variants."""
-    return len({(str(f.ion_type), f.position) for f in fragments})
+    if not isinstance(fragments, dict):
+        return len({(str(f.ion_type), f.position) for f in fragments})
+    d: Any = fragments
+    n = 0
+    for v in d.values():
+        n += len(cast(list, v))
+    return n
 
 
 def _log10_factorial(n: int) -> float:
@@ -79,7 +84,7 @@ def _binom_log10_survival(k: int, n: int, p: float) -> float:
 
 def _hyperscore(
     spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
 ) -> float:
     if not matches:
         return 0.0
@@ -93,10 +98,10 @@ def _hyperscore(
 
 def _probability_score(
     spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
     n_unique: int,
     tolerance: float,
-    tolerance_type: Literal["Da", "ppm"],
+    tolerance_type: ToleranceLike,
 ) -> float:
     n_exp = len(spectrum.mz)
     k = len(_unique_peak_indices(matches))
@@ -115,7 +120,7 @@ def _probability_score(
 
 def _total_matched_intensity(
     spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
 ) -> float:
     if not matches:
         return 0.0
@@ -123,7 +128,7 @@ def _total_matched_intensity(
 
 
 def _matched_fraction(
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
     n_unique: int,
 ) -> float:
     if n_unique == 0:
@@ -133,7 +138,7 @@ def _matched_fraction(
 
 def _intensity_fraction(
     spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
 ) -> float:
     total = float(spectrum.intensity.sum())
     if total == 0.0 or not matches:
@@ -142,21 +147,16 @@ def _intensity_fraction(
 
 
 def _mean_ppm_error(
-    spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
 ) -> float:
     if not matches:
         return 0.0
-    errors = [
-        abs(float(spectrum.mz[idx]) - float(frag.mz)) / float(frag.mz) * 1e6
-        for idx, frag in matches
-    ]
-    return float(np.mean(errors))
+    return float(np.mean([abs(m.ppm_error) for m in matches]))
 
 
 def _spectral_angle(
     spectrum: Spectrum,
-    matches: list[tuple[int, Fragment]],
+    matches: list[MatchedFragment],
     n_unique: int,
 ) -> float:
     if not matches or n_unique == 0:
@@ -171,14 +171,14 @@ def _spectral_angle(
     return float(1.0 - math.acos(dot) / (math.pi / 2))
 
 
-def _longest_run(matches: list[tuple[int, Fragment]]) -> int:
+def _longest_run(matches: list[MatchedFragment]) -> int:
     if not matches:
         return 0
     series_positions: dict[str, list[int]] = defaultdict(list)
-    for _, frag in matches:
-        pos = frag.position
+    for m in matches:
+        pos = m.fragment.position
         if isinstance(pos, int):
-            series_positions[str(frag.ion_type)].append(pos)
+            series_positions[str(m.fragment.ion_type)].append(pos)
     best = 0
     for positions in series_positions.values():
         sorted_pos = sorted(set(positions))
@@ -200,10 +200,10 @@ def _longest_run(matches: list[tuple[int, Fragment]]) -> int:
 
 def score(
     spectrum: Spectrum,
-    fragments: Sequence[Fragment],
+    fragments: FragmentInput,
     tolerance: float = 0.02,
-    tolerance_type: Literal["Da", "ppm"] = "ppm",
-    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
 ) -> dict[str, float]:
     """Match fragments against a spectrum and return all scores.
 
@@ -217,7 +217,9 @@ def score(
     spectrum:
         Experimental centroid spectrum.
     fragments:
-        Theoretical fragment ions from peptacular.
+        Theoretical fragment ions from peptacular, or the
+        ``dict[tuple[IonType, int], list[float]]`` returned by
+        :meth:`~peptacular.ProFormaAnnotation.fragment_masses`.
     tolerance:
         Matching tolerance.
     tolerance_type:
@@ -242,7 +244,7 @@ def score(
         "total_matched_intensity": _total_matched_intensity(spectrum, matches),
         "matched_fraction": _matched_fraction(matches, n_unique),
         "intensity_fraction": _intensity_fraction(spectrum, matches),
-        "mean_ppm_error": _mean_ppm_error(spectrum, matches),
+        "mean_ppm_error": _mean_ppm_error(matches),
         "spectral_angle": _spectral_angle(spectrum, matches, n_unique),
         "longest_run": float(_longest_run(matches)),
     }

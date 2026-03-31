@@ -4,12 +4,13 @@ Tests for spxtacular.matching.match_fragments.
 Fragments are mocked with MagicMock — match_fragments only reads .mz, .ion_type,
 and .position, so the mock is sufficient for all matching tests.
 """
+
 from unittest.mock import MagicMock
 
 import numpy as np
 
 from spxtacular.core import Spectrum
-from spxtacular.matching import match_fragments
+from spxtacular.matching import MatchedFragment, match_fragments
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,24 +40,24 @@ def _spectrum() -> Spectrum:
 def test_closest_match_da_within_tolerance() -> None:
     spec = _spectrum()
     frag = _make_frag(100.005)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="closest")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="closest")
     assert len(result) == 1
-    assert result[0][0] == 0  # peak at index 0 (100.0)
+    assert result[0].peak_index == 0  # peak at index 0 (100.0)
 
 
 def test_no_match_outside_tolerance_da() -> None:
     spec = _spectrum()
     frag = _make_frag(100.5)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="closest")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="closest")
     assert result == []
 
 
 def test_exact_mz_match_da() -> None:
     spec = _spectrum()
     frag = _make_frag(300.0)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="closest")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="closest")
     assert len(result) == 1
-    assert result[0][0] == 2  # index of 300.0
+    assert result[0].peak_index == 2  # index of 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +71,7 @@ def test_ppm_tolerance_match() -> None:
     frag = _make_frag(200.002)
     result = match_fragments(spec, [frag], tolerance=10, tolerance_type="ppm", peak_selection="closest")
     assert len(result) == 1
-    assert result[0][0] == 1  # peak at 200.0
+    assert result[0].peak_index == 1  # peak at 200.0
 
 
 def test_ppm_no_match_when_error_exceeds_tolerance() -> None:
@@ -93,9 +94,9 @@ def test_closest_picks_nearest_peak() -> None:
         intensity=np.array([50.0, 5.0], dtype=np.float64),
     )
     frag = _make_frag(200.01)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="closest")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="closest")
     assert len(result) == 1
-    assert result[0][0] == 1  # 200.015 is closer to 200.01
+    assert result[0].peak_index == 1  # 200.015 is closer to 200.01
 
 
 def test_largest_picks_highest_intensity_peak() -> None:
@@ -105,9 +106,9 @@ def test_largest_picks_highest_intensity_peak() -> None:
         intensity=np.array([50.0, 5.0], dtype=np.float64),
     )
     frag = _make_frag(200.01)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="largest")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="largest")
     assert len(result) == 1
-    assert result[0][0] == 0  # 200.0 has higher intensity
+    assert result[0].peak_index == 0  # 200.0 has higher intensity
 
 
 def test_all_returns_both_peaks_in_tolerance() -> None:
@@ -116,9 +117,9 @@ def test_all_returns_both_peaks_in_tolerance() -> None:
         intensity=np.array([50.0, 5.0], dtype=np.float64),
     )
     frag = _make_frag(200.01)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="all")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="all")
     assert len(result) == 2
-    assert {r[0] for r in result} == {0, 1}
+    assert {r.peak_index for r in result} == {0, 1}
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ def test_all_returns_both_peaks_in_tolerance() -> None:
 
 def test_no_fragments_returns_empty() -> None:
     spec = _spectrum()
-    result = match_fragments(spec, [], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [], tolerance=0.02, tolerance_type="da")
     assert result == []
 
 
@@ -136,8 +137,8 @@ def test_results_sorted_by_peak_index_ascending() -> None:
     spec = _spectrum()
     # Match fragments at 400.0 (index 3) and 100.0 (index 0) — submit in reverse order
     frags = [_make_frag(400.0), _make_frag(100.0)]
-    result = match_fragments(spec, frags, tolerance=0.02, tolerance_type="Da", peak_selection="closest")
-    indices = [r[0] for r in result]
+    result = match_fragments(spec, frags, tolerance=0.02, tolerance_type="da", peak_selection="closest")
+    indices = [r.peak_index for r in result]
     assert indices == sorted(indices)
 
 
@@ -145,19 +146,25 @@ def test_multiple_fragments_match_same_peak_all_appear() -> None:
     spec = _spectrum()
     f1 = _make_frag(100.005, ion_type="b", position=1)
     f2 = _make_frag(100.008, ion_type="y", position=2)
-    result = match_fragments(spec, [f1, f2], tolerance=0.02, tolerance_type="Da", peak_selection="closest")
+    result = match_fragments(spec, [f1, f2], tolerance=0.02, tolerance_type="da", peak_selection="closest")
     assert len(result) == 2
-    assert all(r[0] == 0 for r in result)
+    assert all(r.peak_index == 0 for r in result)
 
 
-def test_fragment_fragment_tuple_structure() -> None:
+def test_matched_fragment_structure() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert len(result) == 1
-    peak_idx, matched_frag = result[0]
-    assert isinstance(peak_idx, int)
-    assert matched_frag is frag
+    m = result[0]
+    assert isinstance(m, MatchedFragment)
+    assert m.peak_index == 1
+    assert m.fragment is frag
+    assert isinstance(m.peak_mz, float)
+    assert isinstance(m.peak_intensity, float)
+    assert isinstance(m.ppm_error, float)
+    assert isinstance(m.da_error, float)
+    assert isinstance(m.intensity_pct, float)
 
 
 # ---------------------------------------------------------------------------
@@ -177,15 +184,15 @@ def _decon_spectrum() -> Spectrum:
 def test_charge_match_passes_when_charge_matches() -> None:
     spec = _decon_spectrum()
     frag = _make_frag(200.005, charge_state=1)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert len(result) == 1
-    assert result[0][0] == 0
+    assert result[0].peak_index == 0
 
 
 def test_charge_mismatch_excluded() -> None:
     spec = _decon_spectrum()
     frag = _make_frag(200.005, charge_state=2)  # peak at 200.0 is z=1 — mismatch
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert result == []
 
 
@@ -197,9 +204,9 @@ def test_charge_filter_all_mode() -> None:
         charge=np.array([1, 2], dtype=np.int32),
     )
     frag = _make_frag(200.005, charge_state=1)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da", peak_selection="all")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da", peak_selection="all")
     assert len(result) == 1
-    assert result[0][0] == 0  # only the z=1 peak
+    assert result[0].peak_index == 0  # only the z=1 peak
 
 
 def test_singleton_peaks_not_matched() -> None:
@@ -210,7 +217,7 @@ def test_singleton_peaks_not_matched() -> None:
         charge=np.array([-1], dtype=np.int32),
     )
     frag = _make_frag(200.005, charge_state=1)
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert result == []
 
 
@@ -218,7 +225,7 @@ def test_no_charge_filter_when_spectrum_has_no_charge_array() -> None:
     """Raw spectra (no charge array) match by m/z only — charge_state is ignored."""
     spec = _spectrum()  # no charge array
     frag = _make_frag(200.005, charge_state=99)  # any charge_state — should still match
-    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="Da")
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert len(result) == 1
 
 
@@ -231,9 +238,85 @@ def test_method_matches_function_output() -> None:
     """spec.match_fragments(...) must return the same result as match_fragments(spec, ...)."""
     spec = _spectrum()
     frags = [_make_frag(100.005), _make_frag(200.005), _make_frag(999.0)]
-    via_function = match_fragments(spec, frags, tolerance=0.02, tolerance_type="Da")
-    via_method = spec.match_fragments(frags, tolerance=0.02, tolerance_type="Da")
+    via_function = match_fragments(spec, frags, tolerance=0.02, tolerance_type="da")
+    via_method = spec.match_fragments(frags, tolerance=0.02, tolerance_type="da")
     assert len(via_method) == len(via_function)
-    for (mi, mf), (fi, ff) in zip(via_method, via_function, strict=True):
-        assert mi == fi
-        assert mf is ff
+    for vm, vf in zip(via_method, via_function, strict=True):
+        assert vm.peak_index == vf.peak_index
+        assert vm.fragment is vf.fragment
+
+
+# ---------------------------------------------------------------------------
+# Dict fragments input (lines 150-163)
+# ---------------------------------------------------------------------------
+
+
+def test_dict_fragments_matches_correct_peak() -> None:
+    from peptacular import IonType
+
+    spec = _spectrum()
+    frag_dict: dict = {(IonType.B, 1): [100.0, 200.0]}
+    result = match_fragments(spec, frag_dict, tolerance=0.02, tolerance_type="da")
+    peak_indices = {m.peak_index for m in result}
+    assert 0 in peak_indices  # 100.0
+    assert 1 in peak_indices  # 200.0
+
+
+def test_dict_fragments_no_match_returns_empty() -> None:
+    from peptacular import IonType
+
+    spec = _spectrum()
+    frag_dict: dict = {(IonType.B, 1): [999.0]}
+    result = match_fragments(spec, frag_dict, tolerance=0.02, tolerance_type="da")
+    assert result == []
+
+
+def test_dict_fragments_largest_mode_picks_highest_intensity() -> None:
+    from peptacular import IonType
+
+    spec = Spectrum(
+        mz=np.array([200.0, 200.015], dtype=np.float64),
+        intensity=np.array([50.0, 5.0], dtype=np.float64),
+    )
+    frag_dict: dict = {(IonType.B, 1): [200.01]}
+    result = match_fragments(spec, frag_dict, tolerance=0.02, tolerance_type="da", peak_selection="largest")
+    assert len(result) == 1
+    assert result[0].peak_index == 0
+
+
+def test_dict_fragments_all_mode_returns_multiple_peaks() -> None:
+    from peptacular import IonType
+
+    spec = Spectrum(
+        mz=np.array([200.0, 200.015], dtype=np.float64),
+        intensity=np.array([50.0, 5.0], dtype=np.float64),
+    )
+    frag_dict: dict = {(IonType.B, 1): [200.01]}
+    result = match_fragments(spec, frag_dict, tolerance=0.02, tolerance_type="da", peak_selection="all")
+    assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# "largest" and "all" modes with ppm tolerance (lines 119-133)
+# ---------------------------------------------------------------------------
+
+
+def test_largest_mode_ppm_tolerance_picks_highest_intensity() -> None:
+    spec = Spectrum(
+        mz=np.array([200.0, 200.001], dtype=np.float64),
+        intensity=np.array([80.0, 10.0], dtype=np.float64),
+    )
+    frag = _make_frag(200.0005)
+    result = match_fragments(spec, [frag], tolerance=10.0, tolerance_type="ppm", peak_selection="largest")
+    assert len(result) == 1
+    assert result[0].peak_index == 0
+
+
+def test_all_mode_ppm_tolerance_returns_all_within_tolerance() -> None:
+    spec = Spectrum(
+        mz=np.array([200.0, 200.001], dtype=np.float64),
+        intensity=np.array([80.0, 10.0], dtype=np.float64),
+    )
+    frag = _make_frag(200.0005)
+    result = match_fragments(spec, [frag], tolerance=10.0, tolerance_type="ppm", peak_selection="all")
+    assert len(result) == 2

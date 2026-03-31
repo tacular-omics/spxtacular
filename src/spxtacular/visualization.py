@@ -5,16 +5,17 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 import numpy as np
-from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
+from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .matching import FragmentInput
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
 
 
@@ -162,8 +163,8 @@ def mirror_plot(
 
     # ── score annotations above deconvoluted peaks ─────────────────────────────
     annotations = []
-    if show_scores and deconvoluted.score is not None:
-        for i, s in enumerate(deconvoluted.score):
+    if show_scores and deconvoluted.iso_score is not None:
+        for i, s in enumerate(deconvoluted.iso_score):
             if s > 0.0:
                 annotations.append(
                     dict(
@@ -193,11 +194,11 @@ def mirror_plot(
 @requires_plotly
 def annotate_spectrum(
     spectrum: Spectrum,
-    fragments: Sequence[Fragment],
+    fragments: FragmentInput,
     tolerance: float = 0.02,
-    tolerance_type: Literal["Da", "ppm"] = "Da",
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
     title: str | None = None,
-    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     **layout_kwargs,
 ) -> go.Figure:
@@ -231,9 +232,7 @@ def annotate_spectrum(
     -------
     plotly ``Figure``.
     """
-    table = build_annot_plot_table(
-        spectrum, fragments, tolerance, tolerance_type, peak_selection, include_sequence
-    )
+    table = build_annot_plot_table(spectrum, fragments, tolerance, tolerance_type, peak_selection, include_sequence)
     fig = plot_from_table(table, title=title or "Annotated spectrum", **layout_kwargs)
     return fig
 
@@ -250,5 +249,3 @@ def _sticks(mz: np.ndarray, intensity: np.ndarray) -> tuple[list, list]:
     y[1::3] = intensity
     y[2::3] = np.nan
     return x.tolist(), y.tolist()
-
-

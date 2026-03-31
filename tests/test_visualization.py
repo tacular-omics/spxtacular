@@ -4,6 +4,7 @@ Tests for spxtacular.visualization — all functions must return go.Figure objec
 annotate_spectrum calls paftacular internally for fragment labels, so real
 Fragment objects (from peptacular) are used instead of mocks for that function.
 """
+
 import numpy as np
 import plotly.graph_objects as go
 from peptacular.annotation.frag import Fragment
@@ -28,7 +29,7 @@ def _decon() -> Spectrum:
         mz=np.array([200.0], dtype=np.float64),
         intensity=np.array([50.0], dtype=np.float64),
         charge=np.array([2], dtype=np.int32),
-        score=np.array([0.85], dtype=np.float64),
+        iso_score=np.array([0.85], dtype=np.float64),
         spectrum_type=SpectrumType.DECONVOLUTED,
     )
 
@@ -152,12 +153,12 @@ def test_annotate_spectrum_with_ppm_tolerance_returns_figure() -> None:
 
 def test_annotate_spectrum_matched_peak_has_annotation() -> None:
     frag = _real_frag(mz=200.0, ion_type="b", position=2)
-    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="Da")
+    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="da")
     # Matched peaks get annotations
     assert len(fig.layout.annotations) >= 1
 
 
 def test_annotate_spectrum_no_match_has_no_annotation() -> None:
     frag = _real_frag(mz=999.0, ion_type="b", position=2)
-    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="Da")
+    fig = annotate_spectrum(_raw(), [frag], tolerance=0.02, tolerance_type="da")
     assert len(fig.layout.annotations) == 0

@@ -4,6 +4,7 @@ Isotope-cluster helper functions shared by the deconvolution algorithm.
 Numba is used automatically when installed (``pip install numba``).
 Falls back to pure NumPy when not available.
 """
+
 from __future__ import annotations
 
 import numpy as np

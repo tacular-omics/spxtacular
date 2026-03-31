@@ -24,11 +24,13 @@ def ms2_spectrum():
 
 # --- acquisition type ---
 
+
 def test_dreader_detects_dda():
     assert DReader(str(HELA_D)).acquisition_type == AcquisitionType.DDA
 
 
 # --- MS1 ---
+
 
 def test_ms1_is_msn_spectrum(ms1_spectrum):
     assert isinstance(ms1_spectrum, MsnSpectrum)
@@ -90,6 +92,7 @@ def test_ms1_no_charge_array(ms1_spectrum):
 
 # --- MS2 ---
 
+
 def test_ms2_is_msn_spectrum(ms2_spectrum):
     assert isinstance(ms2_spectrum, MsnSpectrum)
 
@@ -142,6 +145,7 @@ def test_ms2_activation_type_set(ms2_spectrum):
 
 
 # --- lookup __getitem__ ---
+
 
 def test_ms1_lookup_by_frame_id(ms1_spectrum):
     with DReader(str(HELA_D)) as r:

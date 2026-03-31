@@ -19,13 +19,13 @@ def test_deconvolution_identifies_charge_2_cluster():
 
     # Output is sorted by m/z: [500.0, 1000.0, 1200.0]
     assert decon.mz[0] == pytest.approx(500.0)
-    assert decon.charge[0] == -1   # singleton
+    assert decon.charge[0] == -1  # singleton
 
     assert decon.mz[1] == pytest.approx(1000.0)
-    assert decon.charge[1] == 2    # charge-2 isotope cluster
+    assert decon.charge[1] == 2  # charge-2 isotope cluster
 
     assert decon.mz[2] == pytest.approx(1200.0)
-    assert decon.charge[2] == -1   # singleton
+    assert decon.charge[2] == -1  # singleton
 
 
 def test_deconvolution_then_decharge():
