@@ -631,30 +631,14 @@ wheels = [
 
 [[package]]
 name = "peptacular"
-source = { editable = "../peptacular" }
+version = "3.1.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tacular" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "tacular", specifier = ">=1.0.0" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "lxml", specifier = ">=6.0.2" },
-    { name = "myst-parser" },
-    { name = "pandas", specifier = ">=3.0.0" },
-    { name = "pympler", specifier = ">=1.1" },
-    { name = "pyteomics", git = "https://github.com/levitsky/pyteomics.git" },
-    { name = "pytest", specifier = ">=9.0.1" },
-    { name = "pytest-cov", specifier = ">=6.0.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "pyupgrade", specifier = ">=3.21.0" },
-    { name = "ruff", specifier = ">=0.14.7" },
-    { name = "sphinx", specifier = ">=7.0" },
-    { name = "sphinx-autodoc-typehints", specifier = ">=1.25" },
-    { name = "sphinx-rtd-theme", specifier = ">=2.0" },
-    { name = "ty", specifier = ">=0.0.11" },
+sdist = { url = "https://files.pythonhosted.org/packages/63/e7/341ce4f65a3ccff8be27a9c3ae612e37ccf6b5c075382a78d20c6e37dde3/peptacular-3.1.1.tar.gz", hash = "sha256:7e852d2917f94e1d1838f5bde60904a08aabafa014b342e2af0cbbe44451251b", size = 1922182, upload-time = "2026-03-31T00:23:30.787Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/52/79f7dedd917ad355144df1732f8c6a87a8b0af871d2a50bcf5103744a4d4/peptacular-3.1.1-py3-none-any.whl", hash = "sha256:b9db13425f55a086a9e37104f16e5a7d7db82fa6b2e1f8f4600e38e46d027e5c", size = 162783, upload-time = "2026-03-31T00:23:29.359Z" },
 ]
 
 [[package]]
@@ -896,7 +880,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "paftacular", extras = ["sequence"], specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "peptacular", editable = "../peptacular" },
+    { name = "peptacular", specifier = ">=3.1.1" },
     { name = "plotly", specifier = ">=6.6.0" },
     { name = "tdfpy", specifier = ">=1.0.2" },
 ]

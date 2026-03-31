@@ -75,8 +75,8 @@ save_or_show(
     spx.annotate_spectrum(
         raw,
         fragments,
-        mz_tol=5,
-        mz_tol_type="da",
+        tolerance=5,
+        tolerance_type="da",
         title=f"Annotated – {PEPTIDE}",
     ),
     "annotated",
