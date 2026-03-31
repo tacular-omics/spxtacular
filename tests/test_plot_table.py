@@ -60,7 +60,7 @@ def _decon_spectrum() -> Spectrum:
         mz=np.array([200.0, 400.0], dtype=np.float64),
         intensity=np.array([100.0, 50.0], dtype=np.float64),
         charge=np.array([1, 2], dtype=np.int32),
-        score=np.array([0.8, 0.3], dtype=np.float64),
+        iso_score=np.array([0.8, 0.3], dtype=np.float64),
     )
 
 
@@ -168,7 +168,7 @@ def test_build_plot_table_singleton_color() -> None:
         mz=np.array([100.0, 200.0], dtype=np.float64),
         intensity=np.array([10.0, 50.0], dtype=np.float64),
         charge=np.array([-1, 1], dtype=np.int32),
-        score=np.array([0.0, 0.9], dtype=np.float64),
+        iso_score=np.array([0.0, 0.9], dtype=np.float64),
     )
     table = build_plot_table(spec)
     singleton_row = table.loc[table["mz"] == 100.0]
@@ -190,7 +190,7 @@ def test_build_plot_table_zero_score_label_empty() -> None:
         mz=np.array([100.0], dtype=np.float64),
         intensity=np.array([10.0], dtype=np.float64),
         charge=np.array([-1], dtype=np.int32),
-        score=np.array([0.0], dtype=np.float64),
+        iso_score=np.array([0.0], dtype=np.float64),
     )
     table = build_plot_table(spec)
     assert table["label"].iloc[0] == ""
@@ -333,10 +333,7 @@ def test_plot_from_table_custom_color() -> None:
     table["color"] = "#ff0000"
     fig = plot_from_table(table)
     # Only one (series, color) group should exist, coloured red
-    assert any(
-        isinstance(trace, go.Scatter) and trace.line.color == "#ff0000"
-        for trace in fig.data
-    )
+    assert any(isinstance(trace, go.Scatter) and trace.line.color == "#ff0000" for trace in fig.data)
 
 
 def test_plot_from_table_custom_linewidth() -> None:
@@ -345,7 +342,4 @@ def test_plot_from_table_custom_linewidth() -> None:
     table = build_plot_table(_spectrum())
     table["linewidth"] = 3.5
     fig = plot_from_table(table)
-    assert any(
-        isinstance(trace, go.Scatter) and trace.line.width == 3.5
-        for trace in fig.data
-    )
+    assert any(isinstance(trace, go.Scatter) and trace.line.width == 3.5 for trace in fig.data)

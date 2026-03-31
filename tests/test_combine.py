@@ -124,20 +124,20 @@ def test_combine_mixed_im_dropped():
 
 
 def test_combine_all_have_score():
-    s1 = make_spec([100.0], [1.0], score=np.array([0.9]))
-    s2 = make_spec([200.0], [2.0], score=np.array([0.7]))
+    s1 = make_spec([100.0], [1.0], iso_score=np.array([0.9]))
+    s2 = make_spec([200.0], [2.0], iso_score=np.array([0.7]))
     result = Spectrum.combine([s1, s2])
 
-    assert result.score is not None
-    assert np.array_equal(result.score, [0.9, 0.7])
+    assert result.iso_score is not None
+    assert np.array_equal(result.iso_score, [0.9, 0.7])
 
 
 def test_combine_mixed_score_dropped():
-    s1 = make_spec([100.0], [1.0], score=np.array([0.9]))
+    s1 = make_spec([100.0], [1.0], iso_score=np.array([0.9]))
     s2 = make_spec([200.0], [2.0])
     result = Spectrum.combine([s1, s2])
 
-    assert result.score is None
+    assert result.iso_score is None
 
 
 # ---------------------------------------------------------------------------
@@ -146,13 +146,15 @@ def test_combine_mixed_score_dropped():
 
 
 def test_combine_optional_arrays_follow_mz_sort():
-    s1 = make_spec([300.0], [3.0], im=np.array([1.0]), score=np.array([0.9]))
-    s2 = make_spec([100.0], [1.0], im=np.array([0.5]), score=np.array([0.5]))
+    s1 = make_spec([300.0], [3.0], im=np.array([1.0]), iso_score=np.array([0.9]))
+    s2 = make_spec([100.0], [1.0], im=np.array([0.5]), iso_score=np.array([0.5]))
     result = Spectrum.combine([s1, s2])
 
     assert np.array_equal(result.mz, [100.0, 300.0])
+    assert result.im is not None
     assert np.array_equal(result.im, [0.5, 1.0])
-    assert np.array_equal(result.score, [0.5, 0.9])
+    assert result.iso_score is not None
+    assert np.array_equal(result.iso_score, [0.5, 0.9])
 
 
 # ---------------------------------------------------------------------------

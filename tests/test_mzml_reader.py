@@ -24,6 +24,7 @@ def ms2_spectrum():
 
 # --- MS1 ---
 
+
 def test_ms1_is_msn_spectrum(ms1_spectrum):
     assert isinstance(ms1_spectrum, MsnSpectrum)
 
@@ -82,6 +83,7 @@ def test_ms1_no_ion_mobility(ms1_spectrum):
 
 # --- MS2 ---
 
+
 def test_ms2_is_msn_spectrum(ms2_spectrum):
     assert isinstance(ms2_spectrum, MsnSpectrum)
 
@@ -132,6 +134,7 @@ def test_ms2_activation_type_set(ms2_spectrum):
 
 # --- __getitem__ ---
 
+
 def test_getitem_by_index_returns_msn_spectrum():
     r = MzmlReader(str(EXAMPLE_MZML))
     spec = r[0]
@@ -156,6 +159,7 @@ def test_getitem_by_native_id():
 def test_getitem_by_native_id_matches_index():
     r = MzmlReader(str(EXAMPLE_MZML))
     by_index = r[0]
+    assert by_index.native_id is not None
     by_id = r[by_index.native_id]
     np.testing.assert_array_equal(by_index.mz, by_id.mz)
 

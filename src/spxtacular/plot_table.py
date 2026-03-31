@@ -15,8 +15,7 @@ plot_from_table         -- DataFrame → plotly Figure
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -24,7 +23,8 @@ from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .matching import match_fragments
+from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .matching import FragmentInput, match_fragments
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -112,7 +112,7 @@ def build_plot_table(
     n = len(mz)
 
     charge_arr = spectrum.charge
-    score_arr = spectrum.score
+    score_arr = spectrum.iso_score
     im_arr = spectrum.im
 
     has_charge = show_charges and charge_arr is not None
@@ -193,10 +193,10 @@ def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
 
 def build_annot_plot_table(
     spectrum: Spectrum,
-    fragments: Sequence[Fragment],
+    fragments: FragmentInput,
     tolerance: float = 0.02,
-    tolerance_type: Literal["Da", "ppm"] = "Da",
-    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    tolerance_type: ToleranceLike = ToleranceType.DA,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
 ) -> pd.DataFrame:
     """Build a plot table with fragment-ion annotations.
@@ -228,15 +228,15 @@ def build_annot_plot_table(
 
     # Group matches by peak index
     peak_frags: dict[int, list[Fragment]] = {}
-    for peak_idx, frag in matches:
-        peak_frags.setdefault(peak_idx, []).append(frag)
+    for m in matches:
+        peak_frags.setdefault(m.peak_index, []).append(m.fragment)
 
     mz = spectrum.mz
     intensity = spectrum.intensity
     n = len(mz)
 
     charge_arr = spectrum.charge
-    score_arr = spectrum.score
+    score_arr = spectrum.iso_score
     im_arr = spectrum.im
 
     if charge_arr is not None:

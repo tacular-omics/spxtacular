@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType, Precursor
+from spxtacular.core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -59,12 +59,12 @@ def test_spectrum_save_load_optional_arrays(tmp_path):
     charge = np.array([1, 2, -1], dtype=np.int32)
     im = np.array([0.9, 1.1, 1.05], dtype=np.float64)
     score = np.array([0.8, 0.95, 0.0], dtype=np.float64)
-    spec = _basic_spectrum(charge=charge, im=im, score=score)
+    spec = _basic_spectrum(charge=charge, im=im, iso_score=score)
     spec.save(tmp_path / "spec")
     restored = Spectrum.load(tmp_path / "spec.npz")
     np.testing.assert_array_equal(restored.charge, charge)
     np.testing.assert_array_equal(restored.im, im)
-    np.testing.assert_array_equal(restored.score, score)
+    np.testing.assert_array_equal(restored.iso_score, score)
 
 
 def test_spectrum_save_load_none_optional_arrays(tmp_path):
@@ -73,7 +73,7 @@ def test_spectrum_save_load_none_optional_arrays(tmp_path):
     restored = Spectrum.load(tmp_path / "spec.npz")
     assert restored.charge is None
     assert restored.im is None
-    assert restored.score is None
+    assert restored.iso_score is None
 
 
 def test_spectrum_save_load_none_spectrum_type(tmp_path):
@@ -114,7 +114,7 @@ def test_msn_save_load_scalars(tmp_path):
 
 
 def test_msn_save_load_precursors(tmp_path):
-    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, score=None, is_monoisotopic=True)
+    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
     spec = _basic_msn(precursors=[precursor])
     spec.save(tmp_path / "msn")
     restored = MsnSpectrum.load(tmp_path / "msn.npz")

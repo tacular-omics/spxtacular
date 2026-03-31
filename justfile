@@ -18,7 +18,7 @@ format:
 
 # Run type checking
 check:
-    uv run ty check src
+    uv run ty check src tests
 
 # Run tests
 test:

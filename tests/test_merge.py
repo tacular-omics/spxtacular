@@ -71,6 +71,7 @@ def test_merge_peaks_charge_separation():
     assert len(merged) == 3
     # The output is sorted by mz, so we expect [100.0, 100.01, 200.0]
     expected_charges = np.array([1, 2, 1])
+    assert merged.charge is not None
     assert np.array_equal(merged.charge, expected_charges)
 
 
@@ -85,6 +86,7 @@ def test_merge_peaks_charge_merge():
 
     # Expect 2 peaks, 100.0/100.01 merged
     assert len(merged) == 2
+    assert merged.charge is not None
     assert merged.charge[0] == 2
     assert merged.charge[1] == 1
 
@@ -112,6 +114,7 @@ def test_merge_im_tolerance_relative():
 
     # Check values
     all_mz = np.sort(merged.mz)
+    assert merged.im is not None
     all_im = np.sort(merged.im)
 
     # Expected mzs:
@@ -141,6 +144,7 @@ def test_merge_im_tolerance_absolute():
     merged = spec.merge(mz_tolerance=0.1, im_tolerance=0.05, im_tolerance_type="absolute")
 
     assert len(merged) == 2
+    assert merged.im is not None
     ims = np.sort(merged.im)
     expected_ims = np.sort([(100 * 1.0 + 50 * 1.04) / 150, 1.1])
     assert np.allclose(ims, expected_ims)
@@ -152,7 +156,7 @@ def test_merge_zero_intensity():
     intensity = np.array([0.0, 0.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_type="Da")
+    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_type="da")
 
     assert len(merged) == 1
     assert merged.intensity[0] == 0.0

@@ -7,9 +7,9 @@ from typing import Any, Self
 
 import mzmlpy as mzp
 import numpy as np
-
-from .core import MsnSpectrum, SpectrumType, Precursor
 import tdfpy
+
+from .core import MsnSpectrum, Precursor, SpectrumType
 
 """
 
@@ -201,8 +201,7 @@ class DReader:
             analyzer="TOF",
             ramp_time=frame.ramp_time,
             precursors=None,
-            im_type='ook0',
-
+            im_type="ook0",
         )
 
     @staticmethod
@@ -228,7 +227,6 @@ class DReader:
             is_monoisotopic=is_monoisotopic,
         )
 
-
         return MsnSpectrum(
             mz=peaks[:, 0],
             intensity=peaks[:, 1],
@@ -242,7 +240,7 @@ class DReader:
             native_id=None,
             rt=precursor.rt,
             injection_time=None,
-            total_ion_current=None, # TODO:
+            total_ion_current=None,  # TODO:
             mz_range=None,
             im_range=None,
             polarity=polarity,
@@ -250,7 +248,7 @@ class DReader:
             analyzer="TOF",
             ramp_time=None,
             precursors=[prec],
-            im_type='ook0',
+            im_type="ook0",
             isolation_im_range=precursor.ook0_range,
             isolation_mz_range=precursor.mz_range,
             collision_energy=precursor.collision_energy,
@@ -293,7 +291,7 @@ class DReader:
             precursors=None,
             isolation_mz_range=window.mz_range,
             isolation_im_range=window.ook0_range,
-            im_type='ook0',
+            im_type="ook0",
         )
 
     # ------------------------------------------------------------------
@@ -429,7 +427,6 @@ class MzmlReader:
         if charge_array is not None:
             spectrum_type = SpectrumType.DECONVOLUTED
 
-        
         mz_range = None
         if spec.lower_mz is not None and spec.upper_mz is not None:
             mz_range = (spec.lower_mz, spec.upper_mz)
@@ -477,15 +474,14 @@ class MzmlReader:
                 if activation.activation_type is not None:
                     activation_types.append(activation.activation_type)
             if precursor.isolation_window is not None:
-
                 has_target_mz = precursor.isolation_window.target_mz is not None
                 has_lower = precursor.isolation_window.lower_offset is not None
                 has_upper = precursor.isolation_window.upper_offset is not None
                 if has_target_mz and has_lower and has_upper:
                     isolation_ranges.append(
                         (
-                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset, # type: ignore
-                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset, # type: ignore
+                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset,  # type: ignore
+                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset,  # type: ignore
                         )
                     )
         if len(set(collision_energies)) > 1:
@@ -493,7 +489,9 @@ class MzmlReader:
         if len(set(activation_types)) > 1:
             warnings.warn(f"Spectrum {spec} has multiple activation types: {set(activation_types)}", stacklevel=3)
         if len(set(isolation_ranges)) > 1:
-            warnings.warn(f"Spectrum {spec} has multiple isolation window ranges: {set(isolation_ranges)}", stacklevel=3)
+            warnings.warn(
+                f"Spectrum {spec} has multiple isolation window ranges: {set(isolation_ranges)}", stacklevel=3
+            )
 
         return MsnSpectrum(
             mz=mz_array,
