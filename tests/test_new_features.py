@@ -111,7 +111,7 @@ class TestScaleIntensity:
     def test_unknown_method_raises(self) -> None:
         spec = _spec()
         with pytest.raises(ValueError, match="Unknown scaling method"):
-            spec.scale_intensity(method="invalid")
+            spec.scale_intensity(method="invalid")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
     def test_inplace(self) -> None:
         spec = _spec()
@@ -170,7 +170,7 @@ class TestRoundMz:
     def test_unknown_combine_raises(self) -> None:
         spec = _spec()
         with pytest.raises(ValueError, match="Unknown combine method"):
-            spec.round_mz(combine="mean")
+            spec.round_mz(combine="mean")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
 
 # ---------------------------------------------------------------------------
