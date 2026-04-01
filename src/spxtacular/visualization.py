@@ -237,6 +237,255 @@ def annotate_spectrum(
     return fig
 
 
+@requires_plotly
+def mass_error_plot(
+    spectrum: Spectrum,
+    fragments: FragmentInput,
+    tolerance: float = 0.02,
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    unit: str = "ppm",
+    title: str | None = None,
+    **layout_kwargs,
+) -> go.Figure:
+    """Bubble plot of mass errors vs m/z.
+
+    Each matched fragment is shown as a bubble whose x-position is the
+    observed m/z, y-position is the mass error (ppm or Da), and size is
+    proportional to the peak intensity.  Bubbles are coloured by ion series.
+
+    Parameters
+    ----------
+    spectrum:
+        Spectrum to plot.
+    fragments:
+        Fragment objects from peptacular to match against peaks.
+    tolerance:
+        Matching tolerance.
+    tolerance_type:
+        ``"Da"`` or ``"ppm"``.
+    peak_selection:
+        ``"closest"``, ``"largest"``, or ``"all"``.
+    unit:
+        Error unit: ``"ppm"`` or ``"da"``.
+    title:
+        Plot title.
+    **layout_kwargs:
+        Forwarded to ``fig.update_layout``.
+    """
+    import plotly.graph_objects as go
+
+    from .matching import match_fragments
+
+    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+
+    if not matches:
+        fig = go.Figure()
+        fig.update_layout(title=title or "Mass Errors (no matches)", **layout_kwargs)
+        return fig
+
+    mzs = [m.peak_mz for m in matches]
+    errors = [m.ppm_error if unit == "ppm" else m.da_error for m in matches]
+    intensities = [m.peak_intensity for m in matches]
+    ion_types = [
+        m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value") else str(m.fragment.ion_type)
+        for m in matches
+    ]
+
+    # Normalise bubble sizes
+    max_int = max(intensities) if intensities else 1.0
+    sizes = [max(5, 40 * i / max_int) for i in intensities]
+
+    ion_colors = {
+        "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
+        "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
+    }
+    colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+
+    labels = []
+    for m in matches:
+        frag = m.fragment
+        ion = frag.ion_type.value if hasattr(frag.ion_type, "value") else str(frag.ion_type)
+        pos = frag.position if hasattr(frag, "position") else ""
+        labels.append(f"{ion}{pos}")
+
+    fig = go.Figure(
+        go.Scatter(
+            x=mzs,
+            y=errors,
+            mode="markers+text",
+            marker={"size": sizes, "color": colors, "opacity": 0.7, "line": {"width": 1, "color": "#333"}},
+            text=labels,
+            textposition="top center",
+            textfont={"size": 9},
+            hovertemplate=(
+                "m/z: %{x:.4f}<br>"
+                f"error ({unit}): %{{y:.4f}}<br>"
+                "intensity: %{customdata:.2e}<extra></extra>"
+            ),
+            customdata=intensities,
+        )
+    )
+
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    fig.update_layout(
+        title=title or "Mass Errors",
+        xaxis_title="m/z",
+        yaxis_title=f"Error ({unit})",
+        showlegend=False,
+        **layout_kwargs,
+    )
+    return fig
+
+
+@requires_plotly
+def facet_plot(
+    spectrum: Spectrum,
+    fragments: FragmentInput | None = None,
+    mirror_spectrum: Spectrum | None = None,
+    title: str | None = None,
+    tolerance: float = 0.02,
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    include_sequence: bool = False,
+    unit: str = "ppm",
+    **layout_kwargs,
+) -> go.Figure:
+    """Multi-panel facet plot combining spectrum, mass errors, and mirror.
+
+    Panels (top to bottom):
+    1. Annotated spectrum (always shown)
+    2. Mass errors bubble chart (shown if ``fragments`` is provided)
+    3. Mirror spectrum (shown if ``mirror_spectrum`` is provided)
+
+    Parameters
+    ----------
+    spectrum:
+        Primary spectrum to plot.
+    fragments:
+        Fragment objects for annotation and mass error panels.
+    mirror_spectrum:
+        Optional second spectrum shown as a mirror below.
+    title:
+        Plot title.
+    tolerance:
+        Matching tolerance.
+    tolerance_type:
+        ``"Da"`` or ``"ppm"``.
+    peak_selection:
+        ``"closest"``, ``"largest"``, or ``"all"``.
+    include_sequence:
+        Embed residue sequence in annotation labels.
+    unit:
+        Error unit for mass error panel: ``"ppm"`` or ``"da"``.
+    **layout_kwargs:
+        Forwarded to ``fig.update_layout``.
+    """
+    from plotly.subplots import make_subplots
+
+    n_rows = 1
+    subtitles = ["Spectrum"]
+    if fragments is not None:
+        n_rows += 1
+        subtitles.append("Mass Errors")
+    if mirror_spectrum is not None:
+        n_rows += 1
+        subtitles.append("Mirror")
+
+    fig = make_subplots(
+        rows=n_rows,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=subtitles,
+    )
+
+    # Panel 1: annotated spectrum (or plain spectrum)
+    if fragments is not None:
+        table = build_annot_plot_table(spectrum, fragments, tolerance, tolerance_type, peak_selection, include_sequence)
+    else:
+        table = build_plot_table(spectrum)
+
+    import plotly.graph_objects as go
+
+    for _, row in table.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[float(row["mz"]), float(row["mz"])],
+                y=[0, float(row["intensity"])],
+                mode="lines",
+                line={"color": row["color"], "width": float(row["linewidth"])},
+                showlegend=False,
+                hovertext=row.get("hover", ""),
+                hoverinfo="text",
+            ),
+            row=1,
+            col=1,
+        )
+    fig.update_yaxes(title_text="Intensity", row=1, col=1)
+
+    current_row = 2
+
+    # Panel 2: mass errors
+    if fragments is not None:
+        from .matching import match_fragments
+
+        matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+        if matches:
+            mzs = [m.peak_mz for m in matches]
+            errors = [m.ppm_error if unit == "ppm" else m.da_error for m in matches]
+            intensities = [m.peak_intensity for m in matches]
+            max_int = max(intensities)
+            sizes = [max(5, 30 * i / max_int) for i in intensities]
+
+            ion_colors = {
+                "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
+                "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
+            }
+            ion_types = [
+                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value")
+                else str(m.fragment.ion_type)
+                for m in matches
+            ]
+            colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=mzs, y=errors, mode="markers",
+                    marker={"size": sizes, "color": colors, "opacity": 0.7},
+                    showlegend=False,
+                ),
+                row=current_row, col=1,
+            )
+        fig.update_yaxes(title_text=f"Error ({unit})", row=current_row, col=1)
+        current_row += 1
+
+    # Panel 3: mirror spectrum
+    if mirror_spectrum is not None:
+        mirror_table = build_plot_table(mirror_spectrum)
+        for _, row in mirror_table.iterrows():
+            fig.add_trace(
+                go.Scatter(
+                    x=[float(row["mz"]), float(row["mz"])],
+                    y=[0, -float(row["intensity"])],
+                    mode="lines",
+                    line={"color": row["color"], "width": float(row["linewidth"])},
+                    showlegend=False,
+                ),
+                row=current_row, col=1,
+            )
+        fig.update_yaxes(title_text="Intensity", row=current_row, col=1)
+
+    fig.update_xaxes(title_text="m/z", row=n_rows, col=1)
+    fig.update_layout(
+        title=title or "Facet Plot",
+        height=300 * n_rows,
+        showlegend=False,
+        **layout_kwargs,
+    )
+    return fig
+
+
 def _sticks(mz: np.ndarray, intensity: np.ndarray) -> tuple[list, list]:
     """Interleave (mz, 0, mz, intensity, None) triples for a stick plot."""
     n = len(mz)

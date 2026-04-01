@@ -1145,6 +1145,240 @@ class Spectrum:
             self, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
         )
 
+    # -------------------------------------------------------------------------
+    # Precursor Peak Removal
+    # -------------------------------------------------------------------------
+
+    def remove_precursor_peak(
+        self,
+        precursor_mz: float,
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
+        isotopes: int = 0,
+        inplace: bool = False,
+    ) -> Self:
+        """Remove precursor peak and optionally its isotope peaks.
+
+        Parameters
+        ----------
+        precursor_mz:
+            The precursor m/z to remove.
+        tolerance:
+            Tolerance for matching precursor peaks.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        isotopes:
+            Number of isotope peaks to also remove (0 = precursor only).
+            Each isotope is offset by +1.003355 Da (C13-C12 mass diff).
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with precursor (and isotope) peaks removed.
+        """
+        neutron = 1.003355  # C13 - C12 mass difference
+        targets = [precursor_mz + i * neutron for i in range(isotopes + 1)]
+
+        mask = np.ones(len(self.mz), dtype=bool)
+        for target in targets:
+            if tolerance_type == "ppm":
+                tol_da = target * tolerance / 1e6
+            else:
+                tol_da = tolerance
+            mask &= np.abs(self.mz - target) > tol_da
+
+        return self._apply_mask(mask, inplace=inplace)
+
+    # -------------------------------------------------------------------------
+    # Intensity Scaling
+    # -------------------------------------------------------------------------
+
+    def scale_intensity(
+        self,
+        method: Literal["root", "log", "rank"] = "root",
+        degree: int = 2,
+        base: float = 2.0,
+        inplace: bool = False,
+    ) -> Self:
+        """Apply intensity scaling transformations.
+
+        Unlike :meth:`normalize` (which divides by a reference value), scaling
+        applies non-linear transforms that compress the dynamic range of
+        intensities.
+
+        Parameters
+        ----------
+        method:
+            ``"root"`` — nth-root transform (default: square root).
+            ``"log"``  — log-base transform (log(intensity + 1)).
+            ``"rank"`` — replace intensities with their rank (1 = lowest).
+        degree:
+            Root degree for ``"root"`` method (default 2 = sqrt).
+        base:
+            Logarithm base for ``"log"`` method (default 2).
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with scaled intensities.
+        """
+        if method == "root":
+            scaled = np.power(self.intensity, 1.0 / degree)
+        elif method == "log":
+            scaled = np.log1p(self.intensity) / np.log(base)
+        elif method == "rank":
+            # argsort of argsort gives ranks (0-based); add 1 for 1-based
+            order = np.argsort(np.argsort(self.intensity))
+            scaled = (order + 1).astype(np.float64)
+        else:
+            raise ValueError(f"Unknown scaling method: {method!r}")
+
+        return self.update(intensity=scaled, inplace=inplace)
+
+    # -------------------------------------------------------------------------
+    # Peak Rounding
+    # -------------------------------------------------------------------------
+
+    def round_mz(
+        self,
+        decimals: int = 0,
+        combine: Literal["sum", "max"] = "sum",
+        inplace: bool = False,
+    ) -> Self:
+        """Round m/z values and combine peaks with identical m/z.
+
+        Parameters
+        ----------
+        decimals:
+            Number of decimal places to round m/z to.
+        combine:
+            How to combine intensities of merged peaks:
+            ``"sum"`` adds them, ``"max"`` keeps the maximum.
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with rounded m/z values and combined peaks.
+        """
+        rounded_mz = np.round(self.mz, decimals)
+        unique_mz, inverse = np.unique(rounded_mz, return_inverse=True)
+
+        new_intensity = np.zeros(len(unique_mz), dtype=np.float64)
+        if combine == "sum":
+            np.add.at(new_intensity, inverse, self.intensity)
+        elif combine == "max":
+            for i, idx in enumerate(inverse):
+                new_intensity[idx] = max(new_intensity[idx], self.intensity[i])
+        else:
+            raise ValueError(f"Unknown combine method: {combine!r}")
+
+        return self.update(
+            mz=unique_mz,
+            intensity=new_intensity,
+            charge=None,
+            im=None,
+            iso_score=None,
+            inplace=inplace,
+        )
+
+    # -------------------------------------------------------------------------
+    # Mass Error Plot (convenience)
+    # -------------------------------------------------------------------------
+
+    def mass_error_plot(
+        self,
+        fragments: "FragmentInput",
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        unit: Literal["ppm", "da"] = "ppm",
+        title: str | None = None,
+        **layout_kwargs,
+    ) -> "go.Figure":
+        """Plot mass errors as a bubble chart (requires plotly).
+
+        Parameters
+        ----------
+        fragments:
+            Fragment objects from peptacular to match against peaks.
+        tolerance:
+            Matching tolerance.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        peak_selection:
+            ``"closest"``, ``"largest"``, or ``"all"``.
+        unit:
+            Error unit to display: ``"ppm"`` or ``"da"``.
+        title:
+            Plot title.
+        **layout_kwargs:
+            Forwarded to ``fig.update_layout``.
+        """
+        from .visualization import mass_error_plot
+
+        return mass_error_plot(
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            unit=unit,
+            title=title,
+            **layout_kwargs,
+        )
+
+    def facet_plot(
+        self,
+        fragments: "FragmentInput | None" = None,
+        mirror_spectrum: "Spectrum | None" = None,
+        title: str | None = None,
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        include_sequence: bool = False,
+        **layout_kwargs,
+    ) -> "go.Figure":
+        """Multi-panel facet plot: spectrum + mass errors + optional mirror.
+
+        Parameters
+        ----------
+        fragments:
+            Fragment objects for annotation and mass error panels.
+        mirror_spectrum:
+            Optional second spectrum shown as a mirror below.
+        title:
+            Plot title.
+        tolerance:
+            Matching tolerance.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        peak_selection:
+            ``"closest"``, ``"largest"``, or ``"all"``.
+        include_sequence:
+            Embed the residue sequence in annotation labels.
+        **layout_kwargs:
+            Forwarded to ``fig.update_layout``.
+        """
+        from .visualization import facet_plot
+
+        return facet_plot(
+            self,
+            fragments=fragments,
+            mirror_spectrum=mirror_spectrum,
+            title=title,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            include_sequence=include_sequence,
+            **layout_kwargs,
+        )
+
     def __len__(self) -> int:
         return len(self.mz)
 
