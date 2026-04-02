@@ -1151,43 +1151,164 @@ class Spectrum:
 
     def remove_precursor_peak(
         self,
-        precursor_mz: float,
+        precursor_mz: float | None = None,
+        precursor_charge: int | None = None,
         tolerance: float = 0.02,
         tolerance_type: ToleranceLike = ToleranceType.DA,
-        isotopes: int = 0,
+        isotopes: int | Literal["auto"] = "auto",
+        isotope_threshold: float = 0.01,
+        remove_charge_states: bool = True,
         inplace: bool = False,
     ) -> Self:
-        """Remove precursor peak and optionally its isotope peaks.
+        """Remove precursor peak(s), their isotope envelope, and charge states.
+
+        When called on an :class:`MsnSpectrum` without explicit ``precursor_mz``,
+        the method auto-detects precursor information from
+        :attr:`MsnSpectrum.precursors` and removes peaks for **all** precursors.
+
+        The method adapts its behaviour to the spectrum state:
+
+        * **Centroid** — removes all charge states (1 … ``precursor_charge``)
+          and their isotope envelopes.
+        * **Deconvoluted** — isotope peaks have already been collapsed; only
+          the monoisotopic peak at the precursor charge is targeted
+          (charge-aware matching).
+        * **Decharged** — m/z values are neutral masses; the precursor neutral
+          mass is targeted directly.
+        * **Profile** — raises ``ValueError`` (centroid first).
 
         Parameters
         ----------
         precursor_mz:
-            The precursor m/z to remove.
+            Precursor m/z to remove.  If ``None``, auto-detected from
+            ``self.precursors`` (requires :class:`MsnSpectrum`).
+        precursor_charge:
+            Precursor charge state.  If ``None``, auto-detected alongside
+            ``precursor_mz``.  Required for multi-charge-state removal and
+            automatic isotope detection.
         tolerance:
             Tolerance for matching precursor peaks.
         tolerance_type:
             ``"Da"`` or ``"ppm"``.
         isotopes:
-            Number of isotope peaks to also remove (0 = precursor only).
-            Each isotope is offset by +1.003355 Da (C13-C12 mass diff).
+            Number of isotope peaks to remove.  ``"auto"`` (default) uses
+            :func:`peptacular.estimate_isotopic_distribution` to determine
+            the number of significant isotopes.  Pass an ``int`` to override
+            (0 = monoisotopic only).
+        isotope_threshold:
+            Minimum relative abundance for an isotope to be considered
+            significant when ``isotopes="auto"``.  Default 0.01 (1 %).
+        remove_charge_states:
+            If ``True`` (default) and the precursor charge is known, remove
+            peaks at **all** charge states from 1 to ``precursor_charge``.
         inplace:
             Whether to modify the spectrum in place.
 
         Returns
         -------
         Self
-            Spectrum with precursor (and isotope) peaks removed.
-        """
-        neutron = 1.003355  # C13 - C12 mass difference
-        targets = [precursor_mz + i * neutron for i in range(isotopes + 1)]
+            Spectrum with precursor (and isotope / charge-state) peaks removed.
 
+        Raises
+        ------
+        ValueError
+            If the spectrum is profile mode, or if ``precursor_mz`` is ``None``
+            and no precursor information is available.
+        """
+        import peptacular as pt
+
+        PROTON: float = pt.PROTON_MASS
+        NEUTRON: float = pt.C13_NEUTRON_MASS
+
+        # -- guard: profile spectra -------------------------------------------
+        if self.spectrum_type == SpectrumType.PROFILE:
+            raise ValueError(
+                "remove_precursor_peak() requires centroid or deconvoluted "
+                "data; call .centroid() first"
+            )
+
+        # -- resolve precursor list -------------------------------------------
+        precursors: list[tuple[float, int | None]]  # (mz, charge)
+
+        if precursor_mz is not None:
+            precursors = [(precursor_mz, precursor_charge)]
+        elif isinstance(self, MsnSpectrum) and self.precursors:
+            precursors = [(p.mz, p.charge) for p in self.precursors]
+        else:
+            raise ValueError(
+                "precursor_mz is required when the spectrum has no "
+                "precursor information"
+            )
+
+        # -- detect spectrum state --------------------------------------------
+        is_decharged = (
+            self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
+        )
+
+        # -- collect all m/z targets to remove --------------------------------
+        targets: list[float] = []
+        # For deconvoluted spectra we also need charge-specific masks
+        charge_targets: list[int | None] = []
+
+        for prec_mz, prec_z in precursors:
+            if is_decharged:
+                # m/z values are neutral masses; compute precursor neutral mass
+                z = prec_z if prec_z is not None and prec_z > 0 else 1
+                neutral = (prec_mz * z) - (z * PROTON)
+                targets.append(neutral)
+                charge_targets.append(None)
+
+            elif self.spectrum_type == SpectrumType.DECONVOLUTED:
+                # Monoisotopic peaks only; match at precursor charge
+                targets.append(prec_mz)
+                charge_targets.append(prec_z)
+
+            else:
+                # Centroid: remove all charge states and isotope envelopes
+                z = prec_z if prec_z is not None and prec_z > 0 else None
+                neutral = (prec_mz * (z or 1)) - ((z or 1) * PROTON)
+
+                # Determine isotope offsets
+                if isotopes == "auto":
+                    if z is not None:
+                        dist = pt.estimate_isotopic_distribution(
+                            neutral,
+                            min_abundance_threshold=isotope_threshold,
+                            use_neutron_count=True,
+                        )
+                        offsets = [iso.neutron_count for iso in dist]
+                    else:
+                        # No charge → can't compute neutral mass reliably
+                        offsets = [0]
+                else:
+                    offsets = list(range(isotopes + 1))
+
+                # Determine charge states to iterate
+                if remove_charge_states and z is not None:
+                    charges = list(range(1, z + 1))
+                else:
+                    charges = [z or 1]
+
+                for cz in charges:
+                    mz_at_cz = (neutral + cz * PROTON) / cz
+                    for offset in offsets:
+                        targets.append(mz_at_cz + offset * NEUTRON / cz)
+                        charge_targets.append(None)  # no charge filter for centroid
+
+        # -- build removal mask -----------------------------------------------
         mask = np.ones(len(self.mz), dtype=bool)
-        for target in targets:
+        for target, target_charge in zip(targets, charge_targets, strict=True):
             if tolerance_type == "ppm":
                 tol_da = target * tolerance / 1e6
             else:
                 tol_da = tolerance
-            mask &= np.abs(self.mz - target) > tol_da
+
+            mz_match = np.abs(self.mz - target) <= tol_da
+
+            if target_charge is not None and self.charge is not None:
+                mz_match &= self.charge == target_charge
+
+            mask &= ~mz_match
 
         return self._apply_mask(mask, inplace=inplace)
 

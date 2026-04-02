@@ -6,7 +6,7 @@ mass_error_plot, facet_plot, da_to_ppm, ppm_to_da.
 import numpy as np
 import pytest
 
-from spxtacular.core import Spectrum
+from spxtacular.core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from spxtacular.utils import da_to_ppm, ppm_to_da
 
 # ---------------------------------------------------------------------------
@@ -70,6 +70,149 @@ class TestRemovePrecursorPeak:
         spec = _spec()
         result = spec.remove_precursor_peak(precursor_mz=999.0, tolerance=0.01)
         assert len(result.mz) == 5
+
+    def test_profile_raises(self) -> None:
+        spec = Spectrum(
+            mz=np.array([100.0, 200.0], dtype=np.float64),
+            intensity=np.array([10.0, 20.0], dtype=np.float64),
+            spectrum_type=SpectrumType.PROFILE,
+        )
+        with pytest.raises(ValueError, match="centroid"):
+            spec.remove_precursor_peak(precursor_mz=100.0)
+
+    def test_no_precursor_info_raises(self) -> None:
+        spec = _spec()
+        with pytest.raises(ValueError, match="precursor_mz is required"):
+            spec.remove_precursor_peak()
+
+    def test_auto_from_msn_spectrum(self) -> None:
+        import peptacular as pt
+
+        NEUTRON = pt.C13_NEUTRON_MASS
+        prec_mz = 500.0
+        prec_z = 2
+        # Build peaks: precursor at z=2, its isotopes, plus a fragment peak
+        mz = np.array(
+            [prec_mz, prec_mz + NEUTRON / prec_z, prec_mz + 2 * NEUTRON / prec_z, 250.0],
+            dtype=np.float64,
+        )
+        spec = MsnSpectrum(
+            mz=mz,
+            intensity=np.ones(4, dtype=np.float64),
+            precursors=[Precursor(mz=prec_mz, intensity=1.0, charge=prec_z, is_monoisotopic=True)],
+        )
+        result = spec.remove_precursor_peak(tolerance=0.01)
+        # Only the fragment peak at 250.0 should survive
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(250.0)
+
+    def test_multi_charge_removal(self) -> None:
+        import peptacular as pt
+
+        PROTON = pt.PROTON_MASS
+        prec_mz = 500.0
+        prec_z = 2
+        neutral = (prec_mz * prec_z) - (prec_z * PROTON)
+        # m/z at z=1
+        mz_z1 = (neutral + PROTON) / 1
+        # m/z at z=2 = prec_mz
+        mz = np.array([mz_z1, prec_mz, 250.0], dtype=np.float64)
+        spec = Spectrum(mz=mz, intensity=np.ones(3, dtype=np.float64))
+        result = spec.remove_precursor_peak(
+            precursor_mz=prec_mz, precursor_charge=prec_z, tolerance=0.01, isotopes=0,
+        )
+        # Both z=1 and z=2 peaks removed, only 250.0 survives
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(250.0)
+
+    def test_auto_isotopes_uses_distribution(self) -> None:
+        import peptacular as pt
+
+        PROTON = pt.PROTON_MASS
+        NEUTRON = pt.C13_NEUTRON_MASS
+        prec_mz = 500.0
+        prec_z = 2
+        neutral = (prec_mz * prec_z) - (prec_z * PROTON)
+        # Get expected isotope count
+        dist = pt.estimate_isotopic_distribution(
+            neutral, min_abundance_threshold=0.01, use_neutron_count=True,
+        )
+        n_isotopes = len(dist)
+        # Build peaks: precursor + all expected isotopes at z=2
+        mz_list = [prec_mz + i * NEUTRON / prec_z for i in range(n_isotopes)]
+        mz_list.append(250.0)  # fragment
+        mz = np.array(mz_list, dtype=np.float64)
+        spec = Spectrum(mz=mz, intensity=np.ones(len(mz_list), dtype=np.float64))
+        result = spec.remove_precursor_peak(
+            precursor_mz=prec_mz,
+            precursor_charge=prec_z,
+            tolerance=0.01,
+            isotopes="auto",
+            remove_charge_states=False,  # only z=2 to simplify
+        )
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(250.0)
+
+    def test_deconvoluted_charge_aware(self) -> None:
+        # Deconvoluted spectrum: monoisotopic peaks with known charges
+        mz = np.array([300.0, 500.0, 500.0], dtype=np.float64)
+        intensity = np.array([100.0, 200.0, 150.0], dtype=np.float64)
+        charge = np.array([1, 2, 3], dtype=np.int32)
+        spec = Spectrum(mz=mz, intensity=intensity, charge=charge)
+        # Only remove the peak at mz=500 with charge=2
+        result = spec.remove_precursor_peak(
+            precursor_mz=500.0, precursor_charge=2, tolerance=0.01,
+        )
+        assert len(result.mz) == 2
+        # Peak at mz=300 z=1 and mz=500 z=3 should remain
+        np.testing.assert_allclose(result.mz, [300.0, 500.0])
+        np.testing.assert_array_equal(result.charge, [1, 3])
+
+    def test_decharged_neutral_mass(self) -> None:
+        import peptacular as pt
+
+        PROTON = pt.PROTON_MASS
+        prec_mz = 500.0
+        prec_z = 2
+        neutral = (prec_mz * prec_z) - (prec_z * PROTON)
+        # Decharged spectrum: m/z = neutral mass, charge = 0
+        mz = np.array([neutral, 250.0, 800.0], dtype=np.float64)
+        charge = np.array([0, 0, 0], dtype=np.int32)
+        spec = Spectrum(mz=mz, intensity=np.ones(3, dtype=np.float64), charge=charge)
+        result = spec.remove_precursor_peak(
+            precursor_mz=prec_mz, precursor_charge=prec_z, tolerance=0.01,
+        )
+        assert len(result.mz) == 2
+        np.testing.assert_allclose(result.mz, [250.0, 800.0])
+
+    def test_multiple_precursors(self) -> None:
+        prec1_mz, prec1_z = 400.0, 2
+        prec2_mz, prec2_z = 600.0, 3
+        # Place peaks at both precursor m/z values plus a fragment
+        mz = np.array([250.0, prec1_mz, prec2_mz], dtype=np.float64)
+        spec = MsnSpectrum(
+            mz=mz,
+            intensity=np.ones(3, dtype=np.float64),
+            precursors=[
+                Precursor(mz=prec1_mz, intensity=1.0, charge=prec1_z, is_monoisotopic=True),
+                Precursor(mz=prec2_mz, intensity=1.0, charge=prec2_z, is_monoisotopic=True),
+            ],
+        )
+        result = spec.remove_precursor_peak(tolerance=0.01, isotopes=0)
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(250.0)
+
+    def test_explicit_mz_bypasses_auto_detection(self) -> None:
+        # MsnSpectrum with precursors, but explicit mz overrides
+        spec = MsnSpectrum(
+            mz=np.array([300.0, 500.0], dtype=np.float64),
+            intensity=np.ones(2, dtype=np.float64),
+            precursors=[Precursor(mz=300.0, intensity=1.0, charge=2, is_monoisotopic=True)],
+        )
+        # Only remove 500.0 (not 300.0 from precursors)
+        result = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=0.01, isotopes=0)
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(300.0)
 
 
 # ---------------------------------------------------------------------------
