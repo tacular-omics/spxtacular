@@ -402,3 +402,131 @@ class TestFacetPlot:
         )
         fig = spec.facet_plot(mirror_spectrum=mirror)
         assert isinstance(fig, go.Figure)
+
+
+# ---------------------------------------------------------------------------
+# Ion type colors
+# ---------------------------------------------------------------------------
+
+
+class TestIonTypeColors:
+    def test_standard_ions_have_colors(self) -> None:
+        from spxtacular.plot_table import _ION_COLORS
+
+        for ion in ("b", "y", "a", "c", "z", "x"):
+            assert ion in _ION_COLORS
+
+    def test_immonium_has_color(self) -> None:
+        from spxtacular.plot_table import _ION_COLORS
+
+        assert "i" in _ION_COLORS
+        assert _ION_COLORS["i"] != "#aaaaaa"  # not the default grey
+
+    def test_precursor_has_color(self) -> None:
+        from spxtacular.plot_table import _ION_COLORS
+
+        assert "p" in _ION_COLORS
+
+    def test_internal_fragments_have_colors(self) -> None:
+        from spxtacular.plot_table import _ION_COLORS
+
+        for ion in ("by", "ax", "cz", "ay", "az", "bx", "bz", "cx", "cy"):
+            assert ion in _ION_COLORS
+
+
+# ---------------------------------------------------------------------------
+# USI loading
+# ---------------------------------------------------------------------------
+
+
+class TestFetchUsi:
+    def _mock_proxi_response(
+        self,
+        mzs: list[float] | None = None,
+        intensities: list[float] | None = None,
+        precursor_mz: float | None = 500.0,
+        precursor_charge: int | None = 2,
+    ) -> str:
+        attrs = []
+        if precursor_mz is not None:
+            attrs.append(
+                {"accession": "MS:1000744", "name": "selected ion m/z", "value": str(precursor_mz)}
+            )
+        if precursor_charge is not None:
+            attrs.append(
+                {"accession": "MS:1000041", "name": "charge state", "value": str(precursor_charge)}
+            )
+        import json
+
+        return json.dumps([{
+            "usi": "mzspec:TEST:test:scan:1",
+            "mzs": mzs or [100.0, 200.0, 300.0],
+            "intensities": intensities or [10.0, 50.0, 30.0],
+            "attributes": attrs,
+        }])
+
+    def test_returns_msn_spectrum_with_precursor(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = self._mock_proxi_response().encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("spxtacular.usi.urllib.request.urlopen", return_value=mock_response):
+            result = Spectrum.from_usi("mzspec:TEST:test:scan:1")
+
+        assert isinstance(result, MsnSpectrum)
+        assert len(result.mz) == 3
+        assert result.precursors is not None
+        assert result.precursors[0].mz == 500.0
+        assert result.precursors[0].charge == 2
+
+    def test_returns_base_spectrum_without_precursor(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = self._mock_proxi_response(
+            precursor_mz=None, precursor_charge=None,
+        ).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("spxtacular.usi.urllib.request.urlopen", return_value=mock_response):
+            result = Spectrum.from_usi("mzspec:TEST:test:scan:1")
+
+        assert type(result) is Spectrum
+        assert len(result.mz) == 3
+
+    def test_http_error_raises_valueerror(self) -> None:
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+
+        with patch(
+            "spxtacular.usi.urllib.request.urlopen",
+            side_effect=HTTPError("url", 404, "Not Found", {}, None),  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        ):
+            with pytest.raises(ValueError, match="HTTP 404"):
+                Spectrum.from_usi("mzspec:TEST:bad:scan:1")
+
+    def test_unknown_backend_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown backend"):
+            Spectrum.from_usi("mzspec:TEST:test:scan:1", backend="nonexistent")
+
+    def test_empty_response_raises(self) -> None:
+        import json
+        from unittest.mock import MagicMock, patch
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps([]).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("spxtacular.usi.urllib.request.urlopen", return_value=mock_response):
+            with pytest.raises(ValueError, match="Empty PROXI response"):
+                Spectrum.from_usi("mzspec:TEST:test:scan:1")
+
+    def test_fetch_usi_importable(self) -> None:
+        from spxtacular import fetch_usi
+
+        assert callable(fetch_usi)

@@ -1054,6 +1054,39 @@ class Spectrum:
         """
         return decompress_spectra(compressed_str)
 
+    @classmethod
+    def from_usi(
+        cls,
+        usi: str,
+        backend: str = "aggregator",
+        timeout: float = 30,
+    ) -> "Spectrum":
+        """Load a spectrum from a public repository via Universal Spectrum Identifier.
+
+        Uses the PROXI protocol to fetch spectra from aggregated proteomics
+        repositories (PRIDE, MassIVE, PeptideAtlas, jPOST).
+
+        Parameters
+        ----------
+        usi:
+            Universal Spectrum Identifier, e.g.
+            ``"mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"``.
+        backend:
+            PROXI backend: ``"aggregator"`` (default), ``"pride"``,
+            ``"massive"``, ``"peptideatlas"``, ``"jpost"``, or a full URL.
+        timeout:
+            HTTP request timeout in seconds.
+
+        Returns
+        -------
+        Spectrum or MsnSpectrum
+            :class:`MsnSpectrum` if precursor info is available, else
+            :class:`Spectrum`.
+        """
+        from .usi import fetch_usi
+
+        return fetch_usi(usi, backend=backend, timeout=timeout)
+
     # -------------------------------------------------------------------------
     # Persistence
     # -------------------------------------------------------------------------
