@@ -1,0 +1,1578 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing library.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/api/">
+      
+      
+        <link rel="prev" href="../visualization/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>API Reference - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spectrum/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deconvolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core classes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core classes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#peak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peak
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#targetion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TargetIon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spectrumtype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SpectrumType
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Readers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mzmlreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MzmlReader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DReader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acquisitiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AcquisitionType
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#noise-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Noise estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compression-utilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compression utilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visualization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plot_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mirror_plot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mirror_plot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotate_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        annotate_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-and-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching and scoring
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Matching and scoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#match_fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        match_fragments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plot-table-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plot table API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plot table API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#build_plot_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_plot_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_annot_plot_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_annot_plot_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_from_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_from_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core classes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core classes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#peak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peak
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#targetion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TargetIon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spectrumtype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SpectrumType
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Readers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mzmlreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MzmlReader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DReader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acquisitiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AcquisitionType
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#noise-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Noise estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compression-utilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compression utilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visualization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plot_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mirror_plot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mirror_plot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotate_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        annotate_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-and-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching and scoring
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Matching and scoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#match_fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        match_fragments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plot-table-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plot table API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plot table API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#build_plot_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_plot_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_annot_plot_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_annot_plot_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_from_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_from_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API Reference</h1>
+<p>All public names importable from <code>spxtacular</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">Spectrum</span><span class="p">,</span> <span class="n">MsnSpectrum</span><span class="p">,</span> <span class="n">Peak</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">DReader</span><span class="p">,</span> <span class="n">MzmlReader</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">match_fragments</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">plot_spectrum</span><span class="p">,</span> <span class="n">mirror_plot</span><span class="p">,</span> <span class="n">annotate_spectrum</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">build_plot_table</span><span class="p">,</span> <span class="n">build_annot_plot_table</span><span class="p">,</span> <span class="n">plot_from_table</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="core-classes">Core classes</h2>
+<h3 id="spectrum"><code>Spectrum</code></h3>
+<p>Central data structure for a mass spectrum. Holds parallel numpy arrays for <code>mz</code>, <code>intensity</code>, and optionally <code>charge</code> and <code>im</code> (ion mobility). All processing methods return a new <code>Spectrum</code> and are chainable.</p>
+<p><strong>Constructor:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">Spectrum</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">mz</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">intensity</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">charge</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">im</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">spectrum_type</span><span class="p">:</span> <span class="n">SpectrumType</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">denoised</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">normalized</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Methods:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.peaks</code></td>
+<td><code>list[Peak]</code></td>
+<td>All peaks as <code>Peak</code> objects</td>
+</tr>
+<tr>
+<td><code>.top_peaks(n, by, reverse)</code></td>
+<td><code>list[Peak]</code></td>
+<td>Top N peaks sorted by attribute</td>
+</tr>
+<tr>
+<td><code>.has_peak(target_mz, ...)</code></td>
+<td><code>bool</code></td>
+<td>Check for a peak near target m/z</td>
+</tr>
+<tr>
+<td><code>.get_peak(target_mz, ...)</code></td>
+<td><code>Peak \| None</code></td>
+<td>Single best-matching peak</td>
+</tr>
+<tr>
+<td><code>.get_peaks(target_mz, ...)</code></td>
+<td><code>list[Peak]</code></td>
+<td>All peaks matching criteria</td>
+</tr>
+<tr>
+<td><code>.filter(...)</code></td>
+<td><code>Spectrum</code></td>
+<td>Remove peaks outside bounds</td>
+</tr>
+<tr>
+<td><code>.normalize(method)</code></td>
+<td><code>Spectrum</code></td>
+<td>Scale intensities (max / tic / median)</td>
+</tr>
+<tr>
+<td><code>.denoise(method)</code></td>
+<td><code>Spectrum</code></td>
+<td>Remove peaks below noise threshold</td>
+</tr>
+<tr>
+<td><code>.centroid()</code></td>
+<td><code>Spectrum</code></td>
+<td>Convert profile to centroid via Gaussian fit</td>
+</tr>
+<tr>
+<td><code>.merge(...)</code></td>
+<td><code>Spectrum</code></td>
+<td>Merge nearby peaks by weighted average</td>
+</tr>
+<tr>
+<td><code>.deconvolute(...)</code></td>
+<td><code>Spectrum</code></td>
+<td>Assign isotope clusters and charge states</td>
+</tr>
+<tr>
+<td><code>.decharge()</code></td>
+<td><code>Spectrum</code></td>
+<td>Convert charged m/z to neutral masses</td>
+</tr>
+<tr>
+<td><code>.compress(...)</code></td>
+<td><code>str</code></td>
+<td>Serialise to compact ASCII string</td>
+</tr>
+<tr>
+<td><code>.from_compressed(s)</code></td>
+<td><code>Spectrum</code></td>
+<td>Deserialise from compressed string (classmethod)</td>
+</tr>
+<tr>
+<td><code>.update(**kwargs)</code></td>
+<td><code>Spectrum</code></td>
+<td>Return copy with specified fields replaced</td>
+</tr>
+<tr>
+<td><code>.plot_table(show_charges, show_scores)</code></td>
+<td><code>pd.DataFrame</code></td>
+<td>Build an editable plot table (one row per peak)</td>
+</tr>
+<tr>
+<td><code>.annot_plot_table(fragments, ...)</code></td>
+<td><code>pd.DataFrame</code></td>
+<td>Build an editable annotated plot table with fragment labels</td>
+</tr>
+</tbody>
+</table>
+<p>Full documentation: <a href="../spectrum/">Spectrum reference</a></p>
+<hr />
+<h3 id="msnspectrum"><code>MsnSpectrum</code></h3>
+<p>Extends <code>Spectrum</code> with instrument metadata fields. Returned by both readers.</p>
+<p><strong>Additional fields (all optional):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>int \| None</code></td>
+<td>Native scan or frame number</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td><code>int \| None</code></td>
+<td>MS level (1, 2, …)</td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>str \| None</code></td>
+<td>Instrument-specific scan identifier</td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td><code>float \| None</code></td>
+<td>Retention time in seconds</td>
+</tr>
+<tr>
+<td><code>injection_time</code></td>
+<td><code>float \| None</code></td>
+<td>Ion accumulation time in ms</td>
+</tr>
+<tr>
+<td><code>mz_range</code></td>
+<td><code>tuple[float, float] \| None</code></td>
+<td>Acquisition m/z window</td>
+</tr>
+<tr>
+<td><code>im_range</code></td>
+<td><code>tuple[float, float] \| None</code></td>
+<td>Ion mobility window</td>
+</tr>
+<tr>
+<td><code>im_type</code></td>
+<td><code>str \| None</code></td>
+<td>Ion mobility unit string</td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td><code>"positive" \| "negative" \| None</code></td>
+<td>Scan polarity</td>
+</tr>
+<tr>
+<td><code>resolution</code></td>
+<td><code>float \| None</code></td>
+<td>Instrument resolution</td>
+</tr>
+<tr>
+<td><code>analyzer</code></td>
+<td><code>str \| None</code></td>
+<td>Mass analyser type</td>
+</tr>
+<tr>
+<td><code>ramp_time</code></td>
+<td><code>float \| None</code></td>
+<td>timsTOF ramp time in ms</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td><code>float \| None</code></td>
+<td>Fragmentation collision energy</td>
+</tr>
+<tr>
+<td><code>activation_type</code></td>
+<td><code>str \| None</code></td>
+<td>Fragmentation type (HCD, CID, PASEF, …)</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td><code>list[TargetIon] \| None</code></td>
+<td>Precursor ions (MS2 only)</td>
+</tr>
+</tbody>
+</table>
+<p>Full documentation: <a href="../spectrum/#msnspectrum">Spectrum reference — MsnSpectrum</a></p>
+<hr />
+<h3 id="peak"><code>Peak</code></h3>
+<p>Frozen dataclass for a single spectral peak. Returned by peak access methods.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Peak</span><span class="p">(</span><span class="n">mz</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">intensity</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">charge</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">im</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h3 id="targetion"><code>TargetIon</code></h3>
+<p>Frozen dataclass, subclass of <code>Peak</code>, representing a selected precursor ion.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># All fields are keyword-only (kw_only=True)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">TargetIon</span><span class="p">(</span><span class="n">mz</span><span class="o">=...</span><span class="p">,</span> <span class="n">intensity</span><span class="o">=...</span><span class="p">,</span> <span class="n">charge</span><span class="o">=...</span><span class="p">,</span> <span class="n">im</span><span class="o">=...</span><span class="p">,</span> <span class="n">is_monoisotopic</span><span class="o">=...</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h3 id="spectrumtype"><code>SpectrumType</code></h3>
+<p>Not exported from the package root. Import via:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpectrumType</span>
+</code></pre></div>
+<p><code>StrEnum</code> with three members:</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CENTROID</code></td>
+<td><code>"centroid"</code></td>
+<td>Peak-picked data</td>
+</tr>
+<tr>
+<td><code>PROFILE</code></td>
+<td><code>"profile"</code></td>
+<td>Raw continuous data</td>
+</tr>
+<tr>
+<td><code>DECONVOLUTED</code></td>
+<td><code>"deconvoluted"</code></td>
+<td>Isotope clusters assigned</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="readers">Readers</h2>
+<h3 id="mzmlreader"><code>MzmlReader</code></h3>
+<p>Reads <code>.mzML</code> files. No context manager required.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">MzmlReader</span><span class="p">(</span><span class="n">mzml_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Yields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ms1</code></td>
+<td><code>Generator[MsnSpectrum]</code> — all MS1 spectra</td>
+</tr>
+<tr>
+<td><code>.ms2</code></td>
+<td><code>Generator[MsnSpectrum]</code> — all MS2 spectra</td>
+</tr>
+</tbody>
+</table>
+<p>Full documentation: <a href="../readers/#mzmlreader">Readers — MzmlReader</a></p>
+<hr />
+<h3 id="dreader"><code>DReader</code></h3>
+<p>Reads Bruker timsTOF <code>.d</code> directories. <strong>Must be used as a context manager.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">DReader</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Property / Attribute</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.ms1</code></td>
+<td><code>Generator[MsnSpectrum]</code></td>
+<td>All MS1 frames</td>
+</tr>
+<tr>
+<td><code>.ms2</code></td>
+<td><code>Generator[MsnSpectrum]</code></td>
+<td>All MS2 spectra</td>
+</tr>
+<tr>
+<td><code>.acquisition_type</code></td>
+<td><code>AcquisitionType</code></td>
+<td>DDA / DIA / PRM / UNKNOWN</td>
+</tr>
+</tbody>
+</table>
+<p>Full documentation: <a href="../readers/#dreader">Readers — DReader</a></p>
+<hr />
+<h3 id="acquisitiontype"><code>AcquisitionType</code></h3>
+<p>Not exported from the package root. Import via:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular.reader</span><span class="w"> </span><span class="kn">import</span> <span class="n">AcquisitionType</span>
+</code></pre></div>
+<p><code>StrEnum</code> with four members: <code>DDA</code>, <code>DIA</code>, <code>PRM</code>, <code>UNKNOWN</code>.</p>
+<hr />
+<h2 id="noise-estimation">Noise estimation</h2>
+<p><code>estimate_noise_level</code> is not exported from the package root but is the function backing <code>Spectrum.denoise()</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular.noise</span><span class="w"> </span><span class="kn">import</span> <span class="n">estimate_noise_level</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">threshold</span> <span class="o">=</span> <span class="n">estimate_noise_level</span><span class="p">(</span><span class="n">intensity_array</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;mad&quot;</span><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th><code>method</code></th>
+<th>Strategy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"mad"</code></td>
+<td><code>median + 3 × 1.4826 × MAD</code></td>
+</tr>
+<tr>
+<td><code>"percentile"</code></td>
+<td>5th percentile</td>
+</tr>
+<tr>
+<td><code>"histogram"</code></td>
+<td>Histogram mode + 3 σ</td>
+</tr>
+<tr>
+<td><code>"baseline"</code></td>
+<td>Bottom-quartile mean + 3 σ</td>
+</tr>
+<tr>
+<td><code>"iterative_median"</code></td>
+<td>Three-pass iterative median refinement</td>
+</tr>
+<tr>
+<td><code>float</code> or <code>int</code></td>
+<td>Used directly as the absolute threshold</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="compression-utilities">Compression utilities</h2>
+<p>Not exported from the package root. Available via:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular.compress</span><span class="w"> </span><span class="kn">import</span> <span class="n">compress_spectra</span><span class="p">,</span> <span class="n">decompress_spectra</span>
+</code></pre></div>
+<p>Prefer the <code>Spectrum.compress()</code> / <code>Spectrum.from_compressed()</code> API instead.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compress_spectra(spectrum, ...)</code></td>
+<td>Serialise a <code>Spectrum</code> to a string</td>
+</tr>
+<tr>
+<td><code>decompress_spectra(compressed_str)</code></td>
+<td>Deserialise back to a <code>Spectrum</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="visualization">Visualization</h2>
+<p>Requires <code>plotly</code> (<code>pip install plotly</code>). All three functions return a <code>plotly.graph_objects.Figure</code>.</p>
+<p>Full documentation: <a href="../visualization/">Visualization</a></p>
+<h3 id="plot_spectrum"><code>plot_spectrum</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_spectrum</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">plot_spectrum</span><span class="p">(</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">show_charges</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">show_scores</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="o">**</span><span class="n">layout_kwargs</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="mirror_plot"><code>mirror_plot</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">mirror_plot</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">mirror_plot</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">raw</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="n">decon</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">normalize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">show_scores</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">**</span><span class="n">layout_kwargs</span><span class="p">,</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="annotate_spectrum"><code>annotate_spectrum</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotate_spectrum</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">annotate_spectrum</span><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">mz_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.02</span><span class="p">,</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">mz_tol_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;da&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="o">**</span><span class="n">layout_kwargs</span><span class="p">,</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="matching-and-scoring">Matching and scoring</h2>
+<p>Full documentation: <a href="../scoring/">Fragment matching and scoring</a></p>
+<h3 id="match_fragments"><code>match_fragments</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">match_fragments</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">match_fragments</span><span class="p">(</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">mz_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.02</span><span class="p">,</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="n">mz_tol_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;Da&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="n">peak_selection</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;closest&quot;</span><span class="p">,</span> <span class="s2">&quot;largest&quot;</span><span class="p">,</span> <span class="s2">&quot;all&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;closest&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="score"><code>score</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">score</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">score</span><span class="p">(</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="n">mz_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="n">mz_tol_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span>
+</code></pre></div>
+<p>Returns a dict of PSM metrics: <code>hyperscore</code>, <code>probability_score</code>, <code>total_matched_intensity</code>, <code>matched_fraction</code>, <code>intensity_fraction</code>, <code>mean_ppm_error</code>, <code>spectral_angle</code>, <code>longest_run</code>.</p>
+<hr />
+<h2 id="plot-table-api">Plot table API</h2>
+<p>Provides an intermediate <code>pandas.DataFrame</code> that holds all data and visual properties for a spectrum plot. Users can freely modify the DataFrame before passing it to <code>plot_from_table</code>.</p>
+<p>Full documentation: <a href="../visualization/#plot-table-api">Visualization — Plot table API</a></p>
+<h3 id="build_plot_table"><code>build_plot_table</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_plot_table</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">build_plot_table</span><span class="p">(</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>    <span class="n">show_charges</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>    <span class="n">show_scores</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span>
+</code></pre></div>
+<h3 id="build_annot_plot_table"><code>build_annot_plot_table</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_annot_plot_table</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">build_annot_plot_table</span><span class="p">(</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>    <span class="n">spectrum</span><span class="p">:</span> <span class="n">Spectrum</span><span class="p">,</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>    <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="n">mz_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.02</span><span class="p">,</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="n">mz_tol_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;Da&quot;</span><span class="p">,</span> <span class="s2">&quot;ppm&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Da&quot;</span><span class="p">,</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>    <span class="n">peak_selection</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;closest&quot;</span><span class="p">,</span> <span class="s2">&quot;largest&quot;</span><span class="p">,</span> <span class="s2">&quot;all&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;closest&quot;</span><span class="p">,</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="n">include_sequence</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span>
+</code></pre></div>
+<h3 id="plot_from_table"><code>plot_from_table</code></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_from_table</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">plot_from_table</span><span class="p">(</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>    <span class="n">table</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>    <span class="o">**</span><span class="n">layout_kwargs</span><span class="p">,</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">go</span><span class="o">.</span><span class="n">Figure</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
