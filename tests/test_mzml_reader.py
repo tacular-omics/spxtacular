@@ -6,8 +6,9 @@ import pytest
 from spxtacular.core import MsnSpectrum, SpectrumType
 from spxtacular.reader import MzmlReader
 
-DATA_DIR = pathlib.Path(__file__).parent
+DATA_DIR = pathlib.Path(__file__).parent / "data"
 EXAMPLE_MZML = DATA_DIR / "example.mzML"
+EXAMPLE_MZML_GZ = DATA_DIR / "example.mzML.gz"
 
 
 @pytest.fixture(scope="module")
@@ -201,3 +202,42 @@ def test_open_close_getitem_matches_no_open():
     spec_noop = MzmlReader(str(EXAMPLE_MZML))[0]
     assert spec_open.native_id == spec_noop.native_id
     np.testing.assert_array_equal(spec_open.mz, spec_noop.mz)
+
+
+# ---------------------------------------------------------------------------
+# gzip mzML
+# ---------------------------------------------------------------------------
+
+
+def test_gz_ms1_readable():
+    with MzmlReader(str(EXAMPLE_MZML_GZ)) as r:
+        spec = next(iter(r.ms1))
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.ms_level == 1
+
+
+def test_gz_ms2_readable():
+    with MzmlReader(str(EXAMPLE_MZML_GZ)) as r:
+        spec = next(iter(r.ms2))
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.ms_level == 2
+
+
+def test_gz_matches_uncompressed():
+    with MzmlReader(str(EXAMPLE_MZML)) as r:
+        plain_ms1 = list(r.ms1)
+
+    with MzmlReader(str(EXAMPLE_MZML_GZ)) as r:
+        gz_ms1 = list(r.ms1)
+
+    assert len(gz_ms1) == len(plain_ms1)
+    for plain, gz in zip(plain_ms1, gz_ms1):
+        assert plain.native_id == gz.native_id
+        np.testing.assert_array_equal(plain.mz, gz.mz)
+        np.testing.assert_array_equal(plain.intensity, gz.intensity)
+
+
+def test_gz_getitem_by_index():
+    r = MzmlReader(str(EXAMPLE_MZML_GZ))
+    spec = r[0]
+    assert isinstance(spec, MsnSpectrum)

@@ -1,6 +1,6 @@
 [project]
 name = "spxtacular"
-version = "0.2.0"
+version = "0.3.0"
 description = "Mass spectrometry spectrum processing library."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,9 +11,9 @@ dependencies = [
     "pandas>=2.0",
     "peptacular>=3.1.1",
     "paftacular[sequence]>=1.0.0",
-    "tdfpy>=1.0.2",
+    "tdfpy>=1.1.0",
     "plotly>=6.6.0",
-    "mzmlpy>=0.3.1",
+    "mzmlpy>=0.4.0",
 ]
 authors = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }
