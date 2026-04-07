@@ -12,9 +12,9 @@ dependencies = [
     "peptacular>=3.1.1",
     "paftacular[sequence]>=1.0.0",
     # TODO: revert to a regular version pin once a tdfpy release containing the PRM class is cut.
-    "tdfpy @ git+https://github.com/tacular-omics/tdfpy.git@main",
+    "tdfpy>=1.1.0",
     "plotly>=6.6.0",
-    "mzmlpy>=0.3.1",
+    "mzmlpy>=0.4.0",
 ]
 authors = [
     { name = "Patrick Garrett", email = "pgarrett@scripps.edu" }
@@ -79,7 +79,7 @@ select = [
     "UP",  # pyupgrade
 ]
 
-#[tool.uv.sources]
-#peptacular = { path = "../peptacular", editable = true }
-#tdfpy = { path = "../tdfpy", editable = false }
-#mzmlpy = { path = "../mzmlpy", editable = true }
+[tool.uv.sources]
+peptacular = { path = "../peptacular", editable = true }
+tdfpy = { path = "../tdfpy", editable = false }
+mzmlpy = { path = "../mzmlpy", editable = true }

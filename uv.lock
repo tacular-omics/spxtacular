@@ -434,14 +434,35 @@ wheels = [
 
 [[package]]
 name = "mzmlpy"
-version = "0.3.1"
-source = { registry = "https://pypi.org/simple" }
+version = "0.4.0"
+source = { editable = "../mzmlpy" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/75/3b6fefb84631ad310c181459ca12376a3eff08441a9de454849b9f3d5607/mzmlpy-0.3.1.tar.gz", hash = "sha256:3c25c4d7dbaa0ab165cec8dcad0e7b6d2353e0350408e310814653aad2688046", size = 111881, upload-time = "2026-03-25T20:50:49.562Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/f1/82ba738aea515d4fa3bc1b836df4746eeb9e870b60417faf36c49ccc2869/mzmlpy-0.3.1-py3-none-any.whl", hash = "sha256:19a4c33a49f37ed6cf0e9178964ec47294a1e9e1cfa283e8cf5349b2fba57627", size = 38451, upload-time = "2026-03-25T20:50:48.676Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26.0" },
+    { name = "pynumpress", marker = "extra == 'numpress'", specifier = ">=0.0.4" },
+    { name = "rapidgzip", marker = "extra == 'rapidgzip'", specifier = ">=0.14.0" },
+    { name = "zstd", marker = "extra == 'zstd'", specifier = ">=1.5.5" },
+]
+provides-extras = ["numpress", "zstd", "rapidgzip"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mkdocs", specifier = ">=1.6.0" },
+    { name = "mkdocs-material", specifier = ">=9.5.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
+    { name = "pynumpress", specifier = ">=0.0.4" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytest-examples", specifier = ">=0.0.14" },
+    { name = "pyupgrade", specifier = ">=3.15.0" },
+    { name = "rapidgzip", specifier = ">=0.14.0" },
+    { name = "ruff", specifier = ">=0.3.0" },
+    { name = "ty", specifier = ">=0.0.11" },
+    { name = "zstd", specifier = ">=1.5.5" },
 ]
 
 [[package]]
@@ -631,14 +652,30 @@ wheels = [
 
 [[package]]
 name = "peptacular"
-version = "3.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../peptacular" }
 dependencies = [
     { name = "tacular" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/e7/341ce4f65a3ccff8be27a9c3ae612e37ccf6b5c075382a78d20c6e37dde3/peptacular-3.1.1.tar.gz", hash = "sha256:7e852d2917f94e1d1838f5bde60904a08aabafa014b342e2af0cbbe44451251b", size = 1922182, upload-time = "2026-03-31T00:23:30.787Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/52/79f7dedd917ad355144df1732f8c6a87a8b0af871d2a50bcf5103744a4d4/peptacular-3.1.1-py3-none-any.whl", hash = "sha256:b9db13425f55a086a9e37104f16e5a7d7db82fa6b2e1f8f4600e38e46d027e5c", size = 162783, upload-time = "2026-03-31T00:23:29.359Z" },
+
+[package.metadata]
+requires-dist = [{ name = "tacular", specifier = ">=1.0.0" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "lxml", specifier = ">=6.0.2" },
+    { name = "myst-parser" },
+    { name = "pandas", specifier = ">=3.0.0" },
+    { name = "pympler", specifier = ">=1.1" },
+    { name = "pyteomics", git = "https://github.com/levitsky/pyteomics.git" },
+    { name = "pytest", specifier = ">=9.0.1" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "pyupgrade", specifier = ">=3.21.0" },
+    { name = "ruff", specifier = ">=0.14.7" },
+    { name = "sphinx", specifier = ">=7.0" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=1.25" },
+    { name = "sphinx-rtd-theme", specifier = ">=2.0" },
+    { name = "ty", specifier = ">=0.0.11" },
 ]
 
 [[package]]
@@ -875,14 +912,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mzmlpy", specifier = ">=0.3.1" },
+    { name = "mzmlpy", editable = "../mzmlpy" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy" },
     { name = "paftacular", extras = ["sequence"], specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "peptacular", specifier = ">=3.1.1" },
+    { name = "peptacular", editable = "../peptacular" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "tdfpy", git = "https://github.com/tacular-omics/tdfpy.git?rev=main" },
+    { name = "tdfpy", directory = "../tdfpy" },
 ]
 provides-extras = ["numba"]
 
@@ -908,11 +945,35 @@ wheels = [
 
 [[package]]
 name = "tdfpy"
-version = "1.0.2"
-source = { git = "https://github.com/tacular-omics/tdfpy.git?rev=main#f974cbf38242c7459aedee321adbea9309aa874d" }
+source = { directory = "../tdfpy" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numba", marker = "extra == 'numba'", specifier = ">=0.59" },
+    { name = "numpy" },
+    { name = "pandas" },
+]
+provides-extras = ["numba"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "numba", specifier = ">=0.59" },
+    { name = "numpy", specifier = ">=2.3.4" },
+    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytest-examples", specifier = ">=0.0.14" },
+    { name = "pyupgrade", specifier = ">=3.21.0" },
+    { name = "ruff", specifier = ">=0.14.3" },
+    { name = "ty", specifier = ">=0.0.9" },
+]
+docs = [
+    { name = "mkdocs-material", specifier = ">=9.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.25" },
 ]
 
 [[package]]

@@ -8,9 +8,9 @@ import tdfpy
 from spxtacular.core import MsnSpectrum, SpectrumType
 from spxtacular.reader import AcquisitionType, DReader
 
-DATA_DIR = pathlib.Path(__file__).parent
-HELA_D = DATA_DIR / "200ngHeLaPASEF_1min.d"
-PRM_D = DATA_DIR / "20260328_IRT_DDA_30spd_MS_long_Method_v06_S1-E5_1_2345.d"
+DATA_DIR = pathlib.Path(__file__).parent / "data"
+HELA_D = DATA_DIR / "example_dda.d"
+PRM_D = DATA_DIR / "example_prm.d"
 
 
 @pytest.fixture(scope="module")
