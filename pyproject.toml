@@ -11,7 +11,8 @@ dependencies = [
     "pandas>=2.0",
     "peptacular>=3.1.1",
     "paftacular[sequence]>=1.0.0",
-    "tdfpy>=1.0.2",
+    # TODO: revert to a regular version pin once a tdfpy release containing the PRM class is cut.
+    "tdfpy @ git+https://github.com/tacular-omics/tdfpy.git@main",
     "plotly>=6.6.0",
     "mzmlpy>=0.3.1",
 ]
@@ -40,6 +41,11 @@ Documentation = "https://tacular-omics.github.io/spxtacular"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# Required because we depend on tdfpy via a git URL until a release containing
+# the PRM class is cut.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spxtacular"]

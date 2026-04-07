@@ -1,5 +1,13 @@
 # History
 
+## Unreleased
+
+### New features
+* **PRM support** — `DReader` now opens PRM `.d` folders via the dedicated `tdfpy.PRM` reader. MS2 iteration yields one `MsnSpectrum` per `PrmTransition` (frame × target slice), with target metadata exposed via the `precursors` field and isolation window/collision energy populated from the transition. Native ID format is `"{frame_id}@t{target_id}"`. PRM MS2 lookup by integer ID raises `NotImplementedError` (transitions are keyed by `(frame_id, target_id)`).
+
+### Dependencies
+* `tdfpy` is temporarily pinned to a git ref on `main` until a release containing the `PRM` class is cut. `tool.hatch.metadata.allow-direct-references` is enabled to permit this.
+
 ## 0.2.0 (2026-03-18)
 
 ### New features
