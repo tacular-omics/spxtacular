@@ -40,6 +40,17 @@ _ION_COLORS: dict[str, str] = {
     "c": "#9467bd",
     "z": "#ff7f0e",
     "x": "#8c564b",
+    "i": "#455A64",   # immonium
+    "p": "#512DA8",   # precursor
+    "by": "#FBC02D",  # internal fragments
+    "ax": "#FBC02D",
+    "cz": "#FBC02D",
+    "ay": "#FBC02D",
+    "az": "#FBC02D",
+    "bx": "#FBC02D",
+    "bz": "#FBC02D",
+    "cx": "#FBC02D",
+    "cy": "#FBC02D",
 }
 _DEFAULT_ION_COLOR = "#aaaaaa"
 

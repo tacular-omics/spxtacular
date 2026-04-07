@@ -1054,6 +1054,39 @@ class Spectrum:
         """
         return decompress_spectra(compressed_str)
 
+    @classmethod
+    def from_usi(
+        cls,
+        usi: str,
+        backend: str = "aggregator",
+        timeout: float = 30,
+    ) -> "Spectrum":
+        """Load a spectrum from a public repository via Universal Spectrum Identifier.
+
+        Uses the PROXI protocol to fetch spectra from aggregated proteomics
+        repositories (PRIDE, MassIVE, PeptideAtlas, jPOST).
+
+        Parameters
+        ----------
+        usi:
+            Universal Spectrum Identifier, e.g.
+            ``"mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"``.
+        backend:
+            PROXI backend: ``"aggregator"`` (default), ``"pride"``,
+            ``"massive"``, ``"peptideatlas"``, ``"jpost"``, or a full URL.
+        timeout:
+            HTTP request timeout in seconds.
+
+        Returns
+        -------
+        Spectrum or MsnSpectrum
+            :class:`MsnSpectrum` if precursor info is available, else
+            :class:`Spectrum`.
+        """
+        from .usi import fetch_usi
+
+        return fetch_usi(usi, backend=backend, timeout=timeout)
+
     # -------------------------------------------------------------------------
     # Persistence
     # -------------------------------------------------------------------------
@@ -1143,6 +1176,361 @@ class Spectrum:
 
         return _score(
             self, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        )
+
+    # -------------------------------------------------------------------------
+    # Precursor Peak Removal
+    # -------------------------------------------------------------------------
+
+    def remove_precursor_peak(
+        self,
+        precursor_mz: float | None = None,
+        precursor_charge: int | None = None,
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
+        isotopes: int | Literal["auto"] = "auto",
+        isotope_threshold: float = 0.01,
+        remove_charge_states: bool = True,
+        inplace: bool = False,
+    ) -> Self:
+        """Remove precursor peak(s), their isotope envelope, and charge states.
+
+        When called on an :class:`MsnSpectrum` without explicit ``precursor_mz``,
+        the method auto-detects precursor information from
+        :attr:`MsnSpectrum.precursors` and removes peaks for **all** precursors.
+
+        The method adapts its behaviour to the spectrum state:
+
+        * **Centroid** — removes all charge states (1 … ``precursor_charge``)
+          and their isotope envelopes.
+        * **Deconvoluted** — isotope peaks have already been collapsed; only
+          the monoisotopic peak at the precursor charge is targeted
+          (charge-aware matching).
+        * **Decharged** — m/z values are neutral masses; the precursor neutral
+          mass is targeted directly.
+        * **Profile** — raises ``ValueError`` (centroid first).
+
+        Parameters
+        ----------
+        precursor_mz:
+            Precursor m/z to remove.  If ``None``, auto-detected from
+            ``self.precursors`` (requires :class:`MsnSpectrum`).
+        precursor_charge:
+            Precursor charge state.  If ``None``, auto-detected alongside
+            ``precursor_mz``.  Required for multi-charge-state removal and
+            automatic isotope detection.
+        tolerance:
+            Tolerance for matching precursor peaks.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        isotopes:
+            Number of isotope peaks to remove.  ``"auto"`` (default) uses
+            :func:`peptacular.estimate_isotopic_distribution` to determine
+            the number of significant isotopes.  Pass an ``int`` to override
+            (0 = monoisotopic only).
+        isotope_threshold:
+            Minimum relative abundance for an isotope to be considered
+            significant when ``isotopes="auto"``.  Default 0.01 (1 %).
+        remove_charge_states:
+            If ``True`` (default) and the precursor charge is known, remove
+            peaks at **all** charge states from 1 to ``precursor_charge``.
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with precursor (and isotope / charge-state) peaks removed.
+
+        Raises
+        ------
+        ValueError
+            If the spectrum is profile mode, or if ``precursor_mz`` is ``None``
+            and no precursor information is available.
+        """
+        import peptacular as pt
+
+        PROTON: float = pt.PROTON_MASS
+        NEUTRON: float = pt.C13_NEUTRON_MASS
+
+        # -- guard: profile spectra -------------------------------------------
+        if self.spectrum_type == SpectrumType.PROFILE:
+            raise ValueError(
+                "remove_precursor_peak() requires centroid or deconvoluted "
+                "data; call .centroid() first"
+            )
+
+        # -- resolve precursor list -------------------------------------------
+        precursors: list[tuple[float, int | None]]  # (mz, charge)
+
+        if precursor_mz is not None:
+            precursors = [(precursor_mz, precursor_charge)]
+        elif isinstance(self, MsnSpectrum) and self.precursors:
+            precursors = [(p.mz, p.charge) for p in self.precursors]
+        else:
+            raise ValueError(
+                "precursor_mz is required when the spectrum has no "
+                "precursor information"
+            )
+
+        # -- detect spectrum state --------------------------------------------
+        is_decharged = (
+            self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
+        )
+
+        # -- collect all m/z targets to remove --------------------------------
+        targets: list[float] = []
+        # For deconvoluted spectra we also need charge-specific masks
+        charge_targets: list[int | None] = []
+
+        for prec_mz, prec_z in precursors:
+            if is_decharged:
+                # m/z values are neutral masses; compute precursor neutral mass
+                z = prec_z if prec_z is not None and prec_z > 0 else 1
+                neutral = (prec_mz * z) - (z * PROTON)
+                targets.append(neutral)
+                charge_targets.append(None)
+
+            elif self.spectrum_type == SpectrumType.DECONVOLUTED:
+                # Monoisotopic peaks only; match at precursor charge
+                targets.append(prec_mz)
+                charge_targets.append(prec_z)
+
+            else:
+                # Centroid: remove all charge states and isotope envelopes
+                z = prec_z if prec_z is not None and prec_z > 0 else None
+                neutral = (prec_mz * (z or 1)) - ((z or 1) * PROTON)
+
+                # Determine isotope offsets
+                if isotopes == "auto":
+                    if z is not None:
+                        dist = pt.estimate_isotopic_distribution(
+                            neutral,
+                            min_abundance_threshold=isotope_threshold,
+                            use_neutron_count=True,
+                        )
+                        offsets = [iso.neutron_count for iso in dist]
+                    else:
+                        # No charge → can't compute neutral mass reliably
+                        offsets = [0]
+                else:
+                    offsets = list(range(isotopes + 1))
+
+                # Determine charge states to iterate
+                if remove_charge_states and z is not None:
+                    charges = list(range(1, z + 1))
+                else:
+                    charges = [z or 1]
+
+                for cz in charges:
+                    mz_at_cz = (neutral + cz * PROTON) / cz
+                    for offset in offsets:
+                        targets.append(mz_at_cz + offset * NEUTRON / cz)
+                        charge_targets.append(None)  # no charge filter for centroid
+
+        # -- build removal mask -----------------------------------------------
+        mask = np.ones(len(self.mz), dtype=bool)
+        for target, target_charge in zip(targets, charge_targets, strict=True):
+            if tolerance_type == "ppm":
+                tol_da = target * tolerance / 1e6
+            else:
+                tol_da = tolerance
+
+            mz_match = np.abs(self.mz - target) <= tol_da
+
+            if target_charge is not None and self.charge is not None:
+                mz_match &= self.charge == target_charge
+
+            mask &= ~mz_match
+
+        return self._apply_mask(mask, inplace=inplace)
+
+    # -------------------------------------------------------------------------
+    # Intensity Scaling
+    # -------------------------------------------------------------------------
+
+    def scale_intensity(
+        self,
+        method: Literal["root", "log", "rank"] = "root",
+        degree: int = 2,
+        base: float = 2.0,
+        inplace: bool = False,
+    ) -> Self:
+        """Apply intensity scaling transformations.
+
+        Unlike :meth:`normalize` (which divides by a reference value), scaling
+        applies non-linear transforms that compress the dynamic range of
+        intensities.
+
+        Parameters
+        ----------
+        method:
+            ``"root"`` — nth-root transform (default: square root).
+            ``"log"``  — log-base transform (log(intensity + 1)).
+            ``"rank"`` — replace intensities with their rank (1 = lowest).
+        degree:
+            Root degree for ``"root"`` method (default 2 = sqrt).
+        base:
+            Logarithm base for ``"log"`` method (default 2).
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with scaled intensities.
+        """
+        if method == "root":
+            scaled = np.power(self.intensity, 1.0 / degree)
+        elif method == "log":
+            scaled = np.log1p(self.intensity) / np.log(base)
+        elif method == "rank":
+            # argsort of argsort gives ranks (0-based); add 1 for 1-based
+            order = np.argsort(np.argsort(self.intensity))
+            scaled = (order + 1).astype(np.float64)
+        else:
+            raise ValueError(f"Unknown scaling method: {method!r}")
+
+        return self.update(intensity=scaled, inplace=inplace)
+
+    # -------------------------------------------------------------------------
+    # Peak Rounding
+    # -------------------------------------------------------------------------
+
+    def round_mz(
+        self,
+        decimals: int = 0,
+        combine: Literal["sum", "max"] = "sum",
+        inplace: bool = False,
+    ) -> Self:
+        """Round m/z values and combine peaks with identical m/z.
+
+        Parameters
+        ----------
+        decimals:
+            Number of decimal places to round m/z to.
+        combine:
+            How to combine intensities of merged peaks:
+            ``"sum"`` adds them, ``"max"`` keeps the maximum.
+        inplace:
+            Whether to modify the spectrum in place.
+
+        Returns
+        -------
+        Self
+            Spectrum with rounded m/z values and combined peaks.
+        """
+        rounded_mz = np.round(self.mz, decimals)
+        unique_mz, inverse = np.unique(rounded_mz, return_inverse=True)
+
+        new_intensity = np.zeros(len(unique_mz), dtype=np.float64)
+        if combine == "sum":
+            np.add.at(new_intensity, inverse, self.intensity)
+        elif combine == "max":
+            for i, idx in enumerate(inverse):
+                new_intensity[idx] = max(new_intensity[idx], self.intensity[i])
+        else:
+            raise ValueError(f"Unknown combine method: {combine!r}")
+
+        return self.update(
+            mz=unique_mz,
+            intensity=new_intensity,
+            charge=None,
+            im=None,
+            iso_score=None,
+            inplace=inplace,
+        )
+
+    # -------------------------------------------------------------------------
+    # Mass Error Plot (convenience)
+    # -------------------------------------------------------------------------
+
+    def mass_error_plot(
+        self,
+        fragments: "FragmentInput",
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        unit: Literal["ppm", "da"] = "ppm",
+        title: str | None = None,
+        **layout_kwargs,
+    ) -> "go.Figure":
+        """Plot mass errors as a bubble chart (requires plotly).
+
+        Parameters
+        ----------
+        fragments:
+            Fragment objects from peptacular to match against peaks.
+        tolerance:
+            Matching tolerance.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        peak_selection:
+            ``"closest"``, ``"largest"``, or ``"all"``.
+        unit:
+            Error unit to display: ``"ppm"`` or ``"da"``.
+        title:
+            Plot title.
+        **layout_kwargs:
+            Forwarded to ``fig.update_layout``.
+        """
+        from .visualization import mass_error_plot
+
+        return mass_error_plot(
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            unit=unit,
+            title=title,
+            **layout_kwargs,
+        )
+
+    def facet_plot(
+        self,
+        fragments: "FragmentInput | None" = None,
+        mirror_spectrum: "Spectrum | None" = None,
+        title: str | None = None,
+        tolerance: float = 0.02,
+        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        include_sequence: bool = False,
+        **layout_kwargs,
+    ) -> "go.Figure":
+        """Multi-panel facet plot: spectrum + mass errors + optional mirror.
+
+        Parameters
+        ----------
+        fragments:
+            Fragment objects for annotation and mass error panels.
+        mirror_spectrum:
+            Optional second spectrum shown as a mirror below.
+        title:
+            Plot title.
+        tolerance:
+            Matching tolerance.
+        tolerance_type:
+            ``"Da"`` or ``"ppm"``.
+        peak_selection:
+            ``"closest"``, ``"largest"``, or ``"all"``.
+        include_sequence:
+            Embed the residue sequence in annotation labels.
+        **layout_kwargs:
+            Forwarded to ``fig.update_layout``.
+        """
+        from .visualization import facet_plot
+
+        return facet_plot(
+            self,
+            fragments=fragments,
+            mirror_spectrum=mirror_spectrum,
+            title=title,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            include_sequence=include_sequence,
+            **layout_kwargs,
         )
 
     def __len__(self) -> int:
