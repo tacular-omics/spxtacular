@@ -14,7 +14,7 @@ from .core import MsnSpectrum, Precursor, SpectrumType
 """
 
 Unified reader API for different mass-spectrometry file formats.
-Supports DDA and DIA data from Bruker timsTOF (.d) and mzML.
+Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML.
 """
 
 
@@ -67,8 +67,10 @@ class DReaderMs1Lookup:
 class DReaderMs2Lookup:
     """Iterable + index-accessible MS2 spectra from a DReader.
 
-    Iteration yields all MS2 spectra. Index access (``lookup[precursor_id]``)
-    fetches a single spectrum by tdfpy ``precursor_id`` (DDA only).
+    Iteration yields all MS2 spectra (DDA precursors, DIA windows, or PRM
+    transitions depending on acquisition type). Index access
+    (``lookup[precursor_id]``) fetches a single spectrum by tdfpy
+    ``precursor_id`` (DDA only).
     """
 
     def __init__(self, dreader: "DReader") -> None:
@@ -89,6 +91,9 @@ class DReaderMs2Lookup:
             case AcquisitionType.DIA:
                 for window in reader.windows:  # type: ignore
                     yield DReader._parse_dia_window(window)
+            case AcquisitionType.PRM:
+                for transition in reader.transitions:  # type: ignore
+                    yield DReader._parse_prm_transition(transition)
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
@@ -105,6 +110,12 @@ class DReaderMs2Lookup:
                 raise NotImplementedError(
                     "DIA MS2 lookup by ID is not supported: DIA windows map to multiple frames. "
                     "Iterate reader.ms2 instead."
+                )
+            case AcquisitionType.PRM:
+                raise NotImplementedError(
+                    "PRM MS2 lookup by ID is not supported: PRM transitions are keyed by "
+                    "(frame_id, target_id). Iterate reader.ms2 instead, or access via the "
+                    "underlying tdfpy reader.targets / reader.transitions lookups."
                 )
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
@@ -137,10 +148,12 @@ class DReader:
     def open(self) -> None:
         """Open the underlying tdfpy reader. Call :meth:`close` when done, or use as a context manager."""
         match self.acquisition_type:
-            case AcquisitionType.DDA | AcquisitionType.PRM | AcquisitionType.UNKNOWN:
+            case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 self._reader = self._tdf.DDA(str(self.analysis_dir))
             case AcquisitionType.DIA:
                 self._reader = self._tdf.DIA(str(self.analysis_dir))
+            case AcquisitionType.PRM:
+                self._reader = self._tdf.PRM(str(self.analysis_dir))
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self.acquisition_type}")
         self._reader.__enter__()
@@ -294,6 +307,56 @@ class DReader:
             im_type="ook0",
         )
 
+    @staticmethod
+    def _parse_prm_transition(transition: tdfpy.PrmTransition) -> MsnSpectrum:
+        peaks = transition.centroid()
+        match transition.polarity:
+            case "positive":
+                polarity = "positive"
+            case "negative":
+                polarity = "negative"
+            case _:
+                polarity = None
+        target = transition.target
+        # PRM targets are user-defined and have no measured precursor intensity;
+        # use the sum of the centroided MS2 peak intensities as a proxy.
+        precursor_intensity = float(peaks[:, 1].sum()) if len(peaks) else 0.0
+        prec = Precursor(
+            mz=target.monoisotopic_mz,
+            intensity=precursor_intensity,
+            charge=target.charge,
+            im=target.one_over_k0,
+            is_monoisotopic=True,
+        )
+        native_id = f"{transition.frame_id}@t{target.target_id}"
+        return MsnSpectrum(
+            mz=peaks[:, 0],
+            intensity=peaks[:, 1],
+            charge=None,
+            im=peaks[:, 2] if peaks.shape[1] > 2 else None,
+            spectrum_type=SpectrumType.CENTROID,
+            denoised=None,
+            normalized=None,
+            scan_number=transition.frame_id,
+            ms_level=2,
+            native_id=native_id,
+            rt=transition.rt,
+            injection_time=None,
+            total_ion_current=None,
+            mz_range=None,
+            im_range=None,
+            polarity=polarity,
+            resolution=None,
+            analyzer="TOF",
+            collision_energy=transition.collision_energy,
+            activation_type="MS:1002481",
+            ramp_time=None,
+            precursors=[prec],
+            isolation_mz_range=transition.mz_range,
+            isolation_im_range=transition.ook0_range,
+            im_type="ook0",
+        )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -305,7 +368,12 @@ class DReader:
 
     @property
     def ms2(self) -> DReaderMs2Lookup:
-        """MS2 spectra — supports iteration and precursor_id-based access (DDA only)."""
+        """MS2 spectra — supports iteration and precursor_id-based access (DDA only).
+
+        For DIA, iterate to access window-level MS2 spectra. For PRM, iterate to
+        access transition-level MS2 spectra; index access raises NotImplementedError
+        because PRM transitions are keyed by ``(frame_id, target_id)``.
+        """
         return DReaderMs2Lookup(self)
 
 

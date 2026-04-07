@@ -882,7 +882,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.0" },
     { name = "peptacular", specifier = ">=3.1.1" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "tdfpy", specifier = ">=1.0.2" },
+    { name = "tdfpy", git = "https://github.com/tacular-omics/tdfpy.git?rev=main" },
 ]
 provides-extras = ["numba"]
 
@@ -909,14 +909,10 @@ wheels = [
 [[package]]
 name = "tdfpy"
 version = "1.0.2"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/tacular-omics/tdfpy.git?rev=main#f974cbf38242c7459aedee321adbea9309aa874d" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/26/fa/4ebc9122873cd4ec75219bfe40c4dfa635f9eb60e53912a3a08cd77abc62/tdfpy-1.0.2.tar.gz", hash = "sha256:5b219d1d545cb1986f6230c370894545c9998e3385f20ceb30f2c9fe8fefee89", size = 5858525, upload-time = "2026-03-18T21:21:32.409Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/9b/87180aaef3fc621bca8b10dfae401b08ca7a10bc055aeb6ccda80807535e/tdfpy-1.0.2-py3-none-any.whl", hash = "sha256:8aa99fd56ca4757d3109f0728b93ec957e737959472acf8e1145fa8b705e36b2", size = 5792889, upload-time = "2026-03-18T21:21:30.647Z" },
 ]
 
 [[package]]

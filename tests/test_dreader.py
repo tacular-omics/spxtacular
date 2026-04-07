@@ -1,13 +1,16 @@
 import pathlib
+import re
 
 import numpy as np
 import pytest
+import tdfpy
 
 from spxtacular.core import MsnSpectrum, SpectrumType
 from spxtacular.reader import AcquisitionType, DReader
 
 DATA_DIR = pathlib.Path(__file__).parent
 HELA_D = DATA_DIR / "200ngHeLaPASEF_1min.d"
+PRM_D = DATA_DIR / "20260328_IRT_DDA_30spd_MS_long_Method_v06_S1-E5_1_2345.d"
 
 
 @pytest.fixture(scope="module")
@@ -177,3 +180,97 @@ def test_lookup_outside_context_raises():
     r = DReader(str(HELA_D))
     with pytest.raises(RuntimeError):
         r.ms1[1]
+
+
+# ---------------------------------------------------------------------------
+# PRM
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def prm_ms1_spectrum():
+    with DReader(str(PRM_D)) as r:
+        return next(iter(r.ms1))
+
+
+@pytest.fixture(scope="module")
+def prm_ms2_spectrum():
+    with DReader(str(PRM_D)) as r:
+        return next(iter(r.ms2))
+
+
+def test_dreader_detects_prm():
+    assert DReader(str(PRM_D)).acquisition_type == AcquisitionType.PRM
+
+
+def test_prm_open_uses_prm_reader():
+    with DReader(str(PRM_D)) as r:
+        assert isinstance(r._reader, tdfpy.PRM)
+
+
+def test_prm_ms1_is_msn_spectrum(prm_ms1_spectrum):
+    assert isinstance(prm_ms1_spectrum, MsnSpectrum)
+    assert prm_ms1_spectrum.ms_level == 1
+    assert prm_ms1_spectrum.spectrum_type == SpectrumType.CENTROID
+    assert prm_ms1_spectrum.analyzer == "TOF"
+    assert prm_ms1_spectrum.polarity == "positive"
+    assert prm_ms1_spectrum.scan_number is not None
+    assert prm_ms1_spectrum.precursors is None
+
+
+def test_prm_ms1_lookup_by_frame_id(prm_ms1_spectrum):
+    with DReader(str(PRM_D)) as r:
+        spec = r.ms1[prm_ms1_spectrum.scan_number]
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.scan_number == prm_ms1_spectrum.scan_number
+
+
+def test_prm_ms2_is_msn_spectrum(prm_ms2_spectrum):
+    assert isinstance(prm_ms2_spectrum, MsnSpectrum)
+    assert prm_ms2_spectrum.ms_level == 2
+    assert prm_ms2_spectrum.spectrum_type == SpectrumType.CENTROID
+    assert prm_ms2_spectrum.analyzer == "TOF"
+
+
+def test_prm_ms2_native_id_format(prm_ms2_spectrum):
+    assert prm_ms2_spectrum.native_id is not None
+    assert re.fullmatch(r"\d+@t\d+", prm_ms2_spectrum.native_id)
+
+
+def test_prm_ms2_has_precursor(prm_ms2_spectrum):
+    assert prm_ms2_spectrum.precursors is not None
+    assert len(prm_ms2_spectrum.precursors) == 1
+    prec = prm_ms2_spectrum.precursors[0]
+    assert prec.is_monoisotopic is True
+    assert prec.mz > 0
+    assert prec.charge is not None and prec.charge > 0
+    assert prec.im is not None and prec.im > 0
+
+
+def test_prm_ms2_isolation_window(prm_ms2_spectrum):
+    assert prm_ms2_spectrum.isolation_mz_range is not None
+    lo, hi = prm_ms2_spectrum.isolation_mz_range
+    assert lo < hi
+    assert prm_ms2_spectrum.isolation_im_range is not None
+
+
+def test_prm_ms2_collision_energy(prm_ms2_spectrum):
+    assert prm_ms2_spectrum.collision_energy is not None
+    assert prm_ms2_spectrum.collision_energy > 0
+    assert prm_ms2_spectrum.activation_type == "MS:1002481"
+
+
+def test_prm_ms2_iteration_yields_multiple():
+    with DReader(str(PRM_D)) as r:
+        n = 0
+        for _ in r.ms2:
+            n += 1
+            if n >= 3:
+                break
+        assert n >= 1
+
+
+def test_prm_ms2_getitem_raises():
+    with DReader(str(PRM_D)) as r:
+        with pytest.raises(NotImplementedError):
+            r.ms2[0]
