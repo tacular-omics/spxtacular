@@ -79,12 +79,17 @@ neutral = filtered.decharge()
 
 - **peptacular** — isotope distribution estimation, `pt.PROTON_MASS`
 - **paftacular** — fragment label serialisation (mzPAF format)
-- **tdfpy** — Bruker `.d` file reading
-- **mzmlpy** — mzML reading
 - **numpy** — all numeric operations
 - **pandas** — plot table DataFrames (`plot_table.py`)
 - **plotly** — interactive visualisation
+- **tdfpy** *(optional)* — Bruker `.d` file reading; required only for `DReader`. Install with `pip install spxtacular[bruker]`
+- **mzmlpy** *(optional)* — mzML reading; required only for `MzmlReader`. Install with `pip install spxtacular[mzml]`
 - **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
+
+`DReader` and `MzmlReader` remain importable from `spxtacular` regardless of
+whether their backends are installed; only instantiation raises `ImportError`
+when the corresponding optional dep is missing. This lets downstream libraries
+(e.g. `pydiode`) depend on `spxtacular` without pulling in the raw-file readers.
 
 ## What NOT to do
 

@@ -3,10 +3,11 @@ import re
 
 import numpy as np
 import pytest
-import tdfpy
 
-from spxtacular.core import MsnSpectrum, SpectrumType
-from spxtacular.reader import AcquisitionType, DReader
+tdfpy = pytest.importorskip("tdfpy")
+
+from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
+from spxtacular.reader import AcquisitionType, DReader  # noqa: E402
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
 HELA_D = DATA_DIR / "example_dda.d"
