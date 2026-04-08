@@ -3,8 +3,10 @@ import pathlib
 import numpy as np
 import pytest
 
-from spxtacular.core import MsnSpectrum, SpectrumType
-from spxtacular.reader import MzmlReader
+pytest.importorskip("mzmlpy")
+
+from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
+from spxtacular.reader import MzmlReader  # noqa: E402
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
 EXAMPLE_MZML = DATA_DIR / "example.mzML"

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from collections.abc import Iterator
 from enum import StrEnum
@@ -5,11 +7,25 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
 
-import mzmlpy as mzp
 import numpy as np
-import tdfpy
 
 from .core import MsnSpectrum, Precursor, SpectrumType
+
+try:
+    import mzmlpy as mzp
+
+    _HAS_MZMLPY = True
+except ImportError:
+    mzp = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _HAS_MZMLPY = False
+
+try:
+    import tdfpy
+
+    _HAS_TDFPY = True
+except ImportError:
+    tdfpy = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _HAS_TDFPY = False
 
 """
 
@@ -37,7 +53,7 @@ class DReaderMs1Lookup:
     fetches a single spectrum by tdfpy ``frame_id``.
     """
 
-    def __init__(self, dreader: "DReader") -> None:
+    def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
     def _require_open(self) -> None:
@@ -73,7 +89,7 @@ class DReaderMs2Lookup:
     ``precursor_id`` (DDA only).
     """
 
-    def __init__(self, dreader: "DReader") -> None:
+    def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
     def _require_open(self) -> None:
@@ -128,6 +144,11 @@ class DReaderMs2Lookup:
 
 class DReader:
     def __init__(self, analysis_dir: str | Path) -> None:
+        if not _HAS_TDFPY:
+            raise ImportError(
+                "DReader requires the 'tdfpy' package, which is not installed. "
+                "Install it with: pip install spxtacular[bruker]"
+            )
         import tdfpy as tdf
 
         self.analysis_dir = analysis_dir
@@ -163,7 +184,7 @@ class DReader:
         if self._reader:
             self._reader.__exit__(None, None, None)
 
-    def __enter__(self) -> "DReader":
+    def __enter__(self) -> DReader:
         self.open()
         return self
 
@@ -393,7 +414,7 @@ class MzmlSpectraLookup:
     falls back to opening the file per-operation otherwise (backward-compatible).
     """
 
-    def __init__(self, reader: "MzmlReader", ms_level: int | None = None) -> None:
+    def __init__(self, reader: MzmlReader, ms_level: int | None = None) -> None:
         self._reader = reader
         self._ms_level = ms_level
 
@@ -429,6 +450,11 @@ class MzmlSpectraLookup:
 
 class MzmlReader:
     def __init__(self, mzml_path: str | Path):
+        if not _HAS_MZMLPY:
+            raise ImportError(
+                "MzmlReader requires the 'mzmlpy' package, which is not installed. "
+                "Install it with: pip install spxtacular[mzml]"
+            )
         self.mzml_path = mzml_path
         self._mzml_handle = None
 
@@ -685,7 +711,7 @@ class Reader:
         """Close the underlying reader."""
         self._reader.close()
 
-    def __enter__(self) -> "Reader":
+    def __enter__(self) -> Reader:
         self._reader.open()
         return self
 

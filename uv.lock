@@ -856,52 +856,74 @@ name = "spxtacular"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
-    { name = "mzmlpy" },
     { name = "numpy" },
     { name = "paftacular" },
     { name = "pandas" },
     { name = "peptacular" },
     { name = "plotly" },
-    { name = "tdfpy" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "mzmlpy" },
+    { name = "numba" },
+    { name = "tdfpy" },
+]
+bruker = [
+    { name = "tdfpy" },
+]
+mzml = [
+    { name = "mzmlpy" },
+]
 numba = [
     { name = "numba" },
+]
+readers = [
+    { name = "mzmlpy" },
+    { name = "tdfpy" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
+    { name = "mzmlpy" },
     { name = "numba" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "tdfpy" },
     { name = "ty" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "mzmlpy", specifier = ">=0.4.0" },
+    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.4.0" },
+    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.4.0" },
+    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.4.0" },
+    { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy" },
     { name = "paftacular", extras = ["sequence"], specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "peptacular", specifier = ">=3.1.1" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "tdfpy", specifier = ">=1.1.0" },
+    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=1.1.0" },
+    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=1.1.0" },
+    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=1.1.0" },
 ]
-provides-extras = ["numba"]
+provides-extras = ["numba", "bruker", "mzml", "readers", "all"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7.5" },
+    { name = "mzmlpy", specifier = ">=0.4.0" },
     { name = "numba", specifier = ">=0.64.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.11" },
+    { name = "tdfpy", specifier = ">=1.1.0" },
     { name = "ty", specifier = ">=0.0.11" },
 ]
 
