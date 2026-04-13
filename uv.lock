@@ -904,13 +904,13 @@ requires-dist = [
     { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy" },
-    { name = "paftacular", extras = ["sequence"], specifier = ">=1.0.0" },
+    { name = "paftacular", extras = ["peptacular"], specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "peptacular", specifier = ">=3.1.1" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=1.1.0" },
-    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=1.1.0" },
-    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=1.1.0" },
+    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=1.2.0" },
+    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=1.2.0" },
+    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=1.2.0" },
 ]
 provides-extras = ["numba", "bruker", "mzml", "readers", "all"]
 
@@ -923,7 +923,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.11" },
-    { name = "tdfpy", specifier = ">=1.1.0" },
+    { name = "tdfpy", specifier = ">=1.2.0" },
     { name = "ty", specifier = ">=0.0.11" },
 ]
 
@@ -938,15 +938,15 @@ wheels = [
 
 [[package]]
 name = "tdfpy"
-version = "1.1.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/fb/465388ce26bb6484cde0cc7122c7e3d553ff0a5c0f4604097fc64892dbea/tdfpy-1.1.0.tar.gz", hash = "sha256:14cdc5087f1a0180362a15f636396a804614bf55dfc3c372d7264a9e27c3a455", size = 76837579, upload-time = "2026-04-07T23:32:41.285Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/b9/f965c78620e8801304bdff25b7fab4f641db1eb93c21fa5e36341dba477d/tdfpy-1.2.0.tar.gz", hash = "sha256:6f7777da9bde85a8e0ebbe2b2f735426e3966c0741c5a6df9575cf57fbb3b236", size = 86081545, upload-time = "2026-04-10T16:48:32.932Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/fa/9d9e16dc6856dca3b9b71b67f241ae7c63b0dcd16f628ebbc029c4c69e27/tdfpy-1.1.0-py3-none-any.whl", hash = "sha256:e4a1bc80d74ae91a2bdd1c369f2d10380a50164078b6afcbec95e10a0ee739e9", size = 5797078, upload-time = "2026-04-07T23:32:39.013Z" },
+    { url = "https://files.pythonhosted.org/packages/98/67/0a4aaf98c353b6a62eae54966435286ca24635838f3e3e9613fac918b5af/tdfpy-1.2.0-py3-none-any.whl", hash = "sha256:c5bfa59bcc39dc70e782f061b607415706243b7a22611b3270f7d93e79c4bda4", size = 5802035, upload-time = "2026-04-10T16:48:29.982Z" },
 ]
 
 [[package]]

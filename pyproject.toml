@@ -44,10 +44,10 @@ packages = ["src/spxtacular"]
 
 [project.optional-dependencies]
 numba = ["numba>=0.64.0"]
-bruker = ["tdfpy>=1.1.0"]
+bruker = ["tdfpy>=1.2.0"]
 mzml = ["mzmlpy>=0.4.0"]
-readers = ["tdfpy>=1.1.0", "mzmlpy>=0.4.0"]
-all = ["numba>=0.64.0", "tdfpy>=1.1.0", "mzmlpy>=0.4.0"]
+readers = ["tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
+all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
 
 [tool.uv]
 package = true
@@ -59,7 +59,7 @@ dev-dependencies = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.11",
-    "tdfpy>=1.1.0",
+    "tdfpy>=1.2.0",
     "ty>=0.0.11",
 ]
 
