@@ -1,3 +1,5 @@
+__version__ = "0.3.1"
+
 from .core import MsnSpectrum, Peak, Precursor, Spectrum
 from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
 from .matching import match_fragments

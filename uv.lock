@@ -853,7 +853,6 @@ wheels = [
 
 [[package]]
 name = "spxtacular"
-version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -912,7 +911,7 @@ requires-dist = [
     { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=1.2.0" },
     { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=1.2.0" },
 ]
-provides-extras = ["numba", "bruker", "mzml", "readers", "all"]
+provides-extras = ["all", "bruker", "mzml", "numba", "readers"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -1146,8 +1146,9 @@ class Spectrum:
         self,
         fragments: "FragmentInput",
         tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance_type: ToleranceLike = ToleranceType.PPM,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        is_monoisotopic: bool = True,
     ) -> "list[MatchedFragment]":
         """Match fragment ions against this spectrum's peaks.
 
@@ -1158,7 +1159,12 @@ class Spectrum:
         from .matching import match_fragments as _match
 
         return _match(
-            self, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            is_monoisotopic=is_monoisotopic,
         )
 
     def score(
