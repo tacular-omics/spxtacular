@@ -50,11 +50,16 @@ numba = ["numba>=0.64.0"]
 bruker = ["tdfpy>=1.2.0"]
 mzml = ["mzmlpy>=0.4.0"]
 readers = ["tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
-all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
+viewer = ["dash>=2.0"]
+all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0", "dash>=2.0"]
+
+[project.scripts]
+spxtacular-view = "spxtacular.viewer:main"
 
 [tool.uv]
 package = true
 dev-dependencies = [
+    "dash>=2.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "mzmlpy>=0.4.0",

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -33,11 +33,111 @@ def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def _plot_spectrum_im(
+    spectrum: Spectrum,
+    title: str | None = None,
+    show_scores: bool = True,
+    **layout_kwargs,
+) -> go.Figure:
+    """Stick plot with lines colored by ion mobility using a quantized Viridis scale."""
+    import plotly.colors as pc
+    import plotly.graph_objects as go
+
+    mz = spectrum.mz
+    intensity = spectrum.intensity
+    im = spectrum.im
+    assert im is not None
+
+    im_label = getattr(spectrum, "im_type", None) or "im"
+    if im_label == "ook0":
+        im_label = "1/K0"
+
+    im_arr = np.asarray(im, dtype=np.float64)
+    im_min, im_max = float(im_arr.min()), float(im_arr.max())
+    n_bins = 20
+    if im_min == im_max:
+        norm = np.zeros(len(im_arr))
+    else:
+        norm = (im_arr - im_min) / (im_max - im_min)
+    bin_idx = np.clip((norm * n_bins).astype(int), 0, n_bins - 1)
+    bin_colors: list[str] = pc.sample_colorscale("Viridis", n_bins)
+
+    traces: list[go.Scatter] = []
+    for b in range(n_bins):
+        mask = bin_idx == b
+        if not mask.any():
+            continue
+        mz_b = mz[mask]
+        int_b = intensity[mask]
+        im_b = im_arr[mask]
+        xs, ys = _sticks(mz_b, int_b)
+        hover_data: list[str] = []
+        for i in range(len(mz_b)):
+            tip = f"m/z: {float(mz_b[i]):.4f}<br>intensity: {float(int_b[i]):.2e}<br>{im_label}: {float(im_b[i]):.4f}"
+            hover_data += [tip, tip, ""]
+        traces.append(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                line={"color": bin_colors[b], "width": 1},
+                customdata=hover_data,
+                hovertemplate="%{customdata}<extra></extra>",
+                showlegend=False,
+            )
+        )
+
+    # Invisible dummy trace whose sole purpose is rendering the colorbar
+    traces.append(
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            marker={
+                "colorscale": "Viridis",
+                "showscale": True,
+                "cmin": im_min,
+                "cmax": im_max,
+                "colorbar": {"title": im_label, "thickness": 15},
+                "size": 0,
+            },
+            hoverinfo="none",
+            showlegend=False,
+        )
+    )
+
+    annotations = []
+    if show_scores and spectrum.iso_score is not None:
+        for i, s in enumerate(spectrum.iso_score):
+            if float(s) > 0.0:
+                annotations.append(
+                    dict(
+                        x=float(mz[i]),
+                        y=float(intensity[i]),
+                        text=f"{float(s):.2f}",
+                        showarrow=False,
+                        yshift=6,
+                        font={"size": 10, "family": "Arial", "color": "#333333"},
+                        xanchor="center",
+                    )
+                )
+
+    fig = go.Figure(traces)
+    fig.update_layout(
+        title=title or str(spectrum.spectrum_type or "Spectrum"),
+        xaxis_title="m/z",
+        yaxis_title="Intensity",
+        annotations=annotations,
+        **layout_kwargs,
+    )
+    return fig
+
+
 @requires_plotly
 def plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
-    show_charges: bool = True,
+    color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     **layout_kwargs,
 ) -> go.Figure:
@@ -49,21 +149,22 @@ def plot_spectrum(
         Spectrum to plot.
     title:
         Plot title. Defaults to the spectrum type.
-    show_charges:
-        Colour sticks by charge state when charge data is present.
+    color:
+        Coloring mode for peaks.  ``"charge"`` (default) colours sticks by
+        charge state when charge data is present.  ``"im"`` colours stick tips
+        by ion mobility on a continuous Viridis scale when IM data is present;
+        falls back to ``"charge"`` when no IM array is available.  ``None``
+        renders all sticks in a uniform steelblue.
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
-    table = build_plot_table(spectrum, show_charges=show_charges, show_scores=show_scores)
-    fig = plot_from_table(
-        table,
-        title=title or str(spectrum.spectrum_type or "Spectrum"),
-        **layout_kwargs,
-    )
-    return fig
+    if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
+        return _plot_spectrum_im(spectrum, title=title, show_scores=show_scores, **layout_kwargs)
+    table = build_plot_table(spectrum, show_charges=color == "charge", show_scores=show_scores)
+    return plot_from_table(table, title=title or str(spectrum.spectrum_type or "Spectrum"), **layout_kwargs)
 
 
 @requires_plotly

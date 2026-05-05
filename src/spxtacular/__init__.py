@@ -4,7 +4,7 @@ from .core import MsnSpectrum, Peak, Precursor, Spectrum
 from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
 from .matching import match_fragments
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
-from .reader import DReader, MzmlReader
+from .reader import CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
 from .usi import fetch_usi
 from .utils import da_to_ppm, ppm_to_da
@@ -19,8 +19,10 @@ __all__ = [
     "ToleranceLike",
     "PeakSelection",
     "PeakSelectionLike",
+    "CentroidConfig",
     "DReader",
     "MzmlReader",
+    "Reader",
     "plot_spectrum",
     "mirror_plot",
     "annotate_spectrum",

@@ -794,7 +794,7 @@ class Spectrum:
     def plot(
         self,
         title: str | None = None,
-        show_charges: bool = True,
+        color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
         **layout_kwargs,
     ) -> "go.Figure":
@@ -804,8 +804,9 @@ class Spectrum:
         ----------
         title:
             Plot title. Defaults to the spectrum type.
-        show_charges:
-            Colour sticks by charge state when charge data is present.
+        color:
+            Coloring mode — ``"charge"``, ``"im"``, or ``None``.
+            See :func:`~spxtacular.plot_spectrum` for details.
         show_scores:
             Annotate peaks with isotope profile scores when score data is present.
         **layout_kwargs:
@@ -816,7 +817,7 @@ class Spectrum:
         return plot_spectrum(
             self,
             title=title,
-            show_charges=show_charges,
+            color=color,
             show_scores=show_scores,
             **layout_kwargs,
         )

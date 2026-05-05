@@ -82,8 +82,9 @@ _LINEWIDTH_DEFAULT: float = 1.0
 _OPACITY_DEFAULT: float = 1.0
 
 
-def _hover(mz: float, intensity: float) -> str:
-    return f"m/z: {mz:.4f}<br>intensity: {intensity:.2e}"
+def _hover(mz: float, intensity: float, im: float | None = None) -> str:
+    base = f"m/z: {mz:.4f}<br>intensity: {intensity:.2e}"
+    return base if im is None else f"{base}<br>im: {im:.4f}"
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +168,14 @@ def build_plot_table(
     else:
         labels = [""] * n
 
-    hovers = [_hover(float(mz[i]), float(intensity[i])) for i in range(n)]
+    hovers = [
+        _hover(
+            float(mz[i]),
+            float(intensity[i]),
+            float(im_col[i]) if im_arr is not None and not np.isnan(float(im_col[i])) else None,
+        )
+        for i in range(n)
+    ]
 
     return pd.DataFrame(
         {
@@ -274,11 +282,12 @@ def build_annot_plot_table(
         mz_val = float(mz[i])
         int_val = float(intensity[i])
         frags = peak_frags.get(i)
+        im_val = float(im_col[i]) if im_arr is not None and not np.isnan(float(im_col[i])) else None
         if frags:
             ion_type = str(frags[0].ion_type)
             color = _ION_COLORS.get(ion_type, _DEFAULT_ION_COLOR)
             label_text = "<br>".join(_fragment_label(f, include_sequence) for f in frags)
-            hover_text = f"m/z: {mz_val:.4f}<br>intensity: {int_val:.2e}<br>{label_text}"
+            hover_text = _hover(mz_val, int_val, im_val) + f"<br>{label_text}"
             colors.append(color)
             series_list.append(ion_type)
             labels.append(label_text)
@@ -287,7 +296,7 @@ def build_annot_plot_table(
             colors.append("#cccccc")
             series_list.append("unmatched")
             labels.append("")
-            hovers.append(_hover(mz_val, int_val))
+            hovers.append(_hover(mz_val, int_val, im_val))
 
     return pd.DataFrame(
         {

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import numpy as np
 
@@ -41,6 +42,23 @@ class AcquisitionType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+@dataclass
+class CentroidConfig:
+    """Parameters forwarded to tdfpy's ``frame.centroid()`` for Bruker .d files.
+
+    Only relevant for ``DReader``; ignored by ``MzmlReader``.
+    """
+
+    mz_tolerance: float = 8.0
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm"
+    im_tolerance: float = 0.1
+    im_tolerance_type: Literal["relative", "absolute"] = "relative"
+    min_peaks: int = 3
+    noise_filter: (
+        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None
+    ) = None
+
+
 # ---------------------------------------------------------------------------
 # DReader lookup objects
 # ---------------------------------------------------------------------------
@@ -67,7 +85,7 @@ class DReaderMs1Lookup:
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         for frame in reader.ms1:
-            yield DReader._parse_ms1_frame(frame, mz_range, im_range)
+            yield self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
     def __getitem__(self, frame_id: int) -> MsnSpectrum:
         """Fetch a single MS1 spectrum by tdfpy frame_id."""
@@ -77,7 +95,7 @@ class DReaderMs1Lookup:
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         frame = reader.ms1[frame_id]  # raises KeyError if not found
-        return DReader._parse_ms1_frame(frame, mz_range, im_range)
+        return self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
 
 class DReaderMs2Lookup:
@@ -106,10 +124,10 @@ class DReaderMs2Lookup:
                     yield DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
                 for window in reader.windows:  # type: ignore
-                    yield DReader._parse_dia_window(window)
+                    yield self._dr._parse_dia_window(window)
             case AcquisitionType.PRM:
                 for transition in reader.transitions:  # type: ignore
-                    yield DReader._parse_prm_transition(transition)
+                    yield self._dr._parse_prm_transition(transition)
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
@@ -143,7 +161,7 @@ class DReaderMs2Lookup:
 
 
 class DReader:
-    def __init__(self, analysis_dir: str | Path) -> None:
+    def __init__(self, analysis_dir: str | Path, centroid_config: CentroidConfig | None = None) -> None:
         if not _HAS_TDFPY:
             raise ImportError(
                 "DReader requires the 'tdfpy' package, which is not installed. "
@@ -153,6 +171,7 @@ class DReader:
 
         self.analysis_dir = analysis_dir
         self._tdf = tdf
+        self._centroid_config: CentroidConfig = centroid_config or CentroidConfig()
         _aqui = tdf.get_acquisition_type(str(analysis_dir))
         self.acquisition_type: AcquisitionType
         match _aqui:
@@ -200,13 +219,21 @@ class DReader:
     # Conversion helpers (shared by iteration and __getitem__)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _parse_ms1_frame(
+        self,
         frame: Any,
         mz_range: tuple[float, float] | None,
         im_range: tuple[float, float] | None,
     ) -> MsnSpectrum:
-        centroided_peaks = frame.centroid()
+        cfg = self._centroid_config
+        centroided_peaks = frame.centroid(
+            mz_tolerance=cfg.mz_tolerance,
+            mz_tolerance_type=cfg.mz_tolerance_type,
+            im_tolerance=cfg.im_tolerance,
+            im_tolerance_type=cfg.im_tolerance_type,
+            min_peaks=cfg.min_peaks,
+            noise_filter=cfg.noise_filter,
+        )
         match frame.polarity:
             case "positive":
                 polarity = "positive"
@@ -289,9 +316,16 @@ class DReader:
             activation_type="MS:1002481",
         )
 
-    @staticmethod
-    def _parse_dia_window(window: tdfpy.DiaWindow) -> MsnSpectrum:
-        peaks = window.centroid()
+    def _parse_dia_window(self, window: tdfpy.DiaWindow) -> MsnSpectrum:
+        cfg = self._centroid_config
+        peaks = window.centroid(
+            mz_tolerance=cfg.mz_tolerance,
+            mz_tolerance_type=cfg.mz_tolerance_type,
+            im_tolerance=cfg.im_tolerance,
+            im_tolerance_type=cfg.im_tolerance_type,
+            min_peaks=cfg.min_peaks,
+            noise_filter=cfg.noise_filter,
+        )
         match window.polarity:
             case "positive":
                 polarity = "positive"
@@ -328,9 +362,16 @@ class DReader:
             im_type="ook0",
         )
 
-    @staticmethod
-    def _parse_prm_transition(transition: tdfpy.PrmTransition) -> MsnSpectrum:
-        peaks = transition.centroid()
+    def _parse_prm_transition(self, transition: tdfpy.PrmTransition) -> MsnSpectrum:
+        cfg = self._centroid_config
+        peaks = transition.centroid(
+            mz_tolerance=cfg.mz_tolerance,
+            mz_tolerance_type=cfg.mz_tolerance_type,
+            im_tolerance=cfg.im_tolerance,
+            im_tolerance_type=cfg.im_tolerance_type,
+            min_peaks=cfg.min_peaks,
+            noise_filter=cfg.noise_filter,
+        )
         match transition.polarity:
             case "positive":
                 polarity = "positive"
@@ -684,10 +725,10 @@ class Reader:
         If the path extension is not recognised.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, centroid_config: CentroidConfig | None = None) -> None:
         p = Path(path)
         if p.suffix == ".d":
-            self._reader: DReader | MzmlReader = DReader(p)
+            self._reader: DReader | MzmlReader = DReader(p, centroid_config=centroid_config)
         elif p.suffix.lower() == ".mzml":
             self._reader = MzmlReader(p)
         else:
