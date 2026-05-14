@@ -4,6 +4,7 @@ from .matching import match_fragments
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
 from .reader import DReader, MzmlReader
 from .scoring import score
+from .urlparams import spectrum_from_query_params, spectrum_to_query_params, spectrum_to_query_string
 from .usi import fetch_usi
 from .utils import da_to_ppm, ppm_to_da
 from .visualization import annotate_spectrum, facet_plot, mass_error_plot, mirror_plot, plot_spectrum
@@ -32,4 +33,7 @@ __all__ = [
     "da_to_ppm",
     "ppm_to_da",
     "fetch_usi",
+    "spectrum_to_query_params",
+    "spectrum_to_query_string",
+    "spectrum_from_query_params",
 ]

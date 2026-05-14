@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Self
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import pandas as pd
     import plotly.graph_objects as go
 
@@ -1054,6 +1056,26 @@ class Spectrum:
         """
         return decompress_spectra(compressed_str)
 
+    def to_url_params(self, **kwargs) -> dict[str, str]:
+        """Encode this spectrum as a dict of URL query parameters.
+
+        See :func:`spxtacular.urlparams.spectrum_to_query_params` for options
+        (``max_peaks``, ``select_by``, ``mz_precision``, ``compression``, …).
+        """
+        from .urlparams import spectrum_to_query_params
+
+        return spectrum_to_query_params(self, **kwargs)
+
+    @classmethod
+    def from_url_params(cls, params: "Mapping[str, str] | str") -> "Spectrum":
+        """Decode a spectrum from a URL query-param mapping or query string.
+
+        Returns an :class:`MsnSpectrum` if any MSn metadata is present.
+        """
+        from .urlparams import spectrum_from_query_params
+
+        return spectrum_from_query_params(params)
+
     @classmethod
     def from_usi(
         cls,
@@ -1255,10 +1277,7 @@ class Spectrum:
 
         # -- guard: profile spectra -------------------------------------------
         if self.spectrum_type == SpectrumType.PROFILE:
-            raise ValueError(
-                "remove_precursor_peak() requires centroid or deconvoluted "
-                "data; call .centroid() first"
-            )
+            raise ValueError("remove_precursor_peak() requires centroid or deconvoluted data; call .centroid() first")
 
         # -- resolve precursor list -------------------------------------------
         precursors: list[tuple[float, int | None]]  # (mz, charge)
@@ -1268,15 +1287,10 @@ class Spectrum:
         elif isinstance(self, MsnSpectrum) and self.precursors:
             precursors = [(p.mz, p.charge) for p in self.precursors]
         else:
-            raise ValueError(
-                "precursor_mz is required when the spectrum has no "
-                "precursor information"
-            )
+            raise ValueError("precursor_mz is required when the spectrum has no precursor information")
 
         # -- detect spectrum state --------------------------------------------
-        is_decharged = (
-            self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
-        )
+        is_decharged = self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
 
         # -- collect all m/z targets to remove --------------------------------
         targets: list[float] = []
