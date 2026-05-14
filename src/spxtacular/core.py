@@ -1035,6 +1035,7 @@ class Spectrum:
         mz_precision: int | None = None,
         intensity_precision: int | None = None,
         im_precision: int | None = None,
+        iso_score_precision: int | None = None,
         compression: str = "gzip",
     ) -> str:
         """
@@ -1046,6 +1047,7 @@ class Spectrum:
             mz_precision=mz_precision,
             intensity_precision=intensity_precision,
             im_precision=im_precision,
+            iso_score_precision=iso_score_precision,
             compression=compression,
         )
 

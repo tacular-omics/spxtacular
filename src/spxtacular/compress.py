@@ -254,14 +254,26 @@ def _decode_charges(s: str) -> Generator[int | None, None, None]:
             yield val
 
 
-def _encode_binary_payload(mz_str: str, intensity_str: str, charge_str: str = "", im_str: str = "") -> bytes:
-    """Encode mz, intensity, charge, and im data into binary payload."""
+def _encode_binary_payload(
+    mz_str: str,
+    intensity_str: str,
+    charge_str: str = "",
+    im_str: str = "",
+    iso_score_str: str = "",
+) -> bytes:
+    """Encode mz, intensity, charge, im, and iso_score data into binary payload.
+
+    The mz/intensity/charge/im chunks are always emitted (matching the
+    pre-iso_score wire format). The iso_score chunk is appended only when
+    non-empty, so payloads without iso_score stay byte-identical to old output
+    and old decoders can still read them.
+    """
     mz_bytes = mz_str.encode("ascii")
     intensity_bytes = intensity_str.encode("ascii")
     charge_bytes = charge_str.encode("ascii")
     im_bytes = im_str.encode("ascii")
 
-    return (
+    payload = (
         struct.pack("!I", len(mz_bytes))
         + mz_bytes
         + struct.pack("!I", len(intensity_bytes))
@@ -272,9 +284,19 @@ def _encode_binary_payload(mz_str: str, intensity_str: str, charge_str: str = ""
         + im_bytes
     )
 
+    if iso_score_str:
+        iso_score_bytes = iso_score_str.encode("ascii")
+        payload += struct.pack("!I", len(iso_score_bytes)) + iso_score_bytes
 
-def _decode_binary_payload(payload: bytes) -> tuple[str, str, str, str]:
-    """Decode binary payload into mz, intensity, charge, and im strings."""
+    return payload
+
+
+def _decode_binary_payload(payload: bytes) -> tuple[str, str, str, str, str]:
+    """Decode binary payload into (mz, intensity, charge, im, iso_score) strings.
+
+    The last three chunks are optional for backward compatibility with older
+    payloads written before the corresponding fields were supported.
+    """
     offset = 0
 
     def read_chunk(offset: int) -> tuple[str, int]:
@@ -295,16 +317,17 @@ def _decode_binary_payload(payload: bytes) -> tuple[str, str, str, str]:
 
     charge_str = ""
     if offset < len(payload):
-        try:
-            charge_str, offset = read_chunk(offset)
-        except ValueError:
-            raise
+        charge_str, offset = read_chunk(offset)
 
     im_str = ""
     if offset < len(payload):
         im_str, offset = read_chunk(offset)
 
-    return mz_str, intensity_str, charge_str, im_str
+    iso_score_str = ""
+    if offset < len(payload):
+        iso_score_str, offset = read_chunk(offset)
+
+    return mz_str, intensity_str, charge_str, im_str, iso_score_str
 
 
 def compress_spectra(
@@ -313,11 +336,17 @@ def compress_spectra(
     mz_precision: int | None = None,
     intensity_precision: int | None = None,
     im_precision: int | None = None,
+    iso_score_precision: int | None = None,
     compression: str = "gzip",
 ) -> str:
     """Compress spectrum data with configurable precision and compression."""
     # Validate precision inputs
-    for name, val in [("mz", mz_precision), ("intensity", intensity_precision), ("im", im_precision)]:
+    for name, val in [
+        ("mz", mz_precision),
+        ("intensity", intensity_precision),
+        ("im", im_precision),
+        ("iso_score", iso_score_precision),
+    ]:
         if val is not None and (not isinstance(val, int) or val < 0):
             raise ValueError(f"{name}_precision must be non-negative integer or None")
 
@@ -328,6 +357,7 @@ def compress_spectra(
     intensities = spectrum.intensity
     charges = spectrum.charge
     ims = spectrum.im
+    iso_scores = spectrum.iso_score
 
     if mz_precision is not None:
         mzs = np.round(mzs, mz_precision)
@@ -338,12 +368,16 @@ def compress_spectra(
     if im_precision is not None and ims is not None:
         ims = np.round(ims, im_precision)
 
+    if iso_score_precision is not None and iso_scores is not None:
+        iso_scores = np.round(iso_scores, iso_score_precision)
+
     mz_str = _delta_encode_single_string(mzs) if mzs.size > 0 else ""
     intensity_str = _hex_encode(intensities) if intensities.size > 0 else ""
     charge_str = _encode_charges(charges) if charges is not None else ""
     im_str = _hex_encode(ims) if ims is not None else ""
+    iso_score_str = _hex_encode(iso_scores) if iso_scores is not None else ""
 
-    binary_payload = _encode_binary_payload(mz_str, intensity_str, charge_str, im_str)
+    binary_payload = _encode_binary_payload(mz_str, intensity_str, charge_str, im_str, iso_score_str)
     compressed_bytes = compress_with_method(binary_payload, compression)
 
     compression_flag = {"gzip": "G", "zlib": "Z", "brotli": "R"}[compression]
@@ -389,7 +423,7 @@ def decompress_spectra(
         compressed_bytes = base64.b85decode(encoded_data)
 
     binary_payload = decompress_with_method(compressed_bytes, compression_scheme)
-    mz_str, intensity_str, charge_str, im_str = _decode_binary_payload(binary_payload)
+    mz_str, intensity_str, charge_str, im_str, iso_score_str = _decode_binary_payload(binary_payload)
 
     mz = np.fromiter(_delta_decode_single_string(mz_str), dtype=float) if mz_str else np.array([], dtype=float)
     intensity = np.fromiter(_hex_decode(intensity_str), dtype=float) if intensity_str else np.array([], dtype=float)
@@ -406,4 +440,8 @@ def decompress_spectra(
     if im_str:
         im = np.fromiter(_hex_decode(im_str), dtype=float)
 
-    return Spectrum(mz=mz, intensity=intensity, charge=charge, im=im)
+    iso_score = None
+    if iso_score_str:
+        iso_score = np.fromiter(_hex_decode(iso_score_str), dtype=float)
+
+    return Spectrum(mz=mz, intensity=intensity, charge=charge, im=im, iso_score=iso_score)

@@ -201,6 +201,26 @@ def test_method_form_roundtrip():
     np.testing.assert_array_equal(decoded.charge, spec.charge)
 
 
+def test_iso_score_roundtrip():
+    mz = np.array([100.0, 200.0, 300.0], dtype=np.float64)
+    intensity = np.array([10.0, 50.0, 80.0], dtype=np.float64)
+    charge = np.array([1, 2, 1], dtype=np.int32)
+    iso_score = np.array([0.95, 0.82, 0.71], dtype=np.float64)
+    spec = Spectrum(mz=mz, intensity=intensity, charge=charge, iso_score=iso_score)
+
+    decoded = spectrum_from_query_params(spectrum_to_query_params(spec))
+
+    assert decoded.iso_score is not None
+    np.testing.assert_allclose(decoded.iso_score, iso_score, rtol=1e-5)
+
+
+def test_iso_score_dropped_when_absent():
+    spec = _make_full_spectrum()
+    assert spec.iso_score is None
+    decoded = spectrum_from_query_params(spectrum_to_query_params(spec))
+    assert decoded.iso_score is None
+
+
 def test_msn_metadata_only_triggers_msn_class():
     # Even an MsnSpectrum with no MSn fields set should decode as base Spectrum.
     spec = MsnSpectrum(

@@ -58,6 +58,7 @@ def spectrum_to_query_params(
     mz_precision: int | None = None,
     intensity_precision: int | None = None,
     im_precision: int | None = None,
+    iso_score_precision: int | None = None,
     compression: Literal["gzip", "zlib", "brotli"] = "gzip",
 ) -> dict[str, str]:
     """Encode a spectrum as a dict of URL query parameters.
@@ -74,7 +75,7 @@ def spectrum_to_query_params(
     select_by:
         Which attribute to use when picking top peaks: ``"intensity"`` (default)
         or ``"mz"``.
-    mz_precision, intensity_precision, im_precision:
+    mz_precision, intensity_precision, im_precision, iso_score_precision:
         Rounding precision passed to :func:`compress_spectra`.
     compression:
         Compression method passed to :func:`compress_spectra`.
@@ -106,6 +107,7 @@ def spectrum_to_query_params(
         mz_precision=mz_precision,
         intensity_precision=intensity_precision,
         im_precision=im_precision,
+        iso_score_precision=iso_score_precision,
         compression=compression,
     )
 
