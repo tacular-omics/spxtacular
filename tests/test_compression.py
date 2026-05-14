@@ -1,10 +1,11 @@
 import struct
 
 import numpy as np
+import pytest
 from data import EXAMPLE_SPECTRUM
 
 from spxtacular.compress import _encode_binary_payload
-from spxtacular.core import Spectrum
+from spxtacular.core import Spectrum, SpectrumType
 
 
 def test_spectrum_compression_roundtrip():
@@ -77,3 +78,32 @@ def test_binary_payload_backward_compatible_without_iso_score():
     # With iso_score, a 5th chunk is appended.
     with_iso = _encode_binary_payload("abcd", "efgh", "", "", "ij")
     assert with_iso == expected_4 + struct.pack("!I", 2) + b"ij"
+
+
+def test_spectrum_compression_singleton_charge_roundtrip():
+    """Regression test for the singleton compress bug.
+
+    Deconvoluted spectra carry ``charge == -1`` for unassigned singleton peaks
+    (per CLAUDE.md). The wire format reserves hex ``'f'`` as the singleton
+    sentinel so these round-trip cleanly.
+    """
+    spec = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype=np.float64),
+        intensity=np.array([1e3, 2e3, 3e3], dtype=np.float64),
+        charge=np.array([2, -1, 3], dtype=np.int32),
+        spectrum_type=SpectrumType.DECONVOLUTED,
+    )
+    restored = Spectrum.from_compressed(spec.compress())
+    np.testing.assert_array_equal(restored.charge, spec.charge)
+
+
+def test_spectrum_compression_rejects_charge_above_14():
+    """Charge 15 collides with the singleton sentinel and is rejected."""
+    spec = Spectrum(
+        mz=np.array([100.0], dtype=np.float64),
+        intensity=np.array([1e3], dtype=np.float64),
+        charge=np.array([15], dtype=np.int32),
+        spectrum_type=SpectrumType.DECONVOLUTED,
+    )
+    with pytest.raises(ValueError, match="out of range"):
+        spec.compress()

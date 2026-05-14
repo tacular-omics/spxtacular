@@ -5,6 +5,7 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -16,7 +17,14 @@ import numpy as np
 from .core import Spectrum
 from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
 from .matching import FragmentInput
-from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
+from .plot_table import (
+    _DEFAULT_ION_COLOR,
+    _ION_COLORS,
+    _sticks,
+    build_annot_plot_table,
+    build_plot_table,
+    plot_from_table,
+)
 
 
 def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -139,6 +147,7 @@ def plot_spectrum(
     title: str | None = None,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
+    show_charges: bool | None = None,
     **layout_kwargs,
 ) -> go.Figure:
     """Plot spectrum as a stick plot using plotly.
@@ -158,9 +167,19 @@ def plot_spectrum(
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
+    show_charges:
+        Deprecated. Use ``color="charge"`` or ``color=None`` instead.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
+    if show_charges is not None:
+        warnings.warn(
+            "show_charges is deprecated; use color='charge' or color=None instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        color = "charge" if show_charges else None
+
     if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
         return _plot_spectrum_im(spectrum, title=title, show_scores=show_scores, **layout_kwargs)
     table = build_plot_table(spectrum, show_charges=color == "charge", show_scores=show_scores)
@@ -397,11 +416,7 @@ def mass_error_plot(
     max_int = max(intensities) if intensities else 1.0
     sizes = [max(5, 40 * i / max_int) for i in intensities]
 
-    ion_colors = {
-        "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
-        "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
-    }
-    colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+    colors = [_ION_COLORS.get(it, _DEFAULT_ION_COLOR) for it in ion_types]
 
     labels = []
     for m in matches:
@@ -539,16 +554,12 @@ def facet_plot(
             max_int = max(intensities)
             sizes = [max(5, 30 * i / max_int) for i in intensities]
 
-            ion_colors = {
-                "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
-                "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
-            }
             ion_types = [
                 m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value")
                 else str(m.fragment.ion_type)
                 for m in matches
             ]
-            colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+            colors = [_ION_COLORS.get(it, _DEFAULT_ION_COLOR) for it in ion_types]
 
             fig.add_trace(
                 go.Scatter(
@@ -587,15 +598,3 @@ def facet_plot(
     return fig
 
 
-def _sticks(mz: np.ndarray, intensity: np.ndarray) -> tuple[list, list]:
-    """Interleave (mz, 0, mz, intensity, None) triples for a stick plot."""
-    n = len(mz)
-    x = np.empty(n * 3, dtype=np.float64)
-    y = np.empty(n * 3, dtype=np.float64)
-    x[0::3] = mz
-    x[1::3] = mz
-    x[2::3] = np.nan
-    y[0::3] = 0.0
-    y[1::3] = intensity
-    y[2::3] = np.nan
-    return x.tolist(), y.tolist()

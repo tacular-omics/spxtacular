@@ -12,6 +12,7 @@ from spxtacular.reader import AcquisitionType, DReader  # noqa: E402
 DATA_DIR = pathlib.Path(__file__).parent / "data"
 HELA_D = DATA_DIR / "example_dda.d"
 PRM_D = DATA_DIR / "example_prm.d"
+DIA_D = DATA_DIR / "example_dia.d"
 
 
 @pytest.fixture(scope="module")
@@ -273,5 +274,105 @@ def test_prm_ms2_iteration_yields_multiple():
 
 def test_prm_ms2_getitem_raises():
     with DReader(str(PRM_D)) as r:
+        with pytest.raises(NotImplementedError):
+            r.ms2[0]
+
+
+# ---------------------------------------------------------------------------
+# DIA
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def dia_ms1_spectrum():
+    with DReader(str(DIA_D)) as r:
+        return next(iter(r.ms1))
+
+
+@pytest.fixture(scope="module")
+def dia_ms2_spectrum():
+    with DReader(str(DIA_D)) as r:
+        return next(iter(r.ms2))
+
+
+def test_dreader_detects_dia():
+    assert DReader(str(DIA_D)).acquisition_type == AcquisitionType.DIA
+
+
+def test_dia_open_uses_dia_reader():
+    with DReader(str(DIA_D)) as r:
+        assert isinstance(r._reader, tdfpy.DIA)
+
+
+def test_dia_ms1_is_msn_spectrum(dia_ms1_spectrum):
+    assert isinstance(dia_ms1_spectrum, MsnSpectrum)
+    assert dia_ms1_spectrum.ms_level == 1
+    assert dia_ms1_spectrum.spectrum_type == SpectrumType.CENTROID
+    assert dia_ms1_spectrum.analyzer == "TOF"
+    assert dia_ms1_spectrum.polarity == "positive"
+    assert dia_ms1_spectrum.scan_number is not None
+    assert dia_ms1_spectrum.precursors is None
+
+
+def test_dia_ms1_has_ion_mobility(dia_ms1_spectrum):
+    assert dia_ms1_spectrum.im is not None
+    assert len(dia_ms1_spectrum.im) == len(dia_ms1_spectrum.mz)
+
+
+def test_dia_ms1_lookup_by_frame_id(dia_ms1_spectrum):
+    with DReader(str(DIA_D)) as r:
+        spec = r.ms1[dia_ms1_spectrum.scan_number]
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.scan_number == dia_ms1_spectrum.scan_number
+
+
+def test_dia_ms2_is_msn_spectrum(dia_ms2_spectrum):
+    assert isinstance(dia_ms2_spectrum, MsnSpectrum)
+    assert dia_ms2_spectrum.ms_level == 2
+    assert dia_ms2_spectrum.spectrum_type == SpectrumType.CENTROID
+    assert dia_ms2_spectrum.analyzer == "TOF"
+
+
+def test_dia_ms2_native_id_format(dia_ms2_spectrum):
+    # DReader._parse_dia_window builds native_id as "{frame_id}@w{window_index}"
+    assert dia_ms2_spectrum.native_id is not None
+    assert re.fullmatch(r"\d+@w\d+", dia_ms2_spectrum.native_id)
+
+
+def test_dia_ms2_no_precursors(dia_ms2_spectrum):
+    # DIA windows don't have individual precursor ions (they're isolation windows)
+    assert dia_ms2_spectrum.precursors is None
+
+
+def test_dia_ms2_isolation_window(dia_ms2_spectrum):
+    assert dia_ms2_spectrum.isolation_mz_range is not None
+    lo, hi = dia_ms2_spectrum.isolation_mz_range
+    assert lo < hi
+    assert dia_ms2_spectrum.isolation_im_range is not None
+
+
+def test_dia_ms2_collision_energy(dia_ms2_spectrum):
+    assert dia_ms2_spectrum.collision_energy is not None
+    assert dia_ms2_spectrum.collision_energy > 0
+    assert dia_ms2_spectrum.activation_type == "MS:1002481"
+
+
+def test_dia_ms2_has_ion_mobility(dia_ms2_spectrum):
+    assert dia_ms2_spectrum.im is not None
+    assert len(dia_ms2_spectrum.im) == len(dia_ms2_spectrum.mz)
+
+
+def test_dia_ms2_iteration_yields_multiple():
+    with DReader(str(DIA_D)) as r:
+        n = 0
+        for _ in r.ms2:
+            n += 1
+            if n >= 3:
+                break
+        assert n >= 1
+
+
+def test_dia_ms2_getitem_raises():
+    with DReader(str(DIA_D)) as r:
         with pytest.raises(NotImplementedError):
             r.ms2[0]

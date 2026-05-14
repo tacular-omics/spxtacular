@@ -80,68 +80,39 @@ def _count_leading_zeros(s: str) -> int:
 
 
 def _delta_encode_single_string(vals: NDArray[np.float64]) -> str:
+    """Delta-encode a float64 array into a compact hex string.
+
+    Values are quantised to float32 (big-endian, viewed as uint32). The first
+    value is stored verbatim; subsequent values are stored as the unsigned
+    wrap-around delta from the previous uint32. Each chunk has its leading
+    zeros stripped and the per-chunk zero count is appended (reversed) at the
+    end as a packed 4-bit run — see ``_delta_decode_single_string`` for the
+    inverse.
+    """
     if vals.size == 0:
         return ""
 
-    # Convert to float32 (big-endian), then view as uint32 (big-endian)
     u32 = vals.astype(">f4").view(">u4")
+    initial_hex = f"{u32[0]:08x}"
+    initial_hex_loops = _count_leading_zeros(initial_hex)
 
-    # Initial value
-    initial_val = u32[0]
-    initial_hex = f"{initial_val:08x}"
-
-    # We need to count leading zeros.
-    # Instead of string manipulation which requires looping, can we compute it?
-    # leading zeros in 8-char hex string:
-    # 0 = 00000000 (8)
-    # 1 = 00000001 (7)
-    # ...
-    # This is effectively counting leading zero nibbles.
-    # We can do this with value thresholds vectorized.
-
-    # However, we need to strip zeros to create the variable length string.
-    # To do this purely in numpy (no python loop for string join) is very hard efficiently
-    # because of the variable length output.
-    # But we can at least avoid format().
-
-    # Initial value processing
-    initial_hex_loops = _count_leading_zeros(initial_hex)  # Keep using helper for scalar, it's fast enough
-
-    # Calculate deltas (unsigned subtraction with wraparound)
-    deltas = np.diff(u32)
+    deltas = np.diff(u32)  # unsigned subtraction wraps around
 
     if deltas.size == 0:
         return initial_hex.lstrip("0") + _encode_leading_zero(initial_hex_loops)
 
-    # Convert deltas to big-endian bytes
-    # deltas is uint32. tobytes() gives 4 bytes per int.
-    # binascii.hexlify gives 8 hex chars.
     delta_bytes = deltas.astype(">u4").tobytes()
     all_hex = binascii.hexlify(delta_bytes).decode("ascii")
 
-    # Now we have one giant string of 8-char hex segments.
-    # To strip leading zeros, we iterate.
-    # It might be faster to iterate on the ints than string slicing if we want to avoid formatting?
-    # No, formatting is slow. Slicing pre-computed hex string is fast.
-
-    # Split into 8-char chunks
-    # Note: Using a list comp over range is standard python speed.
     n = deltas.size
     chunks = [all_hex[i * 8 : (i + 1) * 8] for i in range(n)]
-
-    # Strip zeros.
-    # Python lstrip is C-optimized.
     stripped = [c.lstrip("0") for c in chunks]
     hex_delta_str = initial_hex.lstrip("0") + "".join(stripped)
 
-    # Count leading zeros for suffix
-    # 8 chars - len(stripped). If stripped is empty, it was "00000000", len 0 -> 8 zeros.
     leading_zeros = [8 - len(s) for s in stripped]
-
     leading_zero_str = _encode_leading_zero(initial_hex_loops) + "".join(
         _encode_leading_zero(lz) for lz in leading_zeros
     )
-
     return hex_delta_str + leading_zero_str[::-1]
 
 
@@ -153,96 +124,61 @@ def _delta_decode_single_string(s: str) -> Generator[float, None, None]:
     initial_hex = "0" * initial_lz + s[: 8 - initial_lz]
     s = s[8 - initial_lz : -1]
 
-    # Decode initial value
-    # Optimized: Use struct or numpy? Single value struct is fine.
-    # Keeping original logic for single values helper
-    initial_val_float = _hex_to_float(initial_hex)
-    yield initial_val_float
-
+    yield _hex_to_float(initial_hex)
     curr_value_int = int(initial_hex, 16)
 
     while s:
         lz = _decode_leading_zero(s[-1])
-        hex_fragment = s[: 8 - lz]
-        hex_diff = "0" * lz + hex_fragment
-
+        hex_diff = "0" * lz + s[: 8 - lz]
         diff_int = int(hex_diff, 16)
-
-        # Reverse delta: curr = prev + diff
-        # We need 32-bit wrapping addition behavior
         curr_value_int = (curr_value_int + diff_int) & 0xFFFFFFFF
-
-        # Convert int back to float
-        # struct.unpack("!f", struct.pack("!I", curr_value_int))[0]
-        # Or optimization:
-        # yield _int_to_float(curr_value_int)
-        # But we don't have _int_to_float helper exposed nicely. _hex_to_float does string->float.
-        # Let's just reconstruct hex string to use existing helper or use struct directly.
-
         yield struct.unpack("!f", struct.pack("!I", curr_value_int))[0]
-
         s = s[8 - lz : -1]
 
 
 def _hex_encode(intensities: NDArray[np.float64]) -> str:
+    """Hex-encode a float64 array as big-endian float32 bytes."""
     if intensities.size == 0:
         return ""
-    # use binascii for super fast hex encoding
-    # >f4 is big-endian float32
     return binascii.hexlify(intensities.astype(">f4").tobytes()).decode("ascii")
 
 
 def _hex_decode(s: str) -> Generator[float, None, None]:
+    """Decode a hex string of big-endian float32s back to float64s."""
     if not s:
         return
-    # Numpy optimization
     try:
-        b = bytes.fromhex(s)
-        # >f4 is big-endian float32
-        arr = np.frombuffer(b, dtype=">f4").astype(np.float64)
+        arr = np.frombuffer(bytes.fromhex(s), dtype=">f4").astype(np.float64)
         yield from arr
     except ValueError:
-        # Fallback if weird length (though fromhex handles even length)
-        # The previous implementation processed in chunks of 8 chars.
-        # bytes.fromhex requires even number of digits. 8 chars is safe.
-        # If len(s) is not multiple of 8? The format implies it should be.
-        # Let's assume valid input for performance optimization.
         for i in range(0, len(s), 8):
             yield _hex_to_float(s[i : i + 8])
 
 
 def _encode_charges(charges: NDArray[np.int32] | None) -> str:
-    """Encode charges as a compact string. None/0 is encoded as 0, values 1-15 as hex digits."""
+    """Encode charges as a single hex digit per peak.
+
+    0 → '0' (decodes to None — missing/decharged), 1-14 → '1'-'e', and the
+    singleton sentinel -1 → 'f'. Charge state 15 is unsupported to leave room
+    for the singleton encoding; it is rare in practice (MS rarely sees z>10).
+    """
     if charges is None or charges.size == 0:
         return ""
 
-    # Ensure we are working with ints.
-    # Replace None (0) with 0. If it's a numpy array of ints, 0 remains 0.
-    # Assume charges is already int32 array where 0 represents None/Uncharged.
+    if np.any((charges < -1) | (charges > 14)):
+        bad = charges[(charges < -1) | (charges > 14)]
+        raise ValueError(f"Charge {bad[0]} out of range (supported: -1, 0..14)")
 
-    # Check boundaries
-    if np.any((charges < 0) | (charges > 15)):
-        offending = charges[(charges < 0) | (charges > 15)]
-        raise ValueError(f"Charge {offending[0]} out of range [0-15]")
-
-    # Create mapping array for fast lookup?
-    # Or just format. Formating ints is fast.
-    # Actually, charges are 0-15.
-    # Hex string: 0, 1, ..., 9, a, b, c, d, e, f.
-    # This matches standard hex() output without '0x' for single digit 0-9?
-    # No, hex(10) is '0xa'.
-    # We want 'a'.
-    # We can use format.
-
-    # Vectorized approach:
-    # Use formatted string on the whole array? No.
-    # Map integers 0-15 to characters "0123456789abcdef"
+    encoded = np.where(charges == -1, 15, charges)
     chars = np.array(list("0123456789abcdef"))
-    return "".join(chars[charges])
+    return "".join(chars[encoded])
 
 
 def _decode_charges(s: str) -> Generator[int | None, None, None]:
-    """Decode charges from compact string. '0' decodes to None, other hex digits to int."""
+    """Decode charges from compact string.
+
+    '0' → None (missing/decharged), '1'..'e' → 1..14, 'f' → -1 (singleton).
+    """
     if not s:
         return
 
@@ -250,6 +186,8 @@ def _decode_charges(s: str) -> Generator[int | None, None, None]:
         val = int(char, 16)
         if val == 0:
             yield None
+        elif val == 15:
+            yield -1
         else:
             yield val
 

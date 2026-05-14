@@ -233,7 +233,7 @@ def test_gz_matches_uncompressed():
         gz_ms1 = list(r.ms1)
 
     assert len(gz_ms1) == len(plain_ms1)
-    for plain, gz in zip(plain_ms1, gz_ms1):
+    for plain, gz in zip(plain_ms1, gz_ms1, strict=True):
         assert plain.native_id == gz.native_id
         np.testing.assert_array_equal(plain.mz, gz.mz)
         np.testing.assert_array_equal(plain.intensity, gz.intensity)

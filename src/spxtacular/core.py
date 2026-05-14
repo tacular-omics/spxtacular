@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, ClassVar, Literal, Self
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -204,7 +204,7 @@ class Spectrum:
         ]
 
     # -------------------------------------------------------------------------
-    # Cached Sort Indices
+    # Sort indices
     # -------------------------------------------------------------------------
 
     @property
@@ -430,22 +430,28 @@ class Spectrum:
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         inplace: bool = False,
     ) -> Self:
-        """
-        Merge nearby peaks within a given tolerance.
+        """Merge nearby peaks within a given m/z (and optionally ion-mobility) tolerance.
 
         Peaks are processed in order of decreasing intensity. For each peak,
-        neighbors within the tolerance window are identified. The merged peak
-        will have the weighted average m/z (and ion mobility if present) and
-        sum of intensities.
+        neighbours within the tolerance window are identified. The merged peak
+        carries the intensity-weighted average m/z (and ion mobility if
+        present) and the summed intensity. Charge arrays are preserved — only
+        peaks with matching charge are merged together.
 
         Parameters
         ----------
-        tolerance : float, optional
-            m/z tolerance for merging, by default 0.01
-        tolerance_type : Literal["ppm", "da"], optional
-            Type of tolerance, by default "da"
-        inplace : bool, optional
-            Whether to modify the spectrum in place, by default False
+        mz_tolerance:
+            m/z tolerance for merging. Default ``0.01``.
+        mz_tolerance_type:
+            ``"da"`` or ``"ppm"``. Default ``"da"``.
+        im_tolerance:
+            Ion-mobility tolerance for merging (only used when ``self.im`` is
+            present). Default ``0.05``.
+        im_tolerance_type:
+            ``"relative"`` (fraction of current peak's IM) or ``"absolute"``
+            (in IM units). Default ``"relative"``.
+        inplace:
+            Whether to modify the spectrum in place. Default ``False``.
 
         Returns
         -------
@@ -798,6 +804,7 @@ class Spectrum:
         title: str | None = None,
         color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
+        show_charges: bool | None = None,
         **layout_kwargs,
     ) -> "go.Figure":
         """Plot spectrum as a stick plot (requires plotly).
@@ -811,6 +818,8 @@ class Spectrum:
             See :func:`~spxtacular.plot_spectrum` for details.
         show_scores:
             Annotate peaks with isotope profile scores when score data is present.
+        show_charges:
+            Deprecated. Use ``color="charge"`` or ``color=None`` instead.
         **layout_kwargs:
             Forwarded to ``fig.update_layout``.
         """
@@ -821,6 +830,7 @@ class Spectrum:
             title=title,
             color=color,
             show_scores=show_scores,
+            show_charges=show_charges,
             **layout_kwargs,
         )
 
@@ -1116,51 +1126,74 @@ class Spectrum:
     # Persistence
     # -------------------------------------------------------------------------
 
+    def _meta_dict(self) -> dict:
+        """Build the JSON-serialisable metadata dict for :meth:`save`.
+
+        Subclasses extend this to persist additional fields.
+        """
+        st = self.spectrum_type
+        return {
+            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
+            "denoised": self.denoised,
+            "normalized": self.normalized,
+        }
+
+    @classmethod
+    def _meta_kwargs(cls, meta: dict) -> dict:
+        """Convert a loaded ``meta`` dict to constructor kwargs.
+
+        Subclasses extend this to populate additional fields.
+        """
+        return {
+            "spectrum_type": meta.get("spectrum_type"),
+            "denoised": meta.get("denoised"),
+            "normalized": meta.get("normalized"),
+        }
+
     def save(self, path: str | Path) -> None:
         """Save spectrum to a ``.npz`` file.
 
         Arrays (``mz``, ``intensity``, and any optional ``charge``, ``im``,
-        ``score``) are stored natively; all scalar metadata is stored as a
+        ``iso_score``) are stored natively; all scalar metadata is stored as a
         JSON string under the ``meta`` key.  The file extension ``.npz`` is
         appended automatically if absent.
         """
         import json
 
-        st = self.spectrum_type
-        meta = {
-            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
-            "denoised": self.denoised,
-            "normalized": self.normalized,
-        }
         arrays: dict = {
             "mz": self.mz,
             "intensity": self.intensity,
-            "meta": np.array(json.dumps(meta), dtype=object),
+            "meta": np.array(json.dumps(self._meta_dict()), dtype=object),
         }
         if self.charge is not None:
             arrays["charge"] = self.charge
         if self.im is not None:
             arrays["im"] = self.im
         if self.iso_score is not None:
-            arrays["score"] = self.iso_score
+            arrays["iso_score"] = self.iso_score
         np.savez(path, **arrays)
 
     @classmethod
-    def load(cls, path: str | Path) -> "Spectrum":
-        """Load a :class:`Spectrum` from a ``.npz`` file written by :meth:`save`."""
+    def load(cls, path: str | Path) -> Self:
+        """Load a spectrum from a ``.npz`` file written by :meth:`save`."""
         import json
 
         data = np.load(path, allow_pickle=True)
         meta = json.loads(str(data["meta"]))
+        # Back-compat: pre-unified Spectrum.save() used the key "score".
+        if "iso_score" in data:
+            iso_score = data["iso_score"]
+        elif "score" in data:
+            iso_score = data["score"]
+        else:
+            iso_score = None
         return cls(
             mz=data["mz"],
             intensity=data["intensity"],
             charge=data["charge"] if "charge" in data else None,
             im=data["im"] if "im" in data else None,
-            iso_score=data["score"] if "score" in data else None,
-            spectrum_type=meta["spectrum_type"],
-            denoised=meta["denoised"],
-            normalized=meta["normalized"],
+            iso_score=iso_score,
+            **cls._meta_kwargs(meta),
         )
 
     # -------------------------------------------------------------------------
@@ -1614,41 +1647,46 @@ class MsnSpectrum(Spectrum):
     isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
 
     def __str__(self) -> str:
+        rt_str = f"{self.rt:.2f}s" if self.rt is not None else "None"
         return (
             f"MsnSpectrum(scan={self.scan_number}, ms_level={self.ms_level}, "
-            f"rt={self.rt:.2f}s, polarity={self.polarity}, n_peaks={len(self.mz)})"
+            f"rt={rt_str}, polarity={self.polarity}, n_peaks={len(self.mz)})"
         )
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    def save(self, path: str | Path) -> None:
-        """Save spectrum to a ``.npz`` file (includes all MSn metadata)."""
-        import json
+    _MSN_SCALAR_META_FIELDS: ClassVar[tuple[str, ...]] = (
+        "scan_number",
+        "ms_level",
+        "native_id",
+        "rt",
+        "injection_time",
+        "total_ion_current",
+        "im_type",
+        "polarity",
+        "resolution",
+        "analyzer",
+        "ramp_time",
+        "collision_energy",
+        "activation_type",
+    )
+    _MSN_TUPLE_META_FIELDS: ClassVar[tuple[str, ...]] = (
+        "mz_range",
+        "im_range",
+        "isolation_mz_range",
+        "isolation_im_range",
+    )
 
-        st = self.spectrum_type
-        meta = {
-            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
-            "denoised": self.denoised,
-            "normalized": self.normalized,
-            "scan_number": self.scan_number,
-            "ms_level": self.ms_level,
-            "native_id": self.native_id,
-            "rt": self.rt,
-            "injection_time": self.injection_time,
-            "total_ion_current": self.total_ion_current,
-            "mz_range": list(self.mz_range) if self.mz_range is not None else None,
-            "im_range": list(self.im_range) if self.im_range is not None else None,
-            "im_type": self.im_type,
-            "polarity": self.polarity,
-            "resolution": self.resolution,
-            "analyzer": self.analyzer,
-            "ramp_time": self.ramp_time,
-            "collision_energy": self.collision_energy,
-            "activation_type": self.activation_type,
-            "isolation_mz_range": list(self.isolation_mz_range) if self.isolation_mz_range is not None else None,
-            "isolation_im_range": list(self.isolation_im_range) if self.isolation_im_range is not None else None,
-            "precursors": [
+    def _meta_dict(self) -> dict:
+        meta = super()._meta_dict()
+        for field in self._MSN_SCALAR_META_FIELDS:
+            meta[field] = getattr(self, field)
+        for field in self._MSN_TUPLE_META_FIELDS:
+            val = getattr(self, field)
+            meta[field] = list(val) if val is not None else None
+        meta["precursors"] = (
+            [
                 {
                     "mz": p.mz,
                     "intensity": p.intensity,
@@ -1660,62 +1698,21 @@ class MsnSpectrum(Spectrum):
                 for p in self.precursors
             ]
             if self.precursors is not None
-            else None,
-        }
-        arrays: dict = {
-            "mz": self.mz,
-            "intensity": self.intensity,
-            "meta": np.array(json.dumps(meta), dtype=object),
-        }
-        if self.charge is not None:
-            arrays["charge"] = self.charge
-        if self.im is not None:
-            arrays["im"] = self.im
-        if self.iso_score is not None:
-            arrays["iso_score"] = self.iso_score
-        np.savez(path, **arrays)
+            else None
+        )
+        return meta
 
     @classmethod
-    def load(cls, path: str | Path) -> "MsnSpectrum":
-        """Load an :class:`MsnSpectrum` from a ``.npz`` file written by :meth:`save`."""
-        import json
-
-        data = np.load(path, allow_pickle=True)
-        meta = json.loads(str(data["meta"]))
-        precursors = None
-        if meta.get("precursors") is not None:
-            precursors = [Precursor(**p) for p in meta["precursors"]]
-        mz_range = tuple(meta["mz_range"]) if meta.get("mz_range") is not None else None
-        im_range = tuple(meta["im_range"]) if meta.get("im_range") is not None else None
-        return cls(
-            mz=data["mz"],
-            intensity=data["intensity"],
-            charge=data["charge"] if "charge" in data else None,
-            im=data["im"] if "im" in data else None,
-            iso_score=data["iso_score"] if "iso_score" in data else None,
-            spectrum_type=meta.get("spectrum_type"),
-            denoised=meta.get("denoised"),
-            normalized=meta.get("normalized"),
-            scan_number=meta.get("scan_number"),
-            ms_level=meta.get("ms_level"),
-            native_id=meta.get("native_id"),
-            rt=meta.get("rt"),
-            injection_time=meta.get("injection_time"),
-            total_ion_current=meta.get("total_ion_current"),
-            mz_range=mz_range,
-            im_range=im_range,
-            im_type=meta.get("im_type"),
-            polarity=meta.get("polarity"),
-            resolution=meta.get("resolution"),
-            analyzer=meta.get("analyzer"),
-            ramp_time=meta.get("ramp_time"),
-            collision_energy=meta.get("collision_energy"),
-            activation_type=meta.get("activation_type"),
-            precursors=precursors,
-            isolation_mz_range=tuple(meta["isolation_mz_range"])
-            if meta.get("isolation_mz_range") is not None
-            else None,
-            isolation_im_range=tuple(meta["isolation_im_range"])
-            if meta.get("isolation_im_range") is not None
-            else None,
+    def _meta_kwargs(cls, meta: dict) -> dict:
+        kwargs = super()._meta_kwargs(meta)
+        for field in cls._MSN_SCALAR_META_FIELDS:
+            kwargs[field] = meta.get(field)
+        for field in cls._MSN_TUPLE_META_FIELDS:
+            val = meta.get(field)
+            kwargs[field] = tuple(val) if val is not None else None
+        kwargs["precursors"] = (
+            [Precursor(**p) for p in meta["precursors"]]
+            if meta.get("precursors") is not None
+            else None
         )
+        return kwargs

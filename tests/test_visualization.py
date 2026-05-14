@@ -7,8 +7,8 @@ Fragment objects (from peptacular) are used instead of mocks for that function.
 
 import numpy as np
 import plotly.graph_objects as go
+from peptacular import IonType
 from peptacular.annotation.frag import Fragment
-from tacular.ion_types.data import IonType
 
 from spxtacular.core import Spectrum, SpectrumType
 from spxtacular.visualization import annotate_spectrum, mirror_plot, plot_spectrum
@@ -56,7 +56,7 @@ def test_plot_spectrum_returns_figure() -> None:
 
 
 def test_plot_spectrum_with_charges_returns_figure() -> None:
-    fig = plot_spectrum(_decon(), show_charges=True)
+    fig = plot_spectrum(_decon(), color="charge")
     assert isinstance(fig, go.Figure)
 
 
@@ -66,8 +66,18 @@ def test_plot_spectrum_with_scores_returns_figure() -> None:
 
 
 def test_plot_spectrum_show_charges_false_returns_figure() -> None:
-    fig = plot_spectrum(_decon(), show_charges=False)
+    fig = plot_spectrum(_decon(), color=None)
     assert isinstance(fig, go.Figure)
+
+
+def test_plot_spectrum_show_charges_deprecated_alias() -> None:
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fig = plot_spectrum(_decon(), show_charges=False)
+    assert isinstance(fig, go.Figure)
+    assert any(issubclass(w.category, DeprecationWarning) for w in caught)
 
 
 def test_plot_spectrum_show_scores_false_returns_figure() -> None:

@@ -74,14 +74,13 @@ class DReaderMs1Lookup:
     def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
-    def _require_open(self) -> None:
+    def _open_reader(self) -> Any:
         if self._dr._reader is None:
             raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+        return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         for frame in reader.ms1:
@@ -89,9 +88,7 @@ class DReaderMs1Lookup:
 
     def __getitem__(self, frame_id: int) -> MsnSpectrum:
         """Fetch a single MS1 spectrum by tdfpy frame_id."""
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         frame = reader.ms1[frame_id]  # raises KeyError if not found
@@ -110,35 +107,32 @@ class DReaderMs2Lookup:
     def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
-    def _require_open(self) -> None:
+    def _open_reader(self) -> Any:
         if self._dr._reader is None:
             raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+        return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                for precursor in reader.precursors:  # type: ignore
+                for precursor in reader.precursors:
                     yield DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
-                for window in reader.windows:  # type: ignore
+                for window in reader.windows:
                     yield self._dr._parse_dia_window(window)
             case AcquisitionType.PRM:
-                for transition in reader.transitions:  # type: ignore
+                for transition in reader.transitions:
                     yield self._dr._parse_prm_transition(transition)
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
     def __getitem__(self, precursor_id: int) -> MsnSpectrum:
         """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                precursor = reader.precursors[precursor_id]  # type: ignore  # KeyError if not found
+                precursor = reader.precursors[precursor_id]  # KeyError if not found
                 return DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
                 raise NotImplementedError(
@@ -301,7 +295,7 @@ class DReader:
             native_id=None,
             rt=precursor.rt,
             injection_time=None,
-            total_ion_current=None,  # TODO:
+            total_ion_current=None,
             mz_range=None,
             im_range=None,
             polarity=polarity,
