@@ -39,6 +39,7 @@ def test_spectrum_roundtrip_with_charge_and_im():
     np.testing.assert_allclose(decoded.mz, spec.mz, rtol=1e-5)
     np.testing.assert_allclose(decoded.intensity, spec.intensity, rtol=1e-5)
     np.testing.assert_array_equal(decoded.charge, spec.charge)
+    assert decoded.im is not None and spec.im is not None
     np.testing.assert_allclose(decoded.im, spec.im, rtol=1e-5)
 
 
