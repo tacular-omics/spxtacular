@@ -14,21 +14,27 @@ from spxtacular.visualization import plot_spectrum
 fig = plot_spectrum(
     spectrum,
     title=None,          # plot title
-    show_charges=True,   # colour sticks by charge state
+    color="charge",      # "charge" | "im" | None
     show_scores=True,    # annotate scored peaks with their score value
     **layout_kwargs,     # passed to fig.update_layout()
 )
 fig.show()
 ```
 
-Draws a stick plot of any `Spectrum`. When `charge` is present, sticks are coloured by charge
-state (z=1, z=2, ... in different colours; z=-1 singletons in grey). When `score` is present and
-`show_scores=True`, score values are shown above each scored peak.
+Draws a stick plot of any `Spectrum`. With `color="charge"` (default), sticks are coloured by
+charge state when `charge` is present (z=1, z=2, … in different colours; z=-1 singletons in grey).
+With `color="im"`, sticks are coloured by ion mobility on a continuous Viridis scale (falls back
+to `"charge"` when no IM array is present). With `color=None`, all sticks render in a uniform
+steelblue. When `score` is present and `show_scores=True`, score values are shown above each
+scored peak.
+
+The legacy `show_charges=True/False` keyword is still accepted as a deprecated alias mapping to
+`color="charge"` / `color=None`.
 
 `Spectrum.plot()` is a convenience wrapper around this function:
 
 ```python
-spec.plot(title="My spectrum", show_charges=True).show()
+spec.plot(title="My spectrum", color="charge").show()
 ```
 
 **Raw spectrum:**
@@ -129,3 +135,55 @@ by ion type). Unmatched peaks are shown in grey.
 **Annotated spectrum:**
 
 <iframe src="../plots/annotated.html" width="100%" height="500" frameborder="0"></iframe>
+
+---
+
+## `mass_error_plot()`
+
+```python
+from spxtacular.visualization import mass_error_plot
+
+fig = mass_error_plot(
+    spectrum,
+    fragments,
+    tolerance=0.02,
+    tolerance_type="ppm",        # or "da"
+    peak_selection="closest",    # "closest" | "largest" | "all"
+    unit="ppm",                  # error units
+    title=None,
+    **layout_kwargs,
+)
+fig.show()
+```
+
+Bubble chart of fragment mass errors vs m/z. Each matched fragment is a bubble whose x-position is
+the observed m/z, y-position is the mass error (ppm or Da), and size is proportional to the peak
+intensity. Bubbles are coloured by ion series. Useful for spotting calibration drifts or
+systematic mass errors. Also available as `Spectrum.mass_error_plot()`.
+
+---
+
+## `facet_plot()`
+
+```python
+from spxtacular.visualization import facet_plot
+
+fig = facet_plot(
+    spectrum,
+    fragments=None,           # adds annotated panel + mass-error panel when provided
+    mirror_spectrum=None,     # adds a mirror panel below when provided
+    title=None,
+    tolerance=0.02,
+    tolerance_type="ppm",
+    peak_selection="closest",
+    include_sequence=False,
+    unit="ppm",
+    **layout_kwargs,
+)
+fig.show()
+```
+
+Multi-panel plot combining (1) the annotated spectrum, (2) the mass-error bubble chart, and (3) a
+mirror spectrum — all on a shared m/z axis. Panels 2 and 3 are opt-in; supplying `fragments`
+enables the mass-error panel and the annotations, supplying `mirror_spectrum` enables the mirror.
+Also available as `Spectrum.facet_plot()`.

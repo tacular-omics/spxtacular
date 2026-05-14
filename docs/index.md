@@ -12,7 +12,18 @@ Mass spectrometry spectrum processing library. Companion to [peptacular](https:/
 pip install spxtacular
 ```
 
-For the Bruker timsTOF reader (`DReader`), `tdfpy` must be available. For mzML files, `mzmlpy` is required. Both are installed automatically if you pull from the editable source tree.
+Reader backends are optional extras:
+
+```bash
+pip install spxtacular[bruker]   # Bruker timsTOF (.d) via tdfpy
+pip install spxtacular[mzml]     # mzML via mzmlpy
+pip install spxtacular[readers]  # both
+pip install spxtacular[all]      # both + numba JIT
+```
+
+`DReader` and `MzmlReader` remain importable from `spxtacular` regardless of which backends are
+installed; only instantiation raises a clear `ImportError` pointing to the right extra when the
+corresponding dependency is missing.
 
 ## Quick start
 

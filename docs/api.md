@@ -45,14 +45,31 @@ Spectrum(
 | `.get_peaks(target_mz, ...)` | `list[Peak]` | All peaks matching criteria |
 | `.filter(...)` | `Spectrum` | Remove peaks outside bounds |
 | `.normalize(method)` | `Spectrum` | Scale intensities (max / tic / median) |
+| `.scale_intensity(method, ...)` | `Spectrum` | Non-linear scaling: `"root"`, `"log"`, `"rank"` |
 | `.denoise(method)` | `Spectrum` | Remove peaks below noise threshold |
 | `.centroid()` | `Spectrum` | Convert profile to centroid via Gaussian fit |
-| `.merge(...)` | `Spectrum` | Merge nearby peaks by weighted average |
+| `.merge(mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type)` | `Spectrum` | Merge nearby peaks by weighted average |
+| `.round_mz(decimals, combine)` | `Spectrum` | Round m/z, then sum / max-reduce duplicates |
 | `.deconvolute(...)` | `Spectrum` | Assign isotope clusters and charge states |
 | `.decharge()` | `Spectrum` | Convert charged m/z to neutral masses |
+| `.remove_precursor_peak(...)` | `Spectrum` | Strip precursor + isotopes + charge states |
+| `.sort(by, reverse)` | `Spectrum` | Reorder peaks by attribute |
+| `.copy()` | `Spectrum` | Deep copy with all arrays duplicated |
+| `Spectrum.combine(spectra)` | `Spectrum` | Classmethod: concatenate multiple spectra |
+| `.match_fragments(fragments, ...)` | `list[MatchedFragment]` | Fragment-to-peak matching |
+| `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
 | `.compress(...)` | `str` | Serialise to compact ASCII string |
-| `.from_compressed(s)` | `Spectrum` | Deserialise from compressed string (classmethod) |
+| `Spectrum.from_compressed(s)` | `Spectrum` | Deserialise from compressed string (classmethod) |
+| `.to_url_params(...)` | `dict[str, str]` | Encode as URL query params |
+| `Spectrum.from_url_params(params)` | `Spectrum` | Decode from URL query params (classmethod) |
+| `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
+| `.save(path)` | `None` | Serialise to `.npz` |
+| `Spectrum.load(path)` | `Spectrum` | Load from `.npz` (classmethod) |
 | `.update(**kwargs)` | `Spectrum` | Return copy with specified fields replaced |
+| `.plot(title, color, show_scores, ...)` | `go.Figure` | Stick plot (requires plotly) |
+| `.annotate(fragments, ...)` | `go.Figure` | Plot with fragment annotations |
+| `.mass_error_plot(fragments, ...)` | `go.Figure` | Bubble chart of fragment mass errors |
+| `.facet_plot(fragments, mirror_spectrum, ...)` | `go.Figure` | Multi-panel facet plot |
 | `.plot_table(show_charges, show_scores)` | `pd.DataFrame` | Build an editable plot table (one row per peak) |
 | `.annot_plot_table(fragments, ...)` | `pd.DataFrame` | Build an editable annotated plot table with fragment labels |
 
@@ -207,6 +224,88 @@ from spxtacular.compress import compress_spectra, decompress_spectra
 
 Prefer the `Spectrum.compress()` / `Spectrum.from_compressed()` API instead.
 
+The wire format encodes one hex digit per peak for charge: `'0'` → missing /
+decharged, `'1'`–`'e'` → charge states 1–14, `'f'` → singleton (`-1`). Per-peak
+`iso_score` is optionally appended as a 5th length-prefixed chunk; payloads
+without `iso_score` stay byte-identical to the previous format, so old
+encoders / decoders remain compatible.
+
+---
+
+## URL query-param encoding
+
+Round-trip a `Spectrum` or `MsnSpectrum` through URL query strings. Useful for
+shareable links and embedding spectra in viewer apps.
+
+```python
+from spxtacular import (
+    spectrum_to_query_params,    # → dict[str, str]
+    spectrum_to_query_string,    # → str (no leading '?')
+    spectrum_from_query_params,  # dict | str → Spectrum / MsnSpectrum
+)
+```
+
+Also exposed as convenience methods on `Spectrum`:
+
+```python
+params = spec.to_url_params(max_peaks=200, mz_precision=4)
+recovered = Spectrum.from_url_params(params)
+```
+
+Peak arrays go through `compress_spectra(..., url_safe=True)` and land under the
+`spectrum` key. MSn scalar metadata (`scan_number`, `rt`, `precursors`, …) is
+emitted as separate, human-readable params. Fields that are `None` are omitted.
+The format is versioned via the `version` query param (currently `"1"`).
+
+Optional encoding parameters:
+
+| Param | Effect |
+|---|---|
+| `max_peaks: int` | Keep at most this many peaks (top-N by `select_by`). |
+| `select_by: "intensity" \| "mz"` | Which attribute drives top-N selection. |
+| `mz_precision`, `intensity_precision`, `im_precision`, `iso_score_precision` | Round arrays before encoding. |
+| `compression: "gzip" \| "zlib" \| "brotli"` | Compression backend. |
+
+---
+
+## USI loading
+
+Fetch spectra from public proteomics repositories by Universal Spectrum
+Identifier via the PROXI protocol.
+
+```python
+from spxtacular import fetch_usi
+# or via Spectrum.from_usi(...) for the same result
+
+spec = fetch_usi(
+    "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555",
+    backend="aggregator",  # or "pride", "massive", "peptideatlas", "jpost", or a full URL
+    timeout=30,
+)
+```
+
+Returns an `MsnSpectrum` when the response includes precursor info, otherwise a
+plain `Spectrum`.
+
+---
+
+## Persistence (.npz)
+
+Serialise spectra to / from numpy `.npz` archives. Arrays are stored natively;
+scalar metadata is JSON-encoded under the `meta` key. The `.npz` extension is
+appended automatically when missing.
+
+```python
+spec.save("scan_001.npz")
+restored = Spectrum.load("scan_001.npz")
+
+msn.save("scan_001.npz")
+restored_msn = MsnSpectrum.load("scan_001.npz")
+```
+
+`MsnSpectrum.save` / `MsnSpectrum.load` preserve all MSn metadata (scan number,
+RT, precursors, isolation window, …) in addition to the peak arrays.
+
 | Function | Summary |
 |---|---|
 | `compress_spectra(spectrum, ...)` | Serialise a `Spectrum` to a string |
@@ -230,11 +329,18 @@ from spxtacular import plot_spectrum
 plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
-    show_charges: bool = True,
+    color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
+    show_charges: bool | None = None,  # deprecated alias of color
     **layout_kwargs,
 )
 ```
+
+``color="charge"`` (default) colours sticks by charge state. ``color="im"``
+colours by ion mobility on a Viridis scale (falls back to ``"charge"`` when no
+IM array is present). ``color=None`` renders all sticks in a uniform colour.
+``show_charges`` is kept as a deprecated alias mapping to ``color="charge"`` /
+``color=None``.
 
 ### `mirror_plot`
 
@@ -286,11 +392,17 @@ from spxtacular import match_fragments
 match_fragments(
     spectrum: Spectrum,
     fragments,
-    mz_tol: float = 0.02,
-    mz_tol_type: str = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "ppm",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
-)
+    is_monoisotopic: bool = True,
+) -> list[MatchedFragment]
 ```
+
+When `fragments` is a `dict[tuple[IonType, int], list[float]]` (the output of
+`peptacular.ProFormaAnnotation.fragment_masses`), `is_monoisotopic` is forwarded
+to the `Fragment` constructor; otherwise it has no effect. Returns a list sorted
+by ascending `peak_index`.
 
 ### `score`
 
@@ -302,9 +414,10 @@ from spxtacular import score
 score(
     spectrum: Spectrum,
     fragments,
-    mz_tol: float = 10,
-    mz_tol_type: str = "ppm",
-) -> dict
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "ppm",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+) -> dict[str, float]
 ```
 
 Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
@@ -341,8 +454,8 @@ from spxtacular import build_annot_plot_table
 build_annot_plot_table(
     spectrum: Spectrum,
     fragments,
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
 ) -> pd.DataFrame
