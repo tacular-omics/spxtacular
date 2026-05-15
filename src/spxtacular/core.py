@@ -1679,7 +1679,10 @@ class MsnSpectrum(Spectrum):
     )
 
     def _meta_dict(self) -> dict:
-        meta = super()._meta_dict()
+        # Explicit base-class call (not super()) because @dataclass(slots=True)
+        # on Spectrum and MsnSpectrum breaks zero-arg super() on Python <3.13:
+        # https://github.com/python/cpython/issues/90562
+        meta = Spectrum._meta_dict(self)
         for field in self._MSN_SCALAR_META_FIELDS:
             meta[field] = getattr(self, field)
         for field in self._MSN_TUPLE_META_FIELDS:
@@ -1704,7 +1707,8 @@ class MsnSpectrum(Spectrum):
 
     @classmethod
     def _meta_kwargs(cls, meta: dict) -> dict:
-        kwargs = super()._meta_kwargs(meta)
+        # Explicit base-class call (not super()) — see _meta_dict note above.
+        kwargs = Spectrum._meta_kwargs(meta)
         for field in cls._MSN_SCALAR_META_FIELDS:
             kwargs[field] = meta.get(field)
         for field in cls._MSN_TUPLE_META_FIELDS:
