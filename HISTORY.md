@@ -19,6 +19,7 @@
 * `Spectrum.compress()` no longer crashes on deconvoluted spectra containing singletons (`charge=-1`). The wire format now reserves hex `'f'` for the singleton sentinel; charge state 15 is no longer supported (charge states above 14 are vanishingly rare).
 * `plot_spectrum(show_charges=...)` now warns and forwards to the new `color=` argument instead of failing inside plotly. Tests and call-sites should migrate to `color="charge"` / `color=None`.
 * `MsnSpectrum.__str__` no longer raises `TypeError` when `rt` is `None`.
+* `match_fragments()` (and therefore `Spectrum.annotate()` / `annotate_spectrum()`) now adapts to the spectrum's processing state. Singletons (`charge == -1`, unknown charge) act as a wildcard and match by m/z. Decharged spectra (every peak's `charge == 0`, m/z values are neutral masses) match fragments against `Fragment.neutral_mass` instead of `Fragment.mz`, so any `charge_state` fragment can match the same neutral peak. Previously these states silently produced zero matches.
 
 ### Internal
 * `Spectrum.save`/`load` and `MsnSpectrum.save`/`load` unified onto base-class implementations with `_meta_dict()` / `_meta_kwargs()` hooks. The persisted `iso_score` array is now stored under the `iso_score` key in `.npz` files (was `score` on the base `Spectrum`); the loader transparently falls back to the old `score` key for backward compatibility.
