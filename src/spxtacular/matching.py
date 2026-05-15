@@ -72,9 +72,21 @@ def match_fragments(
 
     Notes
     -----
-    When ``spectrum.charge`` is present (deconvoluted spectrum), a candidate
-    peak is only accepted when its charge state equals ``fragment.charge_state``.
-    Singletons (``charge == -1``) and peaks of wrong charge are excluded.
+    Matching adapts to the spectrum's processing state so the same call
+    works for centroid, deconvoluted, and decharged spectra:
+
+    * **Centroid / profile** (``spectrum.charge is None``) — match by m/z
+      with no charge constraint.
+    * **Deconvoluted** (``spectrum.charge`` has values > 0 or -1) — match by
+      m/z; require the peak's assigned charge to equal
+      ``fragment.charge_state``. Singletons (``charge == -1``, unknown
+      charge) are treated as a wildcard and may still match by m/z.
+    * **Decharged** (every peak's ``charge`` is 0, i.e. neutral masses) —
+      match the peak's neutral mass against ``fragment.neutral_mass``;
+      ``charge_state`` is no longer a constraint, so multi-charge
+      fragments collapse onto the same neutral target. The reported
+      ``peak_mz`` is the stored neutral mass and the ppm/Da errors are
+      against ``fragment.neutral_mass`` rather than ``fragment.mz``.
     """
     mz = spectrum.mz
     intensity = spectrum.intensity
@@ -82,17 +94,27 @@ def match_fragments(
     total_intensity = float(intensity.sum())
     results: list[MatchedFragment] = []
 
+    # Detect spectrum state once. Decharged spectra have every (non-dropped)
+    # peak's charge set to 0; deconvoluted spectra carry per-peak charges in
+    # {-1, 1, 2, ...}. A `charge` array of all -1 is treated as deconvoluted
+    # (all singletons) — every peak is then a wildcard and falls back to m/z.
+    is_decharged = charge is not None and len(charge) > 0 and bool(np.all(charge == 0))
+
+    def _target(frag: Fragment) -> float:
+        return float(frag.neutral_mass) if is_decharged else float(frag.mz)
+
     def _charge_ok(peak_idx: int, frag_charge: int) -> bool:
-        if charge is None:
+        if charge is None or is_decharged:
             return True
-        return int(charge[peak_idx]) == frag_charge
+        pc = int(charge[peak_idx])
+        return pc == -1 or pc == frag_charge  # -1 = unknown, treat as wildcard
 
     def _build_matched(peak_idx: int, frag: Fragment) -> MatchedFragment:
         p_mz = float(mz[peak_idx])
         p_int = float(intensity[peak_idx])
-        theoretical_mz = frag.mz
+        theoretical_mz = _target(frag)
         da_err = p_mz - theoretical_mz
-        ppm_err = da_err / theoretical_mz * 1e6
+        ppm_err = da_err / theoretical_mz * 1e6 if theoretical_mz != 0.0 else 0.0
         pct = p_int / total_intensity * 100.0 if total_intensity > 0.0 else 0.0
         return MatchedFragment(
             fragment=frag,
@@ -104,29 +126,29 @@ def match_fragments(
             da_error=da_err,
         )
 
-    def _search(frag_mz: float, frag_charge: int) -> list[tuple[int, float]]:
+    def _search(target_mz: float, frag_charge: int) -> list[tuple[int, float]]:
         """Return (peak_idx, abs_delta) candidates within tolerance."""
-        idx = int(np.searchsorted(mz, frag_mz))
+        idx = int(np.searchsorted(mz, target_mz))
         candidates: list[tuple[int, float]] = []
 
         if peak_selection == "closest":
             for i in (idx - 1, idx):
                 if 0 <= i < len(mz) and _charge_ok(i, frag_charge):
-                    delta = abs(float(mz[i]) - frag_mz)
-                    err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                    delta = abs(float(mz[i]) - target_mz)
+                    err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
                     if err <= tolerance:
                         candidates.append((i, delta))
         else:
             for i in range(idx - 1, -1, -1):
-                delta = abs(float(mz[i]) - frag_mz)
-                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                delta = abs(float(mz[i]) - target_mz)
+                err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
-                delta = abs(float(mz[i]) - frag_mz)
-                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                delta = abs(float(mz[i]) - target_mz)
+                err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
@@ -151,19 +173,19 @@ def match_fragments(
         frag_dict = cast(dict[tuple[IonType, int], list[float]], fragments)
         for (ion_type, charge_state), masses in frag_dict.items():
             for pos, mz_val in enumerate(masses, start=1):
-                candidates = _search(mz_val, charge_state)
+                frag = Fragment(
+                    ion_type=ion_type,
+                    position=pos,
+                    mass=mz_val * charge_state,
+                    monoisotopic=is_monoisotopic,
+                    charge_state=charge_state,
+                )
+                candidates = _search(_target(frag), charge_state)
                 if candidates:
-                    frag = Fragment(
-                        ion_type=ion_type,
-                        position=pos,
-                        mass=mz_val * charge_state,
-                        monoisotopic=is_monoisotopic,
-                        charge_state=charge_state,
-                    )
                     _emit(candidates, frag)
     else:
         for frag in fragments:
-            candidates = _search(frag.mz, frag.charge_state)
+            candidates = _search(_target(frag), frag.charge_state)
             _emit(candidates, frag)
 
     results.sort(key=lambda m: m.peak_index)
