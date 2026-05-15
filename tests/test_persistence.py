@@ -138,3 +138,29 @@ def test_msn_save_load_mz_range(tmp_path):
     spec.save(tmp_path / "msn")
     restored = MsnSpectrum.load(tmp_path / "msn.npz")
     assert restored.mz_range == pytest.approx((50.0, 1500.0))
+
+
+def test_spectrum_load_legacy_score_key(tmp_path):
+    """Pre-unified Spectrum.save() wrote iso_score under the 'score' npz key;
+    the loader must still accept that for backward compatibility."""
+    import json
+
+    out = tmp_path / "legacy.npz"
+    np.savez(
+        out,
+        mz=np.array([100.0, 200.0], dtype=np.float64),
+        intensity=np.array([1000.0, 2000.0], dtype=np.float64),
+        score=np.array([0.9, 0.5], dtype=np.float64),
+        meta=np.array(json.dumps({"spectrum_type": "centroid", "denoised": None, "normalized": None}), dtype=object),
+    )
+    restored = Spectrum.load(out)
+    assert restored.iso_score is not None
+    np.testing.assert_array_equal(restored.iso_score, [0.9, 0.5])
+
+
+def test_spectrum_load_without_iso_score(tmp_path):
+    """A saved Spectrum with no iso_score array decodes back to iso_score=None."""
+    spec = _basic_spectrum()  # no iso_score
+    spec.save(tmp_path / "spec")
+    restored = Spectrum.load(tmp_path / "spec.npz")
+    assert restored.iso_score is None

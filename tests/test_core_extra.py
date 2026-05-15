@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from spxtacular.core import Peak, Spectrum, SpectrumType, _centroid_peaks
+from spxtacular.core import MsnSpectrum, Peak, Spectrum, SpectrumType, _centroid_peaks
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -435,3 +435,31 @@ def test_merge_invalid_im_tolerance_type_raises() -> None:
     bad: Any = cast(Any, "invalid")
     with pytest.raises(ValueError, match="im_tolerance_type"):
         spec.merge(im_tolerance_type=bad)
+
+
+def test_msn_str_repr_with_rt() -> None:
+    msn = MsnSpectrum(
+        mz=np.array([100.0], dtype=np.float64),
+        intensity=np.array([1.0], dtype=np.float64),
+        scan_number=7,
+        ms_level=2,
+        rt=42.5,
+        polarity="positive",
+    )
+    s = str(msn)
+    assert "scan=7" in s and "rt=42.50s" in s
+    assert repr(msn) == s
+
+
+def test_msn_str_repr_with_rt_none() -> None:
+    """Regression: ``__str__`` used to crash on ``rt=None`` via ``:.2f``."""
+    msn = MsnSpectrum(
+        mz=np.array([100.0], dtype=np.float64),
+        intensity=np.array([1.0], dtype=np.float64),
+        scan_number=1,
+        ms_level=1,
+        rt=None,
+    )
+    s = str(msn)
+    assert "rt=None" in s
+    assert repr(msn) == s
