@@ -28,6 +28,17 @@ except ImportError:
     tdfpy = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
     _HAS_TDFPY = False
 
+# tdfpy's smoothing branch (post-1.2.0) reshaped Frame.centroid() — the old
+# kwargs (mz_tolerance, …, noise_filter) became `centroid=MergePeaksCentroider(…)`
+# and `noise=…`. Detect which API is available and adapt below.
+try:
+    from tdfpy import MergePeaksCentroider as _MergePeaksCentroider  # ty: ignore[unresolved-import]
+
+    _HAS_NEW_CENTROID_API = True
+except ImportError:
+    _MergePeaksCentroider = None  # type: ignore[assignment]
+    _HAS_NEW_CENTROID_API = False
+
 """
 
 Unified reader API for different mass-spectrometry file formats.
@@ -213,14 +224,22 @@ class DReader:
     # Conversion helpers (shared by iteration and __getitem__)
     # ------------------------------------------------------------------
 
-    def _parse_ms1_frame(
-        self,
-        frame: Any,
-        mz_range: tuple[float, float] | None,
-        im_range: tuple[float, float] | None,
-    ) -> MsnSpectrum:
+    def _centroid(self, obj: Any) -> np.ndarray:
+        """Centroid against either the old (<=1.2.0) or new (smoothing-branch) tdfpy API."""
         cfg = self._centroid_config
-        centroided_peaks = frame.centroid(
+        if _HAS_NEW_CENTROID_API:
+            assert _MergePeaksCentroider is not None
+            return obj.centroid(
+                centroid=_MergePeaksCentroider(
+                    mz_tolerance=cfg.mz_tolerance,
+                    mz_tolerance_type=cfg.mz_tolerance_type,
+                    im_tolerance=cfg.im_tolerance,
+                    im_tolerance_type=cfg.im_tolerance_type,
+                    min_peaks=cfg.min_peaks,
+                ),
+                noise=cfg.noise_filter,
+            )
+        return obj.centroid(
             mz_tolerance=cfg.mz_tolerance,
             mz_tolerance_type=cfg.mz_tolerance_type,
             im_tolerance=cfg.im_tolerance,
@@ -228,6 +247,14 @@ class DReader:
             min_peaks=cfg.min_peaks,
             noise_filter=cfg.noise_filter,
         )
+
+    def _parse_ms1_frame(
+        self,
+        frame: Any,
+        mz_range: tuple[float, float] | None,
+        im_range: tuple[float, float] | None,
+    ) -> MsnSpectrum:
+        centroided_peaks = self._centroid(frame)
         match frame.polarity:
             case "positive":
                 polarity = "positive"
@@ -311,15 +338,7 @@ class DReader:
         )
 
     def _parse_dia_window(self, window: tdfpy.DiaWindow) -> MsnSpectrum:
-        cfg = self._centroid_config
-        peaks = window.centroid(
-            mz_tolerance=cfg.mz_tolerance,
-            mz_tolerance_type=cfg.mz_tolerance_type,
-            im_tolerance=cfg.im_tolerance,
-            im_tolerance_type=cfg.im_tolerance_type,
-            min_peaks=cfg.min_peaks,
-            noise_filter=cfg.noise_filter,
-        )
+        peaks = self._centroid(window)
         match window.polarity:
             case "positive":
                 polarity = "positive"
@@ -357,15 +376,7 @@ class DReader:
         )
 
     def _parse_prm_transition(self, transition: tdfpy.PrmTransition) -> MsnSpectrum:
-        cfg = self._centroid_config
-        peaks = transition.centroid(
-            mz_tolerance=cfg.mz_tolerance,
-            mz_tolerance_type=cfg.mz_tolerance_type,
-            im_tolerance=cfg.im_tolerance,
-            im_tolerance_type=cfg.im_tolerance_type,
-            min_peaks=cfg.min_peaks,
-            noise_filter=cfg.noise_filter,
-        )
+        peaks = self._centroid(transition)
         match transition.polarity:
             case "positive":
                 polarity = "positive"

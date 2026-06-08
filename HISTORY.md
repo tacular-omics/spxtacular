@@ -23,6 +23,7 @@
 
 ### Internal
 * `Spectrum.save`/`load` and `MsnSpectrum.save`/`load` unified onto base-class implementations with `_meta_dict()` / `_meta_kwargs()` hooks. The persisted `iso_score` array is now stored under the `iso_score` key in `.npz` files (was `score` on the base `Spectrum`); the loader transparently falls back to the old `score` key for backward compatibility.
+* `DReader` now works against both the current `tdfpy` 1.2.0 release and the post-1.2.0 smoothing branch, which reshaped `Frame.centroid()` / `DiaWindow.centroid()` / `PrmTransition.centroid()` to take `centroid=MergePeaksCentroider(…)` and `noise=…` instead of the older flat keyword args. The adapter is transparent: `CentroidConfig` is unchanged.
 
 ## 0.3.0 (2026-04-07)
 
