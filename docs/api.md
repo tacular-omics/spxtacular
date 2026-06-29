@@ -58,10 +58,8 @@ Spectrum(
 | `Spectrum.combine(spectra)` | `Spectrum` | Classmethod: concatenate multiple spectra |
 | `.match_fragments(fragments, ...)` | `list[MatchedFragment]` | Fragment-to-peak matching |
 | `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
-| `.compress(...)` | `str` | Serialise to compact ASCII string |
-| `Spectrum.from_compressed(s)` | `Spectrum` | Deserialise from compressed string (classmethod) |
-| `.to_url_params(...)` | `dict[str, str]` | Encode as URL query params |
-| `Spectrum.from_url_params(params)` | `Spectrum` | Decode from URL query params (classmethod) |
+| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl1.…` URL-safe token (requires `[spectrl]` extra) |
+| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl1.…` token (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
 | `.save(path)` | `None` | Serialise to `.npz` |
 | `Spectrum.load(path)` | `Spectrum` | Load from `.npz` (classmethod) |
@@ -214,57 +212,34 @@ threshold = estimate_noise_level(intensity_array, method="mad")
 
 ---
 
-## Compression utilities
+## Token serialisation (spectrl)
 
-Not exported from the package root. Available via:
+The single supported wire format for sharing a spectrum as a string is the
+[spectrl](https://github.com/pgarrett-scripps/spectrl) token. Encodes a full
+spectrum (peaks, metadata, precursors) into a compact URL-safe token that
+mirrors mzML semantics, with PSI-MS CV params, a single CBOR document,
+MS-Numpress compression, and a SHA-256 integrity hash.
 
-```python
-from spxtacular.compress import compress_spectra, decompress_spectra
-```
-
-Prefer the `Spectrum.compress()` / `Spectrum.from_compressed()` API instead.
-
-The wire format encodes one hex digit per peak for charge: `'0'` → missing /
-decharged, `'1'`–`'e'` → charge states 1–14, `'f'` → singleton (`-1`). Per-peak
-`iso_score` is optionally appended as a 5th length-prefixed chunk; payloads
-without `iso_score` stay byte-identical to the previous format, so old
-encoders / decoders remain compatible.
-
----
-
-## URL query-param encoding
-
-Round-trip a `Spectrum` or `MsnSpectrum` through URL query strings. Useful for
-shareable links and embedding spectra in viewer apps.
+Requires the optional ``[spectrl]`` extra.
 
 ```python
-from spxtacular import (
-    spectrum_to_query_params,    # → dict[str, str]
-    spectrum_to_query_string,    # → str (no leading '?')
-    spectrum_from_query_params,  # dict | str → Spectrum / MsnSpectrum
-)
+from spxtacular import to_spectrl_token, from_spectrl_token, to_inline_spectrum
+
+token = spec.to_spectrl_token()                      # lossy MS-Numpress, default
+token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact float64 + zlib
+restored = Spectrum.from_spectrl_token(token)
+inline = to_inline_spectrum(spec)                    # → spectrl.InlineSpectrum
 ```
 
-Also exposed as convenience methods on `Spectrum`:
+Carries: `mz`, `intensity`, `charge` (including singletons), `im` + `im_type`,
+`iso_score` (via spectrl's `extra_arrays` slot under key `"iso_score"`,
+encoded as a non-standard mzML binary array `MS:1000786`), spectrum type, and
+— for `MsnSpectrum` — `native_id`, `ms_level`, `polarity`, `rt`, `mz_range`,
+`total_ion_current`, `precursors`, `isolation_mz_range`, `collision_energy`,
+`activation_type`.
 
-```python
-params = spec.to_url_params(max_peaks=200, mz_precision=4)
-recovered = Spectrum.from_url_params(params)
-```
-
-Peak arrays go through `compress_spectra(..., url_safe=True)` and land under the
-`spectrum` key. MSn scalar metadata (`scan_number`, `rt`, `precursors`, …) is
-emitted as separate, human-readable params. Fields that are `None` are omitted.
-The format is versioned via the `version` query param (currently `"1"`).
-
-Optional encoding parameters:
-
-| Param | Effect |
-|---|---|
-| `max_peaks: int` | Keep at most this many peaks (top-N by `select_by`). |
-| `select_by: "intensity" \| "mz"` | Which attribute drives top-N selection. |
-| `mz_precision`, `intensity_precision`, `im_precision`, `iso_score_precision` | Round arrays before encoding. |
-| `compression: "gzip" \| "zlib" \| "brotli"` | Compression backend. |
+Not carried: `denoised`/`normalized` provenance strings, `im_range`/`isolation_im_range`,
+`resolution`, `analyzer`, `ramp_time`.
 
 ---
 
@@ -305,11 +280,6 @@ restored_msn = MsnSpectrum.load("scan_001.npz")
 
 `MsnSpectrum.save` / `MsnSpectrum.load` preserve all MSn metadata (scan number,
 RT, precursors, isolation window, …) in addition to the peak arrays.
-
-| Function | Summary |
-|---|---|
-| `compress_spectra(spectrum, ...)` | Serialise a `Spectrum` to a string |
-| `decompress_spectra(compressed_str)` | Deserialise back to a `Spectrum` |
 
 ---
 

@@ -1,5 +1,30 @@
 # History
 
+## 0.4.0 (2026-06-28)
+
+### Breaking changes
+* **Removed `spxtacular.compress` and `spxtacular.urlparams`.** The in-house hex-delta + gzip wire format and the URL query-param encoder have been deleted in favour of the [spectrl](https://github.com/pgarrett-scripps/spectrl) token format. Removed APIs:
+  * `Spectrum.compress()` / `Spectrum.from_compressed()`
+  * `Spectrum.to_url_params()` / `Spectrum.from_url_params()`
+  * `spxtacular.spectrum_to_query_params` / `spectrum_to_query_string` / `spectrum_from_query_params`
+  * The `compress_spectra` / `decompress_spectra` functions
+* `.npz` persistence (`Spectrum.save` / `Spectrum.load`) is unchanged.
+
+### Migration
+* Replace `spec.compress()` and `spec.to_url_params()` calls with `spec.to_spectrl_token()`.
+* Replace `Spectrum.from_compressed(s)` and `Spectrum.from_url_params(p)` with `Spectrum.from_spectrl_token(t)`.
+* The spectrl token format is mzML-faithful (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and well-suited for embedding in URLs, QR codes, notebooks, and papers.
+
+### New features
+* **`spxtacular.spectrl_bridge`** — encode/decode `Spectrum` / `MsnSpectrum` to/from spectrl tokens.
+  * `Spectrum.to_spectrl_token(*, lossless=False, max_len=None)` — encode to a `spectrl1.…` token.
+  * `Spectrum.from_spectrl_token(token)` — classmethod decode.
+  * Standalone helpers: `to_inline_spectrum`, `to_spectrl_token`, `from_spectrl_token`, and `spxtacular.spectrl_bridge.from_decoded_spectrum`.
+* **URL sharing helpers** — `Spectrum.to_spectrl_url(base, *, mode="fragment"|"query"|"data", param="d", …)` and `Spectrum.from_spectrl_url(url)` (plus standalone `to_spectrl_url` / `from_spectrl_url`) build and parse a shareable URL or `data:` URI in one call, replacing the removed `urlparams` convenience.
+* **`iso_score` is preserved** through the round-trip via spectrl's `extra_arrays` slot (encoded as a non-standard mzML binary array, `MS:1000786`). Other tools that don't recognise the array name ignore it cleanly.
+* **Lossless scalar-metadata round-trip** — spxtacular fields without an mzML CV counterpart (`denoised`, `normalized`, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range`) are carried as namespaced (`spxtacular:`) free-text `user_params`, so the round-trip is faithful.
+* spectrl is gated behind the `[spectrl]` optional extra, sourced from PyPI (`spectrl>=0.2.1`). The token is a single CBOR document; 0.2.1 fixes a native abort when lossy-encoding charge arrays that contain singleton sentinels (`charge=-1`).
+
 ## 0.3.1 (2026-05-14)
 
 ### New features

@@ -50,7 +50,8 @@ numba = ["numba>=0.64.0"]
 bruker = ["tdfpy>=1.2.0"]
 mzml = ["mzmlpy>=0.4.0"]
 readers = ["tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
-all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
+spectrl = ["spectrl>=0.2.1"]
+all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0", "spectrl>=0.2.1"]
 
 [tool.uv]
 package = true
@@ -62,6 +63,7 @@ dev-dependencies = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.11",
+    "spectrl>=0.2.1",
     "tdfpy>=1.2.0",
     "ty>=0.0.11",
 ]

@@ -404,63 +404,28 @@ renamed = spec.update(spectrum_type="centroid")
 
 ---
 
-### Compression
+### Serialisation (spectrl token)
 
-#### `compress`
-
-```python
-def compress(
-    self,
-    url_safe: bool = False,
-    mz_precision: int | None = None,
-    intensity_precision: int | None = None,
-    im_precision: int | None = None,
-    iso_score_precision: int | None = None,
-    compression: str = "gzip",
-) -> str
-```
-
-Serialises the spectrum to a compact ASCII string. m/z values are delta-encoded; intensities, ion mobility, and per-peak `iso_score` use raw float32 hex encoding. The result is compressed with gzip, zlib, or brotli (requires `pip install brotli`) and then base85-encoded (default) or base64 URL-safe encoded when `url_safe=True`.
-
-Optional `*_precision` parameters round the corresponding arrays before encoding, reducing compressed size at the cost of numeric precision.
+#### `to_spectrl_token` / `Spectrum.from_spectrl_token`
 
 ```python
-blob = spec.compress()
-blob_url = spec.compress(url_safe=True, mz_precision=4, compression="zlib")
-```
-
-The charge wire format encodes one hex digit per peak: `'0'` → missing /
-decharged, `'1'`–`'e'` → charge states 1–14, `'f'` → singleton (`-1`). Charge
-state 15 is unsupported (very rare in MS practice).
-
-#### `Spectrum.from_compressed`
-
-```python
-@classmethod
-def from_compressed(cls, compressed_str: str) -> Spectrum
-```
-
-Round-trips a string produced by `.compress()` back to a `Spectrum`.
-
-```python
-recovered = Spectrum.from_compressed(blob)
-```
-
-#### `to_url_params` / `Spectrum.from_url_params`
-
-```python
-def to_url_params(self, **kwargs) -> dict[str, str]
+def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str
 
 @classmethod
-def from_url_params(cls, params: Mapping[str, str] | str) -> Spectrum
+def from_spectrl_token(cls, token: str) -> Spectrum
 ```
 
-Round-trip a `Spectrum` (or `MsnSpectrum`) through URL query parameters. Peak arrays go through `compress(url_safe=True)`; `MsnSpectrum` scalar metadata is emitted as separate plain params. Decodes to `MsnSpectrum` when any MSn metadata is present. Supports the same precision / compression kwargs as `compress()`, plus `max_peaks` and `select_by` for trimming.
+Encode the spectrum as a [spectrl](https://github.com/pgarrett-scripps/spectrl) `spectrl1.…` URL-safe token, or decode one back to a `Spectrum`/`MsnSpectrum`. The token mirrors mzML semantics (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and is suitable for sharing in URLs, QR codes, notebooks, and papers.
+
+Requires the optional `[spectrl]` extra.
 
 ```python
-params = spec.to_url_params(max_peaks=200, mz_precision=4)
-restored = Spectrum.from_url_params(params)
+token = spec.to_spectrl_token()                      # lossy MS-Numpress
+token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact float64 + zlib
+restored = Spectrum.from_spectrl_token(token)
 ```
+
+`iso_score` is carried via spectrl's `extra_arrays` slot (encoded as a non-standard mzML binary array `MS:1000786` under the descriptor name `"iso_score"`) and round-trips losslessly.
 
 ---
 

@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     import pandas as pd
     import plotly.graph_objects as go
 
@@ -20,7 +18,6 @@ if TYPE_CHECKING:
 import numpy as np
 from numpy.typing import NDArray
 
-from .compress import compress_spectra, decompress_spectra
 from .decon.scored import deconvolve_spectrum as _deconvolve
 from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
 from .noise import estimate_noise_level
@@ -1037,57 +1034,58 @@ class Spectrum:
         return self.__str__()
 
     # -------------------------------------------------------------------------
-    # Compression
+    # Serialization (spectrl token format — see spectrl_bridge.py)
     # -------------------------------------------------------------------------
 
-    def compress(
+    def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str:
+        """Encode this spectrum as a ``spectrl1.…`` URL-safe token (requires
+        ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.to_spectrl_token`.
+        """
+        from .spectrl_bridge import to_spectrl_token
+
+        return to_spectrl_token(self, lossless=lossless, max_len=max_len)
+
+    @classmethod
+    def from_spectrl_token(cls, token: str) -> "Spectrum":
+        """Decode a ``spectrl1.…`` token into a :class:`Spectrum` /
+        :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.from_spectrl_token`.
+        """
+        from .spectrl_bridge import from_spectrl_token
+
+        return from_spectrl_token(token)
+
+    def to_spectrl_url(
         self,
-        url_safe: bool = False,
-        mz_precision: int | None = None,
-        intensity_precision: int | None = None,
-        im_precision: int | None = None,
-        iso_score_precision: int | None = None,
-        compression: str = "gzip",
+        base: str | None = None,
+        *,
+        mode: str = "fragment",
+        param: str = "d",
+        lossless: bool = False,
+        max_len: int | None = None,
     ) -> str:
+        """Encode this spectrum into a shareable URL or ``data:`` URI (requires
+        ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.to_spectrl_url`.
         """
-        Compress spectrum data to a string.
-        """
-        return compress_spectra(
-            self,
-            url_safe=url_safe,
-            mz_precision=mz_precision,
-            intensity_precision=intensity_precision,
-            im_precision=im_precision,
-            iso_score_precision=iso_score_precision,
-            compression=compression,
-        )
+        from .spectrl_bridge import to_spectrl_url
+
+        return to_spectrl_url(self, base, mode=mode, param=param, lossless=lossless, max_len=max_len)
 
     @classmethod
-    def from_compressed(cls, compressed_str: str) -> "Spectrum":
+    def from_spectrl_url(cls, url: str) -> "Spectrum":
+        """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
+        carrying a ``spectrl1.…`` token (requires ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.from_spectrl_url`.
         """
-        Create a Spectrum from a compressed string.
-        """
-        return decompress_spectra(compressed_str)
+        from .spectrl_bridge import from_spectrl_url
 
-    def to_url_params(self, **kwargs) -> dict[str, str]:
-        """Encode this spectrum as a dict of URL query parameters.
-
-        See :func:`spxtacular.urlparams.spectrum_to_query_params` for options
-        (``max_peaks``, ``select_by``, ``mz_precision``, ``compression``, …).
-        """
-        from .urlparams import spectrum_to_query_params
-
-        return spectrum_to_query_params(self, **kwargs)
-
-    @classmethod
-    def from_url_params(cls, params: "Mapping[str, str] | str") -> "Spectrum":
-        """Decode a spectrum from a URL query-param mapping or query string.
-
-        Returns an :class:`MsnSpectrum` if any MSn metadata is present.
-        """
-        from .urlparams import spectrum_from_query_params
-
-        return spectrum_from_query_params(params)
+        return from_spectrl_url(url)
 
     @classmethod
     def from_usi(

@@ -22,7 +22,7 @@ src/spxtacular/
 │   └── scored.py    # scored deconvolution entry point (Bhattacharyya scoring)
 ├── matching.py      # fragment peak matching (match_fragments)
 ├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
-├── compress.py      # spectrum matrix compression/decompression
+├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
 ├── noise.py         # noise estimation (MAD, fixed threshold)
 ├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table)
 └── visualization.py # plotly-based plotting (plot_spectrum, mirror_plot, annotate_spectrum)
