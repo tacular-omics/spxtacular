@@ -36,6 +36,9 @@ pip install spxtacular
 
 # Optional: Numba JIT acceleration (~3–4× faster deconvolution)
 pip install spxtacular[numba]
+
+# Optional: share spectra as compact URL-safe tokens (spectrl)
+pip install spxtacular[spectrl]
 ```
 
 ## Quick start
@@ -67,6 +70,7 @@ neutral.plot(title="Neutral masses").show()
 | **PSM scoring** | Hyperscore, spectral angle, matched fraction, and more |
 | **Interactive visualization** | Stick plots, mirror plots, annotated fragment spectra (Plotly) |
 | **File reading** | Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`) |
+| **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 
 ## Deconvolution pipeline
 
@@ -83,6 +87,20 @@ filtered = decon.filter(min_score=0.5)
 
 # 3. Convert to neutral masses (drops singletons)
 neutral = filtered.decharge()
+```
+
+## Sharing spectra
+
+With the optional `[spectrl]` extra, encode a complete spectrum (peaks, charges,
+ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
+ready-to-share link — with no backend required.
+
+```python
+token = spec.to_spectrl_token()                       # spectrl1.… token
+restored = spx.Spectrum.from_spectrl_token(token)
+
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable)
+restored = spx.Spectrum.from_spectrl_url(url)
 ```
 
 ## Documentation

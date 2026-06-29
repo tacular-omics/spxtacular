@@ -60,6 +60,8 @@ Spectrum(
 | `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
 | `.to_spectrl_token(...)` | `str` | Encode as a `spectrl1.…` URL-safe token (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl1.…` token (classmethod) |
+| `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
+| `Spectrum.from_spectrl_url(url)` | `Spectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
 | `.save(path)` | `None` | Serialise to `.npz` |
 | `Spectrum.load(path)` | `Spectrum` | Load from `.npz` (classmethod) |
@@ -215,7 +217,7 @@ threshold = estimate_noise_level(intensity_array, method="mad")
 ## Token serialisation (spectrl)
 
 The single supported wire format for sharing a spectrum as a string is the
-[spectrl](https://github.com/pgarrett-scripps/spectrl) token. Encodes a full
+[spectrl](https://github.com/tacular-omics/spectrl) token. Encodes a full
 spectrum (peaks, metadata, precursors) into a compact URL-safe token that
 mirrors mzML semantics, with PSI-MS CV params, a single CBOR document,
 MS-Numpress compression, and a SHA-256 integrity hash.
@@ -231,15 +233,45 @@ restored = Spectrum.from_spectrl_token(token)
 inline = to_inline_spectrum(spec)                    # → spectrl.InlineSpectrum
 ```
 
-Carries: `mz`, `intensity`, `charge` (including singletons), `im` + `im_type`,
-`iso_score` (via spectrl's `extra_arrays` slot under key `"iso_score"`,
-encoded as a non-standard mzML binary array `MS:1000786`), spectrum type, and
-— for `MsnSpectrum` — `native_id`, `ms_level`, `polarity`, `rt`, `mz_range`,
-`total_ion_current`, `precursors`, `isolation_mz_range`, `collision_energy`,
-`activation_type`.
+The round-trip is faithful — every spxtacular field is carried.
 
-Not carried: `denoised`/`normalized` provenance strings, `im_range`/`isolation_im_range`,
-`resolution`, `analyzer`, `ramp_time`.
+Via mzML-native CV params: `mz`, `intensity`, `charge` (including singletons),
+`im` + `im_type`, spectrum type, and — for `MsnSpectrum` — `native_id`,
+`ms_level`, `polarity`, `rt`, `mz_range`, `total_ion_current`, `precursors`,
+`isolation_mz_range`, `collision_energy`, `activation_type`.
+
+`iso_score` rides in spectrl's `extra_arrays` slot under key `"iso_score"`
+(encoded as a non-standard mzML binary array `MS:1000786`).
+
+spxtacular scalar fields without an mzML CV counterpart —
+`denoised`/`normalized` provenance strings, `scan_number`, `resolution`,
+`analyzer`, `ramp_time`, `im_range`, `isolation_im_range` — are carried
+losslessly as namespaced free-text `user_params` (`spxtacular:` prefix).
+
+### URL sharing
+
+`to_spectrl_url` / `from_spectrl_url` bind a token into a shareable link (or
+decode one back). Also available as `Spectrum.to_spectrl_url` /
+`Spectrum.from_spectrl_url`.
+
+```python
+from spxtacular import to_spectrl_url, from_spectrl_url
+
+url  = to_spectrl_url(spec, "https://example.com/view")            # fragment (default)
+url  = to_spectrl_url(spec, "https://example.com/view", mode="query", param="d")
+uri  = to_spectrl_url(spec, mode="data")                          # data: URI, no base
+spec = from_spectrl_url(url)                                       # extract + decode
+```
+
+`mode` selects the binding:
+
+| `mode` | Result | `base` |
+|---|---|---|
+| `"fragment"` (default) | `base#spectrl1.…` — token in the URL fragment (never sent to the server) | required |
+| `"query"` | `base?<param>=spectrl1.…` — token as a query parameter | required |
+| `"data"` | `data:application/vnd.spectrl;v=1,…` URI | ignored |
+
+`lossless` and `max_len` are forwarded to the token encoder.
 
 ---
 
