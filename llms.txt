@@ -1,0 +1,186 @@
+# spxtacular — LLM / AI coding guide
+
+> spxtacular is a mass spectrometry spectrum processing library for Python (3.12+). It centers on
+> a `Spectrum`/`MsnSpectrum` dataclass with chainable processing methods (filter, deconvolute,
+> decharge, match fragments, plot). This file is written for AI coding assistants: it is a compact,
+> accurate reference for generating correct spxtacular code. Everything below matches the public
+> API as of version 0.4.0. Companion library: [peptacular](https://github.com/pgarrett-scripps/peptacular)
+> (peptide/fragment math). `numpy`, `pandas`, `plotly`, `peptacular`, and `paftacular` are required;
+> everything else below is an optional extra.
+
+## Install
+
+```bash
+pip install spxtacular
+pip install spxtacular[bruker]   # DReader — Bruker timsTOF .d files (needs tdfpy)
+pip install spxtacular[mzml]     # MzmlReader — .mzML files (needs mzmlpy)
+pip install spxtacular[spectrl]  # to_spectrl_token/url — compact shareable spectrum tokens
+pip install spxtacular[numba]    # JIT-compiles deconvolution (~3-4x speedup)
+pip install spxtacular[all]      # everything above
+```
+
+`DReader`/`MzmlReader` are always importable; only *instantiating* them raises `ImportError`
+(naming the right extra) if the backend package is missing. This lets libraries depend on
+spxtacular without pulling in raw-file readers.
+
+## Core usage
+
+```python
+import numpy as np
+from spxtacular import Spectrum
+
+spec = Spectrum(
+    mz=np.array([500.1, 800.2, 1200.5], dtype=np.float64),
+    intensity=np.array([1e5, 2e5, 9e4], dtype=np.float64),
+)
+
+result = (
+    spec.filter(min_mz=100, min_intensity=1e3)
+    .normalize(method="max")
+    .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+    .filter(min_score=0.5)
+    .decharge()
+)
+```
+
+Methods return a **new** `Spectrum` by default; pass `inplace=True` to mutate and return `self`.
+Methods are chainable because every mutator returns `Self`.
+
+## Spectrum fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `mz` | `NDArray[float64]` | sorted ascending |
+| `intensity` | `NDArray[float64]` | parallel to `mz` |
+| `charge` | `NDArray[int32] \| None` | see **Charge conventions** below |
+| `im` | `NDArray[float64] \| None` | ion mobility, parallel to `mz` |
+| `iso_score` | `NDArray[float64] \| None` | per-peak isotope-cluster score (0-1) from `deconvolute()` |
+| `spectrum_type` | `SpectrumType \| None` | `CENTROID`, `PROFILE`, or `DECONVOLUTED` |
+| `denoised` / `normalized` | `str \| None` | name of the method applied, or `None` |
+| `is_decharged` | `bool` (property) | `True` when every peak's `charge == 0` (post-`decharge()`) |
+
+`MsnSpectrum(Spectrum)` adds MS-run metadata: `scan_number`, `ms_level`, `native_id`, `rt`,
+`precursors: list[Precursor]`, `collision_energy`, `activation_type`, `im_type`, `polarity`,
+`mz_range`, `isolation_mz_range`, `im_range`, `isolation_im_range`, `analyzer`, `resolution`,
+`ramp_time`, `total_ion_current`, `injection_time`. `Precursor(Peak)` adds `is_monoisotopic`.
+`Peak` is a frozen dataclass: `mz, intensity, charge, im, iso_score`.
+
+## Charge conventions (critical — read before writing charge-related code)
+
+| `charge` value | meaning |
+|---|---|
+| `> 0` | assigned isotope-cluster charge state |
+| `-1` | singleton / unassigned (no isotope cluster found, or ambiguous) |
+| `0` | **only** after `decharge()` — m/z has been converted to neutral mass, charge is now unknown |
+
+`0` is a real, meaningful value here — never treat `charge` (or `iso_score`, which is
+legitimately `0.0` for singletons) as falsy. Check `is None` / compare to the sentinel value
+explicitly, not truthiness.
+
+## Deconvolution pipeline
+
+```python
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm", min_score=0.4)
+# decon.charge:     -1 = singleton, >0 = assigned cluster charge
+# decon.iso_score:   0.0 for singletons, Bhattacharyya score (0-1) for clusters
+neutral = decon.decharge()   # drops charge == -1 peaks; charge becomes all zeros (neutral mass)
+```
+
+`decharge()` raises `ValueError` if called on a non-`DECONVOLUTED` spectrum... except it doesn't
+currently raise — it silently calls `deconvolute()` with default parameters first (a known
+docs/behavior mismatch; don't rely on either being fixed without checking the installed version).
+Calling `decharge()` twice is safe: it warns and returns the input unchanged rather than
+corrupting the already-neutral `mz` values.
+
+## Fragment matching & scoring
+
+```python
+from peptacular import ProFormaAnnotation
+
+frags = ProFormaAnnotation.parse("PEPTIDE").fragment(ion_types=["b", "y"], charges=[1, 2])
+matches = spec.match_fragments(frags, tolerance=10, tolerance_type="ppm")  # frags: list[Fragment]
+scores = spec.score(frags, tolerance=10, tolerance_type="ppm")
+# scores: hyperscore, probability_score, total_matched_intensity, matched_fraction,
+#         intensity_fraction, mean_ppm_error, spectral_angle, longest_run
+```
+
+Matching adapts to spectrum state automatically: centroid (no charge constraint), deconvoluted
+(charge must match, `-1` is a wildcard), decharged (matches `Fragment.neutral_mass`, any charge
+collapses onto the same neutral peak). `tolerance_type` default is `"da"` on the `Spectrum`
+methods (`match_fragments`/`score`) but `"ppm"` on the module-level `match_fragments(spectrum,
+fragments, ...)` / `score(spectrum, fragments, ...)` functions — pass it explicitly, don't rely
+on the default matching what you expect.
+
+## Reading files
+
+```python
+from spxtacular import Reader, DReader, MzmlReader  # Reader auto-detects .d vs .mzML
+
+with Reader("run.d") as r:          # or Reader("run.mzML")
+    for ms1 in r.ms1: ...           # yields MsnSpectrum
+    for ms2 in r.ms2: ...
+    spec = r.ms2[42]                # by tdfpy precursor_id (DDA only; DIA/PRM raise NotImplementedError)
+```
+
+`DReader(path, centroid_config=CentroidConfig(...))` — `CentroidConfig` fields: `mz_tolerance=8.0`,
+`mz_tolerance_type="ppm"`, `im_tolerance=0.1`, `im_tolerance_type="relative"`, `min_peaks=3`,
+`noise_filter=None` (`"mad"|"percentile"|"histogram"|"baseline"|"iterative_median"|float|None`).
+Handles DDA, DIA, and PRM acquisitions transparently via `reader.acquisition_type`. Always
+`open()`/`close()` or use as a context manager — using the reader before `open()` or after
+`close()` raises `RuntimeError`.
+
+`MzmlReader(path)` wraps `mzmlpy`; same `ms1`/`ms2` iteration/lookup interface.
+
+`Spectrum.from_usi(usi)` fetches a spectrum from PRIDE/MassIVE/PeptideAtlas/jPOST by Universal
+Spectrum Identifier via the PROXI protocol.
+
+## Sharing spectra (spectrl tokens / URLs)
+
+```python
+token = spec.to_spectrl_token(lossless=True)          # compact, URL-safe string
+restored = Spectrum.from_spectrl_token(token)          # round-trips mz/intensity/charge/im/iso_score
+                                                        # + MSn metadata via mzML CV terms/user_params
+url = spec.to_spectrl_url("https://example.com/view", mode="fragment")  # or "query" / "data"
+restored = Spectrum.from_spectrl_url(url)
+```
+
+Requires the `spectrl` extra. `lossless=True` skips lossy numeric compression. Custom/unrecognized
+`activation_type` and `im_type` strings round-trip exactly (not coerced to a default CV term).
+
+## Plotting (requires plotly)
+
+```python
+spec.plot(title="My spectrum", color="charge").show()   # color: "charge" | "im" | None
+spec.plot(color="im").show()                             # Viridis scale by ion mobility
+```
+
+`color`, `show_scores`, `show_charges`, and `**layout_kwargs` are **keyword-only** on both
+`Spectrum.plot()` and `plot_spectrum()` — `spec.plot("title", False)` is a `TypeError`, not a
+silent bug, by design. `show_charges` is a deprecated alias for `color="charge"`/`color=None`.
+Also available: `mirror_plot(spec_a, spec_b)`, `annotate_spectrum(spec, fragments)`,
+`mass_error_plot(spec, fragments)`, `facet_plot(spectra)`.
+
+## Gotchas / rules for correct code
+
+- **`charge == 0` and `iso_score == 0.0` are meaningful, not "empty."** Never write
+  `if spec.charge:` or `if score:` — always compare explicitly or check `is None`.
+- **Guard `SpectrumType` before chaining.** `.decharge()` needs deconvoluted input;
+  `.match_fragments()`/`.deconvolute()` adapt to state but behave differently per state — read the
+  "Deconvolution pipeline" / "Fragment matching" sections above rather than guessing.
+- **Parallel arrays must stay in sync.** `mz`, `intensity`, `charge`, `im`, `iso_score` are
+  independent `NDArray`s of the same length; if you hand-build a `Spectrum`, mismatched lengths
+  raise `ValueError` in `__post_init__` — that's the guard, not a bug to work around.
+- **`tolerance_type` defaults differ between the `Spectrum` method and the module function** for
+  fragment matching (see above) — always pass it explicitly.
+- **Readers must be opened/closed** (context manager preferred). Using `DReader.ms1`/`.ms2` before
+  `open()` or after `close()` raises `RuntimeError` by design, not by accident.
+- **Don't move isotope-scoring logic into `decon/greedy.py`.** Cluster finding
+  (`decon/greedy.py`) and scoring (`decon/scored.py`) are intentionally separate.
+
+## More
+
+- README: https://github.com/tacular-omics/spxtacular
+- Docs: https://tacular-omics.github.io/spxtacular
+- API reference: https://tacular-omics.github.io/spxtacular/api/
+- Changelog: `HISTORY.md`
+- Repo-local coding-agent instructions (build/test/lint commands, architecture): `CLAUDE.md`
