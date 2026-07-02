@@ -25,6 +25,19 @@
 * **Lossless scalar-metadata round-trip** — spxtacular fields without an mzML CV counterpart (`denoised`, `normalized`, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range`) are carried as namespaced (`spxtacular:`) free-text `user_params`, so the round-trip is faithful.
 * spectrl is gated behind the `[spectrl]` optional extra, sourced from PyPI (`spectrl>=0.2.1`). The token is a single CBOR document; 0.2.1 fixes a native abort when lossy-encoding charge arrays that contain singleton sentinels (`charge=-1`).
 
+### Fixes
+* `Spectrum.match_fragments()` / `Spectrum.score()` default `tolerance_type` reverted to `DA` (it had drifted to `PPM` while keeping `tolerance=0.02`, making the default call match almost nothing).
+* `plot_spectrum()` / `Spectrum.plot()`: `color`, `show_scores`, and `show_charges` are now keyword-only, closing off a silent-positional-argument hazard introduced when `color` was inserted ahead of the old `show_charges` slot.
+* `match_fragments()` no longer raises `ZeroDivisionError` when a fragment's target mass is exactly `0.0` under `tolerance_type="ppm"`; the dict-fragment branch also builds `Fragment` objects lazily again (only for confirmed matches), restoring the pre-rewrite performance on this per-PSM hot path.
+* New `Spectrum.is_decharged` property replaces three separate inline re-derivations of the same check (`core.py`, `matching.py`).
+* `Spectrum.decharge()` now warns and returns the original spectrum instead of silently zeroing every m/z value when called on an already-decharged spectrum.
+* `Spectrum.top_peaks(0)` / `Spectrum.filter(top_n=0)` now correctly return zero peaks instead of all of them (a `arr[-0:]` negative-zero slicing bug).
+* `Spectrum.merge(im_tolerance_type=...)` validation was case-insensitive but the comparison wasn't, so e.g. `"RELATIVE"` silently used absolute-tolerance semantics.
+* `MzmlReader` spectra with multiple ion-mobility arrays now use the first length-matching array (previously the loop kept overwriting its result and could end up using the last array, or none, contradicting its own warning).
+* `DReader.close()` now clears its internal reader handle so the "must be opened" guard can't be bypassed by using a closed reader; `DReader.open()` now closes a previously-open reader instead of leaking its handle on re-open.
+* `_plot_spectrum_im` (the `color="im"` plot path) no longer corrupts the whole color scale when a single peak's `im` is `NaN`, and no longer crashes on an empty spectrum.
+* `spectrl_bridge`: unrecognised `activation_type` and `im_type` strings now round-trip losslessly instead of being silently coerced to a default accession; `Precursor.im` is now carried through encode/decode; an `MsnSpectrum` whose only MSn-specific data is `im`/`im_type` no longer downgrades to a plain `Spectrum` on decode.
+
 ## 0.3.1 (2026-05-14)
 
 ### New features

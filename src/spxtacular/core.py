@@ -154,6 +154,11 @@ class Spectrum:
     # -------------------------------------------------------------------------
 
     @property
+    def is_decharged(self) -> bool:
+        """Whether every (non-dropped) peak has already been decharged (charge == 0)."""
+        return self.charge is not None and len(self.charge) > 0 and bool(np.all(self.charge == 0))
+
+    @property
     def peaks(self) -> list[Peak]:
         """Convert to list of Peak objects."""
         return [
@@ -187,7 +192,10 @@ class Spectrum:
         else:
             raise ValueError(f"Unknown sort key: {by!r}")
 
-        indices = sort_key[:n] if not reverse else sort_key[-n:][::-1]
+        if not reverse:
+            indices = sort_key[:n]
+        else:
+            indices = sort_key[-n:][::-1] if n > 0 else sort_key[:0]
 
         return [
             Peak(
@@ -373,7 +381,9 @@ class Spectrum:
         if top_n is not None:
             valid_indices = np.where(mask)[0]
             intensities = self.intensity[valid_indices]
-            top_indices = valid_indices[np.argsort(intensities)[-top_n:]]
+            order = np.argsort(intensities)
+            order = order[-top_n:] if top_n > 0 else order[:0]
+            top_indices = valid_indices[order]
             mask = np.zeros(len(self.mz), dtype=bool)
             mask[top_indices] = True
 
@@ -476,7 +486,8 @@ class Spectrum:
         if mz_tolerance_type not in ("ppm", "da"):
             raise ValueError("mz_tolerance_type must be 'ppm' or 'da'")
 
-        if im_tolerance_type.lower() not in ("relative", "absolute"):
+        im_tol_type = im_tolerance_type.lower()
+        if im_tol_type not in ("relative", "absolute"):
             raise ValueError("im_tolerance_type must be 'relative' or 'absolute'")
 
         is_ppm = mz_tolerance_type == "ppm"
@@ -524,7 +535,7 @@ class Spectrum:
                 current_im = im[idx]
                 candidate_ims = im[valid_indices]
 
-                if im_tolerance_type == "relative":
+                if im_tol_type == "relative":
                     im_delta = current_im * im_tolerance
                 else:
                     # absolute
@@ -799,6 +810,7 @@ class Spectrum:
     def plot(
         self,
         title: str | None = None,
+        *,
         color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
         show_charges: bool | None = None,
@@ -1002,6 +1014,14 @@ class Spectrum:
         if self.spectrum_type != SpectrumType.DECONVOLUTED or self.charge is None:
             return self.deconvolute(inplace=inplace).decharge(inplace=inplace)
 
+        if self.is_decharged:
+            warnings.warn(
+                "Spectrum is already decharged, returning original spectrum",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self
+
         proton = 1.007276
 
         known = self.charge != -1
@@ -1202,7 +1222,7 @@ class Spectrum:
         self,
         fragments: "FragmentInput",
         tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         is_monoisotopic: bool = True,
     ) -> "list[MatchedFragment]":
@@ -1227,7 +1247,7 @@ class Spectrum:
         self,
         fragments: "FragmentInput",
         tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     ) -> "dict[str, float]":
         """Match fragments and return all PSM scores.
@@ -1330,7 +1350,7 @@ class Spectrum:
             raise ValueError("precursor_mz is required when the spectrum has no precursor information")
 
         # -- detect spectrum state --------------------------------------------
-        is_decharged = self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
+        is_decharged = self.is_decharged
 
         # -- collect all m/z targets to remove --------------------------------
         targets: list[float] = []

@@ -61,12 +61,16 @@ def _plot_spectrum_im(
         im_label = "1/K0"
 
     im_arr = np.asarray(im, dtype=np.float64)
-    im_min, im_max = float(im_arr.min()), float(im_arr.max())
     n_bins = 20
-    if im_min == im_max:
+    if len(im_arr) == 0 or np.all(np.isnan(im_arr)):
+        im_min = im_max = 0.0
         norm = np.zeros(len(im_arr))
     else:
-        norm = (im_arr - im_min) / (im_max - im_min)
+        im_min, im_max = float(np.nanmin(im_arr)), float(np.nanmax(im_arr))
+        if im_min == im_max:
+            norm = np.zeros(len(im_arr))
+        else:
+            norm = np.nan_to_num((im_arr - im_min) / (im_max - im_min), nan=0.0)
     bin_idx = np.clip((norm * n_bins).astype(int), 0, n_bins - 1)
     bin_colors: list[str] = pc.sample_colorscale("Viridis", n_bins)
 
@@ -145,6 +149,7 @@ def _plot_spectrum_im(
 def plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
+    *,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     show_charges: bool | None = None,

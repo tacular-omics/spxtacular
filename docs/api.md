@@ -331,12 +331,15 @@ from spxtacular import plot_spectrum
 plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
+    *,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     show_charges: bool | None = None,  # deprecated alias of color
     **layout_kwargs,
 )
 ```
+
+`color`, `show_scores`, and `show_charges` are keyword-only.
 
 ``color="charge"`` (default) colours sticks by charge state. ``color="im"``
 colours by ion mobility on a Viridis scale (falls back to ``"charge"`` when no

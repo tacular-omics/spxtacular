@@ -98,7 +98,7 @@ def match_fragments(
     # peak's charge set to 0; deconvoluted spectra carry per-peak charges in
     # {-1, 1, 2, ...}. A `charge` array of all -1 is treated as deconvoluted
     # (all singletons) — every peak is then a wildcard and falls back to m/z.
-    is_decharged = charge is not None and len(charge) > 0 and bool(np.all(charge == 0))
+    is_decharged = spectrum.is_decharged
 
     def _target(frag: Fragment) -> float:
         return float(frag.neutral_mass) if is_decharged else float(frag.mz)
@@ -135,20 +135,20 @@ def match_fragments(
             for i in (idx - 1, idx):
                 if 0 <= i < len(mz) and _charge_ok(i, frag_charge):
                     delta = abs(float(mz[i]) - target_mz)
-                    err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
+                    err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
                     if err <= tolerance:
                         candidates.append((i, delta))
         else:
             for i in range(idx - 1, -1, -1):
                 delta = abs(float(mz[i]) - target_mz)
-                err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
+                err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
                 delta = abs(float(mz[i]) - target_mz)
-                err = delta / target_mz * 1e6 if tolerance_type == "ppm" else delta
+                err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
@@ -169,19 +169,32 @@ def match_fragments(
             for i, _ in candidates:
                 results.append(_build_matched(i, frag))
 
+    def _make_frag(ion_type: IonType, pos: int, charge_state: int, mz_val: float) -> Fragment:
+        return Fragment(
+            ion_type=ion_type,
+            position=pos,
+            mass=mz_val * charge_state,
+            monoisotopic=is_monoisotopic,
+            charge_state=charge_state,
+        )
+
     if isinstance(fragments, dict):
         frag_dict = cast(dict[tuple[IonType, int], list[float]], fragments)
         for (ion_type, charge_state), masses in frag_dict.items():
             for pos, mz_val in enumerate(masses, start=1):
-                frag = Fragment(
-                    ion_type=ion_type,
-                    position=pos,
-                    mass=mz_val * charge_state,
-                    monoisotopic=is_monoisotopic,
-                    charge_state=charge_state,
-                )
-                candidates = _search(_target(frag), charge_state)
+                # Only decharged spectra need the neutral-mass target, which requires
+                # building the Fragment up front; otherwise defer construction until
+                # a match is actually found (mz_val is already the search target).
+                if is_decharged:
+                    frag: Fragment | None = _make_frag(ion_type, pos, charge_state, mz_val)
+                    target = _target(frag)
+                else:
+                    frag = None
+                    target = mz_val
+                candidates = _search(target, charge_state)
                 if candidates:
+                    if frag is None:
+                        frag = _make_frag(ion_type, pos, charge_state, mz_val)
                     _emit(candidates, frag)
     else:
         for frag in fragments:

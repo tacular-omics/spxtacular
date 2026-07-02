@@ -192,6 +192,8 @@ class DReader:
 
     def open(self) -> None:
         """Open the underlying tdfpy reader. Call :meth:`close` when done, or use as a context manager."""
+        if self._reader is not None:
+            self.close()
         match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 self._reader = self._tdf.DDA(str(self.analysis_dir))
@@ -207,6 +209,7 @@ class DReader:
         """Close the underlying tdfpy reader."""
         if self._reader:
             self._reader.__exit__(None, None, None)
+            self._reader = None
 
     def __enter__(self) -> DReader:
         self.open()
@@ -546,10 +549,10 @@ class MzmlReader:
                     raise RuntimeError(
                         f"Spectrum {spec}: multiple IM arrays, first is not None. Array types: {im_types}"
                     )
-                im_array = darr.data.astype(np.float64)
-                if len(im_array) != len(mz_array):
-                    im_array = None
-                    continue
+                candidate = darr.data.astype(np.float64)
+                if len(candidate) == len(mz_array):
+                    im_array = candidate
+                    break
             if im_array is None:
                 warnings.warn(
                     f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",

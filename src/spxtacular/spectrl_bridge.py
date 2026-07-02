@@ -71,7 +71,8 @@ _ISOL_LOWER_OFFSET = "MS:1000828"
 _ISOL_UPPER_OFFSET = "MS:1000829"
 _COLLISION_ENERGY = "MS:1000045"
 
-# Common activation accessions; default-encode unknown strings as the BD-PASEF accession
+# Common activation accessions; unrecognised strings pass through unchanged so
+# the round trip stays faithful even for activation types we don't know about.
 _ACTIVATION_ACCESSIONS: dict[str, str] = {
     "HCD": "MS:1000422",
     "CID": "MS:1000133",
@@ -131,6 +132,7 @@ _UP_IM_RANGE_LO = _UP_PREFIX + "im_range_lower"
 _UP_IM_RANGE_HI = _UP_PREFIX + "im_range_upper"
 _UP_ISOL_IM_RANGE_LO = _UP_PREFIX + "isolation_im_range_lower"
 _UP_ISOL_IM_RANGE_HI = _UP_PREFIX + "isolation_im_range_upper"
+_UP_IM_TYPE = _UP_PREFIX + "im_type"
 
 # user-param names that only an MsnSpectrum can carry (force MSn on decode)
 _MSN_USER_PARAMS: frozenset[str] = frozenset(
@@ -143,6 +145,7 @@ _MSN_USER_PARAMS: frozenset[str] = frozenset(
         _UP_IM_RANGE_HI,
         _UP_ISOL_IM_RANGE_LO,
         _UP_ISOL_IM_RANGE_HI,
+        _UP_IM_TYPE,
     }
 )
 
@@ -249,6 +252,14 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         if scan_params or windows:
             scans.append(SpectrlScan(params=scan_params, windows=windows))
 
+    # Ion mobility type accession — computed up front so precursor ion mobility
+    # (below) can be tagged with the same accession as the spectrum-level array.
+    ion_mobility_type: str | None = None
+    if spec.im is not None and msn_spec is not None and msn_spec.im_type is not None:
+        ion_mobility_type = _IM_TYPE_ACCESSIONS.get(msn_spec.im_type.lower(), "MS:1002893")
+    elif spec.im is not None:
+        ion_mobility_type = "MS:1002893"  # generic ion mobility when type unknown
+
     # Precursors
     precursors: list[SpectrlPrecursor] = []
     if msn_spec is not None and msn_spec.precursors:
@@ -270,6 +281,8 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
                 ion_params.append(_cv(_CHARGE_STATE, value=int(prec.charge)))
             if prec.intensity is not None and prec.intensity != 0.0:
                 ion_params.append(_cv(_PEAK_INTENSITY, value=float(prec.intensity)))
+            if prec.im is not None:
+                ion_params.append(_cv(ion_mobility_type or "MS:1002893", value=float(prec.im)))
             selected_ion = SpectrlSelectedIon(params=ion_params)
 
             activation: SpectrlActivation | None = None
@@ -278,9 +291,6 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
                 act_params.append(_cv(_COLLISION_ENERGY, value=float(msn_spec.collision_energy)))
             if msn_spec.activation_type is not None:
                 acc = _ACTIVATION_ACCESSIONS.get(msn_spec.activation_type, msn_spec.activation_type)
-                # If already an MS:NNNNN accession, use it; otherwise fall through to BD-PASEF default
-                if not acc.startswith("MS:"):
-                    acc = "MS:1002481"
                 act_params.append(_cv(acc))
             if act_params:
                 activation = SpectrlActivation(params=act_params)
@@ -292,13 +302,6 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
                     activation=activation,
                 )
             )
-
-    # Ion mobility type accession
-    ion_mobility_type: str | None = None
-    if spec.im is not None and msn_spec is not None and msn_spec.im_type is not None:
-        ion_mobility_type = _IM_TYPE_ACCESSIONS.get(msn_spec.im_type.lower(), "MS:1002893")
-    elif spec.im is not None:
-        ion_mobility_type = "MS:1002893"  # generic ion mobility when type unknown
 
     # charge needs to be float64 for spectrl's array model
     charge_arr: np.ndarray | None = None
@@ -334,6 +337,10 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             lo, hi = msn_spec.isolation_im_range
             user_params.append(_up(_UP_ISOL_IM_RANGE_LO, float(lo), "xsd:float"))
             user_params.append(_up(_UP_ISOL_IM_RANGE_HI, float(hi), "xsd:float"))
+        if msn_spec.im_type is not None:
+            # The CV accession (ion_mobility_type) only carries a coarse, spectrl-recognised
+            # IM category; stash the exact string here so unrecognized types round-trip too.
+            user_params.append(_up(_UP_IM_TYPE, msn_spec.im_type, "xsd:string"))
 
     return InlineSpectrum(
         default_array_length=n,
@@ -444,6 +451,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         or ms_level_p is not None
         or decoded.scans
         or decoded.precursors
+        or decoded.ion_mobility_type is not None
         or _find_param(decoded.params, _POSITIVE) is not None
         or _find_param(decoded.params, _NEGATIVE) is not None
         or any(name in up for name in _MSN_USER_PARAMS)
@@ -508,11 +516,17 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                 prec_charge = (
                     int(charge_p.value) if charge_p is not None and charge_p.value is not None else None
                 )
+                prec_im: float | None = None
+                for p in ion.params:
+                    if p.accession in _IM_TYPE_FROM_ACCESSION and p.value is not None:
+                        prec_im = float(p.value)
+                        break
                 precursors.append(
                     Precursor(
                         mz=float(mz_p.value),
                         intensity=prec_intensity,
                         charge=prec_charge,
+                        im=prec_im,
                         is_monoisotopic=None,
                     )
                 )
@@ -533,7 +547,12 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                             activation_type = _ACTIVATION_NAMES.get(p.accession, p.accession)
                             break
 
-    im_type = _IM_TYPE_FROM_ACCESSION.get(decoded.ion_mobility_type) if decoded.ion_mobility_type else None
+    im_type_v = up.get(_UP_IM_TYPE)
+    im_type = (
+        str(im_type_v)
+        if im_type_v is not None
+        else (_IM_TYPE_FROM_ACCESSION.get(decoded.ion_mobility_type) if decoded.ion_mobility_type else None)
+    )
 
     # Remaining spxtacular scalar fields from user_params.
     scan_number_v = up.get(_UP_SCAN_NUMBER)

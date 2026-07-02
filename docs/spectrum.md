@@ -82,6 +82,8 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 - `len(score) == len(mz)` when `score` is not `None`
 - A `charge` array may only be present when `spectrum_type == DECONVOLUTED`
 
+**`is_decharged` property** — `True` when every (non-dropped) peak's `charge == 0`, i.e. the spectrum has already been through `decharge()`. Used internally by `decharge()`, `remove_precursor_peak()`, and `match_fragments()` to detect neutral-mass spectra.
+
 ```python
 import numpy as np
 from spxtacular import Spectrum
@@ -381,6 +383,8 @@ Converts deconvoluted m/z values to neutral monoisotopic masses using `neutral_m
 
 Raises `ValueError` if the spectrum is not in `DECONVOLUTED` state.
 
+Calling `decharge()` again on an already-decharged spectrum (`spec.is_decharged`) warns and returns the original spectrum unchanged, rather than corrupting the (already-neutral) `mz` values.
+
 > The `score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
 
 ```python
@@ -499,12 +503,15 @@ spec = Spectrum.from_usi(
 def plot(
     self,
     title: str | None = None,
+    *,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     show_charges: bool | None = None,  # deprecated alias
     **layout_kwargs,
 ) -> Figure
 ```
+
+`color`, `show_scores`, and `show_charges` are keyword-only.
 
 Returns a Plotly `Figure` (stick plot). Requires `plotly` (`pip install plotly`).
 
@@ -642,7 +649,7 @@ def match_fragments(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]
@@ -657,7 +664,7 @@ def score(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
 ) -> dict[str, float]
 ```
