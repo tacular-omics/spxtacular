@@ -219,7 +219,7 @@ def score(
     fragments:
         Theoretical fragment ions from peptacular, or the
         ``dict[tuple[IonType, int], list[float]]`` returned by
-        :meth:`~peptacular.ProFormaAnnotation.fragment_masses`.
+        :meth:`~peptacular.ProFormaAnnotation.fast_fragment`.
     tolerance:
         Matching tolerance.
     tolerance_type:

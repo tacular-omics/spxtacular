@@ -405,7 +405,7 @@ match_fragments(
 ```
 
 When `fragments` is a `dict[tuple[IonType, int], list[float]]` (the output of
-`peptacular.ProFormaAnnotation.fragment_masses`), `is_monoisotopic` is forwarded
+`peptacular.ProFormaAnnotation.fast_fragment`), `is_monoisotopic` is forwarded
 to the `Fragment` constructor; otherwise it has no effect. Returns a list sorted
 by ascending `peak_index`.
 

@@ -51,7 +51,7 @@ def match_fragments(
     fragments:
         Fragment objects from peptacular (each with a ``.mz`` property), **or** the
         ``dict[tuple[IonType, int], list[float]]`` returned by
-        :meth:`~peptacular.ProFormaAnnotation.fragment_masses`.
+        :meth:`~peptacular.ProFormaAnnotation.fast_fragment`.
     tolerance:
         Tolerance value.
     tolerance_type:

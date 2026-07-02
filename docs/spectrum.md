@@ -655,7 +655,7 @@ def match_fragments(
 ) -> list[MatchedFragment]
 ```
 
-Match fragment ions against this spectrum's peaks. Thin wrapper around `spxtacular.match_fragments`. When `fragments` is a `dict[(IonType, charge_state), list[float]]` (peptacular's `fragment_masses` output), `is_monoisotopic` is forwarded to the constructed `Fragment` objects; otherwise it has no effect.
+Match fragment ions against this spectrum's peaks. Thin wrapper around `spxtacular.match_fragments`. When `fragments` is a `dict[(IonType, charge_state), list[float]]` (peptacular's `fast_fragment` output), `is_monoisotopic` is forwarded to the constructed `Fragment` objects; otherwise it has no effect.
 
 #### `score`
 
