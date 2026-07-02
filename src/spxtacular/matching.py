@@ -14,6 +14,7 @@ from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
 from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .utils import da_to_ppm
 
 FragmentInput = Sequence[Fragment] | dict[tuple[IonType, int], list[float]]
 
@@ -109,12 +110,15 @@ def match_fragments(
         pc = int(charge[peak_idx])
         return pc == -1 or pc == frag_charge  # -1 = unknown, treat as wildcard
 
+    def _ppm_err(delta: float, target_mz: float) -> float:
+        return da_to_ppm(delta, target_mz) if target_mz != 0.0 else 0.0
+
     def _build_matched(peak_idx: int, frag: Fragment) -> MatchedFragment:
         p_mz = float(mz[peak_idx])
         p_int = float(intensity[peak_idx])
         theoretical_mz = _target(frag)
         da_err = p_mz - theoretical_mz
-        ppm_err = da_err / theoretical_mz * 1e6 if theoretical_mz != 0.0 else 0.0
+        ppm_err = _ppm_err(da_err, theoretical_mz)
         pct = p_int / total_intensity * 100.0 if total_intensity > 0.0 else 0.0
         return MatchedFragment(
             fragment=frag,
@@ -135,20 +139,20 @@ def match_fragments(
             for i in (idx - 1, idx):
                 if 0 <= i < len(mz) and _charge_ok(i, frag_charge):
                     delta = abs(float(mz[i]) - target_mz)
-                    err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
+                    err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                     if err <= tolerance:
                         candidates.append((i, delta))
         else:
             for i in range(idx - 1, -1, -1):
                 delta = abs(float(mz[i]) - target_mz)
-                err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
+                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
                 delta = abs(float(mz[i]) - target_mz)
-                err = (delta / target_mz * 1e6 if target_mz != 0.0 else 0.0) if tolerance_type == "ppm" else delta
+                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):

@@ -79,7 +79,6 @@ _ACTIVATION_ACCESSIONS: dict[str, str] = {
     "ETD": "MS:1000598",
     "ECD": "MS:1000250",
     "PASEF": "MS:1002481",
-    "MS:1002481": "MS:1002481",  # already an accession (BD-PASEF default in DReader)
 }
 
 # Inverse mapping for decoding
@@ -306,13 +305,13 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     # charge needs to be float64 for spectrl's array model
     charge_arr: np.ndarray | None = None
     if spec.charge is not None:
-        charge_arr = spec.charge.astype(np.float64)
+        charge_arr = spec.charge.astype(np.float64, copy=False)
 
     # iso_score travels as a non-standard mzML binary array (MS:1000786)
     # via spectrl's extra_arrays slot.
     extra_arrays: dict[str, np.ndarray] = {}
     if spec.iso_score is not None:
-        extra_arrays["iso_score"] = spec.iso_score.astype(np.float64)
+        extra_arrays["iso_score"] = spec.iso_score.astype(np.float64, copy=False)
 
     # spxtacular scalar fields with no CV term travel as namespaced user_params.
     user_params = []
@@ -344,10 +343,10 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
 
     return InlineSpectrum(
         default_array_length=n,
-        mz=spec.mz.astype(np.float64) if spec.mz is not None else None,
-        intensity=spec.intensity.astype(np.float64) if spec.intensity is not None else None,
+        mz=spec.mz.astype(np.float64, copy=False) if spec.mz is not None else None,
+        intensity=spec.intensity.astype(np.float64, copy=False) if spec.intensity is not None else None,
         charge=charge_arr,
-        ion_mobility=spec.im.astype(np.float64) if spec.im is not None else None,
+        ion_mobility=spec.im.astype(np.float64, copy=False) if spec.im is not None else None,
         ion_mobility_type=ion_mobility_type,
         id=msn_spec.native_id if msn_spec is not None else None,
         params=params,

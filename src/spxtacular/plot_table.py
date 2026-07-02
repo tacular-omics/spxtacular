@@ -87,6 +87,14 @@ def _hover(mz: float, intensity: float, im: float | None = None) -> str:
     return base if im is None else f"{base}<br>im: {im:.4f}"
 
 
+def _im_value(im_col: list[float], im_arr: NDArray[np.float64] | None, i: int) -> float | None:
+    """Peak `i`'s ion mobility, or None if no IM array is present or the value is NaN."""
+    if im_arr is None:
+        return None
+    val = float(im_col[i])
+    return None if np.isnan(val) else val
+
+
 # ---------------------------------------------------------------------------
 # build_plot_table
 # ---------------------------------------------------------------------------
@@ -172,7 +180,7 @@ def build_plot_table(
         _hover(
             float(mz[i]),
             float(intensity[i]),
-            float(im_col[i]) if im_arr is not None and not np.isnan(float(im_col[i])) else None,
+            _im_value(im_col, im_arr, i),
         )
         for i in range(n)
     ]
@@ -282,7 +290,7 @@ def build_annot_plot_table(
         mz_val = float(mz[i])
         int_val = float(intensity[i])
         frags = peak_frags.get(i)
-        im_val = float(im_col[i]) if im_arr is not None and not np.isnan(float(im_col[i])) else None
+        im_val = _im_value(im_col, im_arr, i)
         if frags:
             ion_type = str(frags[0].ion_type)
             color = _ION_COLORS.get(ion_type, _DEFAULT_ION_COLOR)
