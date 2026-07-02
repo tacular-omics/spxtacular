@@ -1009,15 +1009,15 @@ wheels = [
 
 [[package]]
 name = "tdfpy"
-version = "1.2.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/b9/f965c78620e8801304bdff25b7fab4f641db1eb93c21fa5e36341dba477d/tdfpy-1.2.0.tar.gz", hash = "sha256:6f7777da9bde85a8e0ebbe2b2f735426e3966c0741c5a6df9575cf57fbb3b236", size = 86081545, upload-time = "2026-04-10T16:48:32.932Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/c7/20c32f3e4cde5cc27d9c2a475a3051affcceb44c9d8951b47469a6763d06/tdfpy-2.0.0.tar.gz", hash = "sha256:86f23c2acd40a99e9330023ce26c576ebf3ff9b3d8a8827e466fe49bc29de84f", size = 87406884, upload-time = "2026-06-09T05:29:49.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/67/0a4aaf98c353b6a62eae54966435286ca24635838f3e3e9613fac918b5af/tdfpy-1.2.0-py3-none-any.whl", hash = "sha256:c5bfa59bcc39dc70e782f061b607415706243b7a22611b3270f7d93e79c4bda4", size = 5802035, upload-time = "2026-04-10T16:48:29.982Z" },
+    { url = "https://files.pythonhosted.org/packages/af/5c/88a6a08ce8d5a966957833e2243384b10b3cb091bbd36d6182306798e736/tdfpy-2.0.0-py3-none-any.whl", hash = "sha256:31d627e65ecb66ce6ef7f5704a67c3f247c85bfc77e938377f92fbef39aea445", size = 5822785, upload-time = "2026-06-09T05:29:46.948Z" },
 ]
 
 [[package]]

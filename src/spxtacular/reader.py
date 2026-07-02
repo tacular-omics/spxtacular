@@ -36,7 +36,7 @@ try:
 
     _HAS_NEW_CENTROID_API = True
 except ImportError:
-    _MergePeaksCentroider = None  # type: ignore[assignment]
+    _MergePeaksCentroider = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
     _HAS_NEW_CENTROID_API = False
 
 """

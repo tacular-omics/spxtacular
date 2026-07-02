@@ -37,6 +37,7 @@
 * `DReader.close()` now clears its internal reader handle so the "must be opened" guard can't be bypassed by using a closed reader; `DReader.open()` now closes a previously-open reader instead of leaking its handle on re-open.
 * `_plot_spectrum_im` (the `color="im"` plot path) no longer corrupts the whole color scale when a single peak's `im` is `NaN`, and no longer crashes on an empty spectrum.
 * `spectrl_bridge`: unrecognised `activation_type` and `im_type` strings now round-trip losslessly instead of being silently coerced to a default accession; `Precursor.im` is now carried through encode/decode; an `MsnSpectrum` whose only MSn-specific data is `im`/`im_type` no longer downgrades to a plain `Spectrum` on decode.
+* `uv run ty check` no longer errors under `tdfpy>=2.0.0` (which ships a `py.typed` marker): the `MergePeaksCentroider` import-fallback assignment was missing a `ty: ignore[invalid-assignment]` alongside its existing `type: ignore`, so `ty` now flagged it as a real type error once it could resolve the import. Verified against the currently-released `tdfpy==2.0.0`/`mzmlpy==0.4.0` and, ahead of their releases, the local `tdfpy` (`release/v2.1.0`) and `mzmlpy` (`release/v0.5.0`) branches — full test suite passes against both.
 
 ## 0.3.1 (2026-05-14)
 
