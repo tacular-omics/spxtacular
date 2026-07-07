@@ -32,7 +32,7 @@ except ImportError:
 # kwargs (mz_tolerance, …, noise_filter) became `centroid=MergePeaksCentroider(…)`
 # and `noise=…`. Detect which API is available and adapt below.
 try:
-    from tdfpy import MergePeaksCentroider as _MergePeaksCentroider  # ty: ignore[unresolved-import]
+    from tdfpy import MergePeaksCentroider as _MergePeaksCentroider
 
     _HAS_NEW_CENTROID_API = True
 except ImportError:

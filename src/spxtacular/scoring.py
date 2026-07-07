@@ -202,7 +202,7 @@ def score(
     spectrum: Spectrum,
     fragments: FragmentInput,
     tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance_type: ToleranceLike = ToleranceType.DA,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
 ) -> dict[str, float]:
     """Match fragments against a spectrum and return all scores.

@@ -1020,7 +1020,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self if inplace else self.copy()
 
         proton = 1.007276
 
