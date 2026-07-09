@@ -36,7 +36,7 @@ def match_fragments(
     spectrum: Spectrum,
     fragments: FragmentInput,
     tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance_type: ToleranceLike = ToleranceType.DA,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]:

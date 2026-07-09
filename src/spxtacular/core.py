@@ -399,7 +399,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self.update(inplace=inplace)
 
         if method == "max":
             norm_factor = self.intensity.max()
@@ -424,7 +424,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self.update(inplace=inplace)
 
         threshold = estimate_noise_level(self.intensity, method=method)
         return self.filter(min_intensity=threshold, inplace=inplace).update(denoised=str(method), inplace=inplace)
@@ -620,7 +620,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self.update(inplace=inplace)
 
         mz_cent, int_cent, im_cent = _centroid_peaks(self.mz, self.intensity, self.im)
 
@@ -971,11 +971,11 @@ class Spectrum:
     ) -> Self:
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
             warnings.warn(
-                "Spectrum is already deconvoluted, returning original spectrum",
+                "Spectrum is already deconvoluted",
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self.update(inplace=inplace)
 
         is_ppm = tolerance_type == "ppm"
         resolved_min_intensity: float = float(self.intensity.min()) if min_intensity == "min" else min_intensity
@@ -1016,11 +1016,11 @@ class Spectrum:
 
         if self.is_decharged:
             warnings.warn(
-                "Spectrum is already decharged, returning original spectrum",
+                "Spectrum is already decharged",
                 UserWarning,
                 stacklevel=2,
             )
-            return self if inplace else self.copy()
+            return self.update(inplace=inplace)
 
         proton = 1.007276
 
@@ -1523,7 +1523,7 @@ class Spectrum:
         self,
         fragments: "FragmentInput",
         tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         unit: Literal["ppm", "da"] = "ppm",
         title: str | None = None,
@@ -1567,7 +1567,7 @@ class Spectrum:
         mirror_spectrum: "Spectrum | None" = None,
         title: str | None = None,
         tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance_type: ToleranceLike = ToleranceType.DA,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
         **layout_kwargs,
