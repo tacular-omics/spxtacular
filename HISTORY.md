@@ -50,6 +50,7 @@
 
 ### Dependencies
 * Added an explicit `numpy>=1.26` floor (the first numpy supporting Python 3.12, the project's minimum) — previously `numpy` was unbounded.
+* Raised dependency floors to the versions 0.4.0 is tested against: `peptacular>=3.1.2`, `paftacular>=1.1.0`, and the optional reader extras `tdfpy>=2.0.0` (was `>=1.2.0` — now requires the tdfpy 2.x API) and `mzmlpy>=0.5.0` (was `>=0.4.0`). `spectrl>=0.2.1` unchanged. Verified: full suite passes against `peptacular==3.1.2`, `paftacular==1.1.0`, `tdfpy==2.2.0`, `mzmlpy==0.5.0`.
 
 ## 0.3.1 (2026-05-14)
 

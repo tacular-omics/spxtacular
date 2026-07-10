@@ -478,14 +478,14 @@ wheels = [
 
 [[package]]
 name = "mzmlpy"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/3d/cb7760ca49c40ad031346567b9ce6ba6b9321108108b1c88aec430e58a70/mzmlpy-0.4.0.tar.gz", hash = "sha256:12ce07fe4b5e43aa55c1c8fd2ee9fd320bbb3e1c4092e2762aa8982dffe6a9e4", size = 13050075, upload-time = "2026-04-07T23:34:21.892Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/29/5d2e0f3aedeb351d5670077c46e9e848a6d70af4096beb2e0ae2b4938c0a/mzmlpy-0.5.0.tar.gz", hash = "sha256:29e94c915c8a9537f7e6bef76950bf982f5917ad878c87d2a4f729e399c21264", size = 48805, upload-time = "2026-07-10T01:14:13.956Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/87/eeac1022c8ce72aa6db97a3440fcb1347754be25e243369eeb7e28dd5f7c/mzmlpy-0.4.0-py3-none-any.whl", hash = "sha256:e74629b05b0dc440665fd99cf3cd5e85b8b3904dd6a262bb62df75392d52e35a", size = 44280, upload-time = "2026-04-07T23:34:20.075Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/59/729de691e3010c477904b72abbc9098c0162b8a9a64b7a5847241f0d293a/mzmlpy-0.5.0-py3-none-any.whl", hash = "sha256:77e2f0f4db41fd438654b93be7de9bc34f97b49ace3f6a2d172f4a236fc250fd", size = 55573, upload-time = "2026-07-10T01:14:12.713Z" },
 ]
 
 [[package]]
@@ -597,14 +597,14 @@ wheels = [
 
 [[package]]
 name = "paftacular"
-version = "1.0.0"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "peptacular" },
+    { name = "tacular" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/c9/7a92135cb259a1fd428465e63f28f1b867603257a60af0010fb2d7af16cb/paftacular-1.0.0.tar.gz", hash = "sha256:42239ece2acd565217c07665507fb4f54a552975511ea0ca2654d22493b48360", size = 542997, upload-time = "2026-03-17T21:25:31.99Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/38/437d0f539636e5a811832f293f8d68d4559e5777429f4b4cd5a0545b95c3/paftacular-1.1.0.tar.gz", hash = "sha256:768f2bdf2ab3b8ef59a6f74a66750d9e7dfd9fd983e562ec9807fa8b2818daa9", size = 569843, upload-time = "2026-07-10T01:07:10.868Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/30/88ed92f46f470bba7101af8e4ecba7903869d8280acb87dfb5573a21ef89/paftacular-1.0.0-py3-none-any.whl", hash = "sha256:a9927fe35ebc821cdc29ae8372b6682012e03c128c330480081bd860805323de", size = 24472, upload-time = "2026-03-17T21:25:30.605Z" },
+    { url = "https://files.pythonhosted.org/packages/69/2e/97ac23f8357297c40dd7ce64ef7888b7ec2a217ff74f5102c320755c8021/paftacular-1.1.0-py3-none-any.whl", hash = "sha256:af1409995ddf15b16f906f4dc4081e37a8f090dec35045f85decc809ac5b706e", size = 27469, upload-time = "2026-07-10T01:07:09.38Z" },
 ]
 
 [[package]]
@@ -679,14 +679,14 @@ wheels = [
 
 [[package]]
 name = "peptacular"
-version = "3.1.1"
+version = "3.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tacular" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/e7/341ce4f65a3ccff8be27a9c3ae612e37ccf6b5c075382a78d20c6e37dde3/peptacular-3.1.1.tar.gz", hash = "sha256:7e852d2917f94e1d1838f5bde60904a08aabafa014b342e2af0cbbe44451251b", size = 1922182, upload-time = "2026-03-31T00:23:30.787Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/f2/5c352fc3fb7640c335870f341af54c33098c859a273ec8347790f6bce159/peptacular-3.1.2.tar.gz", hash = "sha256:d489112d3b0c5b77a9c7bbbbefa6d7e559868845795c8be2bb6b2e127d4afe63", size = 1088779, upload-time = "2026-07-10T00:59:57.637Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/52/79f7dedd917ad355144df1732f8c6a87a8b0af871d2a50bcf5103744a4d4/peptacular-3.1.1-py3-none-any.whl", hash = "sha256:b9db13425f55a086a9e37104f16e5a7d7db82fa6b2e1f8f4600e38e46d027e5c", size = 162783, upload-time = "2026-03-31T00:23:29.359Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/5a/664a5ddd40d8890b7bc835dad9462882676615fc53ebb171a012fd31e3f1/peptacular-3.1.2-py3-none-any.whl", hash = "sha256:4a6a82c1745153ec32577631ed90bc7ff5f056a6af7698013fb3a5f6a8889a9d", size = 172461, upload-time = "2026-07-10T00:59:56.392Z" },
 ]
 
 [[package]]
@@ -966,21 +966,21 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.4.0" },
-    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.4.0" },
-    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.4.0" },
+    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.5.0" },
+    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.5.0" },
+    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.5.0" },
     { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "paftacular", specifier = ">=1.0.0" },
+    { name = "paftacular", specifier = ">=1.1.0" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "peptacular", specifier = ">=3.1.1" },
+    { name = "peptacular", specifier = ">=3.1.2" },
     { name = "plotly", specifier = ">=6.6.0" },
     { name = "spectrl", marker = "extra == 'all'", specifier = ">=0.2.1" },
     { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=0.2.1" },
-    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=1.2.0" },
-    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=1.2.0" },
-    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=1.2.0" },
+    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=2.0.0" },
+    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=2.0.0" },
+    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=2.0.0" },
 ]
 provides-extras = ["all", "bruker", "mzml", "numba", "readers", "spectrl"]
 
@@ -1000,24 +1000,24 @@ dev = [
 
 [[package]]
 name = "tacular"
-version = "1.0.1"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/81/39/35c22571b4a75ccc84c08295ef12043efae75e4d4b7041c35e284e8e7d67/tacular-1.0.1.tar.gz", hash = "sha256:6a700fcecd4a50d5729bef358396a4ccdacc26079e0c01d2d37f2c58105b55f5", size = 758608, upload-time = "2026-02-03T22:52:21.869Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/af/39e3e331e003c347fa57c1914417e877cf76338d4ea216a959634cac598d/tacular-1.1.0.tar.gz", hash = "sha256:5cda570eb5e450e54d32c736519df0c5e041ee722bd0fa2898f708c5f60d15f7", size = 868437, upload-time = "2026-07-08T22:08:34.158Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/19/d9515375e21ae4e23c735d55228d0cf964769a54418f849617c9c09c24e8/tacular-1.0.1-py3-none-any.whl", hash = "sha256:77b7f0889ca82a1d2066b0a40bce1d5721e7415d1903d1281d53ff96200474ed", size = 362501, upload-time = "2026-02-03T22:52:20.667Z" },
+    { url = "https://files.pythonhosted.org/packages/20/22/522428dcbb9b06ee2de76a34021137fe3bd38c360f4d3419dcdd76846816/tacular-1.1.0-py3-none-any.whl", hash = "sha256:d72ad98c301dc19a19a5fcc692b680c689de59067566ff99320c1899aa273aa9", size = 422964, upload-time = "2026-07-08T22:08:32.521Z" },
 ]
 
 [[package]]
 name = "tdfpy"
-version = "2.0.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/90/c7/20c32f3e4cde5cc27d9c2a475a3051affcceb44c9d8951b47469a6763d06/tdfpy-2.0.0.tar.gz", hash = "sha256:86f23c2acd40a99e9330023ce26c576ebf3ff9b3d8a8827e466fe49bc29de84f", size = 87406884, upload-time = "2026-06-09T05:29:49.742Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/26/cbb340fda684d236184ca31aa2cd6903853b0bcab853c4b6a15bcfd5aff5/tdfpy-2.2.0.tar.gz", hash = "sha256:39ec88f3232052f9ffb10e0e73227c07488c27fe8d73c94866a0b017dde22b7d", size = 87422734, upload-time = "2026-07-10T01:15:58.914Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/5c/88a6a08ce8d5a966957833e2243384b10b3cb091bbd36d6182306798e736/tdfpy-2.0.0-py3-none-any.whl", hash = "sha256:31d627e65ecb66ce6ef7f5704a67c3f247c85bfc77e938377f92fbef39aea445", size = 5822785, upload-time = "2026-06-09T05:29:46.948Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/1a/a69869846813d3380d56b3a706db5583a7cebc74ba1df78ab8a2563e5ea9/tdfpy-2.2.0-py3-none-any.whl", hash = "sha256:82fa54691c6a2d756c7204ff4aeaba55553e84adb6a7d1f5643d22e5e501bef4", size = 5834360, upload-time = "2026-07-10T01:15:56.185Z" },
 ]
 
 [[package]]

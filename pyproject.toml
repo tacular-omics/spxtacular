@@ -9,8 +9,8 @@ keywords = ["mass spectrometry", "proteomics", "deconvolution", "bioinformatics"
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
-    "peptacular>=3.1.1",
-    "paftacular>=1.0.0",
+    "peptacular>=3.1.2",
+    "paftacular>=1.1.0",
     "plotly>=6.6.0",
 ]
 authors = [
@@ -47,11 +47,11 @@ packages = ["src/spxtacular"]
 
 [project.optional-dependencies]
 numba = ["numba>=0.64.0"]
-bruker = ["tdfpy>=1.2.0"]
-mzml = ["mzmlpy>=0.4.0"]
-readers = ["tdfpy>=1.2.0", "mzmlpy>=0.4.0"]
+bruker = ["tdfpy>=2.0.0"]
+mzml = ["mzmlpy>=0.5.0"]
+readers = ["tdfpy>=2.0.0", "mzmlpy>=0.5.0"]
 spectrl = ["spectrl>=0.2.1"]
-all = ["numba>=0.64.0", "tdfpy>=1.2.0", "mzmlpy>=0.4.0", "spectrl>=0.2.1"]
+all = ["numba>=0.64.0", "tdfpy>=2.0.0", "mzmlpy>=0.5.0", "spectrl>=0.2.1"]
 
 [tool.uv]
 package = true
