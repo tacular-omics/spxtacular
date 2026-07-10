@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, ClassVar, Literal, Self
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -18,9 +18,19 @@ if TYPE_CHECKING:
 import numpy as np
 from numpy.typing import NDArray
 
-from .compress import compress_spectra, decompress_spectra
 from .decon.scored import deconvolve_spectrum as _deconvolve
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    ActivationTypeLike,
+    AnalyzerLike,
+    IMTypeLike,
+    PeakSelection,
+    PeakSelectionLike,
+    PolarityLike,
+    ToleranceLike,
+    ToleranceType,
+)
 from .noise import estimate_noise_level
 
 # ============================================================================
@@ -155,6 +165,11 @@ class Spectrum:
     # -------------------------------------------------------------------------
 
     @property
+    def is_decharged(self) -> bool:
+        """Whether every (non-dropped) peak has already been decharged (charge == 0)."""
+        return self.charge is not None and len(self.charge) > 0 and bool(np.all(self.charge == 0))
+
+    @property
     def peaks(self) -> list[Peak]:
         """Convert to list of Peak objects."""
         return [
@@ -188,7 +203,10 @@ class Spectrum:
         else:
             raise ValueError(f"Unknown sort key: {by!r}")
 
-        indices = sort_key[:n] if not reverse else sort_key[-n:][::-1]
+        if not reverse:
+            indices = sort_key[:n]
+        else:
+            indices = sort_key[-n:][::-1] if n > 0 else sort_key[:0]
 
         return [
             Peak(
@@ -202,7 +220,7 @@ class Spectrum:
         ]
 
     # -------------------------------------------------------------------------
-    # Cached Sort Indices
+    # Sort indices
     # -------------------------------------------------------------------------
 
     @property
@@ -374,7 +392,9 @@ class Spectrum:
         if top_n is not None:
             valid_indices = np.where(mask)[0]
             intensities = self.intensity[valid_indices]
-            top_indices = valid_indices[np.argsort(intensities)[-top_n:]]
+            order = np.argsort(intensities)
+            order = order[-top_n:] if top_n > 0 else order[:0]
+            top_indices = valid_indices[order]
             mask = np.zeros(len(self.mz), dtype=bool)
             mask[top_indices] = True
 
@@ -390,7 +410,10 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self if inplace else self.copy()
+
+        if len(self.intensity) == 0:
+            return self if inplace else self.copy()
 
         if method == "max":
             norm_factor = self.intensity.max()
@@ -398,6 +421,14 @@ class Spectrum:
             norm_factor = self.intensity.sum()
         else:  # median
             norm_factor = np.median(self.intensity)
+
+        if norm_factor == 0:
+            warnings.warn(
+                "Cannot normalize a spectrum with all-zero intensity; returning unchanged",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self if inplace else self.copy()
 
         return self.update(intensity=self.intensity / norm_factor, normalized=method, inplace=inplace)
 
@@ -415,7 +446,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self if inplace else self.copy()
 
         threshold = estimate_noise_level(self.intensity, method=method)
         return self.filter(min_intensity=threshold, inplace=inplace).update(denoised=str(method), inplace=inplace)
@@ -428,22 +459,28 @@ class Spectrum:
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         inplace: bool = False,
     ) -> Self:
-        """
-        Merge nearby peaks within a given tolerance.
+        """Merge nearby peaks within a given m/z (and optionally ion-mobility) tolerance.
 
         Peaks are processed in order of decreasing intensity. For each peak,
-        neighbors within the tolerance window are identified. The merged peak
-        will have the weighted average m/z (and ion mobility if present) and
-        sum of intensities.
+        neighbours within the tolerance window are identified. The merged peak
+        carries the intensity-weighted average m/z (and ion mobility if
+        present) and the summed intensity. Charge arrays are preserved — only
+        peaks with matching charge are merged together.
 
         Parameters
         ----------
-        tolerance : float, optional
-            m/z tolerance for merging, by default 0.01
-        tolerance_type : Literal["ppm", "da"], optional
-            Type of tolerance, by default "da"
-        inplace : bool, optional
-            Whether to modify the spectrum in place, by default False
+        mz_tolerance:
+            m/z tolerance for merging. Default ``0.01``.
+        mz_tolerance_type:
+            ``"da"`` or ``"ppm"``. Default ``"da"``.
+        im_tolerance:
+            Ion-mobility tolerance for merging (only used when ``self.im`` is
+            present). Default ``0.05``.
+        im_tolerance_type:
+            ``"relative"`` (fraction of current peak's IM) or ``"absolute"``
+            (in IM units). Default ``"relative"``.
+        inplace:
+            Whether to modify the spectrum in place. Default ``False``.
 
         Returns
         -------
@@ -471,7 +508,8 @@ class Spectrum:
         if mz_tolerance_type not in ("ppm", "da"):
             raise ValueError("mz_tolerance_type must be 'ppm' or 'da'")
 
-        if im_tolerance_type.lower() not in ("relative", "absolute"):
+        im_tol_type = im_tolerance_type.lower()
+        if im_tol_type not in ("relative", "absolute"):
             raise ValueError("im_tolerance_type must be 'relative' or 'absolute'")
 
         is_ppm = mz_tolerance_type == "ppm"
@@ -519,7 +557,7 @@ class Spectrum:
                 current_im = im[idx]
                 candidate_ims = im[valid_indices]
 
-                if im_tolerance_type == "relative":
+                if im_tol_type == "relative":
                     im_delta = current_im * im_tolerance
                 else:
                     # absolute
@@ -604,7 +642,7 @@ class Spectrum:
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self if inplace else self.copy()
 
         mz_cent, int_cent, im_cent = _centroid_peaks(self.mz, self.intensity, self.im)
 
@@ -794,8 +832,10 @@ class Spectrum:
     def plot(
         self,
         title: str | None = None,
-        show_charges: bool = True,
+        *,
+        color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
+        show_charges: bool | None = None,
         **layout_kwargs,
     ) -> "go.Figure":
         """Plot spectrum as a stick plot (requires plotly).
@@ -804,10 +844,13 @@ class Spectrum:
         ----------
         title:
             Plot title. Defaults to the spectrum type.
-        show_charges:
-            Colour sticks by charge state when charge data is present.
+        color:
+            Coloring mode — ``"charge"``, ``"im"``, or ``None``.
+            See :func:`~spxtacular.plot_spectrum` for details.
         show_scores:
             Annotate peaks with isotope profile scores when score data is present.
+        show_charges:
+            Deprecated. Use ``color="charge"`` or ``color=None`` instead.
         **layout_kwargs:
             Forwarded to ``fig.update_layout``.
         """
@@ -816,8 +859,9 @@ class Spectrum:
         return plot_spectrum(
             self,
             title=title,
-            show_charges=show_charges,
+            color=color,
             show_scores=show_scores,
+            show_charges=show_charges,
             **layout_kwargs,
         )
 
@@ -855,8 +899,8 @@ class Spectrum:
     def annot_plot_table(
         self,
         fragments: "FragmentInput",
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
     ) -> "pd.DataFrame":
@@ -889,8 +933,8 @@ class Spectrum:
     def annotate(
         self,
         fragments: "FragmentInput",
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         title: str | None = None,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
@@ -947,16 +991,24 @@ class Spectrum:
         min_intensity: float | Literal["min"] = "min",
         min_score: float = 0.0,
     ) -> Self:
+        min_charge, max_charge = charge_range
+        if min_charge < 1 or max_charge < min_charge:
+            raise ValueError(f"charge_range must be a (min, max) tuple with 1 <= min <= max; got {charge_range!r}")
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
             warnings.warn(
-                "Spectrum is already deconvoluted, returning original spectrum",
+                "Spectrum is already deconvoluted",
                 UserWarning,
                 stacklevel=2,
             )
-            return self
+            return self if inplace else self.copy()
 
         is_ppm = tolerance_type == "ppm"
-        resolved_min_intensity: float = float(self.intensity.min()) if min_intensity == "min" else min_intensity
+        if min_intensity == "min":
+            # Guard the reduction: an empty spectrum has no min. _deconvolve handles
+            # the empty case and returns empty arrays, giving an empty DECONVOLUTED spectrum.
+            resolved_min_intensity = float(self.intensity.min()) if len(self.intensity) else 0.0
+        else:
+            resolved_min_intensity = float(min_intensity)
 
         new_mz, new_charge, new_intensity, new_score = _deconvolve(
             mz=self.mz,
@@ -985,12 +1037,23 @@ class Spectrum:
         Decharge spectrum by converting m/z to neutral mass using charge information.
 
         Peaks with charge == -1 are dropped (charge unknown).
-        If the spectrum is not yet deconvoluted, deconvolute() is called first with default parameters.
+
+        Raises:
+            ValueError: if the spectrum has not been deconvoluted yet. Call
+                ``deconvolute()`` first so the charge states are known.
 
         Returns a new Spectrum with m/z values as neutral masses, sorted ascending.
         """
         if self.spectrum_type != SpectrumType.DECONVOLUTED or self.charge is None:
-            return self.deconvolute(inplace=inplace).decharge(inplace=inplace)
+            raise ValueError("Cannot decharge a non-deconvoluted spectrum; call deconvolute() first.")
+
+        if self.is_decharged:
+            warnings.warn(
+                "Spectrum is already decharged",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self if inplace else self.copy()
 
         proton = 1.007276
 
@@ -1024,35 +1087,58 @@ class Spectrum:
         return self.__str__()
 
     # -------------------------------------------------------------------------
-    # Compression
+    # Serialization (spectrl token format — see spectrl_bridge.py)
     # -------------------------------------------------------------------------
 
-    def compress(
-        self,
-        url_safe: bool = False,
-        mz_precision: int | None = None,
-        intensity_precision: int | None = None,
-        im_precision: int | None = None,
-        compression: str = "gzip",
-    ) -> str:
+    def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str:
+        """Encode this spectrum as a ``spectrl1.…`` URL-safe token (requires
+        ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.to_spectrl_token`.
         """
-        Compress spectrum data to a string.
-        """
-        return compress_spectra(
-            self,
-            url_safe=url_safe,
-            mz_precision=mz_precision,
-            intensity_precision=intensity_precision,
-            im_precision=im_precision,
-            compression=compression,
-        )
+        from .spectrl_bridge import to_spectrl_token
+
+        return to_spectrl_token(self, lossless=lossless, max_len=max_len)
 
     @classmethod
-    def from_compressed(cls, compressed_str: str) -> "Spectrum":
+    def from_spectrl_token(cls, token: str) -> "Spectrum":
+        """Decode a ``spectrl1.…`` token into a :class:`Spectrum` /
+        :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.from_spectrl_token`.
         """
-        Create a Spectrum from a compressed string.
+        from .spectrl_bridge import from_spectrl_token
+
+        return from_spectrl_token(token)
+
+    def to_spectrl_url(
+        self,
+        base: str | None = None,
+        *,
+        mode: str = "fragment",
+        param: str = "d",
+        lossless: bool = False,
+        max_len: int | None = None,
+    ) -> str:
+        """Encode this spectrum into a shareable URL or ``data:`` URI (requires
+        ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.to_spectrl_url`.
         """
-        return decompress_spectra(compressed_str)
+        from .spectrl_bridge import to_spectrl_url
+
+        return to_spectrl_url(self, base, mode=mode, param=param, lossless=lossless, max_len=max_len)
+
+    @classmethod
+    def from_spectrl_url(cls, url: str) -> "Spectrum":
+        """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
+        carrying a ``spectrl1.…`` token (requires ``spxtacular[spectrl]``).
+
+        See :func:`spxtacular.spectrl_bridge.from_spectrl_url`.
+        """
+        from .spectrl_bridge import from_spectrl_url
+
+        return from_spectrl_url(url)
 
     @classmethod
     def from_usi(
@@ -1091,51 +1177,74 @@ class Spectrum:
     # Persistence
     # -------------------------------------------------------------------------
 
+    def _meta_dict(self) -> dict:
+        """Build the JSON-serialisable metadata dict for :meth:`save`.
+
+        Subclasses extend this to persist additional fields.
+        """
+        st = self.spectrum_type
+        return {
+            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
+            "denoised": self.denoised,
+            "normalized": self.normalized,
+        }
+
+    @classmethod
+    def _meta_kwargs(cls, meta: dict) -> dict:
+        """Convert a loaded ``meta`` dict to constructor kwargs.
+
+        Subclasses extend this to populate additional fields.
+        """
+        return {
+            "spectrum_type": meta.get("spectrum_type"),
+            "denoised": meta.get("denoised"),
+            "normalized": meta.get("normalized"),
+        }
+
     def save(self, path: str | Path) -> None:
         """Save spectrum to a ``.npz`` file.
 
         Arrays (``mz``, ``intensity``, and any optional ``charge``, ``im``,
-        ``score``) are stored natively; all scalar metadata is stored as a
+        ``iso_score``) are stored natively; all scalar metadata is stored as a
         JSON string under the ``meta`` key.  The file extension ``.npz`` is
         appended automatically if absent.
         """
         import json
 
-        st = self.spectrum_type
-        meta = {
-            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
-            "denoised": self.denoised,
-            "normalized": self.normalized,
-        }
         arrays: dict = {
             "mz": self.mz,
             "intensity": self.intensity,
-            "meta": np.array(json.dumps(meta), dtype=object),
+            "meta": np.array(json.dumps(self._meta_dict()), dtype=object),
         }
         if self.charge is not None:
             arrays["charge"] = self.charge
         if self.im is not None:
             arrays["im"] = self.im
         if self.iso_score is not None:
-            arrays["score"] = self.iso_score
+            arrays["iso_score"] = self.iso_score
         np.savez(path, **arrays)
 
     @classmethod
-    def load(cls, path: str | Path) -> "Spectrum":
-        """Load a :class:`Spectrum` from a ``.npz`` file written by :meth:`save`."""
+    def load(cls, path: str | Path) -> Self:
+        """Load a spectrum from a ``.npz`` file written by :meth:`save`."""
         import json
 
         data = np.load(path, allow_pickle=True)
         meta = json.loads(str(data["meta"]))
+        # Back-compat: pre-unified Spectrum.save() used the key "score".
+        if "iso_score" in data:
+            iso_score = data["iso_score"]
+        elif "score" in data:
+            iso_score = data["score"]
+        else:
+            iso_score = None
         return cls(
             mz=data["mz"],
             intensity=data["intensity"],
             charge=data["charge"] if "charge" in data else None,
             im=data["im"] if "im" in data else None,
-            iso_score=data["score"] if "score" in data else None,
-            spectrum_type=meta["spectrum_type"],
-            denoised=meta["denoised"],
-            normalized=meta["normalized"],
+            iso_score=iso_score,
+            **cls._meta_kwargs(meta),
         )
 
     # -------------------------------------------------------------------------
@@ -1145,9 +1254,10 @@ class Spectrum:
     def match_fragments(
         self,
         fragments: "FragmentInput",
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        is_monoisotopic: bool = True,
     ) -> "list[MatchedFragment]":
         """Match fragment ions against this spectrum's peaks.
 
@@ -1158,14 +1268,19 @@ class Spectrum:
         from .matching import match_fragments as _match
 
         return _match(
-            self, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            is_monoisotopic=is_monoisotopic,
         )
 
     def score(
         self,
         fragments: "FragmentInput",
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     ) -> "dict[str, float]":
         """Match fragments and return all PSM scores.
@@ -1186,8 +1301,8 @@ class Spectrum:
         self,
         precursor_mz: float | None = None,
         precursor_charge: int | None = None,
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         isotopes: int | Literal["auto"] = "auto",
         isotope_threshold: float = 0.01,
         remove_charge_states: bool = True,
@@ -1255,10 +1370,7 @@ class Spectrum:
 
         # -- guard: profile spectra -------------------------------------------
         if self.spectrum_type == SpectrumType.PROFILE:
-            raise ValueError(
-                "remove_precursor_peak() requires centroid or deconvoluted "
-                "data; call .centroid() first"
-            )
+            raise ValueError("remove_precursor_peak() requires centroid or deconvoluted data; call .centroid() first")
 
         # -- resolve precursor list -------------------------------------------
         precursors: list[tuple[float, int | None]]  # (mz, charge)
@@ -1268,15 +1380,10 @@ class Spectrum:
         elif isinstance(self, MsnSpectrum) and self.precursors:
             precursors = [(p.mz, p.charge) for p in self.precursors]
         else:
-            raise ValueError(
-                "precursor_mz is required when the spectrum has no "
-                "precursor information"
-            )
+            raise ValueError("precursor_mz is required when the spectrum has no precursor information")
 
         # -- detect spectrum state --------------------------------------------
-        is_decharged = (
-            self.charge is not None and len(self.charge) > 0 and np.all(self.charge == 0)
-        )
+        is_decharged = self.is_decharged
 
         # -- collect all m/z targets to remove --------------------------------
         targets: list[float] = []
@@ -1448,8 +1555,8 @@ class Spectrum:
     def mass_error_plot(
         self,
         fragments: "FragmentInput",
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         unit: Literal["ppm", "da"] = "ppm",
         title: str | None = None,
@@ -1492,8 +1599,8 @@ class Spectrum:
         fragments: "FragmentInput | None" = None,
         mirror_spectrum: "Spectrum | None" = None,
         title: str | None = None,
-        tolerance: float = 0.02,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
         **layout_kwargs,
@@ -1557,7 +1664,7 @@ class MsnSpectrum(Spectrum):
     scan_number: int | None = None  # Native scan number from instrument
     ms_level: int | None = None  # 1 for MS1, 2 for MS2, etc.
     native_id: str | None = None  # e.g., "scan=1234" or instrument-specific format
-    im_type: str | None = None  # e.g., "1/K0", "drift_time_ms", etc.
+    im_type: IMTypeLike | None = None  # e.g., "ook0", "drift_time_ms", etc.
 
     # -------------------------------------------------------------------------
     # Timing & Chromatography
@@ -1575,57 +1682,65 @@ class MsnSpectrum(Spectrum):
     # -------------------------------------------------------------------------
     # Instrument Settings
     # -------------------------------------------------------------------------
-    polarity: Literal["positive", "negative"] | None = None
+    polarity: PolarityLike | None = None
 
     # -------------------------------------------------------------------------
     # Optional Metadata
     # -------------------------------------------------------------------------
     resolution: float | None = None  # Resolution
-    analyzer: str | None = None  # e.g., "FTMS", "ITMS", "TOFMS"
+    analyzer: AnalyzerLike | None = None  # e.g., "orbitrap", "tof"; vendor shorthands ("FTMS") pass through
     ramp_time: float | None = None  # Ramp time for ion mobility (ms)
     collision_energy: float | None = None  # Collision energy for MS2 spectra
-    activation_type: str | None = None  # e.g., "HCD", "CID", "ETD"
+    activation_type: ActivationTypeLike | None = None  # e.g., "HCD", "CID", "ETD"
     precursors: list[Precursor] | None = None  # For MS2/MSn, list of precursor peaks
 
     isolation_mz_range: tuple[float, float] | None = None  # Isolation window (min_mz, max_mz) for MS2
     isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
 
     def __str__(self) -> str:
+        rt_str = f"{self.rt:.2f}s" if self.rt is not None else "None"
         return (
             f"MsnSpectrum(scan={self.scan_number}, ms_level={self.ms_level}, "
-            f"rt={self.rt:.2f}s, polarity={self.polarity}, n_peaks={len(self.mz)})"
+            f"rt={rt_str}, polarity={self.polarity}, n_peaks={len(self.mz)})"
         )
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    def save(self, path: str | Path) -> None:
-        """Save spectrum to a ``.npz`` file (includes all MSn metadata)."""
-        import json
+    _MSN_SCALAR_META_FIELDS: ClassVar[tuple[str, ...]] = (
+        "scan_number",
+        "ms_level",
+        "native_id",
+        "rt",
+        "injection_time",
+        "total_ion_current",
+        "im_type",
+        "polarity",
+        "resolution",
+        "analyzer",
+        "ramp_time",
+        "collision_energy",
+        "activation_type",
+    )
+    _MSN_TUPLE_META_FIELDS: ClassVar[tuple[str, ...]] = (
+        "mz_range",
+        "im_range",
+        "isolation_mz_range",
+        "isolation_im_range",
+    )
 
-        st = self.spectrum_type
-        meta = {
-            "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
-            "denoised": self.denoised,
-            "normalized": self.normalized,
-            "scan_number": self.scan_number,
-            "ms_level": self.ms_level,
-            "native_id": self.native_id,
-            "rt": self.rt,
-            "injection_time": self.injection_time,
-            "total_ion_current": self.total_ion_current,
-            "mz_range": list(self.mz_range) if self.mz_range is not None else None,
-            "im_range": list(self.im_range) if self.im_range is not None else None,
-            "im_type": self.im_type,
-            "polarity": self.polarity,
-            "resolution": self.resolution,
-            "analyzer": self.analyzer,
-            "ramp_time": self.ramp_time,
-            "collision_energy": self.collision_energy,
-            "activation_type": self.activation_type,
-            "isolation_mz_range": list(self.isolation_mz_range) if self.isolation_mz_range is not None else None,
-            "isolation_im_range": list(self.isolation_im_range) if self.isolation_im_range is not None else None,
-            "precursors": [
+    def _meta_dict(self) -> dict:
+        # Explicit base-class call (not super()) because @dataclass(slots=True)
+        # on Spectrum and MsnSpectrum breaks zero-arg super() on Python <3.13:
+        # https://github.com/python/cpython/issues/90562
+        meta = Spectrum._meta_dict(self)
+        for field in self._MSN_SCALAR_META_FIELDS:
+            meta[field] = getattr(self, field)
+        for field in self._MSN_TUPLE_META_FIELDS:
+            val = getattr(self, field)
+            meta[field] = list(val) if val is not None else None
+        meta["precursors"] = (
+            [
                 {
                     "mz": p.mz,
                     "intensity": p.intensity,
@@ -1637,62 +1752,20 @@ class MsnSpectrum(Spectrum):
                 for p in self.precursors
             ]
             if self.precursors is not None
-            else None,
-        }
-        arrays: dict = {
-            "mz": self.mz,
-            "intensity": self.intensity,
-            "meta": np.array(json.dumps(meta), dtype=object),
-        }
-        if self.charge is not None:
-            arrays["charge"] = self.charge
-        if self.im is not None:
-            arrays["im"] = self.im
-        if self.iso_score is not None:
-            arrays["iso_score"] = self.iso_score
-        np.savez(path, **arrays)
+            else None
+        )
+        return meta
 
     @classmethod
-    def load(cls, path: str | Path) -> "MsnSpectrum":
-        """Load an :class:`MsnSpectrum` from a ``.npz`` file written by :meth:`save`."""
-        import json
-
-        data = np.load(path, allow_pickle=True)
-        meta = json.loads(str(data["meta"]))
-        precursors = None
-        if meta.get("precursors") is not None:
-            precursors = [Precursor(**p) for p in meta["precursors"]]
-        mz_range = tuple(meta["mz_range"]) if meta.get("mz_range") is not None else None
-        im_range = tuple(meta["im_range"]) if meta.get("im_range") is not None else None
-        return cls(
-            mz=data["mz"],
-            intensity=data["intensity"],
-            charge=data["charge"] if "charge" in data else None,
-            im=data["im"] if "im" in data else None,
-            iso_score=data["iso_score"] if "iso_score" in data else None,
-            spectrum_type=meta.get("spectrum_type"),
-            denoised=meta.get("denoised"),
-            normalized=meta.get("normalized"),
-            scan_number=meta.get("scan_number"),
-            ms_level=meta.get("ms_level"),
-            native_id=meta.get("native_id"),
-            rt=meta.get("rt"),
-            injection_time=meta.get("injection_time"),
-            total_ion_current=meta.get("total_ion_current"),
-            mz_range=mz_range,
-            im_range=im_range,
-            im_type=meta.get("im_type"),
-            polarity=meta.get("polarity"),
-            resolution=meta.get("resolution"),
-            analyzer=meta.get("analyzer"),
-            ramp_time=meta.get("ramp_time"),
-            collision_energy=meta.get("collision_energy"),
-            activation_type=meta.get("activation_type"),
-            precursors=precursors,
-            isolation_mz_range=tuple(meta["isolation_mz_range"])
-            if meta.get("isolation_mz_range") is not None
-            else None,
-            isolation_im_range=tuple(meta["isolation_im_range"])
-            if meta.get("isolation_im_range") is not None
-            else None,
+    def _meta_kwargs(cls, meta: dict) -> dict:
+        # Explicit base-class call (not super()) — see _meta_dict note above.
+        kwargs = Spectrum._meta_kwargs(meta)
+        for field in cls._MSN_SCALAR_META_FIELDS:
+            kwargs[field] = meta.get(field)
+        for field in cls._MSN_TUPLE_META_FIELDS:
+            val = meta.get(field)
+            kwargs[field] = tuple(val) if val is not None else None
+        kwargs["precursors"] = (
+            [Precursor(**p) for p in meta["precursors"]] if meta.get("precursors") is not None else None
         )
+        return kwargs

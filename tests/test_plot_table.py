@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
+from peptacular import IonType
 from peptacular.annotation.frag import Fragment
-from tacular.ion_types.data import IonType
 
 from spxtacular.core import Spectrum
 from spxtacular.plot_table import (

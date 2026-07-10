@@ -17,12 +17,22 @@ from spxtacular.matching import MatchedFragment, match_fragments
 # ---------------------------------------------------------------------------
 
 
-def _make_frag(mz: float, ion_type: str = "b", position: int = 1, charge_state: int = 1) -> MagicMock:
+_PROTON = 1.00727646688
+
+
+def _make_frag(
+    mz: float,
+    ion_type: str = "b",
+    position: int = 1,
+    charge_state: int = 1,
+    neutral_mass: float | None = None,
+) -> MagicMock:
     f = MagicMock()
     f.mz = mz
     f.ion_type = ion_type
     f.position = position
     f.charge_state = charge_state
+    f.neutral_mass = neutral_mass if neutral_mass is not None else mz * charge_state - charge_state * _PROTON
     return f
 
 
@@ -209,14 +219,27 @@ def test_charge_filter_all_mode() -> None:
     assert result[0].peak_index == 0  # only the z=1 peak
 
 
-def test_singleton_peaks_not_matched() -> None:
-    """Peaks with charge=-1 (singletons) are never matched even if m/z is within tolerance."""
+def test_singleton_peaks_match_as_wildcard() -> None:
+    """Peaks with charge=-1 (unknown charge) act as a wildcard and match by m/z."""
     spec = Spectrum(
         mz=np.array([200.0], dtype=np.float64),
         intensity=np.array([100.0], dtype=np.float64),
         charge=np.array([-1], dtype=np.int32),
     )
     frag = _make_frag(200.005, charge_state=1)
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
+    assert len(result) == 1
+    assert result[0].peak_index == 0
+
+
+def test_singleton_excluded_when_outside_tolerance() -> None:
+    """Wildcard behavior still respects the m/z tolerance."""
+    spec = Spectrum(
+        mz=np.array([200.0], dtype=np.float64),
+        intensity=np.array([100.0], dtype=np.float64),
+        charge=np.array([-1], dtype=np.int32),
+    )
+    frag = _make_frag(201.0, charge_state=1)  # way outside 0.02 Da
     result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
     assert result == []
 
@@ -320,3 +343,42 @@ def test_all_mode_ppm_tolerance_returns_all_within_tolerance() -> None:
     frag = _make_frag(200.0005)
     result = match_fragments(spec, [frag], tolerance=10.0, tolerance_type="ppm", peak_selection="all")
     assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Decharged spectra: peaks store neutral masses, frags match by neutral_mass
+# ---------------------------------------------------------------------------
+
+
+def test_decharged_matches_against_neutral_mass() -> None:
+    """When every peak has charge=0, fragments match by neutral mass, ignoring charge state."""
+    # Two fragments at different charge states share the same neutral mass and
+    # should both match the single neutral-mass peak.
+    neutral = 97.05276
+    spec = Spectrum(
+        mz=np.array([neutral], dtype=np.float64),
+        intensity=np.array([100.0], dtype=np.float64),
+        charge=np.zeros(1, dtype=np.int32),
+    )
+    frag_z1 = _make_frag(neutral + _PROTON, charge_state=1, neutral_mass=neutral)
+    frag_z2 = _make_frag(neutral / 2 + _PROTON, charge_state=2, neutral_mass=neutral)
+    result = match_fragments(spec, [frag_z1, frag_z2], tolerance=10, tolerance_type="ppm")
+    assert {m.fragment.charge_state for m in result} == {1, 2}
+    # peak_mz is the stored neutral mass, errors are against neutral_mass
+    for m in result:
+        assert m.peak_mz == neutral
+        assert abs(m.da_error) < 1e-3
+
+
+def test_decharged_ignores_fragment_charge_state() -> None:
+    """A z=3 fragment whose neutral mass aligns matches a decharged peak."""
+    neutral = 500.0
+    spec = Spectrum(
+        mz=np.array([neutral], dtype=np.float64),
+        intensity=np.array([100.0], dtype=np.float64),
+        charge=np.zeros(1, dtype=np.int32),
+    )
+    frag = _make_frag(167.674, charge_state=3, neutral_mass=neutral)
+    result = match_fragments(spec, [frag], tolerance=0.05, tolerance_type="da")
+    assert len(result) == 1
+    assert result[0].peak_index == 0

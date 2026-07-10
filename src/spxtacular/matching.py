@@ -13,7 +13,14 @@ from peptacular import IonType
 from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
+from .utils import da_to_ppm
 
 FragmentInput = Sequence[Fragment] | dict[tuple[IonType, int], list[float]]
 
@@ -34,8 +41,8 @@ class MatchedFragment:
 def match_fragments(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]:
@@ -50,7 +57,7 @@ def match_fragments(
     fragments:
         Fragment objects from peptacular (each with a ``.mz`` property), **or** the
         ``dict[tuple[IonType, int], list[float]]`` returned by
-        :meth:`~peptacular.ProFormaAnnotation.fragment_masses`.
+        :meth:`~peptacular.ProFormaAnnotation.fast_fragment`.
     tolerance:
         Tolerance value.
     tolerance_type:
@@ -72,9 +79,21 @@ def match_fragments(
 
     Notes
     -----
-    When ``spectrum.charge`` is present (deconvoluted spectrum), a candidate
-    peak is only accepted when its charge state equals ``fragment.charge_state``.
-    Singletons (``charge == -1``) and peaks of wrong charge are excluded.
+    Matching adapts to the spectrum's processing state so the same call
+    works for centroid, deconvoluted, and decharged spectra:
+
+    * **Centroid / profile** (``spectrum.charge is None``) — match by m/z
+      with no charge constraint.
+    * **Deconvoluted** (``spectrum.charge`` has values > 0 or -1) — match by
+      m/z; require the peak's assigned charge to equal
+      ``fragment.charge_state``. Singletons (``charge == -1``, unknown
+      charge) are treated as a wildcard and may still match by m/z.
+    * **Decharged** (every peak's ``charge`` is 0, i.e. neutral masses) —
+      match the peak's neutral mass against ``fragment.neutral_mass``;
+      ``charge_state`` is no longer a constraint, so multi-charge
+      fragments collapse onto the same neutral target. The reported
+      ``peak_mz`` is the stored neutral mass and the ppm/Da errors are
+      against ``fragment.neutral_mass`` rather than ``fragment.mz``.
     """
     mz = spectrum.mz
     intensity = spectrum.intensity
@@ -82,17 +101,30 @@ def match_fragments(
     total_intensity = float(intensity.sum())
     results: list[MatchedFragment] = []
 
+    # Detect spectrum state once. Decharged spectra have every (non-dropped)
+    # peak's charge set to 0; deconvoluted spectra carry per-peak charges in
+    # {-1, 1, 2, ...}. A `charge` array of all -1 is treated as deconvoluted
+    # (all singletons) — every peak is then a wildcard and falls back to m/z.
+    is_decharged = spectrum.is_decharged
+
+    def _target(frag: Fragment) -> float:
+        return float(frag.neutral_mass) if is_decharged else float(frag.mz)
+
     def _charge_ok(peak_idx: int, frag_charge: int) -> bool:
-        if charge is None:
+        if charge is None or is_decharged:
             return True
-        return int(charge[peak_idx]) == frag_charge
+        pc = int(charge[peak_idx])
+        return pc == -1 or pc == frag_charge  # -1 = unknown, treat as wildcard
+
+    def _ppm_err(delta: float, target_mz: float) -> float:
+        return da_to_ppm(delta, target_mz) if target_mz != 0.0 else 0.0
 
     def _build_matched(peak_idx: int, frag: Fragment) -> MatchedFragment:
         p_mz = float(mz[peak_idx])
         p_int = float(intensity[peak_idx])
-        theoretical_mz = frag.mz
+        theoretical_mz = _target(frag)
         da_err = p_mz - theoretical_mz
-        ppm_err = da_err / theoretical_mz * 1e6
+        ppm_err = _ppm_err(da_err, theoretical_mz)
         pct = p_int / total_intensity * 100.0 if total_intensity > 0.0 else 0.0
         return MatchedFragment(
             fragment=frag,
@@ -104,29 +136,29 @@ def match_fragments(
             da_error=da_err,
         )
 
-    def _search(frag_mz: float, frag_charge: int) -> list[tuple[int, float]]:
+    def _search(target_mz: float, frag_charge: int) -> list[tuple[int, float]]:
         """Return (peak_idx, abs_delta) candidates within tolerance."""
-        idx = int(np.searchsorted(mz, frag_mz))
+        idx = int(np.searchsorted(mz, target_mz))
         candidates: list[tuple[int, float]] = []
 
         if peak_selection == "closest":
             for i in (idx - 1, idx):
                 if 0 <= i < len(mz) and _charge_ok(i, frag_charge):
-                    delta = abs(float(mz[i]) - frag_mz)
-                    err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                    delta = abs(float(mz[i]) - target_mz)
+                    err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                     if err <= tolerance:
                         candidates.append((i, delta))
         else:
             for i in range(idx - 1, -1, -1):
-                delta = abs(float(mz[i]) - frag_mz)
-                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                delta = abs(float(mz[i]) - target_mz)
+                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
-                delta = abs(float(mz[i]) - frag_mz)
-                err = delta / frag_mz * 1e6 if tolerance_type == "ppm" else delta
+                delta = abs(float(mz[i]) - target_mz)
+                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
                 if err > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
@@ -147,23 +179,36 @@ def match_fragments(
             for i, _ in candidates:
                 results.append(_build_matched(i, frag))
 
+    def _make_frag(ion_type: IonType, pos: int, charge_state: int, mz_val: float) -> Fragment:
+        return Fragment(
+            ion_type=ion_type,
+            position=pos,
+            mass=mz_val * charge_state,
+            monoisotopic=is_monoisotopic,
+            charge_state=charge_state,
+        )
+
     if isinstance(fragments, dict):
         frag_dict = cast(dict[tuple[IonType, int], list[float]], fragments)
         for (ion_type, charge_state), masses in frag_dict.items():
             for pos, mz_val in enumerate(masses, start=1):
-                candidates = _search(mz_val, charge_state)
+                # Only decharged spectra need the neutral-mass target, which requires
+                # building the Fragment up front; otherwise defer construction until
+                # a match is actually found (mz_val is already the search target).
+                if is_decharged:
+                    frag: Fragment | None = _make_frag(ion_type, pos, charge_state, mz_val)
+                    target = _target(frag)
+                else:
+                    frag = None
+                    target = mz_val
+                candidates = _search(target, charge_state)
                 if candidates:
-                    frag = Fragment(
-                        ion_type=ion_type,
-                        position=pos,
-                        mass=mz_val * charge_state,
-                        monoisotopic=is_monoisotopic,
-                        charge_state=charge_state,
-                    )
+                    if frag is None:
+                        frag = _make_frag(ion_type, pos, charge_state, mz_val)
                     _emit(candidates, frag)
     else:
         for frag in fragments:
-            candidates = _search(frag.mz, frag.charge_state)
+            candidates = _search(_target(frag), frag.charge_state)
             _emit(candidates, frag)
 
     results.sort(key=lambda m: m.peak_index)

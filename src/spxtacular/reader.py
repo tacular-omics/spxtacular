@@ -1,15 +1,43 @@
+from __future__ import annotations
+
 import warnings
 from collections.abc import Iterator
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Literal, Self
 
-import mzmlpy as mzp
 import numpy as np
-import tdfpy
 
 from .core import MsnSpectrum, Precursor, SpectrumType
+
+try:
+    import mzmlpy as mzp
+
+    _HAS_MZMLPY = True
+except ImportError:
+    mzp = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _HAS_MZMLPY = False
+
+try:
+    import tdfpy
+
+    _HAS_TDFPY = True
+except ImportError:
+    tdfpy = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _HAS_TDFPY = False
+
+# tdfpy's smoothing branch (post-1.2.0) reshaped Frame.centroid() — the old
+# kwargs (mz_tolerance, …, noise_filter) became `centroid=MergePeaksCentroider(…)`
+# and `noise=…`. Detect which API is available and adapt below.
+try:
+    from tdfpy import MergePeaksCentroider as _MergePeaksCentroider
+
+    _HAS_NEW_CENTROID_API = True
+except ImportError:
+    _MergePeaksCentroider = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _HAS_NEW_CENTROID_API = False
 
 """
 
@@ -25,6 +53,21 @@ class AcquisitionType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+@dataclass
+class CentroidConfig:
+    """Parameters forwarded to tdfpy's ``frame.centroid()`` for Bruker .d files.
+
+    Only relevant for ``DReader``; ignored by ``MzmlReader``.
+    """
+
+    mz_tolerance: float = 8.0
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm"
+    im_tolerance: float = 0.1
+    im_tolerance_type: Literal["relative", "absolute"] = "relative"
+    min_peaks: int = 3
+    noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None
+
+
 # ---------------------------------------------------------------------------
 # DReader lookup objects
 # ---------------------------------------------------------------------------
@@ -37,31 +80,28 @@ class DReaderMs1Lookup:
     fetches a single spectrum by tdfpy ``frame_id``.
     """
 
-    def __init__(self, dreader: "DReader") -> None:
+    def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
-    def _require_open(self) -> None:
+    def _open_reader(self) -> Any:
         if self._dr._reader is None:
             raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+        return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         for frame in reader.ms1:
-            yield DReader._parse_ms1_frame(frame, mz_range, im_range)
+            yield self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
     def __getitem__(self, frame_id: int) -> MsnSpectrum:
         """Fetch a single MS1 spectrum by tdfpy frame_id."""
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
         im_range = reader.metadata.one_over_k0_acq_range
         frame = reader.ms1[frame_id]  # raises KeyError if not found
-        return DReader._parse_ms1_frame(frame, mz_range, im_range)
+        return self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
 
 class DReaderMs2Lookup:
@@ -73,38 +113,35 @@ class DReaderMs2Lookup:
     ``precursor_id`` (DDA only).
     """
 
-    def __init__(self, dreader: "DReader") -> None:
+    def __init__(self, dreader: DReader) -> None:
         self._dr = dreader
 
-    def _require_open(self) -> None:
+    def _open_reader(self) -> Any:
         if self._dr._reader is None:
             raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+        return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                for precursor in reader.precursors:  # type: ignore
+                for precursor in reader.precursors:
                     yield DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
-                for window in reader.windows:  # type: ignore
-                    yield DReader._parse_dia_window(window)
+                for window in reader.windows:
+                    yield self._dr._parse_dia_window(window)
             case AcquisitionType.PRM:
-                for transition in reader.transitions:  # type: ignore
-                    yield DReader._parse_prm_transition(transition)
+                for transition in reader.transitions:
+                    yield self._dr._parse_prm_transition(transition)
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
     def __getitem__(self, precursor_id: int) -> MsnSpectrum:
         """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
-        self._require_open()
-        reader = self._dr._reader
-        assert reader is not None
+        reader = self._open_reader()
         match self._dr.acquisition_type:
             case AcquisitionType.DDA:
-                precursor = reader.precursors[precursor_id]  # type: ignore  # KeyError if not found
+                precursor = reader.precursors[precursor_id]  # KeyError if not found
                 return DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
                 raise NotImplementedError(
@@ -127,11 +164,17 @@ class DReaderMs2Lookup:
 
 
 class DReader:
-    def __init__(self, analysis_dir: str | Path) -> None:
+    def __init__(self, analysis_dir: str | Path, centroid_config: CentroidConfig | None = None) -> None:
+        if not _HAS_TDFPY:
+            raise ImportError(
+                "DReader requires the 'tdfpy' package, which is not installed. "
+                "Install it with: pip install spxtacular[bruker]"
+            )
         import tdfpy as tdf
 
         self.analysis_dir = analysis_dir
         self._tdf = tdf
+        self._centroid_config: CentroidConfig = centroid_config or CentroidConfig()
         _aqui = tdf.get_acquisition_type(str(analysis_dir))
         self.acquisition_type: AcquisitionType
         match _aqui:
@@ -147,6 +190,8 @@ class DReader:
 
     def open(self) -> None:
         """Open the underlying tdfpy reader. Call :meth:`close` when done, or use as a context manager."""
+        if self._reader is not None:
+            self.close()
         match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 self._reader = self._tdf.DDA(str(self.analysis_dir))
@@ -162,8 +207,9 @@ class DReader:
         """Close the underlying tdfpy reader."""
         if self._reader:
             self._reader.__exit__(None, None, None)
+            self._reader = None
 
-    def __enter__(self) -> "DReader":
+    def __enter__(self) -> DReader:
         self.open()
         return self
 
@@ -179,13 +225,37 @@ class DReader:
     # Conversion helpers (shared by iteration and __getitem__)
     # ------------------------------------------------------------------
 
-    @staticmethod
+    def _centroid(self, obj: Any) -> np.ndarray:
+        """Centroid against either the old (<=1.2.0) or new (smoothing-branch) tdfpy API."""
+        cfg = self._centroid_config
+        if _HAS_NEW_CENTROID_API:
+            assert _MergePeaksCentroider is not None
+            return obj.centroid(
+                centroid=_MergePeaksCentroider(
+                    mz_tolerance=cfg.mz_tolerance,
+                    mz_tolerance_type=cfg.mz_tolerance_type,
+                    im_tolerance=cfg.im_tolerance,
+                    im_tolerance_type=cfg.im_tolerance_type,
+                    min_peaks=cfg.min_peaks,
+                ),
+                noise=cfg.noise_filter,
+            )
+        return obj.centroid(
+            mz_tolerance=cfg.mz_tolerance,
+            mz_tolerance_type=cfg.mz_tolerance_type,
+            im_tolerance=cfg.im_tolerance,
+            im_tolerance_type=cfg.im_tolerance_type,
+            min_peaks=cfg.min_peaks,
+            noise_filter=cfg.noise_filter,
+        )
+
     def _parse_ms1_frame(
+        self,
         frame: Any,
         mz_range: tuple[float, float] | None,
         im_range: tuple[float, float] | None,
     ) -> MsnSpectrum:
-        centroided_peaks = frame.centroid()
+        centroided_peaks = self._centroid(frame)
         match frame.polarity:
             case "positive":
                 polarity = "positive"
@@ -253,7 +323,7 @@ class DReader:
             native_id=None,
             rt=precursor.rt,
             injection_time=None,
-            total_ion_current=None,  # TODO:
+            total_ion_current=None,
             mz_range=None,
             im_range=None,
             polarity=polarity,
@@ -268,9 +338,8 @@ class DReader:
             activation_type="MS:1002481",
         )
 
-    @staticmethod
-    def _parse_dia_window(window: tdfpy.DiaWindow) -> MsnSpectrum:
-        peaks = window.centroid()
+    def _parse_dia_window(self, window: tdfpy.DiaWindow) -> MsnSpectrum:
+        peaks = self._centroid(window)
         match window.polarity:
             case "positive":
                 polarity = "positive"
@@ -307,9 +376,8 @@ class DReader:
             im_type="ook0",
         )
 
-    @staticmethod
-    def _parse_prm_transition(transition: tdfpy.PrmTransition) -> MsnSpectrum:
-        peaks = transition.centroid()
+    def _parse_prm_transition(self, transition: tdfpy.PrmTransition) -> MsnSpectrum:
+        peaks = self._centroid(transition)
         match transition.polarity:
             case "positive":
                 polarity = "positive"
@@ -393,7 +461,7 @@ class MzmlSpectraLookup:
     falls back to opening the file per-operation otherwise (backward-compatible).
     """
 
-    def __init__(self, reader: "MzmlReader", ms_level: int | None = None) -> None:
+    def __init__(self, reader: MzmlReader, ms_level: int | None = None) -> None:
         self._reader = reader
         self._ms_level = ms_level
 
@@ -429,6 +497,11 @@ class MzmlSpectraLookup:
 
 class MzmlReader:
     def __init__(self, mzml_path: str | Path):
+        if not _HAS_MZMLPY:
+            raise ImportError(
+                "MzmlReader requires the 'mzmlpy' package, which is not installed. "
+                "Install it with: pip install spxtacular[mzml]"
+            )
         self.mzml_path = mzml_path
         self._mzml_handle = None
 
@@ -474,10 +547,10 @@ class MzmlReader:
                     raise RuntimeError(
                         f"Spectrum {spec}: multiple IM arrays, first is not None. Array types: {im_types}"
                     )
-                im_array = darr.data.astype(np.float64)
-                if len(im_array) != len(mz_array):
-                    im_array = None
-                    continue
+                candidate = darr.data.astype(np.float64)
+                if len(candidate) == len(mz_array):
+                    im_array = candidate
+                    break
             if im_array is None:
                 warnings.warn(
                     f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
@@ -658,10 +731,10 @@ class Reader:
         If the path extension is not recognised.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, centroid_config: CentroidConfig | None = None) -> None:
         p = Path(path)
         if p.suffix == ".d":
-            self._reader: DReader | MzmlReader = DReader(p)
+            self._reader: DReader | MzmlReader = DReader(p, centroid_config=centroid_config)
         elif p.suffix.lower() == ".mzml":
             self._reader = MzmlReader(p)
         else:
@@ -685,7 +758,7 @@ class Reader:
         """Close the underlying reader."""
         self._reader.close()
 
-    def __enter__(self) -> "Reader":
+    def __enter__(self) -> Reader:
         self._reader.open()
         return self
 

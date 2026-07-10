@@ -39,15 +39,29 @@ def _estimate_noise_baseline(intensity_array: np.ndarray) -> float:
     return float(noise_mean + 3 * noise_std)
 
 
+_ITERATIVE_MEDIAN_MIN_SAMPLES: int = 100
+"""Stop iterating early when the surviving sample count drops below this.
+
+Three rounds of median + 2·MAD clipping on a small array can shrink the
+distribution to a handful of values, at which point further trimming is
+unstable (the median/MAD estimates become dominated by sampling noise).
+``100`` is empirically large enough to keep the final std meaningful.
+"""
+
+
 def _estimate_noise_iterative_median(intensity_array: np.ndarray) -> float:
-    """Estimate noise using iterative median filtering."""
+    """Estimate noise using iterative median filtering.
+
+    Three passes of ``median + 2 * 1.4826 * MAD`` clipping, stopping early
+    when fewer than ``_ITERATIVE_MEDIAN_MIN_SAMPLES`` samples remain.
+    """
     current = intensity_array.copy()
     for _ in range(3):
         median = np.median(current)
         mad = np.median(np.abs(current - median))
         threshold = median + 2 * 1.4826 * mad
         current = current[current <= threshold]
-        if len(current) < 100:  # Safety check
+        if len(current) < _ITERATIVE_MEDIAN_MIN_SAMPLES:
             break
     return float(np.median(current) + 3 * np.std(current))
 

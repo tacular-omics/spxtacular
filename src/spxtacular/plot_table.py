@@ -23,7 +23,13 @@ from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .matching import FragmentInput, match_fragments
 
 if TYPE_CHECKING:
@@ -40,8 +46,8 @@ _ION_COLORS: dict[str, str] = {
     "c": "#9467bd",
     "z": "#ff7f0e",
     "x": "#8c564b",
-    "i": "#455A64",   # immonium
-    "p": "#512DA8",   # precursor
+    "i": "#455A64",  # immonium
+    "p": "#512DA8",  # precursor
     "by": "#FBC02D",  # internal fragments
     "ax": "#FBC02D",
     "cz": "#FBC02D",
@@ -82,8 +88,17 @@ _LINEWIDTH_DEFAULT: float = 1.0
 _OPACITY_DEFAULT: float = 1.0
 
 
-def _hover(mz: float, intensity: float) -> str:
-    return f"m/z: {mz:.4f}<br>intensity: {intensity:.2e}"
+def _hover(mz: float, intensity: float, im: float | None = None) -> str:
+    base = f"m/z: {mz:.4f}<br>intensity: {intensity:.2e}"
+    return base if im is None else f"{base}<br>im: {im:.4f}"
+
+
+def _im_value(im_col: list[float], im_arr: NDArray[np.float64] | None, i: int) -> float | None:
+    """Peak `i`'s ion mobility, or None if no IM array is present or the value is NaN."""
+    if im_arr is None:
+        return None
+    val = float(im_col[i])
+    return None if np.isnan(val) else val
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +182,14 @@ def build_plot_table(
     else:
         labels = [""] * n
 
-    hovers = [_hover(float(mz[i]), float(intensity[i])) for i in range(n)]
+    hovers = [
+        _hover(
+            float(mz[i]),
+            float(intensity[i]),
+            _im_value(im_col, im_arr, i),
+        )
+        for i in range(n)
+    ]
 
     return pd.DataFrame(
         {
@@ -205,8 +227,8 @@ def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
 def build_annot_plot_table(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
 ) -> pd.DataFrame:
@@ -274,11 +296,12 @@ def build_annot_plot_table(
         mz_val = float(mz[i])
         int_val = float(intensity[i])
         frags = peak_frags.get(i)
+        im_val = _im_value(im_col, im_arr, i)
         if frags:
             ion_type = str(frags[0].ion_type)
             color = _ION_COLORS.get(ion_type, _DEFAULT_ION_COLOR)
             label_text = "<br>".join(_fragment_label(f, include_sequence) for f in frags)
-            hover_text = f"m/z: {mz_val:.4f}<br>intensity: {int_val:.2e}<br>{label_text}"
+            hover_text = _hover(mz_val, int_val, im_val) + f"<br>{label_text}"
             colors.append(color)
             series_list.append(ion_type)
             labels.append(label_text)
@@ -287,7 +310,7 @@ def build_annot_plot_table(
             colors.append("#cccccc")
             series_list.append("unmatched")
             labels.append("")
-            hovers.append(_hover(mz_val, int_val))
+            hovers.append(_hover(mz_val, int_val, im_val))
 
     return pd.DataFrame(
         {

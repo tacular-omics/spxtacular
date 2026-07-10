@@ -4,7 +4,7 @@
 
 # spxtacular
 
-Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/pgarrett-scripps/peptacular).
+Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/tacular-omics/peptacular).
 
 ## Install
 
@@ -12,7 +12,19 @@ Mass spectrometry spectrum processing library. Companion to [peptacular](https:/
 pip install spxtacular
 ```
 
-For the Bruker timsTOF reader (`DReader`), `tdfpy` must be available. For mzML files, `mzmlpy` is required. Both are installed automatically if you pull from the editable source tree.
+Reader backends are optional extras:
+
+```bash
+pip install spxtacular[bruker]   # Bruker timsTOF (.d) via tdfpy
+pip install spxtacular[mzml]     # mzML via mzmlpy
+pip install spxtacular[readers]  # both
+pip install spxtacular[spectrl]  # share spectra as URL-safe tokens (spectrl)
+pip install spxtacular[all]      # readers + numba JIT + spectrl
+```
+
+`DReader` and `MzmlReader` remain importable from `spxtacular` regardless of which backends are
+installed; only instantiation raises a clear `ImportError` pointing to the right extra when the
+corresponding dependency is missing.
 
 ## Quick start
 
@@ -59,6 +71,18 @@ from spxtacular import DReader
 with DReader("/data/sample.d") as reader:
     for spec in reader.ms1:
         print(spec)
+```
+
+### Share a spectrum as a URL-safe token
+
+Requires the `[spectrl]` extra. The whole spectrum lives in the token — no backend needed.
+
+```python
+token = spec.to_spectrl_token()                        # spectrl1.… token
+restored = Spectrum.from_spectrl_token(token)
+
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable link)
+restored = Spectrum.from_spectrl_url(url)
 ```
 
 ## Key concepts

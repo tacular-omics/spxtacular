@@ -22,12 +22,12 @@ class Peak:
     intensity: float
     charge: int | None = None
     im: float | None = None
-    score: float | None = None
+    iso_score: float | None = None
 ```
 
-A frozen dataclass representing a single detected peak. `charge`, `im`, and `score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
+A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso_score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
 
-`score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
+`iso_score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
 
 ```python
 >>> peak = Peak(mz=500.1, intensity=1e5, charge=2)
@@ -54,13 +54,13 @@ class Spectrum:
     intensity: NDArray[np.float64]
     charge: NDArray[np.int32] | None = None
     im: NDArray[np.float64] | None = None
-    score: NDArray[np.float64] | None = None
+    iso_score: NDArray[np.float64] | None = None
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
 ```
 
-The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `score` must also match that length when provided.
+The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `iso_score` must also match that length when provided.
 
 **Fields:**
 
@@ -70,7 +70,7 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 | `intensity` | `NDArray[np.float64]` | Parallel peak intensities |
 | `charge` | `NDArray[np.int32] \| None` | Charge state per peak. `None` before deconvolution |
 | `im` | `NDArray[np.float64] \| None` | Ion mobility per peak. `None` if not acquired |
-| `score` | `NDArray[np.float64] \| None` | Per-peak isotopic profile score (0–1). Populated after `deconvolute()`; `None` otherwise. Singletons have `score=0.0`. |
+| `iso_score` | `NDArray[np.float64] \| None` | Per-peak isotopic profile score (0–1). Populated after `deconvolute()`; `None` otherwise. Singletons have `iso_score=0.0`. |
 | `spectrum_type` | `SpectrumType \| str \| None` | Stage tag: `CENTROID`, `PROFILE`, or `DECONVOLUTED` |
 | `denoised` | `str \| None` | Name of the denoising method applied, or `None` |
 | `normalized` | `str \| None` | Name of the normalization method applied, or `None` |
@@ -79,8 +79,10 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 
 - `len(charge) == len(mz)` when `charge` is not `None`
 - `len(im) == len(mz)` when `im` is not `None`
-- `len(score) == len(mz)` when `score` is not `None`
+- `len(iso_score) == len(mz)` when `iso_score` is not `None`
 - A `charge` array may only be present when `spectrum_type == DECONVOLUTED`
+
+**`is_decharged` property** — `True` when every (non-dropped) peak's `charge == 0`, i.e. the spectrum has already been through `decharge()`. Used internally by `decharge()`, `remove_precursor_peak()`, and `match_fragments()` to detect neutral-mass spectra.
 
 ```python
 import numpy as np
@@ -151,8 +153,8 @@ low_mz = spec.top_peaks(3, by="mz", reverse=False)
 def has_peak(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -162,8 +164,8 @@ def has_peak(
 Returns `True` if at least one peak matches all supplied criteria.
 
 ```python
-spec.has_peak(500.1, mz_tol=0.02)
-spec.has_peak(500.1, mz_tol=10, mz_tol_type="ppm", target_charge=2)
+spec.has_peak(500.1, tolerance=0.02)
+spec.has_peak(500.1, tolerance=10, tolerance_type="ppm", target_charge=2)
 ```
 
 #### `get_peak`
@@ -172,8 +174,8 @@ spec.has_peak(500.1, mz_tol=10, mz_tol_type="ppm", target_charge=2)
 def get_peak(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -184,7 +186,7 @@ def get_peak(
 Returns a single matching peak, or `None` if no match is found. When multiple peaks fall within tolerance, `collision="largest"` picks the most intense; `collision="closest"` picks the nearest in m/z.
 
 ```python
-peak = spec.get_peak(800.2, mz_tol=5, mz_tol_type="ppm")
+peak = spec.get_peak(800.2, tolerance=5, tolerance_type="ppm")
 if peak:
     print(f"Found: {peak}")
 ```
@@ -195,8 +197,8 @@ if peak:
 def get_peaks(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -237,8 +239,8 @@ Charge, ion mobility, and score filters are silently ignored if the spectrum lac
 
 | Parameter | Type | Description |
 |---|---|---|
-| `min_score` | `float \| None` | Keep peaks with score >= this value. Only effective when `score` array is present. |
-| `max_score` | `float \| None` | Keep peaks with score <= this value. Only effective when `score` array is present. |
+| `min_score` | `float \| None` | Keep peaks with score >= this value. Only effective when the `iso_score` array is present. |
+| `max_score` | `float \| None` | Keep peaks with score <= this value. Only effective when the `iso_score` array is present. |
 
 ```python
 # Keep peaks between 200 and 1500 Da with intensity >= 1000
@@ -381,13 +383,15 @@ Converts deconvoluted m/z values to neutral monoisotopic masses using `neutral_m
 
 Raises `ValueError` if the spectrum is not in `DECONVOLUTED` state.
 
-> The `score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
+Calling `decharge()` again on an already-decharged spectrum (`spec.is_decharged`) warns and returns the original spectrum unchanged, rather than corrupting the (already-neutral) `mz` values.
+
+> The `iso_score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
 
 ```python
 neutral = decon.decharge()
 # neutral.mz now contains neutral masses sorted ascending
 # neutral.charge is all zeros
-# neutral.score carries through from the deconvoluted spectrum
+# neutral.iso_score carries through from the deconvoluted spectrum
 ```
 
 #### `update`
@@ -404,41 +408,89 @@ renamed = spec.update(spectrum_type="centroid")
 
 ---
 
-### Compression
+### Serialisation (spectrl token)
 
-#### `compress`
+#### `to_spectrl_token` / `Spectrum.from_spectrl_token`
 
 ```python
-def compress(
+def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str
+
+@classmethod
+def from_spectrl_token(cls, token: str) -> Spectrum
+```
+
+Encode the spectrum as a [spectrl](https://github.com/tacular-omics/spectrl) `spectrl1.…` URL-safe token, or decode one back to a `Spectrum`/`MsnSpectrum`. The token mirrors mzML semantics (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and is suitable for sharing in URLs, QR codes, notebooks, and papers.
+
+Requires the optional `[spectrl]` extra.
+
+```python
+token = spec.to_spectrl_token()                      # lossy MS-Numpress
+token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact float64 + zlib
+restored = Spectrum.from_spectrl_token(token)
+```
+
+The round-trip is faithful — every spxtacular field is carried. `iso_score` rides in spectrl's `extra_arrays` slot (encoded as a non-standard mzML binary array `MS:1000786` under the descriptor name `"iso_score"`). Scalar fields without an mzML CV counterpart — `denoised`/`normalized` provenance, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range` — are carried losslessly as namespaced free-text `user_params` (`spxtacular:` prefix).
+
+#### `to_spectrl_url` / `Spectrum.from_spectrl_url`
+
+```python
+def to_spectrl_url(
     self,
-    url_safe: bool = False,
-    mz_precision: int | None = None,
-    intensity_precision: int | None = None,
-    im_precision: int | None = None,
-    compression: str = "gzip",
+    base: str | None = None,
+    *,
+    mode: str = "fragment",   # "fragment" | "query" | "data"
+    param: str = "d",
+    lossless: bool = False,
+    max_len: int | None = None,
 ) -> str
+
+@classmethod
+def from_spectrl_url(cls, url: str) -> Spectrum
 ```
 
-Serialises the spectrum to a compact ASCII string. m/z values are delta-encoded; intensities and ion mobility use raw float32 hex encoding. The result is compressed with gzip, zlib, or brotli (requires `pip install brotli`) and then base85-encoded (default) or base64 URL-safe encoded when `url_safe=True`.
-
-Optional `*_precision` parameters round the corresponding arrays before encoding, reducing compressed size at the cost of numeric precision.
+Bind a token into a shareable URL (or `data:` URI), or extract and decode one. `mode="fragment"` (default) puts the token after `#` so it never reaches the server; `mode="query"` uses `base?<param>=…`; `mode="data"` emits a `data:application/vnd.spectrl;v=1,…` URI (`base` ignored). `base` is required for `"fragment"` and `"query"`.
 
 ```python
-blob = spec.compress()
-blob_url = spec.compress(url_safe=True, mz_precision=4, compression="zlib")
+url = spec.to_spectrl_url("https://example.com/view")             # …#spectrl1.…
+uri = spec.to_spectrl_url(mode="data")                            # data: URI
+restored = Spectrum.from_spectrl_url(url)
 ```
 
-#### `Spectrum.from_compressed`
+---
+
+### Persistence (.npz)
+
+#### `save` / `Spectrum.load`
+
+```python
+def save(self, path: str | Path) -> None
+
+@classmethod
+def load(cls, path: str | Path) -> Spectrum
+```
+
+Serialise to / from a numpy `.npz` archive. Peak arrays are stored natively; scalar metadata is JSON-encoded under a `meta` key. `.npz` extension is appended automatically when missing.
+
+```python
+spec.save("scan_001.npz")
+restored = Spectrum.load("scan_001.npz")
+```
+
+For `MsnSpectrum`, all MSn metadata (scan number, RT, precursors, isolation window, …) is preserved.
+
+#### `Spectrum.from_usi`
 
 ```python
 @classmethod
-def from_compressed(cls, compressed_str: str) -> Spectrum
+def from_usi(cls, usi: str, backend: str = "aggregator", timeout: float = 30) -> Spectrum
 ```
 
-Round-trips a string produced by `.compress()` back to a `Spectrum`.
+Fetch a spectrum from a public proteomics repository via Universal Spectrum Identifier. Uses the PROXI REST API; backends: `"aggregator"` (default), `"pride"`, `"massive"`, `"peptideatlas"`, `"jpost"`, or a full URL. Returns `MsnSpectrum` when precursor info is present.
 
 ```python
-recovered = Spectrum.from_compressed(blob)
+spec = Spectrum.from_usi(
+    "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"
+)
 ```
 
 ---
@@ -451,26 +503,96 @@ recovered = Spectrum.from_compressed(blob)
 def plot(
     self,
     title: str | None = None,
-    show_charges: bool = True,
+    *,
+    color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
+    show_charges: bool | None = None,  # deprecated alias
     **layout_kwargs,
 ) -> Figure
 ```
+
+`color`, `show_scores`, and `show_charges` are keyword-only.
 
 Returns a Plotly `Figure` (stick plot). Requires `plotly` (`pip install plotly`).
 
 | Parameter | Description |
 |---|---|
 | `title` | Plot title |
-| `show_charges` | Colour sticks by charge state when a `charge` array is present |
-| `show_scores` | Annotate scored peaks with their score value when a `score` array is present |
+| `color` | `"charge"` colours sticks by charge state, `"im"` by ion mobility (Viridis), `None` for uniform colour |
+| `show_scores` | Annotate scored peaks with their score value when an `iso_score` array is present |
+| `show_charges` | Deprecated. Use `color="charge"` or `color=None` instead |
 
 ```python
 spec.plot(title="My spectrum").show()
-decon.plot(show_charges=True, show_scores=True).show()
+decon.plot(color="charge", show_scores=True).show()
 ```
 
 See [Visualization](visualization.md) for `mirror_plot()` and `annotate_spectrum()`.
+
+#### `annotate`
+
+```python
+def annotate(
+    self,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    title: str | None = None,
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
+    **layout_kwargs,
+) -> Figure
+```
+
+Convenience wrapper around `annotate_spectrum()`. Plots the spectrum with matched fragment ion labels — matched peaks are coloured by ion series, unmatched peaks rendered in grey.
+
+```python
+fig = ms2.annotate(fragments, tolerance=10, tolerance_type="ppm")
+fig.show()
+```
+
+#### `mass_error_plot`
+
+```python
+def mass_error_plot(
+    self,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    unit: Literal["ppm", "da"] = "ppm",
+    title: str | None = None,
+    **layout_kwargs,
+) -> Figure
+```
+
+Bubble chart of fragment mass errors vs m/z. Each matched fragment is a bubble whose x-position is the observed m/z, y-position is the mass error (ppm or Da), and size is proportional to the peak intensity. Bubbles are coloured by ion series. Useful for spotting calibration drifts or systematic mass errors.
+
+```python
+ms2.mass_error_plot(fragments, tolerance=20, tolerance_type="ppm", unit="ppm").show()
+```
+
+#### `facet_plot`
+
+```python
+def facet_plot(
+    self,
+    fragments=None,
+    mirror_spectrum: Spectrum | None = None,
+    title: str | None = None,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
+    **layout_kwargs,
+) -> Figure
+```
+
+Multi-panel plot on a shared m/z axis. Panel 1 is always the (optionally annotated) spectrum. Passing `fragments` adds a mass-error panel; passing `mirror_spectrum` adds an inverted mirror panel below.
+
+```python
+ms2.facet_plot(fragments, mirror_spectrum=ms2.decharge()).show()
+```
 
 #### `plot_table`
 
@@ -498,8 +620,8 @@ fig.show()
 def annot_plot_table(
     self,
     fragments,
-    mz_tol: float = 0.02,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
 ) -> pd.DataFrame
@@ -508,13 +630,131 @@ def annot_plot_table(
 Like `plot_table()` but matched peaks are coloured by ion series and labelled with their fragment identifier. Unmatched peaks are grey. Modify the returned table and call `plot_from_table()` to render.
 
 ```python
-tbl = spec.annot_plot_table(fragments, mz_tol=10, mz_tol_type="ppm")
+tbl = spec.annot_plot_table(fragments, tolerance=10, tolerance_type="ppm")
 tbl.loc[tbl["label"] != "", "label_size"] = 14
 fig = plot_from_table(tbl, title="Annotated")
 fig.show()
 ```
 
 See [Visualization — Plot table API](visualization.md#plot-table-api) for full column reference.
+
+---
+
+### Fragment matching & PSM scoring
+
+#### `match_fragments`
+
+```python
+def match_fragments(
+    self,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    is_monoisotopic: bool = True,
+) -> list[MatchedFragment]
+```
+
+Match fragment ions against this spectrum's peaks. Thin wrapper around `spxtacular.match_fragments`. When `fragments` is a `dict[(IonType, charge_state), list[float]]` (peptacular's `fast_fragment` output), `is_monoisotopic` is forwarded to the constructed `Fragment` objects; otherwise it has no effect.
+
+#### `score`
+
+```python
+def score(
+    self,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+) -> dict[str, float]
+```
+
+Returns a dict with eight PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
+
+---
+
+### Precursor removal & scaling
+
+#### `remove_precursor_peak`
+
+```python
+def remove_precursor_peak(
+    self,
+    precursor_mz: float | None = None,
+    precursor_charge: int | None = None,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    isotopes: int | Literal["auto"] = "auto",
+    isotope_threshold: float = 0.01,
+    remove_charge_states: bool = True,
+    inplace: bool = False,
+) -> Self
+```
+
+Remove the precursor peak, its isotope envelope, and (optionally) all lower charge states. Adapts to spectrum state:
+
+| State | Behaviour |
+|---|---|
+| **Centroid** | Removes all charge states 1..z and their isotope envelopes |
+| **Deconvoluted** | Targets only the monoisotopic peak at the precursor charge (charge-aware) |
+| **Decharged** | Targets the precursor neutral mass directly |
+| **Profile** | Raises `ValueError` (call `.centroid()` first) |
+
+When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method auto-detects from `MsnSpectrum.precursors` and removes peaks for **all** precursors. With `isotopes="auto"`, uses `peptacular.estimate_isotopic_distribution` to determine the number of significant isotopes.
+
+```python
+# Auto from MsnSpectrum.precursors
+cleaned = msn.remove_precursor_peak(tolerance=10, tolerance_type="ppm")
+
+# Explicit
+cleaned = spec.remove_precursor_peak(precursor_mz=450.25, precursor_charge=2)
+```
+
+#### `scale_intensity`
+
+```python
+def scale_intensity(
+    self,
+    method: Literal["root", "log", "rank"] = "root",
+    degree: int = 2,
+    base: float = 2.0,
+    inplace: bool = False,
+) -> Self
+```
+
+Non-linear intensity scaling (independent of `normalize()`, which divides by a reference). `"root"` applies an nth-root transform (default sqrt), `"log"` applies `log_base(intensity + 1)`, `"rank"` replaces intensities with their rank.
+
+#### `round_mz`
+
+```python
+def round_mz(
+    self,
+    decimals: int = 0,
+    combine: Literal["sum", "max"] = "sum",
+    inplace: bool = False,
+) -> Self
+```
+
+Round m/z values to `decimals` decimals and merge duplicate peaks via `sum` or `max` of their intensities. Drops `charge`, `im`, and `iso_score` arrays since the merge invalidates them.
+
+---
+
+### Combining spectra
+
+#### `Spectrum.combine`
+
+```python
+@classmethod
+def combine(cls, spectra: list[Spectrum]) -> Spectrum
+```
+
+Concatenate peaks from multiple spectra into a single new `Spectrum`, sorted by m/z ascending. Optional per-peak arrays (`charge`, `im`, `iso_score`) are carried over only when **all** input spectra provide them. Scalar metadata (`spectrum_type`, `normalized`, `denoised`) is preserved when all spectra agree, otherwise set to `None`.
+
+```python
+combined = Spectrum.combine([spec1, spec2, spec3])
+```
+
+The return type is always the base `Spectrum` — MSn metadata cannot be sensibly combined across scans.
 
 ---
 
@@ -537,25 +777,27 @@ class MsnSpectrum(Spectrum):
     # Acquisition windows
     mz_range: tuple[float, float] | None = None
     im_range: tuple[float, float] | None = None
-    im_type: str | None = None       # e.g. "1/K0", "drift_time_ms"
+    im_type: IMType | str | None = None       # e.g. IMType.OOK0, "drift_time_ms"
 
     # Instrument settings
-    polarity: Literal["positive", "negative"] | None = None
+    polarity: Polarity | Literal["positive", "negative"] | None = None
 
     # Optional metadata
     resolution: float | None = None
-    analyzer: str | None = None      # e.g. "TOF", "FTMS", "ITMS"
+    analyzer: Analyzer | str | None = None      # e.g. Analyzer.TOF, "FTMS"
     ramp_time: float | None = None
     collision_energy: float | None = None
-    activation_type: str | None = None
-    precursors: list[TargetIon] | None = None
+    activation_type: ActivationType | str | None = None
+    precursors: list[Precursor] | None = None
 ```
 
-### TargetIon
+`im_type`, `analyzer`, and `activation_type` are **open vocabulary**: an enum member gives autocomplete and typo-safety, but raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through untouched. `polarity` is **closed vocabulary** — only `Polarity.POSITIVE`/`Polarity.NEGATIVE` or the literal strings `"positive"`/`"negative"` are valid. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
+
+### Precursor
 
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
-class TargetIon(Peak):
+class Precursor(Peak):
     is_monoisotopic: bool | None
 ```
 

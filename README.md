@@ -36,6 +36,17 @@ pip install spxtacular
 
 # Optional: Numba JIT acceleration (~3–4× faster deconvolution)
 pip install spxtacular[numba]
+
+# Optional: share spectra as compact URL-safe tokens (spectrl)
+pip install spxtacular[spectrl]
+
+# Optional: raw-file readers — Bruker .d (bruker) and/or mzML (mzml)
+pip install spxtacular[bruker]      # tdfpy — DReader
+pip install spxtacular[mzml]        # mzmlpy — MzmlReader
+pip install spxtacular[readers]     # both readers
+
+# Everything (numba + both readers + spectrl)
+pip install spxtacular[all]
 ```
 
 ## Quick start
@@ -48,7 +59,7 @@ spec = spx.Spectrum(mz=mz_array, intensity=intensity_array)
 # Full pipeline: denoise → deconvolute → filter → neutral mass
 neutral = (
     spec
-    .denoise(method="mad", snr=3.0)
+    .denoise(method="mad")
     .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm", min_score=0.4)
     .decharge()
 )
@@ -67,6 +78,7 @@ neutral.plot(title="Neutral masses").show()
 | **PSM scoring** | Hyperscore, spectral angle, matched fraction, and more |
 | **Interactive visualization** | Stick plots, mirror plots, annotated fragment spectra (Plotly) |
 | **File reading** | Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`) |
+| **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 
 ## Deconvolution pipeline
 
@@ -83,6 +95,20 @@ filtered = decon.filter(min_score=0.5)
 
 # 3. Convert to neutral masses (drops singletons)
 neutral = filtered.decharge()
+```
+
+## Sharing spectra
+
+With the optional `[spectrl]` extra, encode a complete spectrum (peaks, charges,
+ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
+ready-to-share link — with no backend required.
+
+```python
+token = spec.to_spectrl_token()                       # spectrl1.… token
+restored = spx.Spectrum.from_spectrl_token(token)
+
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable)
+restored = spx.Spectrum.from_spectrl_url(url)
 ```
 
 ## Documentation

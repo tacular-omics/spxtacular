@@ -5,8 +5,9 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
+import warnings
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -14,9 +15,22 @@ if TYPE_CHECKING:
 import numpy as np
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .matching import FragmentInput
-from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
+from .plot_table import (
+    _DEFAULT_ION_COLOR,
+    _ION_COLORS,
+    _sticks,
+    build_annot_plot_table,
+    build_plot_table,
+    plot_from_table,
+)
 
 
 def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -33,12 +47,118 @@ def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def _plot_spectrum_im(
+    spectrum: Spectrum,
+    title: str | None = None,
+    show_scores: bool = True,
+    **layout_kwargs,
+) -> go.Figure:
+    """Stick plot with lines colored by ion mobility using a quantized Viridis scale."""
+    import plotly.colors as pc
+    import plotly.graph_objects as go
+
+    mz = spectrum.mz
+    intensity = spectrum.intensity
+    im = spectrum.im
+    assert im is not None
+
+    im_label = getattr(spectrum, "im_type", None) or "im"
+    if im_label == "ook0":
+        im_label = "1/K0"
+
+    im_arr = np.asarray(im, dtype=np.float64)
+    n_bins = 20
+    if len(im_arr) == 0 or np.all(np.isnan(im_arr)):
+        im_min = im_max = 0.0
+        norm = np.zeros(len(im_arr))
+    else:
+        im_min, im_max = float(np.nanmin(im_arr)), float(np.nanmax(im_arr))
+        if im_min == im_max:
+            norm = np.zeros(len(im_arr))
+        else:
+            norm = np.nan_to_num((im_arr - im_min) / (im_max - im_min), nan=0.0)
+    bin_idx = np.clip((norm * n_bins).astype(int), 0, n_bins - 1)
+    bin_colors: list[str] = pc.sample_colorscale("Viridis", n_bins)
+
+    traces: list[go.Scatter] = []
+    for b in range(n_bins):
+        mask = bin_idx == b
+        if not mask.any():
+            continue
+        mz_b = mz[mask]
+        int_b = intensity[mask]
+        im_b = im_arr[mask]
+        xs, ys = _sticks(mz_b, int_b)
+        hover_data: list[str] = []
+        for i in range(len(mz_b)):
+            tip = f"m/z: {float(mz_b[i]):.4f}<br>intensity: {float(int_b[i]):.2e}<br>{im_label}: {float(im_b[i]):.4f}"
+            hover_data += [tip, tip, ""]
+        traces.append(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                line={"color": bin_colors[b], "width": 1},
+                customdata=hover_data,
+                hovertemplate="%{customdata}<extra></extra>",
+                showlegend=False,
+            )
+        )
+
+    # Invisible dummy trace whose sole purpose is rendering the colorbar
+    traces.append(
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            marker={
+                "colorscale": "Viridis",
+                "showscale": True,
+                "cmin": im_min,
+                "cmax": im_max,
+                "colorbar": {"title": im_label, "thickness": 15},
+                "size": 0,
+            },
+            hoverinfo="none",
+            showlegend=False,
+        )
+    )
+
+    annotations = []
+    if show_scores and spectrum.iso_score is not None:
+        for i, s in enumerate(spectrum.iso_score):
+            if float(s) > 0.0:
+                annotations.append(
+                    dict(
+                        x=float(mz[i]),
+                        y=float(intensity[i]),
+                        text=f"{float(s):.2f}",
+                        showarrow=False,
+                        yshift=6,
+                        font={"size": 10, "family": "Arial", "color": "#333333"},
+                        xanchor="center",
+                    )
+                )
+
+    fig = go.Figure(traces)
+    fig.update_layout(
+        title=title or str(spectrum.spectrum_type or "Spectrum"),
+        xaxis_title="m/z",
+        yaxis_title="Intensity",
+        annotations=annotations,
+        **layout_kwargs,
+    )
+    return fig
+
+
 @requires_plotly
 def plot_spectrum(
     spectrum: Spectrum,
     title: str | None = None,
-    show_charges: bool = True,
+    *,
+    color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
+    show_charges: bool | None = None,
     **layout_kwargs,
 ) -> go.Figure:
     """Plot spectrum as a stick plot using plotly.
@@ -49,21 +169,32 @@ def plot_spectrum(
         Spectrum to plot.
     title:
         Plot title. Defaults to the spectrum type.
-    show_charges:
-        Colour sticks by charge state when charge data is present.
+    color:
+        Coloring mode for peaks.  ``"charge"`` (default) colours sticks by
+        charge state when charge data is present.  ``"im"`` colours stick tips
+        by ion mobility on a continuous Viridis scale when IM data is present;
+        falls back to ``"charge"`` when no IM array is available.  ``None``
+        renders all sticks in a uniform steelblue.
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
+    show_charges:
+        Deprecated. Use ``color="charge"`` or ``color=None`` instead.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
-    table = build_plot_table(spectrum, show_charges=show_charges, show_scores=show_scores)
-    fig = plot_from_table(
-        table,
-        title=title or str(spectrum.spectrum_type or "Spectrum"),
-        **layout_kwargs,
-    )
-    return fig
+    if show_charges is not None:
+        warnings.warn(
+            "show_charges is deprecated; use color='charge' or color=None instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        color = "charge" if show_charges else None
+
+    if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
+        return _plot_spectrum_im(spectrum, title=title, show_scores=show_scores, **layout_kwargs)
+    table = build_plot_table(spectrum, show_charges=color == "charge", show_scores=show_scores)
+    return plot_from_table(table, title=title or str(spectrum.spectrum_type or "Spectrum"), **layout_kwargs)
 
 
 @requires_plotly
@@ -195,8 +326,8 @@ def mirror_plot(
 def annotate_spectrum(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     title: str | None = None,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
@@ -241,8 +372,8 @@ def annotate_spectrum(
 def mass_error_plot(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     unit: str = "ppm",
     title: str | None = None,
@@ -296,11 +427,7 @@ def mass_error_plot(
     max_int = max(intensities) if intensities else 1.0
     sizes = [max(5, 40 * i / max_int) for i in intensities]
 
-    ion_colors = {
-        "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
-        "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
-    }
-    colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+    colors = [_ION_COLORS.get(it, _DEFAULT_ION_COLOR) for it in ion_types]
 
     labels = []
     for m in matches:
@@ -319,9 +446,7 @@ def mass_error_plot(
             textposition="top center",
             textfont={"size": 9},
             hovertemplate=(
-                "m/z: %{x:.4f}<br>"
-                f"error ({unit}): %{{y:.4f}}<br>"
-                "intensity: %{customdata:.2e}<extra></extra>"
+                f"m/z: %{{x:.4f}}<br>error ({unit}): %{{y:.4f}}<br>intensity: %{{customdata:.2e}}<extra></extra>"
             ),
             customdata=intensities,
         )
@@ -344,8 +469,8 @@ def facet_plot(
     fragments: FragmentInput | None = None,
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     unit: str = "ppm",
@@ -438,24 +563,22 @@ def facet_plot(
             max_int = max(intensities)
             sizes = [max(5, 30 * i / max_int) for i in intensities]
 
-            ion_colors = {
-                "b": "#1f77b4", "y": "#d62728", "a": "#2ca02c",
-                "c": "#9467bd", "z": "#ff7f0e", "x": "#8c564b",
-            }
             ion_types = [
-                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value")
-                else str(m.fragment.ion_type)
+                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value") else str(m.fragment.ion_type)
                 for m in matches
             ]
-            colors = [ion_colors.get(it, "#aaaaaa") for it in ion_types]
+            colors = [_ION_COLORS.get(it, _DEFAULT_ION_COLOR) for it in ion_types]
 
             fig.add_trace(
                 go.Scatter(
-                    x=mzs, y=errors, mode="markers",
+                    x=mzs,
+                    y=errors,
+                    mode="markers",
                     marker={"size": sizes, "color": colors, "opacity": 0.7},
                     showlegend=False,
                 ),
-                row=current_row, col=1,
+                row=current_row,
+                col=1,
             )
         fig.update_yaxes(title_text=f"Error ({unit})", row=current_row, col=1)
         current_row += 1
@@ -472,7 +595,8 @@ def facet_plot(
                     line={"color": row["color"], "width": float(row["linewidth"])},
                     showlegend=False,
                 ),
-                row=current_row, col=1,
+                row=current_row,
+                col=1,
             )
         fig.update_yaxes(title_text="Intensity", row=current_row, col=1)
 
@@ -484,17 +608,3 @@ def facet_plot(
         **layout_kwargs,
     )
     return fig
-
-
-def _sticks(mz: np.ndarray, intensity: np.ndarray) -> tuple[list, list]:
-    """Interleave (mz, 0, mz, intensity, None) triples for a stick plot."""
-    n = len(mz)
-    x = np.empty(n * 3, dtype=np.float64)
-    y = np.empty(n * 3, dtype=np.float64)
-    x[0::3] = mz
-    x[1::3] = mz
-    x[2::3] = np.nan
-    y[0::3] = 0.0
-    y[1::3] = intensity
-    y[2::3] = np.nan
-    return x.tolist(), y.tolist()

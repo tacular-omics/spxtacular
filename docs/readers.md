@@ -4,6 +4,8 @@ spxtacular provides two reader classes that expose a uniform interface for itera
 
 Both readers yield `MsnSpectrum` instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (`.filter()`, `.denoise()`, `.deconvolute()`, etc.) are immediately available on each yielded object.
 
+`polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — they also accept the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
+
 ---
 
 ## MzmlReader
@@ -171,7 +173,7 @@ The acquisition type (DDA, DIA, PRM) is detected automatically from the `.d` dir
 | `rt` | Retention time (seconds) |
 | `mz_range` | Precursor isolation window |
 | `im_range` | 1/K0 range of precursor |
-| `precursors` | Single `TargetIon` with monoisotopic m/z (or largest peak m/z if unavailable), intensity, charge, and 1/K0 |
+| `precursors` | Single `Precursor` with monoisotopic m/z (or largest peak m/z if unavailable), intensity, charge, and 1/K0 |
 | `collision_energy` | From precursor record |
 | `activation_type` | `"MS:1002481"` (PASEF) |
 

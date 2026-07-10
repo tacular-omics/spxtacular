@@ -94,17 +94,17 @@ def deconvolute(
 
 ## Score output
 
-After deconvolution, `spectrum.score` is a `float64` array parallel to `mz`/`intensity`. Each assigned cluster carries a score in 0–1 representing how well its observed intensity distribution matches the theoretical isotope envelope. Singletons always have `score=0.0`.
+After deconvolution, `spectrum.iso_score` is a `float64` array parallel to `mz`/`intensity`. Each assigned cluster carries a score in 0–1 representing how well its observed intensity distribution matches the theoretical isotope envelope. Singletons always have `score=0.0`.
 
 ```python
 decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
-print(decon.score)   # array of float64, same length as decon.mz
+print(decon.iso_score)   # array of float64, same length as decon.mz
 
 # Keep only well-matched clusters (score >= 0.5) and assigned peaks (charge > 0)
 confident = decon.filter(min_score=0.5, min_charge=1)
 ```
 
-The `score` array is propagated through `.decharge()`, so neutral-mass peaks retain their cluster score.
+The `iso_score` array is propagated through `.decharge()`, so neutral-mass peaks retain their cluster score.
 
 ---
 
