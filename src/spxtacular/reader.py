@@ -65,9 +65,7 @@ class CentroidConfig:
     im_tolerance: float = 0.1
     im_tolerance_type: Literal["relative", "absolute"] = "relative"
     min_peaks: int = 3
-    noise_filter: (
-        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None
-    ) = None
+    noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None
 
 
 # ---------------------------------------------------------------------------

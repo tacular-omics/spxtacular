@@ -1,7 +1,20 @@
 __version__ = "0.4.0"
 
 from .core import MsnSpectrum, Peak, Precursor, Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    ActivationType,
+    ActivationTypeLike,
+    Analyzer,
+    AnalyzerLike,
+    IMType,
+    IMTypeLike,
+    PeakSelection,
+    PeakSelectionLike,
+    Polarity,
+    PolarityLike,
+    ToleranceLike,
+    ToleranceType,
+)
 from .matching import match_fragments
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
 from .reader import CentroidConfig, DReader, MzmlReader, Reader
@@ -26,6 +39,14 @@ __all__ = [
     "ToleranceLike",
     "PeakSelection",
     "PeakSelectionLike",
+    "Polarity",
+    "PolarityLike",
+    "ActivationType",
+    "ActivationTypeLike",
+    "IMType",
+    "IMTypeLike",
+    "Analyzer",
+    "AnalyzerLike",
     "CentroidConfig",
     "DReader",
     "MzmlReader",

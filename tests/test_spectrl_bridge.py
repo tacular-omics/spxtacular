@@ -92,7 +92,42 @@ def test_to_inline_activation() -> None:
     assert "MS:1000422" in accessions  # HCD
 
 
-def test_to_inline_no_msn_fields_when_plain_spectrum() -> None:
+def test_to_inline_activation_raw_accession_emitted_as_cv() -> None:
+    # DReader/MzmlReader populate activation_type with a raw PSI-MS accession, not an
+    # acronym. It must still be emitted as a standard dissociation-method CV param on
+    # the precursor activation (not merely stashed in the spxtacular:activation_type
+    # user_param), otherwise external mzML tooling loses the dissociation method.
+    msn = MsnSpectrum(
+        mz=np.array([100.0, 200.0], dtype=np.float64),
+        intensity=np.array([10.0, 20.0], dtype=np.float64),
+        ms_level=2,
+        activation_type="MS:1002481",  # beam-type CID (Bruker PASEF), as DReader writes
+        precursors=[Precursor(mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
+    )
+    inline = to_inline_spectrum(msn)
+    activation = inline.precursors[0].activation
+    assert activation is not None
+    assert "MS:1002481" in {p.accession for p in activation.params}
+
+
+def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
+    # A non-accession, unknown vendor string must NOT be passed to spectrl as a CV
+    # accession (it would fail accession_tail()); it round-trips via the user_param only.
+    msn = MsnSpectrum(
+        mz=np.array([100.0, 200.0], dtype=np.float64),
+        intensity=np.array([10.0, 20.0], dtype=np.float64),
+        ms_level=2,
+        collision_energy=25.0,
+        activation_type="MyCustomActivation",
+        precursors=[Precursor(mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
+    )
+    inline = to_inline_spectrum(msn)
+    activation = inline.precursors[0].activation
+    # only collision energy survives as a CV param; the free-text activation is not one
+    assert activation is not None
+    assert {p.accession for p in activation.params} == {"MS:1000045"}
+    # but it still round-trips losslessly via the user_param
+    assert from_spectrl_token(to_spectrl_token(msn)).activation_type == "MyCustomActivation"
     inline = to_inline_spectrum(_basic_spectrum())
     assert inline.id is None
     assert inline.scans == []

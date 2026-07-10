@@ -27,11 +27,13 @@ counterpart — ``denoised``/``normalized`` provenance strings,
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
+from .enums import ActivationType, Analyzer, IMType, Polarity
 
 if TYPE_CHECKING:
     from spectrl import DecodedSpectrum, InlineSpectrum
@@ -71,46 +73,93 @@ _ISOL_LOWER_OFFSET = "MS:1000828"
 _ISOL_UPPER_OFFSET = "MS:1000829"
 _COLLISION_ENERGY = "MS:1000045"
 
-# Common activation accessions; unrecognised strings pass through unchanged so
-# the round trip stays faithful even for activation types we don't know about.
+# Shape of a PSI-MS CV accession (e.g. "MS:1002481"). Used to tell an already-
+# valid accession apart from free-text so the former can be passed to spectrl.
+_MS_ACCESSION_RE = re.compile(r"^MS:\d{7}$")
+
+# Common activation accessions, drawn from the PSI-MS "dissociation method"
+# branch (MS:1000044). Unrecognised strings are NOT valid CV accessions
+# (spectrl's accession_tail() requires an "MS:NNNNN"-shaped string), so they are
+# never passed to spectrl as one; instead they're carried losslessly via the
+# _UP_ACTIVATION_TYPE user_param below.
+#
+# "PASEF" has no PSI-MS term of its own — it's a Bruker timsTOF acquisition
+# scheme (ion-mobility-gated precursor selection), not a dissociation
+# mechanism. Bruker PASEF spectra are fragmented via higher energy beam-type
+# CID, so it's mapped to that accession here; this matches DReader, which
+# already writes MS:1002481 directly for PASEF spectra (see reader.py).
+# Keyed by :class:`spxtacular.enums.ActivationType` members (the enum is the
+# single source of truth for the acronyms) so the two can't drift apart. Since
+# StrEnum members are strings, ``.get(activation_type)`` works whether the field
+# holds an enum member or an equivalent raw string.
 _ACTIVATION_ACCESSIONS: dict[str, str] = {
-    "HCD": "MS:1000422",
-    "CID": "MS:1000133",
-    "ETD": "MS:1000598",
-    "ECD": "MS:1000250",
-    "PASEF": "MS:1002481",
+    ActivationType.CID: "MS:1000133",  # collision-induced dissociation
+    ActivationType.HCD: "MS:1000422",  # beam-type collision-induced dissociation
+    ActivationType.ETD: "MS:1000598",  # electron transfer dissociation
+    ActivationType.ECD: "MS:1000250",  # electron capture dissociation
+    ActivationType.ETHCD: "MS:1002631",  # electron-transfer/higher-energy collision dissociation
+    ActivationType.ETCID: "MS:1003182",  # electron-transfer/collision-induced dissociation
+    ActivationType.NETD: "MS:1003247",  # negative electron transfer dissociation
+    ActivationType.UVPD: "MS:1003246",  # ultraviolet photodissociation
+    ActivationType.PD: "MS:1000435",  # photodissociation
+    ActivationType.PQD: "MS:1000599",  # pulsed q dissociation
+    ActivationType.SID: "MS:1000136",  # surface-induced dissociation
+    ActivationType.IRMPD: "MS:1000262",  # infrared multiphoton dissociation
+    ActivationType.BIRD: "MS:1000242",  # blackbody infrared radiative dissociation
+    ActivationType.SORI: "MS:1000282",  # sustained off-resonance irradiation
+    ActivationType.PASEF: "MS:1002481",  # higher energy beam-type CID (Bruker PASEF); see note above
 }
 
-# Inverse mapping for decoding
+# Inverse mapping for decoding (accession -> ActivationType member)
 _ACTIVATION_NAMES: dict[str, str] = {v: k for k, v in _ACTIVATION_ACCESSIONS.items() if not k.startswith("MS:")}
+
+# Mass-analyzer accessions, from the PSI-MS "mass analyzer type" (MS:1000443)
+# branch and keyed by :class:`spxtacular.enums.Analyzer` members. Analyzer is a
+# mzML instrument-configuration concept with no per-spectrum/scan slot in
+# spectrl's single-spectrum model, so the bridge carries the exact string
+# losslessly via the _UP_ANALYZER user_param below; this dict is the canonical
+# enum -> accession reference for consumers that need the CV term.
+_ANALYZER_ACCESSIONS: dict[str, str] = {
+    Analyzer.ORBITRAP: "MS:1000484",
+    Analyzer.FT_ICR: "MS:1000079",  # fourier transform ion cyclotron resonance
+    Analyzer.TOF: "MS:1000084",  # time-of-flight
+    Analyzer.QUADRUPOLE: "MS:1000081",
+    Analyzer.ION_TRAP: "MS:1000264",
+    Analyzer.LINEAR_ION_TRAP: "MS:1000291",
+    Analyzer.QUADRUPOLE_ION_TRAP: "MS:1000082",
+    Analyzer.MAGNETIC_SECTOR: "MS:1000080",
+    Analyzer.ELECTROSTATIC_ENERGY_ANALYZER: "MS:1000254",
+}
 
 # Ion-mobility array accessions (must be drawn from spectrl.ION_MOBILITY_ARRAY_TAILS,
 # i.e. mzmlpy.constants.ION_MOBILITIES, otherwise spectrl will not recognise them on decode).
+# Keyed by :class:`spxtacular.enums.IMType` members where one exists; the extra
+# lowercase aliases ("1/k0", "drift_time") stay accepted as raw strings.
 _IM_TYPE_ACCESSIONS: dict[str, str] = {
-    "ook0": "MS:1003008",      # raw inverse reduced ion mobility (1/K0)
+    IMType.OOK0: "MS:1003008",  # raw inverse reduced ion mobility (1/K0)
     "1/k0": "MS:1003008",
-    "im": "MS:1002893",        # generic ion mobility
+    IMType.IM: "MS:1002893",  # generic ion mobility
     "drift_time": "MS:1003153",
-    "drift_time_ms": "MS:1003153",
-    "ccs": "MS:1003007",       # raw ion mobility (CCS)
+    IMType.DRIFT_TIME_MS: "MS:1003153",
+    IMType.CCS: "MS:1003007",  # raw ion mobility (CCS)
 }
 
 # Reverse lookup for decoding (covers raw/mean/deconvoluted variants).
 _IM_TYPE_FROM_ACCESSION: dict[str, str] = {
-    "MS:1003008": "ook0",   # raw inverse reduced ion mobility (1/K0)
-    "MS:1003006": "ook0",   # mean inverse reduced ion mobility
-    "MS:1003155": "ook0",   # deconvoluted inverse reduced ion mobility
-    "MS:1002816": "ook0",   # mean ion mobility (fall back to ook0)
-    "MS:1002893": "im",
-    "MS:1003153": "drift_time_ms",
-    "MS:1002477": "drift_time_ms",
-    "MS:1003156": "drift_time_ms",
-    "MS:1003007": "ccs",
+    "MS:1003008": IMType.OOK0,  # raw inverse reduced ion mobility (1/K0)
+    "MS:1003006": IMType.OOK0,  # mean inverse reduced ion mobility
+    "MS:1003155": IMType.OOK0,  # deconvoluted inverse reduced ion mobility
+    "MS:1002816": IMType.OOK0,  # mean ion mobility (fall back to ook0)
+    "MS:1002893": IMType.IM,
+    "MS:1003153": IMType.DRIFT_TIME_MS,
+    "MS:1002477": IMType.DRIFT_TIME_MS,
+    "MS:1003156": IMType.DRIFT_TIME_MS,
+    "MS:1003007": IMType.CCS,
 }
 
-_POLARITY_FROM_ACCESSION: dict[str, str] = {
-    _POSITIVE: "positive",
-    _NEGATIVE: "negative",
+_POLARITY_FROM_ACCESSION: dict[str, Polarity] = {
+    _POSITIVE: Polarity.POSITIVE,
+    _NEGATIVE: Polarity.NEGATIVE,
 }
 
 # ---------------------------------------------------------------------------
@@ -132,6 +181,7 @@ _UP_IM_RANGE_HI = _UP_PREFIX + "im_range_upper"
 _UP_ISOL_IM_RANGE_LO = _UP_PREFIX + "isolation_im_range_lower"
 _UP_ISOL_IM_RANGE_HI = _UP_PREFIX + "isolation_im_range_upper"
 _UP_IM_TYPE = _UP_PREFIX + "im_type"
+_UP_ACTIVATION_TYPE = _UP_PREFIX + "activation_type"
 
 # user-param names that only an MsnSpectrum can carry (force MSn on decode)
 _MSN_USER_PARAMS: frozenset[str] = frozenset(
@@ -145,6 +195,7 @@ _MSN_USER_PARAMS: frozenset[str] = frozenset(
         _UP_ISOL_IM_RANGE_LO,
         _UP_ISOL_IM_RANGE_HI,
         _UP_IM_TYPE,
+        _UP_ACTIVATION_TYPE,
     }
 )
 
@@ -156,9 +207,7 @@ _MSN_USER_PARAMS: frozenset[str] = frozenset(
 
 def _require_spectrl() -> None:
     if not _HAS_SPECTRL:
-        raise ImportError(
-            "spectrl is required for this operation. Install with: pip install spxtacular[spectrl]"
-        )
+        raise ImportError("spectrl is required for this operation. Install with: pip install spxtacular[spectrl]")
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +338,16 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             if msn_spec.collision_energy is not None:
                 act_params.append(_cv(_COLLISION_ENERGY, value=float(msn_spec.collision_energy)))
             if msn_spec.activation_type is not None:
-                acc = _ACTIVATION_ACCESSIONS.get(msn_spec.activation_type, msn_spec.activation_type)
-                act_params.append(_cv(acc))
+                # Emit a standard dissociation-method CV param when we can: either the
+                # value is a known acronym (mapped to its accession) or it is already an
+                # ``MS:NNNNNNN``-shaped accession (as both readers produce). Only truly
+                # free-text vendor strings fall through to the _UP_ACTIVATION_TYPE
+                # user_param below, since spectrl's accession_tail() would reject them.
+                acc = _ACTIVATION_ACCESSIONS.get(msn_spec.activation_type)
+                if acc is None and _MS_ACCESSION_RE.match(msn_spec.activation_type):
+                    acc = msn_spec.activation_type
+                if acc is not None:
+                    act_params.append(_cv(acc))
             if act_params:
                 activation = SpectrlActivation(params=act_params)
 
@@ -340,6 +397,11 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             # The CV accession (ion_mobility_type) only carries a coarse, spectrl-recognised
             # IM category; stash the exact string here so unrecognized types round-trip too.
             user_params.append(_up(_UP_IM_TYPE, msn_spec.im_type, "xsd:string"))
+        if msn_spec.activation_type is not None:
+            # The CV accession (added to act_params above) only covers activation types in
+            # _ACTIVATION_ACCESSIONS; stash the exact string here so unrecognized types
+            # round-trip too instead of being dropped or crashing the encode.
+            user_params.append(_up(_UP_ACTIVATION_TYPE, msn_spec.activation_type, "xsd:string"))
 
     return InlineSpectrum(
         default_array_length=n,
@@ -471,11 +533,11 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     # MSn metadata
     ms_level: int | None = int(ms_level_p.value) if ms_level_p is not None and ms_level_p.value is not None else None
 
-    polarity: str | None = None
-    if _find_param(decoded.params, _POSITIVE):
-        polarity = "positive"
-    elif _find_param(decoded.params, _NEGATIVE):
-        polarity = "negative"
+    polarity: Polarity | None = None
+    for accession, name in _POLARITY_FROM_ACCESSION.items():
+        if _find_param(decoded.params, accession):
+            polarity = name
+            break
 
     tic_p = _find_param(decoded.params, _TIC)
     total_ion_current = float(tic_p.value) if tic_p is not None and tic_p.value is not None else None
@@ -499,7 +561,8 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     precursors: list[Precursor] | None = None
     isolation_mz_range: tuple[float, float] | None = None
     collision_energy: float | None = None
-    activation_type: str | None = None
+    activation_type_v = up.get(_UP_ACTIVATION_TYPE)
+    activation_type: str | None = str(activation_type_v) if activation_type_v is not None else None
     if decoded.precursors:
         precursors = []
         for sp in decoded.precursors:
@@ -512,9 +575,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                 prec_intensity = (
                     float(intensity_p.value) if intensity_p is not None and intensity_p.value is not None else 0.0
                 )
-                prec_charge = (
-                    int(charge_p.value) if charge_p is not None and charge_p.value is not None else None
-                )
+                prec_charge = int(charge_p.value) if charge_p is not None and charge_p.value is not None else None
                 prec_im: float | None = None
                 for p in ion.params:
                     if p.accession in _IM_TYPE_FROM_ACCESSION and p.value is not None:

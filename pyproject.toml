@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 keywords = ["mass spectrometry", "proteomics", "deconvolution", "bioinformatics", "peptide"]
 dependencies = [
-    "numpy",
+    "numpy>=1.26",
     "pandas>=2.0",
     "peptacular>=3.1.1",
     "paftacular>=1.0.0",

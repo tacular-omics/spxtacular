@@ -23,7 +23,13 @@ from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .matching import FragmentInput, match_fragments
 
 if TYPE_CHECKING:
@@ -40,8 +46,8 @@ _ION_COLORS: dict[str, str] = {
     "c": "#9467bd",
     "z": "#ff7f0e",
     "x": "#8c564b",
-    "i": "#455A64",   # immonium
-    "p": "#512DA8",   # precursor
+    "i": "#455A64",  # immonium
+    "p": "#512DA8",  # precursor
     "by": "#FBC02D",  # internal fragments
     "ax": "#FBC02D",
     "cz": "#FBC02D",
@@ -221,8 +227,8 @@ def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
 def build_annot_plot_table(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
 ) -> pd.DataFrame:

@@ -13,7 +13,13 @@ from peptacular import IonType
 from peptacular.annotation.frag import Fragment
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .utils import da_to_ppm
 
 FragmentInput = Sequence[Fragment] | dict[tuple[IonType, int], list[float]]
@@ -35,8 +41,8 @@ class MatchedFragment:
 def match_fragments(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]:

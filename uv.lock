@@ -971,7 +971,7 @@ requires-dist = [
     { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.4.0" },
     { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
-    { name = "numpy" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "paftacular", specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "peptacular", specifier = ">=3.1.1" },

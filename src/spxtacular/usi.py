@@ -38,9 +38,7 @@ def _parse_proxi_response(
     intensities = spectrum.get("intensities") or spectrum.get("intensity array")
 
     if mzs is None or intensities is None:
-        raise ValueError(
-            f"PROXI response missing m/z or intensity data for USI: {usi}"
-        )
+        raise ValueError(f"PROXI response missing m/z or intensity data for USI: {usi}")
 
     result: dict[str, Any] = {
         "mz": np.array(mzs, dtype=np.float64),
@@ -105,10 +103,7 @@ def fetch_usi(
     elif backend.startswith("http"):
         base_url = backend
     else:
-        raise ValueError(
-            f"Unknown backend: {backend!r}. "
-            f"Available: {', '.join(_PROXI_BACKENDS)}"
-        )
+        raise ValueError(f"Unknown backend: {backend!r}. Available: {', '.join(_PROXI_BACKENDS)}")
 
     encoded_usi = urllib.parse.quote_plus(usi)
     url = f"{base_url}?resultType=full&usi={encoded_usi}"
@@ -119,21 +114,13 @@ def fetch_usi(
             raw = response.read().decode("utf-8")
             data = json.loads(raw)
     except urllib.error.HTTPError as e:
-        raise ValueError(
-            f"HTTP {e.code} error fetching USI: {usi}. {e.reason}"
-        ) from e
+        raise ValueError(f"HTTP {e.code} error fetching USI: {usi}. {e.reason}") from e
     except urllib.error.URLError as e:
-        raise ValueError(
-            f"Network error fetching USI: {usi}. {e.reason}"
-        ) from e
+        raise ValueError(f"Network error fetching USI: {usi}. {e.reason}") from e
     except (TimeoutError, OSError) as e:
-        raise ValueError(
-            f"Timeout fetching USI: {usi}. {e}"
-        ) from e
+        raise ValueError(f"Timeout fetching USI: {usi}. {e}") from e
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Invalid JSON response for USI: {usi}. {e}"
-        ) from e
+        raise ValueError(f"Invalid JSON response for USI: {usi}. {e}") from e
 
     parsed = _parse_proxi_response(data, usi)
     mz = parsed["mz"]

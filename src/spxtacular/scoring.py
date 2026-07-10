@@ -13,7 +13,13 @@ from typing import Any, cast
 import numpy as np
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .matching import FragmentInput, MatchedFragment, match_fragments
 
 # ---------------------------------------------------------------------------
@@ -201,8 +207,8 @@ def _longest_run(matches: list[MatchedFragment]) -> int:
 def score(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
 ) -> dict[str, float]:
     """Match fragments against a spectrum and return all scores.

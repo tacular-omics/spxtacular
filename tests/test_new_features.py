@@ -119,7 +119,10 @@ class TestRemovePrecursorPeak:
         mz = np.array([mz_z1, prec_mz, 250.0], dtype=np.float64)
         spec = Spectrum(mz=mz, intensity=np.ones(3, dtype=np.float64))
         result = spec.remove_precursor_peak(
-            precursor_mz=prec_mz, precursor_charge=prec_z, tolerance=0.01, isotopes=0,
+            precursor_mz=prec_mz,
+            precursor_charge=prec_z,
+            tolerance=0.01,
+            isotopes=0,
         )
         # Both z=1 and z=2 peaks removed, only 250.0 survives
         assert len(result.mz) == 1
@@ -135,7 +138,9 @@ class TestRemovePrecursorPeak:
         neutral = (prec_mz * prec_z) - (prec_z * PROTON)
         # Get expected isotope count
         dist = pt.estimate_isotopic_distribution(
-            neutral, min_abundance_threshold=0.01, use_neutron_count=True,
+            neutral,
+            min_abundance_threshold=0.01,
+            use_neutron_count=True,
         )
         n_isotopes = len(dist)
         # Build peaks: precursor + all expected isotopes at z=2
@@ -161,7 +166,9 @@ class TestRemovePrecursorPeak:
         spec = Spectrum(mz=mz, intensity=intensity, charge=charge)
         # Only remove the peak at mz=500 with charge=2
         result = spec.remove_precursor_peak(
-            precursor_mz=500.0, precursor_charge=2, tolerance=0.01,
+            precursor_mz=500.0,
+            precursor_charge=2,
+            tolerance=0.01,
         )
         assert len(result.mz) == 2
         # Peak at mz=300 z=1 and mz=500 z=3 should remain
@@ -180,7 +187,9 @@ class TestRemovePrecursorPeak:
         charge = np.array([0, 0, 0], dtype=np.int32)
         spec = Spectrum(mz=mz, intensity=np.ones(3, dtype=np.float64), charge=charge)
         result = spec.remove_precursor_peak(
-            precursor_mz=prec_mz, precursor_charge=prec_z, tolerance=0.01,
+            precursor_mz=prec_mz,
+            precursor_charge=prec_z,
+            tolerance=0.01,
         )
         assert len(result.mz) == 2
         np.testing.assert_allclose(result.mz, [250.0, 800.0])
@@ -449,21 +458,21 @@ class TestFetchUsi:
     ) -> str:
         attrs = []
         if precursor_mz is not None:
-            attrs.append(
-                {"accession": "MS:1000744", "name": "selected ion m/z", "value": str(precursor_mz)}
-            )
+            attrs.append({"accession": "MS:1000744", "name": "selected ion m/z", "value": str(precursor_mz)})
         if precursor_charge is not None:
-            attrs.append(
-                {"accession": "MS:1000041", "name": "charge state", "value": str(precursor_charge)}
-            )
+            attrs.append({"accession": "MS:1000041", "name": "charge state", "value": str(precursor_charge)})
         import json
 
-        return json.dumps([{
-            "usi": "mzspec:TEST:test:scan:1",
-            "mzs": mzs or [100.0, 200.0, 300.0],
-            "intensities": intensities or [10.0, 50.0, 30.0],
-            "attributes": attrs,
-        }])
+        return json.dumps(
+            [
+                {
+                    "usi": "mzspec:TEST:test:scan:1",
+                    "mzs": mzs or [100.0, 200.0, 300.0],
+                    "intensities": intensities or [10.0, 50.0, 30.0],
+                    "attributes": attrs,
+                }
+            ]
+        )
 
     def test_returns_msn_spectrum_with_precursor(self) -> None:
         from unittest.mock import MagicMock, patch
@@ -487,7 +496,8 @@ class TestFetchUsi:
 
         mock_response = MagicMock()
         mock_response.read.return_value = self._mock_proxi_response(
-            precursor_mz=None, precursor_charge=None,
+            precursor_mz=None,
+            precursor_charge=None,
         ).encode()
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)

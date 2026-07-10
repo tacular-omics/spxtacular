@@ -250,8 +250,16 @@ def deconvolve_spectrum(
         out_mz[n_out] = float(mz32[seed_idx])
         out_charges[n_out] = best_charge if accepted else -1
         out_scores[n_out] = best_score if accepted else 0.0
-        out_total_int[n_out] = best_total
-        out_base_int[n_out] = best_base
+        if accepted:
+            out_total_int[n_out] = best_total
+            out_base_int[n_out] = best_base
+        else:
+            # Rejected: only the seed is consumed here; the rest of the tried
+            # cluster stays free and is re-seeded later, so record the seed's own
+            # intensity (not best_total) to avoid double-counting it in "total" mode.
+            seed_int = float(int32[seed_idx])
+            out_total_int[n_out] = seed_int
+            out_base_int[n_out] = seed_int
         n_out += 1
 
     if n_out == 0:

@@ -15,7 +15,13 @@ if TYPE_CHECKING:
 import numpy as np
 
 from .core import Spectrum
-from .enums import PeakSelection, PeakSelectionLike, ToleranceLike, ToleranceType
+from .enums import (
+    DEFAULT_FRAGMENT_TOLERANCE,
+    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    PeakSelection,
+    PeakSelectionLike,
+    ToleranceLike,
+)
 from .matching import FragmentInput
 from .plot_table import (
     _DEFAULT_ION_COLOR,
@@ -320,8 +326,8 @@ def mirror_plot(
 def annotate_spectrum(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     title: str | None = None,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
@@ -366,8 +372,8 @@ def annotate_spectrum(
 def mass_error_plot(
     spectrum: Spectrum,
     fragments: FragmentInput,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     unit: str = "ppm",
     title: str | None = None,
@@ -440,9 +446,7 @@ def mass_error_plot(
             textposition="top center",
             textfont={"size": 9},
             hovertemplate=(
-                "m/z: %{x:.4f}<br>"
-                f"error ({unit}): %{{y:.4f}}<br>"
-                "intensity: %{customdata:.2e}<extra></extra>"
+                f"m/z: %{{x:.4f}}<br>error ({unit}): %{{y:.4f}}<br>intensity: %{{customdata:.2e}}<extra></extra>"
             ),
             customdata=intensities,
         )
@@ -465,8 +469,8 @@ def facet_plot(
     fragments: FragmentInput | None = None,
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
-    tolerance: float = 0.02,
-    tolerance_type: ToleranceLike = ToleranceType.DA,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     unit: str = "ppm",
@@ -560,19 +564,21 @@ def facet_plot(
             sizes = [max(5, 30 * i / max_int) for i in intensities]
 
             ion_types = [
-                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value")
-                else str(m.fragment.ion_type)
+                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value") else str(m.fragment.ion_type)
                 for m in matches
             ]
             colors = [_ION_COLORS.get(it, _DEFAULT_ION_COLOR) for it in ion_types]
 
             fig.add_trace(
                 go.Scatter(
-                    x=mzs, y=errors, mode="markers",
+                    x=mzs,
+                    y=errors,
+                    mode="markers",
                     marker={"size": sizes, "color": colors, "opacity": 0.7},
                     showlegend=False,
                 ),
-                row=current_row, col=1,
+                row=current_row,
+                col=1,
             )
         fig.update_yaxes(title_text=f"Error ({unit})", row=current_row, col=1)
         current_row += 1
@@ -589,7 +595,8 @@ def facet_plot(
                     line={"color": row["color"], "width": float(row["linewidth"])},
                     showlegend=False,
                 ),
-                row=current_row, col=1,
+                row=current_row,
+                col=1,
             )
         fig.update_yaxes(title_text="Intensity", row=current_row, col=1)
 
@@ -601,5 +608,3 @@ def facet_plot(
         **layout_kwargs,
     )
     return fig
-
-
