@@ -127,7 +127,9 @@ def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
     assert activation is not None
     assert {p.accession for p in activation.params} == {"MS:1000045"}
     # but it still round-trips losslessly via the user_param
-    assert from_spectrl_token(to_spectrl_token(msn)).activation_type == "MyCustomActivation"
+    restored = from_spectrl_token(to_spectrl_token(msn))
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.activation_type == "MyCustomActivation"
     inline = to_inline_spectrum(_basic_spectrum())
     assert inline.id is None
     assert inline.scans == []
@@ -199,8 +201,10 @@ def test_token_roundtrip_with_ion_mobility() -> None:
     )
     token = to_spectrl_token(spec, lossless=True)
     restored = from_spectrl_token(token)
-    assert restored.im is not None
-    np.testing.assert_allclose(restored.im, spec.im)
+    assert isinstance(restored, MsnSpectrum)
+    r_im, s_im = restored.im, spec.im
+    assert r_im is not None and s_im is not None
+    np.testing.assert_allclose(r_im, s_im)
     assert restored.im_type == "ook0"
 
 
@@ -219,8 +223,9 @@ def test_iso_score_roundtrips_via_extra_arrays() -> None:
         spectrum_type=SpectrumType.DECONVOLUTED,
     )
     restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
-    assert restored.iso_score is not None
-    np.testing.assert_allclose(restored.iso_score, spec.iso_score)
+    r_score, s_score = restored.iso_score, spec.iso_score
+    assert r_score is not None and s_score is not None
+    np.testing.assert_allclose(r_score, s_score)
 
 
 def test_iso_score_absent_when_not_set() -> None:
@@ -249,6 +254,7 @@ def test_negative_polarity_roundtrip() -> None:
         polarity="negative",
     )
     restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
+    assert isinstance(restored, MsnSpectrum)
     assert restored.polarity == "negative"
 
 

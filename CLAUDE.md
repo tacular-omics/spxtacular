@@ -8,7 +8,7 @@ Mass spectrometry spectrum processing library. Companion to [peptacular](../pept
 uv run pytest tests/ -v          # run all tests
 uv run ruff check src/ tests/    # lint
 uv run ruff format src/ tests/   # format
-uv run ty check src/             # type check
+uv run ty check src tests        # type check (CI checks tests too — must stay clean)
 ```
 
 ## Architecture
