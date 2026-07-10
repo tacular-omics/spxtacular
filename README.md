@@ -39,6 +39,14 @@ pip install spxtacular[numba]
 
 # Optional: share spectra as compact URL-safe tokens (spectrl)
 pip install spxtacular[spectrl]
+
+# Optional: raw-file readers — Bruker .d (bruker) and/or mzML (mzml)
+pip install spxtacular[bruker]      # tdfpy — DReader
+pip install spxtacular[mzml]        # mzmlpy — MzmlReader
+pip install spxtacular[readers]     # both readers
+
+# Everything (numba + both readers + spectrl)
+pip install spxtacular[all]
 ```
 
 ## Quick start
@@ -51,7 +59,7 @@ spec = spx.Spectrum(mz=mz_array, intensity=intensity_array)
 # Full pipeline: denoise → deconvolute → filter → neutral mass
 neutral = (
     spec
-    .denoise(method="mad", snr=3.0)
+    .denoise(method="mad")
     .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm", min_score=0.4)
     .decharge()
 )

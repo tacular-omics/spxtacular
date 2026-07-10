@@ -25,7 +25,7 @@ Draws a stick plot of any `Spectrum`. With `color="charge"` (default), sticks ar
 charge state when `charge` is present (z=1, z=2, … in different colours; z=-1 singletons in grey).
 With `color="im"`, sticks are coloured by ion mobility on a continuous Viridis scale (falls back
 to `"charge"` when no IM array is present). With `color=None`, all sticks render in a uniform
-steelblue. When `score` is present and `show_scores=True`, score values are shown above each
+steelblue. When `iso_score` is present and `show_scores=True`, score values are shown above each
 scored peak.
 
 The legacy `show_charges=True/False` keyword is still accepted as a deprecated alias mapping to
@@ -111,9 +111,11 @@ fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
 fig = annotate_spectrum(
     spectrum,
     fragments,
-    mz_tol=0.02,
-    mz_tol_type="da",   # or "ppm"
+    tolerance=0.02,
+    tolerance_type="da",         # or "ppm"
     title=None,
+    peak_selection="closest",    # "closest" | "largest" | "all"
+    include_sequence=False,
     **layout_kwargs,
 )
 fig.show()
@@ -128,9 +130,11 @@ by ion type). Unmatched peaks are shown in grey.
 |---|---|---|
 | `spectrum` | | `Spectrum` to plot |
 | `fragments` | | Iterable of fragment objects from `peptacular` |
-| `mz_tol` | `0.02` | Matching tolerance |
-| `mz_tol_type` | `"da"` | `"da"` or `"ppm"` |
+| `tolerance` | `0.02` | Matching tolerance |
+| `tolerance_type` | `"da"` | `"da"` or `"ppm"` |
 | `title` | `None` | Plot title |
+| `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance — `"closest"`, `"largest"`, or `"all"` |
+| `include_sequence` | `False` | Embed the residue sequence in each label (e.g. `b3{PEP}`) |
 
 **Annotated spectrum:**
 
@@ -147,7 +151,7 @@ fig = mass_error_plot(
     spectrum,
     fragments,
     tolerance=0.02,
-    tolerance_type="ppm",        # or "da"
+    tolerance_type="da",         # or "ppm"
     peak_selection="closest",    # "closest" | "largest" | "all"
     unit="ppm",                  # error units
     title=None,
@@ -174,7 +178,7 @@ fig = facet_plot(
     mirror_spectrum=None,     # adds a mirror panel below when provided
     title=None,
     tolerance=0.02,
-    tolerance_type="ppm",
+    tolerance_type="da",
     peak_selection="closest",
     include_sequence=False,
     unit="ppm",

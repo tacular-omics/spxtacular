@@ -92,16 +92,43 @@ Extends `Spectrum` with instrument metadata fields. Returned by both readers.
 | `injection_time` | `float \| None` | Ion accumulation time in ms |
 | `mz_range` | `tuple[float, float] \| None` | Acquisition m/z window |
 | `im_range` | `tuple[float, float] \| None` | Ion mobility window |
-| `im_type` | `str \| None` | Ion mobility unit string |
-| `polarity` | `"positive" \| "negative" \| None` | Scan polarity |
+| `im_type` | `IMType \| str \| None` | Ion mobility unit (open vocabulary) |
+| `polarity` | `Polarity \| "positive" \| "negative" \| None` | Scan polarity (closed vocabulary) |
 | `resolution` | `float \| None` | Instrument resolution |
-| `analyzer` | `str \| None` | Mass analyser type |
+| `analyzer` | `Analyzer \| str \| None` | Mass analyser type (open vocabulary) |
 | `ramp_time` | `float \| None` | timsTOF ramp time in ms |
 | `collision_energy` | `float \| None` | Fragmentation collision energy |
-| `activation_type` | `str \| None` | Fragmentation type (HCD, CID, PASEF, …) |
-| `precursors` | `list[TargetIon] \| None` | Precursor ions (MS2 only) |
+| `activation_type` | `ActivationType \| str \| None` | Fragmentation type (open vocabulary) |
+| `precursors` | `list[Precursor] \| None` | Precursor ions (MS2 only) |
+
+See [Metadata enums](#metadata-enums) below for the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` member lists.
 
 Full documentation: [Spectrum reference — MsnSpectrum](spectrum.md#msnspectrum)
+
+---
+
+### Metadata enums
+
+Four `StrEnum`s are exported from `spxtacular` root and back the `MsnSpectrum` fields above:
+
+```python
+from spxtacular import Polarity, ActivationType, IMType, Analyzer
+```
+
+| Enum | Vocabulary | Members |
+|---|---|---|
+| `Polarity` | Closed | `POSITIVE` (`"positive"`), `NEGATIVE` (`"negative"`) |
+| `ActivationType` | Open | `CID`, `HCD`, `ETD`, `ECD`, `ETHCD` (`"EThcD"`), `ETCID` (`"ETciD"`), `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` |
+| `IMType` | Open | `OOK0` (`"ook0"`), `IM` (`"im"`), `DRIFT_TIME_MS` (`"drift_time_ms"`), `CCS` (`"ccs"`) |
+| `Analyzer` | Open | `ORBITRAP`, `FT_ICR`, `TOF`, `QUADRUPOLE`, `ION_TRAP`, `LINEAR_ION_TRAP`, `QUADRUPOLE_ION_TRAP`, `MAGNETIC_SECTOR`, `ELECTROSTATIC_ENERGY_ANALYZER` |
+
+`Polarity` is closed vocabulary: `MsnSpectrum.polarity` only accepts a `Polarity` member or the literal strings `"positive"`/`"negative"`. The other three are open vocabulary — `MsnSpectrum.im_type`, `.analyzer`, and `.activation_type` are typed `Enum | str`, so an enum member gives autocomplete/typo-safety while raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through unchanged.
+
+```python
+from spxtacular import MsnSpectrum, ActivationType
+
+spec = MsnSpectrum(mz=mz, intensity=intensity, activation_type=ActivationType.HCD)
+```
 
 ---
 
@@ -110,18 +137,19 @@ Full documentation: [Spectrum reference — MsnSpectrum](spectrum.md#msnspectrum
 Frozen dataclass for a single spectral peak. Returned by peak access methods.
 
 ```python
-Peak(mz: float, intensity: float, charge: int | None = None, im: float | None = None)
+Peak(mz: float, intensity: float, charge: int | None = None, im: float | None = None, iso_score: float | None = None)
 ```
 
 ---
 
-### `TargetIon`
+### `Precursor`
 
-Frozen dataclass, subclass of `Peak`, representing a selected precursor ion.
+Frozen dataclass, subclass of `Peak`, representing a selected precursor ion. Exported from the package root: `from spxtacular import Precursor`.
 
 ```python
-# All fields are keyword-only (kw_only=True)
-TargetIon(mz=..., intensity=..., charge=..., im=..., is_monoisotopic=...)
+# mz, intensity, charge, im, iso_score are inherited from Peak (positional-or-keyword);
+# is_monoisotopic is keyword-only (kw_only=True) and has no default
+Precursor(mz=..., intensity=..., charge=..., im=..., iso_score=..., is_monoisotopic=...)
 ```
 
 ---
@@ -374,9 +402,11 @@ from spxtacular import annotate_spectrum
 annotate_spectrum(
     spectrum: Spectrum,
     fragments,
-    mz_tol: float = 0.02,
-    mz_tol_type: str = "da",
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
     title: str | None = None,
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
     **layout_kwargs,
 )
 ```
@@ -398,7 +428,7 @@ match_fragments(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]
@@ -420,7 +450,7 @@ score(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
 ) -> dict[str, float]
 ```

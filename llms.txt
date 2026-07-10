@@ -4,7 +4,7 @@
 > a `Spectrum`/`MsnSpectrum` dataclass with chainable processing methods (filter, deconvolute,
 > decharge, match fragments, plot). This file is written for AI coding assistants: it is a compact,
 > accurate reference for generating correct spxtacular code. Everything below matches the public
-> API as of version 0.4.0. Companion library: [peptacular](https://github.com/pgarrett-scripps/peptacular)
+> API as of version 0.4.0. Companion library: [peptacular](https://github.com/tacular-omics/peptacular)
 > (peptide/fragment math). `numpy`, `pandas`, `plotly`, `peptacular`, and `paftacular` are required;
 > everything else below is an optional extra.
 
@@ -65,6 +65,15 @@ Methods are chainable because every mutator returns `Self`.
 `ramp_time`, `total_ion_current`, `injection_time`. `Precursor(Peak)` adds `is_monoisotopic`.
 `Peak` is a frozen dataclass: `mz, intensity, charge, im, iso_score`.
 
+Four metadata fields accept a typed `StrEnum` for autocomplete/typo-safety while staying open to
+raw strings (the field type is `Enum | str`): `polarity` → `Polarity` (`positive`/`negative`),
+`activation_type` → `ActivationType` (`HCD`, `CID`, `ETD`, `EThcD`, …), `im_type` → `IMType`
+(`ook0`, `drift_time_ms`, `ccs`, `im`), `analyzer` → `Analyzer` (`orbitrap`, `tof`, `ft_icr`, …).
+All four (plus `PeakSelection` and `ToleranceType`) are exported from `spxtacular`. The enums are
+purely additive: raw PSI-MS accessions (e.g. `"MS:1002481"` from readers) and unknown vendor
+strings pass straight through, so `activation_type=ActivationType.HCD` and `activation_type="HCD"`
+are equivalent.
+
 ## Charge conventions (critical — read before writing charge-related code)
 
 | `charge` value | meaning |
@@ -86,11 +95,14 @@ decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm"
 neutral = decon.decharge()   # drops charge == -1 peaks; charge becomes all zeros (neutral mass)
 ```
 
-`decharge()` raises `ValueError` if called on a non-`DECONVOLUTED` spectrum... except it doesn't
-currently raise — it silently calls `deconvolute()` with default parameters first (a known
-docs/behavior mismatch; don't rely on either being fixed without checking the installed version).
-Calling `decharge()` twice is safe: it warns and returns the input unchanged rather than
-corrupting the already-neutral `mz` values.
+`decharge()` raises `ValueError` if called on a non-`DECONVOLUTED` spectrum — call
+`deconvolute()` first so the charge states are known. Calling `decharge()` twice is safe: it
+warns and returns the input unchanged rather than corrupting the already-neutral `mz` values.
+
+Edge cases: `deconvolute()` requires `charge_range=(min, max)` with `1 <= min <= max` (else
+`ValueError`) and returns an empty `DECONVOLUTED` spectrum for an empty input rather than raising.
+`normalize()` on an all-zero-intensity spectrum warns and returns it unchanged instead of dividing
+by zero.
 
 ## Fragment matching & scoring
 
@@ -106,10 +118,9 @@ scores = spec.score(frags, tolerance=10, tolerance_type="ppm")
 
 Matching adapts to spectrum state automatically: centroid (no charge constraint), deconvoluted
 (charge must match, `-1` is a wildcard), decharged (matches `Fragment.neutral_mass`, any charge
-collapses onto the same neutral peak). `tolerance_type` default is `"da"` on the `Spectrum`
-methods (`match_fragments`/`score`) but `"ppm"` on the module-level `match_fragments(spectrum,
-fragments, ...)` / `score(spectrum, fragments, ...)` functions — pass it explicitly, don't rely
-on the default matching what you expect.
+collapses onto the same neutral peak). `tolerance_type` defaults to `"da"` (0.02 Da) uniformly —
+on the `Spectrum` methods (`match_fragments`/`score`) and on the module-level
+`match_fragments(spectrum, fragments, ...)` / `score(spectrum, fragments, ...)` functions alike.
 
 ## Reading files
 
@@ -170,8 +181,8 @@ Also available: `mirror_plot(spec_a, spec_b)`, `annotate_spectrum(spec, fragment
 - **Parallel arrays must stay in sync.** `mz`, `intensity`, `charge`, `im`, `iso_score` are
   independent `NDArray`s of the same length; if you hand-build a `Spectrum`, mismatched lengths
   raise `ValueError` in `__post_init__` — that's the guard, not a bug to work around.
-- **`tolerance_type` defaults differ between the `Spectrum` method and the module function** for
-  fragment matching (see above) — always pass it explicitly.
+- **`tolerance_type` defaults to `"da"` (0.02 Da) everywhere** for fragment matching — the
+  `Spectrum` methods and the module-level functions agree (see above).
 - **Readers must be opened/closed** (context manager preferred). Using `DReader.ms1`/`.ms2` before
   `open()` or after `close()` raises `RuntimeError` by design, not by accident.
 - **Don't move isotope-scoring logic into `decon/greedy.py`.** Cluster finding

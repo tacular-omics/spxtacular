@@ -1,9 +1,9 @@
 # History
 
-## 0.4.0 (2026-06-28)
+## 0.4.0 (2026-07-09)
 
 ### Breaking changes
-* **Removed `spxtacular.compress` and `spxtacular.urlparams`.** The in-house hex-delta + gzip wire format and the URL query-param encoder have been deleted in favour of the [spectrl](https://github.com/pgarrett-scripps/spectrl) token format. Removed APIs:
+* **Removed `spxtacular.compress` and `spxtacular.urlparams`.** The in-house hex-delta + gzip wire format and the URL query-param encoder have been deleted in favour of the [spectrl](https://github.com/tacular-omics/spectrl) token format. Removed APIs:
   * `Spectrum.compress()` / `Spectrum.from_compressed()`
   * `Spectrum.to_url_params()` / `Spectrum.from_url_params()`
   * `spxtacular.spectrum_to_query_params` / `spectrum_to_query_string` / `spectrum_from_query_params`
@@ -23,6 +23,7 @@
 * **URL sharing helpers** — `Spectrum.to_spectrl_url(base, *, mode="fragment"|"query"|"data", param="d", …)` and `Spectrum.from_spectrl_url(url)` (plus standalone `to_spectrl_url` / `from_spectrl_url`) build and parse a shareable URL or `data:` URI in one call, replacing the removed `urlparams` convenience.
 * **`iso_score` is preserved** through the round-trip via spectrl's `extra_arrays` slot (encoded as a non-standard mzML binary array, `MS:1000786`). Other tools that don't recognise the array name ignore it cleanly.
 * **Lossless scalar-metadata round-trip** — spxtacular fields without an mzML CV counterpart (`denoised`, `normalized`, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range`) are carried as namespaced (`spxtacular:`) free-text `user_params`, so the round-trip is faithful.
+* **Typed metadata enums** — new `StrEnum`s `Polarity`, `ActivationType`, `IMType`, and `Analyzer` (exported from `spxtacular`) give autocomplete and typo-safety when hand-authoring an `MsnSpectrum` (`activation_type=ActivationType.HCD`). The fields stay open vocabularies (`ActivationType | str`, etc.), so raw PSI-MS accessions from `DReader` (`"MS:1002481"`) and unknown vendor strings still flow through untouched. `ActivationType`/`Analyzer` are the single source of truth for `spectrl_bridge`'s `_ACTIVATION_ACCESSIONS` / new `_ANALYZER_ACCESSIONS` PSI-MS accession maps (keyed by enum member), so the acronym list and its accessions can no longer drift apart.
 * spectrl is gated behind the `[spectrl]` optional extra, sourced from PyPI (`spectrl>=0.2.1`). The token is a single CBOR document; 0.2.1 fixes a native abort when lossy-encoding charge arrays that contain singleton sentinels (`charge=-1`).
 
 ### Fixes
@@ -30,17 +31,25 @@
 * `plot_spectrum()` / `Spectrum.plot()`: `color`, `show_scores`, and `show_charges` are now keyword-only, closing off a silent-positional-argument hazard introduced when `color` was inserted ahead of the old `show_charges` slot.
 * `match_fragments()` no longer raises `ZeroDivisionError` when a fragment's target mass is exactly `0.0` under `tolerance_type="ppm"`; the dict-fragment branch also builds `Fragment` objects lazily again (only for confirmed matches), restoring the pre-rewrite performance on this per-PSM hot path.
 * New `Spectrum.is_decharged` property replaces three separate inline re-derivations of the same check (`core.py`, `matching.py`).
-* `Spectrum.decharge()` now warns and returns the original spectrum instead of silently zeroing every m/z value when called on an already-decharged spectrum.
+* `Spectrum.decharge()` now warns instead of silently zeroing every m/z value when called on an already-decharged spectrum (see the aliasing fix below for what it returns).
 * `Spectrum.top_peaks(0)` / `Spectrum.filter(top_n=0)` now correctly return zero peaks instead of all of them (a `arr[-0:]` negative-zero slicing bug).
 * `Spectrum.merge(im_tolerance_type=...)` validation was case-insensitive but the comparison wasn't, so e.g. `"RELATIVE"` silently used absolute-tolerance semantics.
 * `MzmlReader` spectra with multiple ion-mobility arrays now use the first length-matching array (previously the loop kept overwriting its result and could end up using the last array, or none, contradicting its own warning).
 * `DReader.close()` now clears its internal reader handle so the "must be opened" guard can't be bypassed by using a closed reader; `DReader.open()` now closes a previously-open reader instead of leaking its handle on re-open.
 * `_plot_spectrum_im` (the `color="im"` plot path) no longer corrupts the whole color scale when a single peak's `im` is `NaN`, and no longer crashes on an empty spectrum.
-* `spectrl_bridge`: unrecognised `activation_type` and `im_type` strings now round-trip losslessly instead of being silently coerced to a default accession; `Precursor.im` is now carried through encode/decode; an `MsnSpectrum` whose only MSn-specific data is `im`/`im_type` no longer downgrades to a plain `Spectrum` on decode.
+* `spectrl_bridge`: unrecognised `im_type` strings now round-trip losslessly via a namespaced `spxtacular:im_type` user_param instead of being silently coerced to a default accession; unrecognised `activation_type` strings now round-trip losslessly via a new `spxtacular:activation_type` user_param instead of raising an `IndexError` (they were previously passed to spectrl as a raw, non-`MS:NNNNN` CV accession, which crashed encode); `Precursor.im` is now carried through encode/decode; an `MsnSpectrum` whose only MSn-specific data is `im`/`im_type`/`activation_type` no longer downgrades to a plain `Spectrum` on decode. `_ACTIVATION_ACCESSIONS` (`Spectrum.activation_type` → PSI-MS CV accession) expanded from 5 to 15 entries — added `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI` — and its `"PASEF"` entry's comment now clarifies it maps to the "higher energy beam-type CID" accession (`MS:1002481`), since PASEF is a Bruker acquisition scheme with no PSI-MS term of its own, not a mislabelled CV term.
 * `uv run ty check` no longer errors under `tdfpy>=2.0.0` (which ships a `py.typed` marker): the `MergePeaksCentroider` import-fallback assignment was missing a `ty: ignore[invalid-assignment]` alongside its existing `type: ignore`, so `ty` now flagged it as a real type error once it could resolve the import. Verified against the currently-released `tdfpy==2.0.0`/`mzmlpy==0.4.0` and, ahead of their releases, the local `tdfpy` (`release/v2.1.0`) and `mzmlpy` (`release/v0.5.0`) branches — full test suite passes against both.
 * `Spectrum.decharge(inplace=False)`, `.normalize(inplace=False)`, `.denoise(inplace=False)`, `.centroid(inplace=False)`, and `.deconvolute(inplace=False)` called on a spectrum already in the target state now return a distinct object instead of aliasing `self`; previously the caller's original spectrum could be silently mutated through the "new" object.
 * `spxtacular.score()`, `match_fragments()`, `annotate_spectrum()`, `Spectrum.mass_error_plot()`/`facet_plot()`, and their standalone `visualization` counterparts now default `tolerance_type` to `DA`, matching `Spectrum.score()`/`Spectrum.match_fragments()` — these had drifted to `PPM` in some entry points but not others, so calling different parts of the API with default arguments on the same inputs silently produced very different match counts.
 * Removed a stale, now-unused `ty: ignore[unresolved-import]` comment in `reader.py` flagged by `ty check`.
+* `Spectrum.decharge()` now raises `ValueError` when called on a non-deconvoluted spectrum, matching its documented contract, instead of silently calling `deconvolute()` with hidden default parameters. Call `deconvolute()` explicitly first.
+* `spectrl_bridge`: an `activation_type` that is already a valid PSI-MS accession (e.g. `"MS:1002481"` / `"MS:1000133"`, as both `DReader` and `MzmlReader` produce) is once again emitted as a standard dissociation-method CV param on the encoded precursor, not just carried in the `spxtacular:activation_type` user_param; only genuinely free-text vendor strings fall through to the user_param. Restores mzML CV fidelity for reader-produced MS2 spectra while keeping the encode crash-safe.
+* Scored deconvolution (`deconvolute(min_score=…, intensity="total")`): a rejected multi-peak cluster no longer records the *whole cluster's* summed intensity on its seed singleton — it records the seed's own intensity, so the remaining cluster peaks (which stay available and are re-seeded later) are no longer double-counted in the output. Only affected `min_score > 0` in the default `"total"` intensity mode; `"base"` mode and the default `min_score=0.0` were already correct.
+* `Spectrum.deconvolute()` now validates `charge_range` (must be `(min, max)` with `1 <= min <= max`) with a clear `ValueError` instead of a downstream divide-by-zero, and returns an empty deconvoluted spectrum for an empty input instead of raising on the `min()` of an empty intensity array.
+* `Spectrum.normalize()` on an all-zero-intensity spectrum now warns and returns the spectrum unchanged instead of dividing by zero and silently producing `NaN`s; on an empty spectrum it is a no-op instead of raising.
+
+### Dependencies
+* Added an explicit `numpy>=1.26` floor (the first numpy supporting Python 3.12, the project's minimum) — previously `numpy` was unbounded.
 
 ## 0.3.1 (2026-05-14)
 

@@ -22,12 +22,12 @@ class Peak:
     intensity: float
     charge: int | None = None
     im: float | None = None
-    score: float | None = None
+    iso_score: float | None = None
 ```
 
-A frozen dataclass representing a single detected peak. `charge`, `im`, and `score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
+A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso_score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
 
-`score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
+`iso_score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
 
 ```python
 >>> peak = Peak(mz=500.1, intensity=1e5, charge=2)
@@ -54,13 +54,13 @@ class Spectrum:
     intensity: NDArray[np.float64]
     charge: NDArray[np.int32] | None = None
     im: NDArray[np.float64] | None = None
-    score: NDArray[np.float64] | None = None
+    iso_score: NDArray[np.float64] | None = None
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
 ```
 
-The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `score` must also match that length when provided.
+The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `iso_score` must also match that length when provided.
 
 **Fields:**
 
@@ -70,7 +70,7 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 | `intensity` | `NDArray[np.float64]` | Parallel peak intensities |
 | `charge` | `NDArray[np.int32] \| None` | Charge state per peak. `None` before deconvolution |
 | `im` | `NDArray[np.float64] \| None` | Ion mobility per peak. `None` if not acquired |
-| `score` | `NDArray[np.float64] \| None` | Per-peak isotopic profile score (0–1). Populated after `deconvolute()`; `None` otherwise. Singletons have `score=0.0`. |
+| `iso_score` | `NDArray[np.float64] \| None` | Per-peak isotopic profile score (0–1). Populated after `deconvolute()`; `None` otherwise. Singletons have `iso_score=0.0`. |
 | `spectrum_type` | `SpectrumType \| str \| None` | Stage tag: `CENTROID`, `PROFILE`, or `DECONVOLUTED` |
 | `denoised` | `str \| None` | Name of the denoising method applied, or `None` |
 | `normalized` | `str \| None` | Name of the normalization method applied, or `None` |
@@ -79,7 +79,7 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 
 - `len(charge) == len(mz)` when `charge` is not `None`
 - `len(im) == len(mz)` when `im` is not `None`
-- `len(score) == len(mz)` when `score` is not `None`
+- `len(iso_score) == len(mz)` when `iso_score` is not `None`
 - A `charge` array may only be present when `spectrum_type == DECONVOLUTED`
 
 **`is_decharged` property** — `True` when every (non-dropped) peak's `charge == 0`, i.e. the spectrum has already been through `decharge()`. Used internally by `decharge()`, `remove_precursor_peak()`, and `match_fragments()` to detect neutral-mass spectra.
@@ -153,8 +153,8 @@ low_mz = spec.top_peaks(3, by="mz", reverse=False)
 def has_peak(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -164,8 +164,8 @@ def has_peak(
 Returns `True` if at least one peak matches all supplied criteria.
 
 ```python
-spec.has_peak(500.1, mz_tol=0.02)
-spec.has_peak(500.1, mz_tol=10, mz_tol_type="ppm", target_charge=2)
+spec.has_peak(500.1, tolerance=0.02)
+spec.has_peak(500.1, tolerance=10, tolerance_type="ppm", target_charge=2)
 ```
 
 #### `get_peak`
@@ -174,8 +174,8 @@ spec.has_peak(500.1, mz_tol=10, mz_tol_type="ppm", target_charge=2)
 def get_peak(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -186,7 +186,7 @@ def get_peak(
 Returns a single matching peak, or `None` if no match is found. When multiple peaks fall within tolerance, `collision="largest"` picks the most intense; `collision="closest"` picks the nearest in m/z.
 
 ```python
-peak = spec.get_peak(800.2, mz_tol=5, mz_tol_type="ppm")
+peak = spec.get_peak(800.2, tolerance=5, tolerance_type="ppm")
 if peak:
     print(f"Found: {peak}")
 ```
@@ -197,8 +197,8 @@ if peak:
 def get_peaks(
     self,
     target_mz: float,
-    mz_tol: float = 0.01,
-    mz_tol_type: Literal["Da", "ppm"] = "Da",
+    tolerance: float = 0.01,
+    tolerance_type: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tol: float = 0.01,
@@ -239,8 +239,8 @@ Charge, ion mobility, and score filters are silently ignored if the spectrum lac
 
 | Parameter | Type | Description |
 |---|---|---|
-| `min_score` | `float \| None` | Keep peaks with score >= this value. Only effective when `score` array is present. |
-| `max_score` | `float \| None` | Keep peaks with score <= this value. Only effective when `score` array is present. |
+| `min_score` | `float \| None` | Keep peaks with score >= this value. Only effective when the `iso_score` array is present. |
+| `max_score` | `float \| None` | Keep peaks with score <= this value. Only effective when the `iso_score` array is present. |
 
 ```python
 # Keep peaks between 200 and 1500 Da with intensity >= 1000
@@ -385,13 +385,13 @@ Raises `ValueError` if the spectrum is not in `DECONVOLUTED` state.
 
 Calling `decharge()` again on an already-decharged spectrum (`spec.is_decharged`) warns and returns the original spectrum unchanged, rather than corrupting the (already-neutral) `mz` values.
 
-> The `score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
+> The `iso_score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
 
 ```python
 neutral = decon.decharge()
 # neutral.mz now contains neutral masses sorted ascending
 # neutral.charge is all zeros
-# neutral.score carries through from the deconvoluted spectrum
+# neutral.iso_score carries through from the deconvoluted spectrum
 ```
 
 #### `update`
@@ -519,7 +519,7 @@ Returns a Plotly `Figure` (stick plot). Requires `plotly` (`pip install plotly`)
 |---|---|
 | `title` | Plot title |
 | `color` | `"charge"` colours sticks by charge state, `"im"` by ion mobility (Viridis), `None` for uniform colour |
-| `show_scores` | Annotate scored peaks with their score value when a `score` array is present |
+| `show_scores` | Annotate scored peaks with their score value when an `iso_score` array is present |
 | `show_charges` | Deprecated. Use `color="charge"` or `color=None` instead |
 
 ```python
@@ -536,7 +536,7 @@ def annotate(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
@@ -558,7 +558,7 @@ def mass_error_plot(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     unit: Literal["ppm", "da"] = "ppm",
     title: str | None = None,
@@ -581,7 +581,7 @@ def facet_plot(
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "ppm",
+    tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     **layout_kwargs,
@@ -777,25 +777,27 @@ class MsnSpectrum(Spectrum):
     # Acquisition windows
     mz_range: tuple[float, float] | None = None
     im_range: tuple[float, float] | None = None
-    im_type: str | None = None       # e.g. "1/K0", "drift_time_ms"
+    im_type: IMType | str | None = None       # e.g. IMType.OOK0, "drift_time_ms"
 
     # Instrument settings
-    polarity: Literal["positive", "negative"] | None = None
+    polarity: Polarity | Literal["positive", "negative"] | None = None
 
     # Optional metadata
     resolution: float | None = None
-    analyzer: str | None = None      # e.g. "TOF", "FTMS", "ITMS"
+    analyzer: Analyzer | str | None = None      # e.g. Analyzer.TOF, "FTMS"
     ramp_time: float | None = None
     collision_energy: float | None = None
-    activation_type: str | None = None
-    precursors: list[TargetIon] | None = None
+    activation_type: ActivationType | str | None = None
+    precursors: list[Precursor] | None = None
 ```
 
-### TargetIon
+`im_type`, `analyzer`, and `activation_type` are **open vocabulary**: an enum member gives autocomplete and typo-safety, but raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through untouched. `polarity` is **closed vocabulary** — only `Polarity.POSITIVE`/`Polarity.NEGATIVE` or the literal strings `"positive"`/`"negative"` are valid. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
+
+### Precursor
 
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
-class TargetIon(Peak):
+class Precursor(Peak):
     is_monoisotopic: bool | None
 ```
 

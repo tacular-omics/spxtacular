@@ -4,7 +4,7 @@
 
 # spxtacular
 
-Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/pgarrett-scripps/peptacular).
+Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/tacular-omics/peptacular).
 
 ## Install
 
