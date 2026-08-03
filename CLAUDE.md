@@ -17,7 +17,9 @@ uv run ty check src tests        # type check (CI checks tests too — must stay
 src/spxtacular/
 ├── core.py          # Spectrum, MsnSpectrum, Peak, SpectrumType — all processing lives here
 ├── enums.py         # StrEnums: ToleranceType, PeakSelection, Polarity, ActivationType, IMType, Analyzer
-├── reader.py        # DReader (Bruker timsTOF via tdfpy), MzmlReader
+├── reader.py        # Reader (auto-detect), DReader (Bruker timsTOF via tdfpy), MzmlReader, CentroidConfig
+├── usi.py           # fetch_usi — USI / PROXI spectrum fetching
+├── utils.py         # da_to_ppm / ppm_to_da
 ├── decon/
 │   ├── greedy.py    # isotope cluster finder (optionally JIT'd with numba)
 │   └── scored.py    # scored deconvolution entry point (Bhattacharyya scoring)
@@ -91,6 +93,7 @@ neutral = filtered.decharge()
 - **tdfpy** *(optional)* — Bruker `.d` file reading; required only for `DReader`. Install with `pip install spxtacular[bruker]`
 - **mzmlpy** *(optional)* — mzML reading; required only for `MzmlReader`. Install with `pip install spxtacular[mzml]`
 - **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
+- **spectrl** *(optional)* — token / URL spectrum serialisation used by `spectrl_bridge.py`; required only for `to_spectrl_token`/`to_spectrl_url` and their inverses. Install with `pip install spxtacular[spectrl]`
 
 `DReader` and `MzmlReader` remain importable from `spxtacular` regardless of
 whether their backends are installed; only instantiation raises `ImportError`

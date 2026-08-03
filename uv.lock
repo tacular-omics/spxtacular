@@ -988,13 +988,13 @@ provides-extras = ["all", "bruker", "mzml", "numba", "readers", "spectrl"]
 dev = [
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7.5" },
-    { name = "mzmlpy", specifier = ">=0.4.0" },
+    { name = "mzmlpy", specifier = ">=0.5.0" },
     { name = "numba", specifier = ">=0.64.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.11" },
     { name = "spectrl", specifier = ">=0.2.1" },
-    { name = "tdfpy", specifier = ">=1.2.0" },
+    { name = "tdfpy", specifier = ">=2.0.0" },
     { name = "ty", specifier = ">=0.0.11" },
 ]
 

@@ -11,12 +11,16 @@ from typing import Any, Literal, Self
 import numpy as np
 
 from .core import MsnSpectrum, Precursor, SpectrumType
+from .enums import ActivationType, Analyzer, IMType, Polarity
 
+# The optional backends load native libraries, so a broken install can raise
+# OSError rather than ImportError. Either way the backend is simply unavailable —
+# it must not take down ``import spxtacular`` for users who never touch it.
 try:
     import mzmlpy as mzp
 
     _HAS_MZMLPY = True
-except ImportError:
+except (ImportError, OSError):
     mzp = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
     _HAS_MZMLPY = False
 
@@ -24,7 +28,7 @@ try:
     import tdfpy
 
     _HAS_TDFPY = True
-except ImportError:
+except (ImportError, OSError):
     tdfpy = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
     _HAS_TDFPY = False
 
@@ -35,7 +39,7 @@ try:
     from tdfpy import MergePeaksCentroider as _MergePeaksCentroider
 
     _HAS_NEW_CENTROID_API = True
-except ImportError:
+except (ImportError, OSError):
     _MergePeaksCentroider = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
     _HAS_NEW_CENTROID_API = False
 
@@ -51,6 +55,38 @@ class AcquisitionType(StrEnum):
     DIA = "DIA"
     PRM = "PRM"
     UNKNOWN = "UNKNOWN"
+
+
+# Bruker ``Frames.MsMsType`` values that identify the acquisition scheme.
+_MSMS_TYPE_ACQUISITION: dict[int, AcquisitionType] = {
+    8: AcquisitionType.DDA,
+    9: AcquisitionType.DIA,
+    10: AcquisitionType.PRM,
+}
+
+
+def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
+    """Determine a Bruker ``.d`` folder's acquisition scheme from ``analysis.tdf``.
+
+    Equivalent to ``tdfpy.get_acquisition_type`` but owns its sqlite connection
+    so it is closed deterministically — ``sqlite3``'s context manager only ends
+    the transaction, it does not close the handle, so the tdfpy helper leaks one
+    connection per :class:`DReader`.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    tdf_path = Path(analysis_dir) / "analysis.tdf"
+    if not tdf_path.exists():
+        raise FileNotFoundError(f"analysis.tdf not found at {tdf_path}")
+
+    with closing(sqlite3.connect(str(tdf_path))) as conn, closing(conn.cursor()) as cur:
+        msms_types = {row[0] for row in cur.execute("SELECT DISTINCT MsMsType FROM Frames")}
+
+    for msms_type, acquisition_type in _MSMS_TYPE_ACQUISITION.items():
+        if msms_type in msms_types:
+            return acquisition_type
+    return AcquisitionType.UNKNOWN
 
 
 @dataclass
@@ -124,7 +160,9 @@ class DReaderMs2Lookup:
     def __iter__(self) -> Iterator[MsnSpectrum]:
         reader = self._open_reader()
         match self._dr.acquisition_type:
-            case AcquisitionType.DDA:
+            # UNKNOWN is opened with the DDA backend (see DReader.open), so it
+            # must be iterated as DDA too rather than rejected here.
+            case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 for precursor in reader.precursors:
                     yield DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
@@ -140,7 +178,8 @@ class DReaderMs2Lookup:
         """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
         reader = self._open_reader()
         match self._dr.acquisition_type:
-            case AcquisitionType.DDA:
+            # UNKNOWN is opened with the DDA backend (see DReader.open).
+            case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 precursor = reader.precursors[precursor_id]  # KeyError if not found
                 return DReader._parse_dda_precursor(precursor)
             case AcquisitionType.DIA:
@@ -175,17 +214,7 @@ class DReader:
         self.analysis_dir = analysis_dir
         self._tdf = tdf
         self._centroid_config: CentroidConfig = centroid_config or CentroidConfig()
-        _aqui = tdf.get_acquisition_type(str(analysis_dir))
-        self.acquisition_type: AcquisitionType
-        match _aqui:
-            case "DDA":
-                self.acquisition_type = AcquisitionType.DDA
-            case "DIA":
-                self.acquisition_type = AcquisitionType.DIA
-            case "PRM":
-                self.acquisition_type = AcquisitionType.PRM
-            case _:
-                self.acquisition_type = AcquisitionType.UNKNOWN
+        self.acquisition_type: AcquisitionType = _detect_acquisition_type(analysis_dir)
         self._reader = None
 
     def open(self) -> None:
@@ -194,18 +223,21 @@ class DReader:
             self.close()
         match self.acquisition_type:
             case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
-                self._reader = self._tdf.DDA(str(self.analysis_dir))
+                reader = self._tdf.DDA(str(self.analysis_dir))
             case AcquisitionType.DIA:
-                self._reader = self._tdf.DIA(str(self.analysis_dir))
+                reader = self._tdf.DIA(str(self.analysis_dir))
             case AcquisitionType.PRM:
-                self._reader = self._tdf.PRM(str(self.analysis_dir))
+                reader = self._tdf.PRM(str(self.analysis_dir))
             case _:
                 raise ValueError(f"Unsupported acquisition type: {self.acquisition_type}")
-        self._reader.__enter__()
+        # Only publish the handle once it is genuinely open, so a failing
+        # __enter__ doesn't leave a half-open reader behind.
+        reader.__enter__()
+        self._reader = reader
 
     def close(self) -> None:
         """Close the underlying tdfpy reader."""
-        if self._reader:
+        if self._reader is not None:
             self._reader.__exit__(None, None, None)
             self._reader = None
 
@@ -258,9 +290,9 @@ class DReader:
         centroided_peaks = self._centroid(frame)
         match frame.polarity:
             case "positive":
-                polarity = "positive"
+                polarity = Polarity.POSITIVE
             case "negative":
-                polarity = "negative"
+                polarity = Polarity.NEGATIVE
             case _:
                 polarity = None
         return MsnSpectrum(
@@ -281,10 +313,10 @@ class DReader:
             im_range=im_range,
             polarity=polarity,
             resolution=None,
-            analyzer="TOF",
+            analyzer=Analyzer.TOF,
             ramp_time=frame.ramp_time,
             precursors=None,
-            im_type="ook0",
+            im_type=IMType.OOK0,
         )
 
     @staticmethod
@@ -292,9 +324,9 @@ class DReader:
         peaks = precursor.peaks
         match precursor.polarity:
             case "positive":
-                polarity = "positive"
+                polarity = Polarity.POSITIVE
             case "negative":
-                polarity = "negative"
+                polarity = Polarity.NEGATIVE
             case _:
                 polarity = None
         target_mz = precursor.monoisotopic_mz
@@ -328,23 +360,23 @@ class DReader:
             im_range=None,
             polarity=polarity,
             resolution=None,
-            analyzer="TOF",
+            analyzer=Analyzer.TOF,
             ramp_time=None,
             precursors=[prec],
-            im_type="ook0",
+            im_type=IMType.OOK0,
             isolation_im_range=precursor.ook0_range,
             isolation_mz_range=precursor.mz_range,
             collision_energy=precursor.collision_energy,
-            activation_type="MS:1002481",
+            activation_type=ActivationType.PASEF,
         )
 
     def _parse_dia_window(self, window: tdfpy.DiaWindow) -> MsnSpectrum:
         peaks = self._centroid(window)
         match window.polarity:
             case "positive":
-                polarity = "positive"
+                polarity = Polarity.POSITIVE
             case "negative":
-                polarity = "negative"
+                polarity = Polarity.NEGATIVE
             case _:
                 polarity = None
         native_id = f"{window.frame_id}@w{window.window_index}"
@@ -366,23 +398,23 @@ class DReader:
             im_range=None,
             polarity=polarity,
             resolution=None,
-            analyzer="TOF",
+            analyzer=Analyzer.TOF,
             collision_energy=window.collision_energy,
-            activation_type="MS:1002481",
+            activation_type=ActivationType.PASEF,
             ramp_time=None,
             precursors=None,
             isolation_mz_range=window.mz_range,
             isolation_im_range=window.ook0_range,
-            im_type="ook0",
+            im_type=IMType.OOK0,
         )
 
     def _parse_prm_transition(self, transition: tdfpy.PrmTransition) -> MsnSpectrum:
         peaks = self._centroid(transition)
         match transition.polarity:
             case "positive":
-                polarity = "positive"
+                polarity = Polarity.POSITIVE
             case "negative":
-                polarity = "negative"
+                polarity = Polarity.NEGATIVE
             case _:
                 polarity = None
         target = transition.target
@@ -415,14 +447,14 @@ class DReader:
             im_range=None,
             polarity=polarity,
             resolution=None,
-            analyzer="TOF",
+            analyzer=Analyzer.TOF,
             collision_energy=transition.collision_energy,
-            activation_type="MS:1002481",
+            activation_type=ActivationType.PASEF,
             ramp_time=None,
             precursors=[prec],
             isolation_mz_range=transition.mz_range,
             isolation_im_range=transition.ook0_range,
-            im_type="ook0",
+            im_type=IMType.OOK0,
         )
 
     # ------------------------------------------------------------------
@@ -495,6 +527,12 @@ class MzmlSpectraLookup:
 # ---------------------------------------------------------------------------
 
 
+# mzML has no per-spectrum "these are neutral masses" flag; the closest standard
+# signal that a spectrum's charges were resolved is the charge-deconvolution
+# data-transformation term.
+_DECONVOLUTION_ACCESSIONS: frozenset[str] = frozenset({"MS:1000034"})  # charge deconvolution
+
+
 class MzmlReader:
     def __init__(self, mzml_path: str | Path):
         if not _HAS_MZMLPY:
@@ -565,7 +603,12 @@ class MzmlReader:
             case _:
                 raise ValueError(f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}")
 
-        if charge_array is not None:
+        # A charge array alone does NOT mean the spectrum is deconvoluted: mzML
+        # charge arrays are usually per-peak charge *annotations* on ordinary
+        # centroid data, and mzML's 0 ("unknown charge") collides with
+        # spxtacular's 0 ("already decharged"). Require an explicit
+        # deconvolution CV term before overriding centroid/profile.
+        if charge_array is not None and any(acc in spec.accessions for acc in _DECONVOLUTION_ACCESSIONS):
             spectrum_type = SpectrumType.DECONVOLUTED
 
         mz_range = None
@@ -574,7 +617,7 @@ class MzmlReader:
 
         precursors: list[Precursor] = []
         collision_energies: list[float] = []
-        activation_types: list[str] = []
+        activation_types: list[ActivationType | str] = []
         isolation_ranges: list[tuple[float, float]] = []
 
         for precursor in spec.precursors:
@@ -613,7 +656,9 @@ class MzmlReader:
                 if activation.ce is not None:
                     collision_energies.append(activation.ce)
                 if activation.activation_type is not None:
-                    activation_types.append(activation.activation_type)
+                    # mzmlpy yields the raw PSI-MS accession (as a vendor enum);
+                    # normalise to spxtacular's canonical ActivationType member.
+                    activation_types.append(ActivationType.from_accession(str(activation.activation_type)))
             if precursor.isolation_window is not None:
                 has_target_mz = precursor.isolation_window.target_mz is not None
                 has_lower = precursor.isolation_window.lower_offset is not None
@@ -649,7 +694,7 @@ class MzmlReader:
             total_ion_current=spec.TIC,
             mz_range=mz_range,
             im_range=None,
-            polarity=spec.polarity,
+            polarity=Polarity(spec.polarity) if spec.polarity is not None else None,
             resolution=None,
             analyzer=None,
             collision_energy=collision_energies[0] if collision_energies else None,
@@ -681,8 +726,13 @@ class MzmlReader:
 
     def open(self) -> None:
         """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
-        self._mzml_handle = mzp.Mzml(self.mzml_path)
-        self._mzml_handle.__enter__()
+        if self._mzml_handle is not None:
+            self.close()
+        handle = mzp.Mzml(self.mzml_path)
+        # Only publish the handle once it is genuinely open, so a failing
+        # __enter__ doesn't leave a half-open reader behind.
+        handle.__enter__()
+        self._mzml_handle = handle
 
     def close(self) -> None:
         """Close the persistent mzmlpy reader."""
@@ -723,7 +773,8 @@ class Reader:
     Parameters
     ----------
     path:
-        Path to a Bruker ``.d`` directory or an ``.mzML`` file.
+        Path to a Bruker ``.d`` directory or an ``.mzML`` file (optionally
+        gzipped, ``.mzML.gz``). Extension matching is case-insensitive.
 
     Raises
     ------
@@ -733,12 +784,16 @@ class Reader:
 
     def __init__(self, path: str | Path, centroid_config: CentroidConfig | None = None) -> None:
         p = Path(path)
-        if p.suffix == ".d":
+        suffixes = [s.lower() for s in p.suffixes]
+        if suffixes and suffixes[-1] == ".gz":
+            suffixes = suffixes[:-1]
+        suffix = suffixes[-1] if suffixes else ""
+        if suffix == ".d":
             self._reader: DReader | MzmlReader = DReader(p, centroid_config=centroid_config)
-        elif p.suffix.lower() == ".mzml":
+        elif suffix == ".mzml":
             self._reader = MzmlReader(p)
         else:
-            raise ValueError(f"Unsupported format {p.suffix!r}. Expected '.d' or '.mzml'.")
+            raise ValueError(f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', or '.mzML.gz'.")
 
     @property
     def ms1(self) -> DReaderMs1Lookup | MzmlSpectraLookup:

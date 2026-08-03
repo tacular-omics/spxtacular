@@ -80,7 +80,7 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 - `len(charge) == len(mz)` when `charge` is not `None`
 - `len(im) == len(mz)` when `im` is not `None`
 - `len(iso_score) == len(mz)` when `iso_score` is not `None`
-- A `charge` array may only be present when `spectrum_type == DECONVOLUTED`
+- Supplying a `charge` array forces `spectrum_type` to `DECONVOLUTED` (it is rewritten, not rejected)
 
 **`is_decharged` property** — `True` when every (non-dropped) peak's `charge == 0`, i.e. the spectrum has already been through `decharge()`. Used internally by `decharge()`, `remove_precursor_peak()`, and `match_fragments()` to detect neutral-mass spectra.
 
@@ -120,7 +120,7 @@ for peak in spec.peaks:
 def top_peaks(
     self,
     n: int,
-    by: Literal["intensity", "mz", "charge", "im"] = "intensity",
+    by: Literal["intensity", "mz", "charge", "im", "score"] = "intensity",
     reverse: bool = True,
 ) -> list[Peak]
 ```
@@ -130,10 +130,10 @@ Returns the top `n` peaks sorted by the chosen attribute.
 | Parameter | Description |
 |---|---|
 | `n` | Number of peaks to return |
-| `by` | Sort key: `"intensity"` (default), `"mz"`, `"charge"`, `"im"` |
+| `by` | Sort key: `"intensity"` (default), `"mz"`, `"charge"`, `"im"`, `"score"` |
 | `reverse` | `True` (default) returns highest values first |
 
-`"charge"` requires a charge array to be present; `"im"` requires an ion mobility array. Both raise `ValueError` otherwise.
+`"charge"` requires a charge array, `"im"` an ion mobility array, and `"score"` an `iso_score` array. Each raises `ValueError` when the corresponding array is absent.
 
 ```python
 # Five most intense peaks
@@ -226,6 +226,8 @@ def filter(
     max_charge: int | None = None,
     min_im: float | None = None,
     max_im: float | None = None,
+    min_score: float | None = None,
+    max_score: float | None = None,
     top_n: int | None = None,
     inplace: bool = False,
 ) -> Self
@@ -350,6 +352,8 @@ def deconvolute(
     intensity: Literal["base", "total"] = "total",
     max_dpeaks: int = 2000,
     inplace: bool = False,
+    min_intensity: float | Literal["min"] = "min",
+    min_score: float = 0.0,
 ) -> Self
 ```
 
@@ -392,6 +396,24 @@ neutral = decon.decharge()
 # neutral.mz now contains neutral masses sorted ascending
 # neutral.charge is all zeros
 # neutral.iso_score carries through from the deconvoluted spectrum
+```
+
+#### `sort`
+
+```python
+def sort(
+    self,
+    by: Literal["mz", "intensity", "charge", "im", "score"] = "mz",
+    reverse: bool = False,
+    inplace: bool = False,
+) -> Self
+```
+
+Reorders every parallel array by the chosen attribute. `by="charge"`, `"im"`, and `"score"` raise
+`ValueError` when the corresponding array is absent. Any other value of `by` raises `ValueError`.
+
+```python
+by_intensity = spec.sort(by="intensity", reverse=True)   # most intense first
 ```
 
 #### `update`
@@ -513,7 +535,7 @@ def plot(
 
 `color`, `show_scores`, and `show_charges` are keyword-only.
 
-Returns a Plotly `Figure` (stick plot). Requires `plotly` (`pip install plotly`).
+Returns a Plotly `Figure` (stick plot). `plotly` is a required dependency, so no extra install is needed.
 
 | Parameter | Description |
 |---|---|
@@ -591,7 +613,7 @@ def facet_plot(
 Multi-panel plot on a shared m/z axis. Panel 1 is always the (optionally annotated) spectrum. Passing `fragments` adds a mass-error panel; passing `mirror_spectrum` adds an inverted mirror panel below.
 
 ```python
-ms2.facet_plot(fragments, mirror_spectrum=ms2.decharge()).show()
+ms2.facet_plot(fragments, mirror_spectrum=ms2.deconvolute().decharge()).show()
 ```
 
 #### `plot_table`
@@ -636,7 +658,9 @@ fig = plot_from_table(tbl, title="Annotated")
 fig.show()
 ```
 
-See [Visualization — Plot table API](visualization.md#plot-table-api) for full column reference.
+See [`plot_table`](#plot_table) above for the full column list, and
+[API reference — Plot table API](api.md#plot-table-api) for the module-level
+`build_plot_table` / `build_annot_plot_table` / `plot_from_table` signatures.
 
 ---
 
@@ -771,10 +795,11 @@ class MsnSpectrum(Spectrum):
     native_id: str | None = None
 
     # Timing
-    rt: float | None = None          # retention time, seconds
+    rt: float | None = None              # retention time, seconds
     injection_time: float | None = None  # ion accumulation time, ms
+    total_ion_current: float | None = None
 
-    # Acquisition windows
+    # Acquisition windows (the full scan range, NOT isolation windows)
     mz_range: tuple[float, float] | None = None
     im_range: tuple[float, float] | None = None
     im_type: IMType | str | None = None       # e.g. IMType.OOK0, "drift_time_ms"
@@ -789,7 +814,15 @@ class MsnSpectrum(Spectrum):
     collision_energy: float | None = None
     activation_type: ActivationType | str | None = None
     precursors: list[Precursor] | None = None
+
+    # MS2 precursor isolation windows
+    isolation_mz_range: tuple[float, float] | None = None
+    isolation_im_range: tuple[float, float] | None = None
 ```
+
+All fields are keyword-only (`kw_only=True`), including the inherited `Spectrum` fields.
+`mz_range` / `im_range` describe the **acquisition** window of the scan; `isolation_mz_range` /
+`isolation_im_range` describe the **precursor isolation** window used to select ions for MS2.
 
 `im_type`, `analyzer`, and `activation_type` are **open vocabulary**: an enum member gives autocomplete and typo-safety, but raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through untouched. `polarity` is **closed vocabulary** — only `Polarity.POSITIVE`/`Polarity.NEGATIVE` or the literal strings `"positive"`/`"negative"` are valid. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
 

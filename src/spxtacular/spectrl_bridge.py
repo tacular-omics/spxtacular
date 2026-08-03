@@ -21,8 +21,13 @@ under the key ``"iso_score"`` (encoded as a non-standard mzML binary array,
 ``MS:1000786``). spxtacular-specific scalar fields without an mzML
 counterpart — ``denoised``/``normalized`` provenance strings,
 ``scan_number``, ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-``isolation_im_range`` — are carried losslessly as namespaced free-text
-``user_params`` (``spxtacular:`` prefix), so the round-trip is faithful.
+``isolation_im_range``, and each precursor's ``is_monoisotopic`` — are carried
+losslessly as namespaced free-text ``user_params`` (``spxtacular:`` prefix), so
+the round-trip is faithful.
+
+Note that :func:`to_spectrl_token` / :func:`to_spectrl_url` are **lossy by
+default** (MS-Numpress peak compression); pass ``lossless=True`` for a bit-exact
+round-trip of the peak arrays.
 """
 
 from __future__ import annotations
@@ -61,8 +66,12 @@ _TIC = "MS:1000285"
 # Scan-level
 _SCAN_START_TIME = "MS:1000016"
 _UNIT_SECOND = "UO:0000010"
-_SCAN_WINDOW_LOWER = "MS:1000500"
-_SCAN_WINDOW_UPPER = "MS:1000501"
+_UNIT_MILLISECOND = "UO:0000028"
+_INJECTION_TIME = "MS:1000927"  # ion injection time
+# Per the official PSI-MS ontology MS:1000500 is the scan window *upper* limit
+# and MS:1000501 the *lower* limit (the names read counter-intuitively).
+_SCAN_WINDOW_LOWER = "MS:1000501"
+_SCAN_WINDOW_UPPER = "MS:1000500"
 
 # Precursor / isolation / activation
 _SELECTED_ION_MZ = "MS:1000744"
@@ -72,6 +81,12 @@ _ISOL_TARGET_MZ = "MS:1000827"
 _ISOL_LOWER_OFFSET = "MS:1000828"
 _ISOL_UPPER_OFFSET = "MS:1000829"
 _COLLISION_ENERGY = "MS:1000045"
+
+# Scalar ion-selection ion-mobility terms. These are the correct params for a
+# *selected ion* — unlike the MS:10030xx family, which are binary *array* terms
+# describing a per-peak column and are meaningless on a scalar precursor.
+_SELECTED_ION_OOK0 = "MS:1002815"  # inverse reduced ion mobility
+_SELECTED_ION_DRIFT_TIME = "MS:1002476"  # ion mobility drift time
 
 # Shape of a PSI-MS CV accession (e.g. "MS:1002481"). Used to tell an already-
 # valid accession apart from free-text so the former can be passed to spectrl.
@@ -110,8 +125,16 @@ _ACTIVATION_ACCESSIONS: dict[str, str] = {
     ActivationType.PASEF: "MS:1002481",  # higher energy beam-type CID (Bruker PASEF); see note above
 }
 
-# Inverse mapping for decoding (accession -> ActivationType member)
-_ACTIVATION_NAMES: dict[str, str] = {v: k for k, v in _ACTIVATION_ACCESSIONS.items() if not k.startswith("MS:")}
+# Case-insensitive encode lookup so ``activation_type="hcd"`` still finds its
+# accession (the field is an open vocabulary, so producers write any casing).
+_ACTIVATION_ACCESSIONS_LOWER: dict[str, str] = {k.lower(): v for k, v in _ACTIVATION_ACCESSIONS.items()}
+
+# Inverse mapping for decoding (accession -> ActivationType member). PASEF is
+# encode-only: MS:1002481 is the generic "higher energy beam-type CID" term used
+# by Thermo HCD data too, so decoding it as PASEF would mislabel non-Bruker
+# spectra. It decodes to the dissociation method it actually names.
+_ACTIVATION_NAMES: dict[str, str] = {v: k for k, v in _ACTIVATION_ACCESSIONS.items() if k != ActivationType.PASEF}
+_ACTIVATION_NAMES["MS:1002481"] = ActivationType.HCD
 
 # Mass-analyzer accessions, from the PSI-MS "mass analyzer type" (MS:1000443)
 # branch and keyed by :class:`spxtacular.enums.Analyzer` members. Analyzer is a
@@ -135,27 +158,39 @@ _ANALYZER_ACCESSIONS: dict[str, str] = {
 # i.e. mzmlpy.constants.ION_MOBILITIES, otherwise spectrl will not recognise them on decode).
 # Keyed by :class:`spxtacular.enums.IMType` members where one exists; the extra
 # lowercase aliases ("1/k0", "drift_time") stay accepted as raw strings.
+# PSI-MS has no collision-cross-section array term, so ``ccs`` is encoded with
+# the generic ion-mobility array accession and its exact type is preserved by the
+# _UP_IM_TYPE user_param below.
 _IM_TYPE_ACCESSIONS: dict[str, str] = {
     IMType.OOK0: "MS:1003008",  # raw inverse reduced ion mobility (1/K0)
     "1/k0": "MS:1003008",
     IMType.IM: "MS:1002893",  # generic ion mobility
     "drift_time": "MS:1003153",
     IMType.DRIFT_TIME_MS: "MS:1003153",
-    IMType.CCS: "MS:1003007",  # raw ion mobility (CCS)
+    IMType.CCS: "MS:1002893",  # generic ion mobility; exact type kept in _UP_IM_TYPE
 }
 
-# Reverse lookup for decoding (covers raw/mean/deconvoluted variants).
+# Reverse lookup for decoding (covers raw/mean/deconvoluted variants). Note that
+# MS:1003007 is the *generic* raw ion mobility array, not CCS — a foreign token
+# carrying it says nothing about the units beyond "ion mobility".
 _IM_TYPE_FROM_ACCESSION: dict[str, str] = {
     "MS:1003008": IMType.OOK0,  # raw inverse reduced ion mobility (1/K0)
     "MS:1003006": IMType.OOK0,  # mean inverse reduced ion mobility
     "MS:1003155": IMType.OOK0,  # deconvoluted inverse reduced ion mobility
     "MS:1002816": IMType.OOK0,  # mean ion mobility (fall back to ook0)
     "MS:1002893": IMType.IM,
+    "MS:1003007": IMType.IM,  # raw ion mobility (generic)
+    "MS:1003154": IMType.IM,  # deconvoluted ion mobility (generic)
     "MS:1003153": IMType.DRIFT_TIME_MS,
     "MS:1002477": IMType.DRIFT_TIME_MS,
     "MS:1003156": IMType.DRIFT_TIME_MS,
-    "MS:1003007": IMType.CCS,
 }
+
+# Ion-mobility accessions accepted on a *selected ion* when decoding: the correct
+# scalar terms plus the binary-array terms older spxtacular releases wrote there.
+_PRECURSOR_IM_ACCESSIONS: frozenset[str] = frozenset(
+    {_SELECTED_ION_OOK0, _SELECTED_ION_DRIFT_TIME} | set(_IM_TYPE_FROM_ACCESSION)
+)
 
 _POLARITY_FROM_ACCESSION: dict[str, Polarity] = {
     _POSITIVE: Polarity.POSITIVE,
@@ -182,6 +217,15 @@ _UP_ISOL_IM_RANGE_LO = _UP_PREFIX + "isolation_im_range_lower"
 _UP_ISOL_IM_RANGE_HI = _UP_PREFIX + "isolation_im_range_upper"
 _UP_IM_TYPE = _UP_PREFIX + "im_type"
 _UP_ACTIVATION_TYPE = _UP_PREFIX + "activation_type"
+# Per-precursor flag, suffixed with the precursor's index (``…is_monoisotopic.0``)
+# since spectrl's user_params slot is spectrum-level.
+_UP_PREC_MONOISOTOPIC = _UP_PREFIX + "precursor_is_monoisotopic"
+
+
+def _up_prec_monoisotopic(index: int) -> str:
+    """Name of the ``is_monoisotopic`` user_param for precursor ``index``."""
+    return f"{_UP_PREC_MONOISOTOPIC}.{index}"
+
 
 # user-param names that only an MsnSpectrum can carry (force MSn on decode)
 _MSN_USER_PARAMS: frozenset[str] = frozenset(
@@ -238,14 +282,16 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     its ``im_type`` accession), ``iso_score`` (via ``extra_arrays["iso_score"]``,
     encoded as a non-standard mzML binary array ``MS:1000786``), and — for
     ``MsnSpectrum`` — ``native_id``, ``ms_level``, ``polarity``, ``rt`` (seconds),
-    ``mz_range``, ``precursors`` (each with isolation window, selected ion,
-    activation params), and ``total_ion_current``.
+    ``mz_range``, ``injection_time`` (``MS:1000927``), ``precursors`` (selected
+    ion params, plus the spectrum-level isolation window / activation attached to
+    the *first* precursor as mzML prescribes), and ``total_ion_current``.
 
     spxtacular scalar fields without an mzML CV counterpart —
     ``denoised``/``normalized`` provenance strings, ``scan_number``,
     ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-    ``isolation_im_range`` — are carried losslessly as namespaced free-text
-    ``user_params`` (see the ``spxtacular:`` prefixed names above).
+    ``isolation_im_range``, and each precursor's ``is_monoisotopic`` — are
+    carried losslessly as namespaced free-text ``user_params`` (see the
+    ``spxtacular:`` prefixed names above).
     """
     _require_spectrl()
     from spectrl.model import (
@@ -273,9 +319,11 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     if msn_spec is not None:
         if msn_spec.ms_level is not None:
             params.append(_cv(_MS_LEVEL, value=int(msn_spec.ms_level)))
-        if msn_spec.polarity == "positive":
+        # Open vocabulary: normalise casing so "POSITIVE" isn't silently dropped.
+        polarity_key = str(msn_spec.polarity).lower() if msn_spec.polarity is not None else None
+        if polarity_key == Polarity.POSITIVE:
             params.append(_cv(_POSITIVE))
-        elif msn_spec.polarity == "negative":
+        elif polarity_key == Polarity.NEGATIVE:
             params.append(_cv(_NEGATIVE))
         if msn_spec.total_ion_current is not None:
             params.append(_cv(_TIC, value=float(msn_spec.total_ion_current)))
@@ -286,6 +334,10 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         scan_params = []
         if msn_spec.rt is not None:
             scan_params.append(_cv(_SCAN_START_TIME, value=float(msn_spec.rt), unit_accession=_UNIT_SECOND))
+        if msn_spec.injection_time is not None:
+            scan_params.append(
+                _cv(_INJECTION_TIME, value=float(msn_spec.injection_time), unit_accession=_UNIT_MILLISECOND)
+            )
         windows: list[SpectrlScanWindow] = []
         if msn_spec.mz_range is not None:
             lo, hi = msn_spec.mz_range
@@ -300,20 +352,32 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         if scan_params or windows:
             scans.append(SpectrlScan(params=scan_params, windows=windows))
 
-    # Ion mobility type accession — computed up front so precursor ion mobility
-    # (below) can be tagged with the same accession as the spectrum-level array.
+    # Ion mobility array accession for the per-peak column.
     ion_mobility_type: str | None = None
     if spec.im is not None and msn_spec is not None and msn_spec.im_type is not None:
         ion_mobility_type = _IM_TYPE_ACCESSIONS.get(msn_spec.im_type.lower(), "MS:1002893")
     elif spec.im is not None:
         ion_mobility_type = "MS:1002893"  # generic ion mobility when type unknown
 
+    # Scalar ion-selection accession for precursor ion mobility. Drift-time types
+    # get MS:1002476; everything else (including an unknown type) gets the
+    # inverse-reduced-mobility term, which is what both readers measure.
+    im_type_key = msn_spec.im_type.lower() if msn_spec is not None and msn_spec.im_type is not None else None
+    precursor_im_accession = (
+        _SELECTED_ION_DRIFT_TIME if im_type_key in ("drift_time", IMType.DRIFT_TIME_MS) else _SELECTED_ION_OOK0
+    )
+
     # Precursors
     precursors: list[SpectrlPrecursor] = []
     if msn_spec is not None and msn_spec.precursors:
-        for prec in msn_spec.precursors:
+        for prec_index, prec in enumerate(msn_spec.precursors):
+            # The isolation window, collision energy and activation are stored
+            # per-spectrum by spxtacular but are per-precursor in mzML. Replicating
+            # them onto every precursor would assert something false about a
+            # multi-precursor spectrum, so only the first precursor carries them.
+            is_first = prec_index == 0
             iw: SpectrlIsolationWindow | None = None
-            if msn_spec.isolation_mz_range is not None:
+            if is_first and msn_spec.isolation_mz_range is not None:
                 lo, hi = msn_spec.isolation_mz_range
                 center = (lo + hi) / 2.0
                 iw = SpectrlIsolationWindow(
@@ -330,20 +394,20 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             if prec.intensity is not None and prec.intensity != 0.0:
                 ion_params.append(_cv(_PEAK_INTENSITY, value=float(prec.intensity)))
             if prec.im is not None:
-                ion_params.append(_cv(ion_mobility_type or "MS:1002893", value=float(prec.im)))
+                ion_params.append(_cv(precursor_im_accession, value=float(prec.im)))
             selected_ion = SpectrlSelectedIon(params=ion_params)
 
             activation: SpectrlActivation | None = None
             act_params = []
-            if msn_spec.collision_energy is not None:
+            if is_first and msn_spec.collision_energy is not None:
                 act_params.append(_cv(_COLLISION_ENERGY, value=float(msn_spec.collision_energy)))
-            if msn_spec.activation_type is not None:
+            if is_first and msn_spec.activation_type is not None:
                 # Emit a standard dissociation-method CV param when we can: either the
                 # value is a known acronym (mapped to its accession) or it is already an
                 # ``MS:NNNNNNN``-shaped accession (as both readers produce). Only truly
                 # free-text vendor strings fall through to the _UP_ACTIVATION_TYPE
                 # user_param below, since spectrl's accession_tail() would reject them.
-                acc = _ACTIVATION_ACCESSIONS.get(msn_spec.activation_type)
+                acc = _ACTIVATION_ACCESSIONS_LOWER.get(msn_spec.activation_type.lower())
                 if acc is None and _MS_ACCESSION_RE.match(msn_spec.activation_type):
                     acc = msn_spec.activation_type
                 if acc is not None:
@@ -402,6 +466,12 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             # _ACTIVATION_ACCESSIONS; stash the exact string here so unrecognized types
             # round-trip too instead of being dropped or crashing the encode.
             user_params.append(_up(_UP_ACTIVATION_TYPE, msn_spec.activation_type, "xsd:string"))
+        if msn_spec.precursors:
+            # mzML has no term for "this selected ion is the monoisotopic peak"
+            # (as opposed to the most intense one), so it rides along per index.
+            for prec_index, prec in enumerate(msn_spec.precursors):
+                if prec.is_monoisotopic is not None:
+                    user_params.append(_up(_up_prec_monoisotopic(prec_index), int(prec.is_monoisotopic), "xsd:boolean"))
 
     return InlineSpectrum(
         default_array_length=n,
@@ -425,6 +495,15 @@ def to_spectrl_token(spec: Spectrum, *, lossless: bool = False, max_len: int | N
     Convenience wrapper over :func:`to_inline_spectrum` +
     :func:`spectrl.encode_spectrum`. See :func:`spectrl.encode_spectrum` for
     the meaning of ``lossless`` and ``max_len``.
+
+    .. warning::
+
+       The **default encoding is lossy**: peak arrays go through MS-Numpress,
+       which round-trips ``mz`` to roughly ``3.1e-8`` relative error,
+       ``intensity`` to roughly ``1.3e-4``, and ``im`` to roughly ``6.7e-6``.
+       That is well inside instrument precision for sharing and plotting, but it
+       is not bit-exact. Pass ``lossless=True`` for a bit-exact round-trip (at
+       the cost of a longer token).
     """
     _require_spectrl()
     from spectrl import encode_spectrum
@@ -462,16 +541,17 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
 
     Returns a plain :class:`Spectrum` when no MSn metadata is found in the
     spectrl token; otherwise an :class:`MsnSpectrum` populated with
-    ``native_id``, ``ms_level``, ``polarity``, ``rt``, ``mz_range``,
-    ``total_ion_current``, ``precursors`` (with ``charge``, ``intensity``,
-    ``im``, and ``is_monoisotopic=None``), ``isolation_mz_range``,
+    ``native_id``, ``ms_level``, ``polarity``, ``rt``, ``injection_time``,
+    ``mz_range``, ``total_ion_current``, ``precursors`` (with ``charge``,
+    ``intensity``, ``im``, and ``is_monoisotopic``), ``isolation_mz_range``,
     ``collision_energy``, ``activation_type``, and ``im_type``.
 
     spxtacular scalar fields carried as namespaced ``user_params`` —
     ``denoised``/``normalized`` (also restored on a plain :class:`Spectrum`),
     ``scan_number``, ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-    ``isolation_im_range`` — are restored too; the MSn-only ones force an
-    :class:`MsnSpectrum` even when no other MSn metadata is present.
+    ``isolation_im_range``, per-precursor ``is_monoisotopic`` — are restored
+    too; the MSn-only ones force an :class:`MsnSpectrum` even when no other MSn
+    metadata is present.
     """
     _require_spectrl()
 
@@ -542,14 +622,18 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     tic_p = _find_param(decoded.params, _TIC)
     total_ion_current = float(tic_p.value) if tic_p is not None and tic_p.value is not None else None
 
-    # First scan (if any) holds rt + mz_range
+    # First scan (if any) holds rt + injection_time + mz_range
     rt: float | None = None
+    injection_time: float | None = None
     mz_range: tuple[float, float] | None = None
     if decoded.scans:
         scan = decoded.scans[0]
         rt_p = _find_param(scan.params, _SCAN_START_TIME)
         if rt_p is not None and rt_p.value is not None:
             rt = float(rt_p.value)
+        it_p = _find_param(scan.params, _INJECTION_TIME)
+        if it_p is not None and it_p.value is not None:
+            injection_time = float(it_p.value)
         for window in scan.windows:
             lo_p = _find_param(window.params, _SCAN_WINDOW_LOWER)
             hi_p = _find_param(window.params, _SCAN_WINDOW_UPPER)
@@ -578,16 +662,17 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                 prec_charge = int(charge_p.value) if charge_p is not None and charge_p.value is not None else None
                 prec_im: float | None = None
                 for p in ion.params:
-                    if p.accession in _IM_TYPE_FROM_ACCESSION and p.value is not None:
+                    if p.accession in _PRECURSOR_IM_ACCESSIONS and p.value is not None:
                         prec_im = float(p.value)
                         break
+                mono_v = up.get(_up_prec_monoisotopic(len(precursors)))
                 precursors.append(
                     Precursor(
                         mz=float(mz_p.value),
                         intensity=prec_intensity,
                         charge=prec_charge,
                         im=prec_im,
-                        is_monoisotopic=None,
+                        is_monoisotopic=bool(int(mono_v)) if mono_v is not None else None,
                     )
                 )
             if sp.isolation_window is not None and isolation_mz_range is None:
@@ -636,6 +721,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         native_id=decoded.id,
         ms_level=ms_level,
         rt=rt,
+        injection_time=injection_time,
         polarity=polarity,
         total_ion_current=total_ion_current,
         mz_range=mz_range,
@@ -692,6 +778,13 @@ def to_spectrl_url(
 
     ``base`` is required for ``"fragment"`` and ``"query"``. See
     :func:`spectrl.encode_spectrum` for ``lossless`` / ``max_len``.
+
+    .. warning::
+
+       As with :func:`to_spectrl_token`, the **default encoding is lossy**:
+       ``mz`` round-trips to roughly ``3.1e-8`` relative error, ``intensity`` to
+       roughly ``1.3e-4``, and ``im`` to roughly ``6.7e-6``. Pass
+       ``lossless=True`` for a bit-exact round-trip.
     """
     _require_spectrl()
     from spectrl import to_data_uri, to_fragment, to_query

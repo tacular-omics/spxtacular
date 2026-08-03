@@ -19,8 +19,14 @@ from .enums import (
     PeakSelection,
     PeakSelectionLike,
     ToleranceLike,
+    ToleranceType,
 )
 from .matching import FragmentInput, MatchedFragment, match_fragments
+
+# Floor for the per-peak random-match probability used by ``_probability_score``.
+# A tolerance of exactly 0 makes p == 0, whose survival function is -inf and whose
+# negated score is +inf; clamping keeps every reported score finite (and large).
+_MIN_MATCH_PROBABILITY = 1e-12
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -47,18 +53,60 @@ def _unique_series_positions(
 
 
 def _count_unique_ions(fragments: FragmentInput) -> int:
-    """Unique ``(ion_type, position)`` pairs — collapses loss/isotope variants."""
+    """Unique ``(ion_type, position)`` pairs — collapses loss/isotope variants.
+
+    Both input shapes are counted the same way.  In the dict form the key is
+    ``(ion_type, charge_state)`` and the position is the 1-based index within the
+    mass list (exactly how :func:`~spxtacular.matching.match_fragments` assigns
+    it), so the same ion seen at several charge states collapses to one entry —
+    matching what the ``Sequence[Fragment]`` branch reports for the same physical
+    fragment set.
+    """
     if not isinstance(fragments, dict):
         return len({(str(f.ion_type), f.position) for f in fragments})
     d: Any = fragments
-    n = 0
-    for v in d.values():
-        n += len(cast(list, v))
-    return n
+    seen: set[tuple[str, int]] = set()
+    for key, masses in d.items():
+        ion_type = cast(tuple, key)[0]  # key is (ion_type, charge_state)
+        n_masses = len(cast(list, masses))
+        seen.update((str(ion_type), pos) for pos in range(1, n_masses + 1))
+    return len(seen)
 
 
 def _log10_factorial(n: int) -> float:
     return math.lgamma(n + 1) / math.log(10)
+
+
+# ``math.lgamma`` as a ufunc: bit-identical to the scalar function, but the loop
+# runs in C instead of building intermediate Python lists.
+_lgamma_ufunc = np.frompyfunc(math.lgamma, 1, 1)
+
+# ``_LOG_FACTORIAL[m] == math.lgamma(m + 1) == log(m!)``. Grown on demand and
+# shared between calls: scoring many candidate peptides against one spectrum
+# otherwise recomputes the same O(n_peaks) lgamma values every single time.
+# Capped so a single freak spectrum cannot pin an unbounded array for the life of
+# the process (1e6 entries is 8 MB, and well above any real centroid peak count).
+_LOG_FACTORIAL_MAX_CACHED = 1_000_000
+_LOG_FACTORIAL: np.ndarray = np.zeros(1, dtype=np.float64)
+
+
+def _lgamma_range(lo: int, hi: int) -> np.ndarray:
+    """``[math.lgamma(m + 1) for m in range(lo, hi)]`` as a float64 array."""
+    return np.asarray(_lgamma_ufunc(np.arange(lo + 1, hi + 1, dtype=np.float64)), dtype=np.float64)
+
+
+def _log_factorial_table(n: int) -> np.ndarray:
+    """Return ``lf`` with ``lf[m] == math.lgamma(m + 1)`` for all ``0 <= m <= n``."""
+    global _LOG_FACTORIAL
+    have = _LOG_FACTORIAL.size
+    if have > n:
+        return _LOG_FACTORIAL
+    grown = np.empty(n + 1, dtype=np.float64)
+    grown[:have] = _LOG_FACTORIAL
+    grown[have:] = _lgamma_range(have, n + 1)
+    if n < _LOG_FACTORIAL_MAX_CACHED:
+        _LOG_FACTORIAL = grown
+    return grown
 
 
 def _binom_log10_survival(k: int, n: int, p: float) -> float:
@@ -73,10 +121,11 @@ def _binom_log10_survival(k: int, n: int, p: float) -> float:
     log_p = math.log(p)
     log_1mp = math.log(1.0 - p)
     i = np.arange(k, n + 1, dtype=np.float64)
-    log_c = math.lgamma(n + 1) - (
-        np.array([math.lgamma(x + 1) for x in range(k, n + 1)])
-        + np.array([math.lgamma(n - x + 1) for x in range(k, n + 1)])
-    )
+    # log C(n, j) == lgamma(n + 1) - lgamma(j + 1) - lgamma(n - j + 1); both lgamma
+    # terms are lookups into one shared table rather than two Python-level loops.
+    lf = _log_factorial_table(n)
+    j = np.arange(k, n + 1)
+    log_c = lf[n] - (lf[j] + lf[n - j])
     log_terms = log_c + i * log_p + (n - i) * log_1mp
     max_t = float(log_terms.max())
     log_prob = max_t + math.log(float(np.exp(log_terms - max_t).sum()))
@@ -92,6 +141,23 @@ def _hyperscore(
     spectrum: Spectrum,
     matches: list[MatchedFragment],
 ) -> float:
+    """X!Tandem-*style* hyperscore: ``log10(I) + sum_series log10(n_series!)``.
+
+    .. warning::
+       This is **not** the literal X!Tandem hyperscore and the two are not
+       comparable. X!Tandem computes ``(sum I_b) * (sum I_y) * n_b! * n_y!`` —
+       a *product* over exactly the b and y series. Here the matched intensities
+       are *summed* across all matched peaks (each peak counted once, however
+       many fragments hit it) and the factorial term is generalised to every ion
+       series present, so c/z/internal ions contribute too.
+
+    .. warning::
+       The intensity term consumes **raw** intensities, so the score is
+       intensity-scale dependent: it shifts by ``log10(s)`` if the whole spectrum
+       is multiplied by ``s``, and it can go *negative* on a normalised spectrum
+       (e.g. TIC-normalised, where the matched sum is < 1). Only compare
+       hyperscores computed on identically scaled spectra.
+    """
     if not matches:
         return 0.0
     unique_idx = _unique_peak_indices(matches)
@@ -116,11 +182,13 @@ def _probability_score(
     mz_range = float(spectrum.mz[-1] - spectrum.mz[0])
     if mz_range <= 0.0:
         return 0.0
-    if tolerance_type == "ppm":
+    if ToleranceType(str(tolerance_type).lower()) is ToleranceType.PPM:
         tol_da = tolerance * float(np.median(spectrum.mz)) / 1e6
     else:
         tol_da = float(tolerance)
-    p = min(1.0, 2.0 * tol_da * n_unique / mz_range)
+    # Floor p: a zero tolerance would otherwise give p == 0 -> log10 survival of
+    # -inf -> a score of +inf, which poisons every downstream comparison.
+    p = min(1.0, max(_MIN_MATCH_PROBABILITY, 2.0 * tol_da * n_unique / mz_range))
     return float(-_binom_log10_survival(k, n_exp, p))
 
 
@@ -165,26 +233,79 @@ def _spectral_angle(
     matches: list[MatchedFragment],
     n_unique: int,
 ) -> float:
+    """Normalised angle between the matched intensities and a flat reference.
+
+    .. warning::
+       Despite the name this is **not** the spectral angle / spectral contrast
+       angle of the literature (Toprak et al.; used by Prosit, Spectronaut, …).
+       That metric needs a *predicted* intensity vector, and none is available
+       here — ``fragments`` carry m/z values only. What is actually computed is
+       the cosine between the observed matched-intensity vector (length
+       ``n_unique``, zero-padded for unmatched theoretical ions) and an implicit
+       **ones-vector**, mapped through ``1 - acos(cos)/(pi/2)``.
+
+       The reference being flat means this measures *intensity uniformity across
+       the matched ions* x *coverage*, not similarity to a predicted spectrum. A
+       perfect, complete match with realistic intensities ``[100, 50, 10, 1]``
+       scores ``0.509``, while a flat ``[7, 7, 7, 7]`` scores ``1.0``. Treat it as
+       a coverage/evenness feature, and do not compare it to published spectral
+       angles.
+
+    Returns ``0.0`` when there is nothing to score (no matches, no theoretical
+    ions, all-zero intensities) or when the intensities are not finite.
+    """
     if not matches or n_unique == 0:
         return 0.0
     unique_idx = _unique_peak_indices(matches)
-    obs = spectrum.intensity[unique_idx]
+    matched = np.asarray(spectrum.intensity[unique_idx], dtype=np.float64)
+    # The vector must have exactly n_unique entries for the Cauchy-Schwarz bound
+    # (`sum(v) <= ||v|| * sqrt(len(v))`) to hold. With peak_selection="all" a single
+    # theoretical ion can claim several peaks, so more unique peaks than theoretical
+    # ions are possible; keeping the n_unique most intense ones bounds the ratio
+    # instead of letting the raw cosine exceed 1 and get clamped to a perfect score.
+    obs = np.zeros(n_unique, dtype=np.float64)
+    if matched.size > n_unique:
+        matched = np.sort(matched)[::-1][:n_unique]
+    obs[: matched.size] = matched
     obs_norm = float(np.linalg.norm(obs))
     if obs_norm == 0.0:
         return 0.0
-    dot = float(obs.sum()) / (obs_norm * math.sqrt(n_unique))
-    dot = max(-1.0, min(1.0, dot))
+    # np.clip propagates NaN, unlike max(-1.0, min(1.0, nan)) which yields 1.0 —
+    # i.e. a NaN intensity used to be reported as a perfect score.
+    dot = float(np.clip(float(obs.sum()) / (obs_norm * math.sqrt(n_unique)), -1.0, 1.0))
+    if math.isnan(dot):
+        return 0.0
     return float(1.0 - math.acos(dot) / (math.pi / 2))
 
 
 def _longest_run(matches: list[MatchedFragment]) -> int:
+    """Longest ladder of consecutive positions within a single ion series.
+
+    Terminal ions (``b``, ``y``, ``c``, ``z``, …) carry an ``int`` position and
+    ladder on it directly.  Internal ions carry a ``(start, end)`` tuple; they are
+    grouped by ion type **and** every element but the last (i.e. the start), and
+    the ladder runs over the last element (the end), so an internal series that
+    grows one residue at a time from a common start still counts as a run.
+    Previously any tuple position was dropped outright, which reported ``0`` for
+    spectra whose only matches were internal ions.
+
+    Fragments with no position (``None`` — precursor / immonium ions) have no
+    ladder to be part of and are ignored.
+    """
     if not matches:
         return 0
-    series_positions: dict[str, list[int]] = defaultdict(list)
+    # key: (ion_type, tuple-position prefix); () for plain int positions
+    series_positions: dict[tuple[str, tuple[int, ...]], list[int]] = defaultdict(list)
     for m in matches:
         pos = m.fragment.position
         if isinstance(pos, int):
-            series_positions[str(m.fragment.ion_type)].append(pos)
+            prefix: tuple[int, ...] = ()
+            coord = pos
+        elif isinstance(pos, tuple) and pos and all(isinstance(p, int) for p in pos):
+            prefix, coord = tuple(pos[:-1]), pos[-1]
+        else:
+            continue
+        series_positions[(str(m.fragment.ion_type), prefix)].append(coord)
     best = 0
     for positions in series_positions.values():
         sorted_pos = sorted(set(positions))
@@ -213,10 +334,15 @@ def score(
 ) -> dict[str, float]:
     """Match fragments against a spectrum and return all scores.
 
-    Internally calls :func:`~spxtacular.visualization.match_fragments` and
+    Internally calls :func:`~spxtacular.matching.match_fragments` and
     computes ``n_theoretical`` as the number of unique ``(ion_type, position)``
     pairs, so neutral-loss and isotope variants of the same fragment do not
     inflate the scores.
+
+    See the individual scorers for caveats — in particular ``hyperscore`` is
+    X!Tandem-*style* rather than literal and is intensity-scale dependent, and
+    ``spectral_angle`` is a coverage/evenness measure rather than the literature
+    spectral angle (no predicted intensities exist to compare against).
 
     Parameters
     ----------
@@ -229,7 +355,8 @@ def score(
     tolerance:
         Matching tolerance.
     tolerance_type:
-        ``"Da"`` or ``"ppm"``.
+        ``"da"`` or ``"ppm"`` (case-insensitive; anything else raises
+        ``ValueError``).
     peak_selection:
         How to resolve multiple peaks within tolerance per fragment:
         ``"closest"`` (default), ``"largest"``, or ``"all"``.
@@ -241,12 +368,16 @@ def score(
     ``matched_fraction``, ``intensity_fraction``, ``mean_ppm_error``,
     ``spectral_angle``, ``longest_run``.
     """
-    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+    # Normalise once so ``"PPM"``/``"Da"`` cannot mean one thing to the matcher and
+    # another to _probability_score, and so typos raise here rather than silently
+    # falling back to Da.
+    tol_type = ToleranceType(str(tolerance_type).lower())
+    matches = match_fragments(spectrum, fragments, tolerance, tol_type, peak_selection)
     n_unique = _count_unique_ions(fragments)
 
     return {
         "hyperscore": _hyperscore(spectrum, matches),
-        "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tolerance_type),
+        "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tol_type),
         "total_matched_intensity": _total_matched_intensity(spectrum, matches),
         "matched_fraction": _matched_fraction(matches, n_unique),
         "intensity_fraction": _intensity_fraction(spectrum, matches),

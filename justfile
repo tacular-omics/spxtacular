@@ -9,12 +9,16 @@ install-dev:
 
 # Run linting checks
 lint:
-    uv run ruff check src
+    uv run ruff check src tests
 
 # Format code
 format:
-	uv run ruff check --select I --fix src tests
-	uv run ruff format src tests
+    uv run ruff check --select I --fix src tests
+    uv run ruff format src tests
+
+# Verify formatting without rewriting files (used by CI)
+fmt-check:
+    uv run ruff format --check src tests
 
 # Run type checking
 check:
@@ -24,18 +28,14 @@ check:
 test:
     uv run pytest tests
 
-# Run tests with coverage (XML + JUnit XML for Codecov)
+# Run tests once, emitting both coverage XML and JUnit XML for Codecov
 test-cov:
-    uv run pytest tests --cov=src/spxtacular --cov-report=xml
-
-# Run tests with JUnit XML report for Codecov test results upload
-codecov-tests:
-    uv run pytest tests --junit-xml=junit.xml
+    uv run pytest tests --cov=src/spxtacular --cov-report=xml --junit-xml=junit.xml
 
 # Build and serve docs
-docs:  
+docs:
     uv run mkdocs serve --dev-addr=localhost:8003
 
 # Build docs to site/
-docs-build:  
+docs-build:
     uv run mkdocs build

@@ -4,7 +4,7 @@ Core data structures for spectra
 """
 
 import warnings
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .matching import FragmentInput, MatchedFragment
 
 import numpy as np
+import peptacular as pt
 from numpy.typing import NDArray
 
 from .decon.scored import deconvolve_spectrum as _deconvolve
@@ -106,6 +107,16 @@ def _centroid_peaks(
     return mue[valid], a[valid], im_result
 
 
+def _is_ppm(tolerance_type: ToleranceLike) -> bool:
+    """Resolve a tolerance type to a ppm/Da flag, rejecting unknown values.
+
+    Comparing ``tolerance_type == "ppm"`` directly is case-sensitive and falls
+    through to Da for anything else, so ``"PPM"`` silently yields a window a
+    million times too wide.  Coercing through the enum raises instead.
+    """
+    return ToleranceType(str(tolerance_type).lower()) == ToleranceType.PPM
+
+
 @dataclass(frozen=True, slots=True)
 class Peak:
     """Single peak in a spectrum."""
@@ -133,7 +144,7 @@ class SpectrumType(StrEnum):
     DECONVOLUTED = "deconvoluted"
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, eq=False)
 class Spectrum:
     """Mass spectrum with optional charge and ion mobility dimensions."""
 
@@ -147,7 +158,25 @@ class Spectrum:
     normalized: str | None = None
 
     def __post_init__(self):
-        """Validate array shapes."""
+        """Coerce array dtypes and validate shapes."""
+        self.mz = np.asarray(self.mz, dtype=np.float64)
+        self.intensity = np.asarray(self.intensity, dtype=np.float64)
+        if self.charge is not None:
+            self.charge = np.asarray(self.charge, dtype=np.int32)
+        if self.im is not None:
+            self.im = np.asarray(self.im, dtype=np.float64)
+        if self.iso_score is not None:
+            self.iso_score = np.asarray(self.iso_score, dtype=np.float64)
+        self._validate()
+        # A charge array on its own implies deconvolution only when the caller
+        # did not say otherwise — an explicit spectrum_type is always honoured,
+        # so centroid data carrying instrument-assigned charges is not silently
+        # promoted (which would unlock decharge() on non-deconvoluted m/z).
+        if self.charge is not None and self.spectrum_type is None:
+            self.spectrum_type = SpectrumType.DECONVOLUTED
+
+    def _validate(self) -> None:
+        """Check that every optional array matches the m/z length."""
         n = len(self.mz)
         if len(self.intensity) != n:
             raise ValueError("mz and intensity must have same length")
@@ -157,8 +186,30 @@ class Spectrum:
             raise ValueError("im array must match mz length")
         if self.iso_score is not None and len(self.iso_score) != n:
             raise ValueError("score array must match mz length")
-        if self.charge is not None and self.spectrum_type != SpectrumType.DECONVOLUTED:
-            object.__setattr__(self, "spectrum_type", SpectrumType.DECONVOLUTED)
+
+    def __eq__(self, other: object) -> bool:
+        """Value equality; array fields compare element-wise.
+
+        Defined explicitly because the dataclass-generated ``__eq__`` compares
+        field tuples, which calls ``bool()`` on a numpy array and raises
+        "truth value of an array is ambiguous" — breaking ``==``, ``in``,
+        ``list.remove`` and any ``assert spec == expected``.
+        """
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        for f in fields(self):
+            a, b = getattr(self, f.name), getattr(other, f.name)
+            if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+                if a is None or b is None:
+                    if a is not b:
+                        return False
+                elif not np.array_equal(a, b):
+                    return False
+            elif a != b:
+                return False
+        return True
+
+    __hash__ = None  # type: ignore[assignment]  # mutable, and __eq__ is value-based
 
     # -------------------------------------------------------------------------
     # Peak Access
@@ -176,8 +227,8 @@ class Spectrum:
             Peak(
                 mz=float(self.mz[i]),
                 intensity=float(self.intensity[i]),
-                charge=self.charge[i] if self.charge is not None else None,
-                im=self.im[i] if self.im is not None else None,
+                charge=int(self.charge[i]) if self.charge is not None else None,
+                im=float(self.im[i]) if self.im is not None else None,
                 iso_score=float(self.iso_score[i]) if self.iso_score is not None else None,
             )
             for i in range(len(self.mz))
@@ -203,6 +254,7 @@ class Spectrum:
         else:
             raise ValueError(f"Unknown sort key: {by!r}")
 
+        n = max(n, 0)
         if not reverse:
             indices = sort_key[:n]
         else:
@@ -289,10 +341,11 @@ class Spectrum:
             idx = matches[np.argmin(mz_diffs)]
 
         return Peak(
-            mz=self.mz[idx],
-            intensity=self.intensity[idx],
-            charge=self.charge[idx] if self.charge is not None else None,
-            im=self.im[idx] if self.im is not None else None,
+            mz=float(self.mz[idx]),
+            intensity=float(self.intensity[idx]),
+            charge=int(self.charge[idx]) if self.charge is not None else None,
+            im=float(self.im[idx]) if self.im is not None else None,
+            iso_score=float(self.iso_score[idx]) if self.iso_score is not None else None,
         )
 
     def get_peaks(
@@ -309,10 +362,11 @@ class Spectrum:
 
         return [
             Peak(
-                mz=self.mz[i],
-                intensity=self.intensity[i],
-                charge=self.charge[i] if self.charge is not None else None,
-                im=self.im[i] if self.im is not None else None,
+                mz=float(self.mz[i]),
+                intensity=float(self.intensity[i]),
+                charge=int(self.charge[i]) if self.charge is not None else None,
+                im=float(self.im[i]) if self.im is not None else None,
+                iso_score=float(self.iso_score[i]) if self.iso_score is not None else None,
             )
             for i in matches
         ]
@@ -328,7 +382,7 @@ class Spectrum:
     ) -> NDArray[np.int64]:
         """Find indices of peaks matching criteria."""
         # m/z tolerance
-        if tolerance_type == "ppm":
+        if _is_ppm(tolerance_type):
             tol_da = target_mz * tolerance / 1e6
         else:
             tol_da = tolerance
@@ -364,7 +418,23 @@ class Spectrum:
         top_n: int | None = None,
         inplace: bool = False,
     ) -> Self:
-        """Filter spectrum by various criteria."""
+        """Filter spectrum by various criteria.
+
+        Raises ``ValueError`` if a criterion is given for a dimension this
+        spectrum does not carry — silently ignoring it would return every peak
+        and read as "nothing was filtered out".
+        """
+        for name, value, array in (
+            ("charge", min_charge, self.charge),
+            ("charge", max_charge, self.charge),
+            ("im", min_im, self.im),
+            ("im", max_im, self.im),
+            ("iso_score", min_score, self.iso_score),
+            ("iso_score", max_score, self.iso_score),
+        ):
+            if value is not None and array is None:
+                raise ValueError(f"Cannot filter on {name}: this spectrum has no {name} array")
+
         mask = np.ones(len(self.mz), dtype=bool)
 
         if min_mz is not None:
@@ -430,6 +500,15 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
+        if not np.isfinite(norm_factor):
+            warnings.warn(
+                f"Cannot normalize: {method!r} normalisation factor is {norm_factor} "
+                "(intensity contains NaN or inf); returning unchanged",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self if inplace else self.copy()
+
         return self.update(intensity=self.intensity / norm_factor, normalized=method, inplace=inplace)
 
     def denoise(
@@ -447,6 +526,11 @@ class Spectrum:
                 stacklevel=2,
             )
             return self if inplace else self.copy()
+
+        if len(self.intensity) == 0:
+            # Estimating a noise level from no peaks yields NaN and a pair of
+            # numpy RuntimeWarnings; the answer is trivially "nothing to remove".
+            return self.update(denoised=str(method), inplace=inplace)
 
         threshold = estimate_noise_level(self.intensity, method=method)
         return self.filter(min_intensity=threshold, inplace=inplace).update(denoised=str(method), inplace=inplace)
@@ -493,6 +577,7 @@ class Spectrum:
         intensity = self.intensity[sort_idx]
         im = self.im[sort_idx] if self.im is not None else None
         charge = self.charge[sort_idx] if self.charge is not None else None
+        iso_score = self.iso_score[sort_idx] if self.iso_score is not None else None
 
         # Sort by intensity descending for greedy clustering order
         # We need the original indices relative to the SORTED arrays
@@ -504,6 +589,7 @@ class Spectrum:
         new_intensity_list = []
         new_im_list = []
         new_charge_list = []
+        new_score_list = []
 
         if mz_tolerance_type not in ("ppm", "da"):
             raise ValueError("mz_tolerance_type must be 'ppm' or 'da'")
@@ -585,6 +671,12 @@ class Spectrum:
             if charge is not None:
                 new_charge_list.append(current_charge)
 
+            if iso_score is not None:
+                # Keep the strongest isotopic evidence in the merged group; the
+                # merged peak is the same feature, so the best-fitting cluster's
+                # score is the one that still describes it.
+                new_score_list.append(float(np.max(iso_score[valid_indices])))
+
             if im is not None:
                 window_im = im[valid_indices]
                 if total_intensity > 0:
@@ -601,6 +693,7 @@ class Spectrum:
         new_intensity = np.array(new_intensity_list, dtype=np.float64)
         new_im = np.array(new_im_list, dtype=np.float64) if im is not None else None
         new_charge = np.array(new_charge_list, dtype=np.int32) if charge is not None else None
+        new_score = np.array(new_score_list, dtype=np.float64) if iso_score is not None else None
 
         # Sort result by m/z
         final_sort = np.argsort(new_mz)
@@ -610,13 +703,15 @@ class Spectrum:
             new_im = new_im[final_sort]
         if new_charge is not None:
             new_charge = new_charge[final_sort]
+        if new_score is not None:
+            new_score = new_score[final_sort]
 
         if inplace:
             self.mz = new_mz
             self.intensity = new_intensity
             self.im = new_im
             self.charge = new_charge
-            self.iso_score = None
+            self.iso_score = new_score
             return self
 
         return replace(
@@ -625,7 +720,7 @@ class Spectrum:
             intensity=new_intensity,
             im=new_im,
             charge=new_charge,
-            iso_score=None,
+            iso_score=new_score,
         )
 
     def centroid(self, inplace: bool = False) -> Self:
@@ -652,6 +747,9 @@ class Spectrum:
             spectrum_type=SpectrumType.CENTROID,
             charge=None,
             im=im_cent,
+            # Centroiding changes the peak count, so any per-peak scores from a
+            # previous deconvolution no longer line up and must be dropped.
+            iso_score=None,
             inplace=inplace,
         )
 
@@ -817,11 +915,28 @@ class Spectrum:
         )
 
     def update(self, inplace: bool = False, **kwargs) -> Self:
-        """Create new spectrum with updated fields."""
+        """Create new spectrum with updated fields.
+
+        The returned spectrum never shares an array buffer with this one: any
+        array field the caller did not replace is copied.  Without that, methods
+        documented as "returning a new Spectrum" hand back views, and writing
+        into the result silently mutates the original.
+
+        The inplace path re-validates afterwards, so a partial update that
+        leaves arrays at mismatched lengths raises instead of leaving the
+        object quietly inconsistent.
+        """
         if inplace:
             for k, v in kwargs.items():
                 setattr(self, k, v)
+            self._validate()
             return self
+
+        for name in ("mz", "intensity", "charge", "im", "iso_score"):
+            if name not in kwargs:
+                current = getattr(self, name)
+                if current is not None:
+                    kwargs[name] = current.copy()
 
         return replace(self, **kwargs)
 
@@ -1002,7 +1117,7 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
-        is_ppm = tolerance_type == "ppm"
+        is_ppm = _is_ppm(tolerance_type)
         if min_intensity == "min":
             # Guard the reduction: an empty spectrum has no min. _deconvolve handles
             # the empty case and returns empty arrays, giving an empty DECONVOLUTED spectrum.
@@ -1022,11 +1137,22 @@ class Spectrum:
             min_score=min_score,
         )
 
+        # Carry ion mobility through. Every output m/z is an exact copy of the
+        # m/z of the peak the cluster was anchored on, so the anchor's IM can be
+        # recovered by exact lookup. Dropping it would destroy the IM dimension
+        # for timsTOF data, which is the main reason DReader exists.
+        new_im = None
+        if self.im is not None and len(new_mz) > 0:
+            order = np.argsort(self.mz)
+            pos = np.searchsorted(self.mz[order], new_mz)
+            pos = np.clip(pos, 0, len(order) - 1)
+            new_im = self.im[order[pos]]
+
         return self.update(
             mz=new_mz,
             intensity=new_intensity,
             charge=new_charge,
-            im=None,
+            im=new_im,
             iso_score=new_score,
             spectrum_type=SpectrumType.DECONVOLUTED,
             inplace=inplace,
@@ -1044,7 +1170,9 @@ class Spectrum:
 
         Returns a new Spectrum with m/z values as neutral masses, sorted ascending.
         """
-        if self.spectrum_type != SpectrumType.DECONVOLUTED or self.charge is None:
+        if self.charge is None:
+            raise ValueError("Cannot decharge a spectrum with no charge array; call deconvolute() first.")
+        if self.spectrum_type != SpectrumType.DECONVOLUTED:
             raise ValueError("Cannot decharge a non-deconvoluted spectrum; call deconvolute() first.")
 
         if self.is_decharged:
@@ -1055,9 +1183,11 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
-        proton = 1.007276
+        proton = pt.PROTON_MASS
 
-        known = self.charge != -1
+        # charge > 0, not != -1: a charge of 0 means "already decharged", and
+        # multiplying by it would collapse the peak to a neutral mass of 0.0.
+        known = self.charge > 0
         known_mz = self.mz[known]
         known_charge = self.charge[known]
         known_int = self.intensity[known]
@@ -1211,10 +1341,24 @@ class Spectrum:
         """
         import json
 
+        def _json_default(obj):
+            # Reader-produced metadata often holds numpy scalars. np.float64
+            # subclasses float so json handles it, but np.int32 does not and
+            # would abort the save with a bare TypeError.
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return float(obj)
+            if isinstance(obj, np.bool_):
+                return bool(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
         arrays: dict = {
             "mz": self.mz,
             "intensity": self.intensity,
-            "meta": np.array(json.dumps(self._meta_dict()), dtype=object),
+            "meta": np.array(json.dumps(self._meta_dict(), default=_json_default), dtype=object),
         }
         if self.charge is not None:
             arrays["charge"] = self.charge
@@ -1363,8 +1507,6 @@ class Spectrum:
             If the spectrum is profile mode, or if ``precursor_mz`` is ``None``
             and no precursor information is available.
         """
-        import peptacular as pt
-
         PROTON: float = pt.PROTON_MASS
         NEUTRON: float = pt.C13_NEUTRON_MASS
 
@@ -1488,6 +1630,8 @@ class Spectrum:
             Spectrum with scaled intensities.
         """
         if method == "root":
+            if degree == 0:
+                raise ValueError("degree must be non-zero for the 'root' scaling method")
             scaled = np.power(self.intensity, 1.0 / degree)
         elif method == "log":
             scaled = np.log1p(self.intensity) / np.log(base)
@@ -1498,7 +1642,10 @@ class Spectrum:
         else:
             raise ValueError(f"Unknown scaling method: {method!r}")
 
-        return self.update(intensity=scaled, inplace=inplace)
+        # Scaling changes the intensity distribution, so any prior normalisation
+        # no longer holds. Clearing the flag lets normalize() run again instead
+        # of warning and silently returning unnormalised data.
+        return self.update(intensity=scaled, normalized=None, inplace=inplace)
 
     # -------------------------------------------------------------------------
     # Peak Rounding
@@ -1530,12 +1677,13 @@ class Spectrum:
         rounded_mz = np.round(self.mz, decimals)
         unique_mz, inverse = np.unique(rounded_mz, return_inverse=True)
 
-        new_intensity = np.zeros(len(unique_mz), dtype=np.float64)
         if combine == "sum":
+            new_intensity = np.zeros(len(unique_mz), dtype=np.float64)
             np.add.at(new_intensity, inverse, self.intensity)
         elif combine == "max":
-            for i, idx in enumerate(inverse):
-                new_intensity[idx] = max(new_intensity[idx], self.intensity[i])
+            # -inf rather than 0 so that all-negative intensities survive.
+            new_intensity = np.full(len(unique_mz), -np.inf, dtype=np.float64)
+            np.maximum.at(new_intensity, inverse, self.intensity)
         else:
             raise ValueError(f"Unknown combine method: {combine!r}")
 
@@ -1545,6 +1693,12 @@ class Spectrum:
             charge=None,
             im=None,
             iso_score=None,
+            # Rounding merges peaks and drops the charge/score arrays, so the
+            # result is no longer deconvoluted. Leaving the flag set wedges the
+            # spectrum: decharge() refuses it and deconvolute() no-ops on it.
+            spectrum_type=(
+                SpectrumType.CENTROID if self.spectrum_type == SpectrumType.DECONVOLUTED else self.spectrum_type
+            ),
             inplace=inplace,
         )
 
@@ -1651,7 +1805,7 @@ class Precursor(Peak):
     is_monoisotopic: bool | None
 
 
-@dataclass(slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True, eq=False)
 class MsnSpectrum(Spectrum):
     """
     Base class for all MSn spectra (MS1, MS2, MS3, etc.).

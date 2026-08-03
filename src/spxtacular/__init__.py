@@ -1,6 +1,6 @@
 __version__ = "0.4.0"
 
-from .core import MsnSpectrum, Peak, Precursor, Spectrum
+from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType
 from .enums import (
     ActivationType,
     ActivationTypeLike,
@@ -17,7 +17,7 @@ from .enums import (
 )
 from .matching import match_fragments
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
-from .reader import CentroidConfig, DReader, MzmlReader, Reader
+from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
 from .spectrl_bridge import (
     from_spectrl_token,
@@ -35,6 +35,7 @@ __all__ = [
     "Precursor",
     "Spectrum",
     "MsnSpectrum",
+    "SpectrumType",
     "ToleranceType",
     "ToleranceLike",
     "PeakSelection",
@@ -47,6 +48,7 @@ __all__ = [
     "IMTypeLike",
     "Analyzer",
     "AnalyzerLike",
+    "AcquisitionType",
     "CentroidConfig",
     "DReader",
     "MzmlReader",

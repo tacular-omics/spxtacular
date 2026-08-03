@@ -1,5 +1,127 @@
 # History
 
+## Unreleased
+
+### Fixes — deconvolution (scientific correctness)
+* **Monoisotopic peak recovery.** Cluster finding seeded on the most intense peak and extended
+  *forward only*. Above ~1900 Da the A+1 peak is more intense than A (and above ~3500 Da it is
+  A+2), so the reported monoisotopic mass was systematically one or two neutrons too high, and the
+  charge state was sometimes wrong as well. The isotope score did not catch it — misaligned
+  envelopes still scored 0.79–0.83. Deconvolution now searches backwards from the seed for
+  candidate anchors and picks the alignment that best fits the isotope template. Verified exact
+  recovery from 1000–4000 Da at charges 1–3.
+* **Single-peak clusters no longer score 1.0.** A one-peak candidate scored a perfect 1.0 (a vector
+  is trivially identical to itself after normalisation), beating and destroying genuine multi-peak
+  clusters. This fired whenever `min_intensity` exceeded the seed intensity — i.e. exactly when
+  feeding `estimate_noise_level()` in, as the docs recommend. Such clusters now score `0.0`.
+* Cluster extension measures each step from the *expected* position rather than the previously
+  matched peak, so a chain of peaks each just inside tolerance can no longer ratchet a cluster off
+  target.
+* Deconvolution now runs in float64 throughout; output m/z is no longer truncated through float32
+  (~0.02 ppm). This also removes a float32-accumulator divergence between the numba and pure-Python
+  backends, which now produce bit-identical results.
+* `deconvolute()` preserves ion mobility instead of discarding it — previously the entire IM
+  dimension was destroyed with no warning, defeating the main purpose of `DReader`.
+* Isotope templates extend to 20000 Da (was 5000, silently clamped).
+* `deconvolve_spectrum` validates `charge_range`; a reversed range silently returned every peak as
+  a singleton. Hitting `max_dpeaks` now warns instead of truncating silently.
+
+### Fixes — core Spectrum API
+* `Spectrum == Spectrum` raised `ValueError` ("truth value of an array is ambiguous"), which also
+  broke `in`, `list.remove`, and `assert spec == expected`. Equality is now element-wise.
+* Methods documented as returning a new `Spectrum` returned objects **sharing numpy buffers** with
+  the original, so writing into the result silently mutated the source. `update()` now copies any
+  array field the caller did not replace.
+* A `charge` array no longer forces `spectrum_type = DECONVOLUTED` over an explicit value. This had
+  defeated the `SpectrumType` guard, allowing `decharge()` on never-deconvoluted centroid data.
+* `tolerance_type` is coerced through `ToleranceType` and raises on unknown values. `"PPM"` used to
+  fall through to Da — a window a million times too wide, silently. Applies across `core`,
+  `matching` and `scoring`.
+* `filter()` raises when given a criterion for a dimension the spectrum lacks, instead of silently
+  ignoring it and returning every peak.
+* `merge()` now carries `iso_score` through (max over the merged group) rather than dropping it.
+* `round_mz()` resets `spectrum_type` when it drops the charge array, instead of leaving the
+  spectrum wedged — claiming to be deconvoluted, refusing `decharge()`, and no-oping `deconvolute()`.
+* `centroid()` resets `iso_score`; previously the inplace path left arrays at mismatched lengths and
+  reported fabricated per-peak scores. `update(inplace=True)` now re-validates shapes.
+* `get_peak()` / `get_peaks()` populate `iso_score` (previously dropped) and return Python scalars.
+* `decharge()` uses `pt.PROTON_MASS` rather than a hardcoded constant, and treats `charge <= 0` as
+  unknown instead of collapsing charge-0 peaks to a neutral mass of 0.0.
+* `normalize()` guards non-finite normalisation factors; `scale_intensity()` clears the `normalized`
+  flag so re-normalisation after a transform is not silently skipped, and rejects `degree=0`.
+* `save()` no longer fails with `TypeError` on numpy scalars in reader-produced metadata.
+* `denoise()` on an empty spectrum no longer emits numpy RuntimeWarnings.
+* `__post_init__` coerces array dtypes, so Python lists no longer construct successfully and fail
+  later inside `filter()`.
+
+### Fixes — scoring, matching, noise
+* `spectral_angle` no longer reports a **perfect 1.0 for NaN input**, and builds its observed vector
+  at fixed length so the cosine cannot exceed 1. Its docstring now states plainly that it is not the
+  literature spectral angle (there is no predicted-intensity vector).
+* `probability_score` returns a finite value when `tolerance=0` (was `+inf`).
+* `match_fragments` with `peak_selection="closest"` walks outward past charge-incompatible
+  neighbours instead of missing charge-compatible peaks well inside tolerance.
+* `peak_selection` and negative/zero fragment charges are validated rather than silently corrupting
+  results; unsorted input m/z raises instead of silently returning no matches.
+* `n_theoretical` agrees between dict and `Sequence[Fragment]` input; `longest_run` handles
+  internal-ion (tuple) positions; `_binom_log10_survival` vectorised (~5x faster, bit-identical).
+* `hyperscore` documented as X!Tandem-*style* and intensity-scale-dependent (math unchanged).
+* Histogram noise estimation now bins the low-intensity bulk; binning the full dynamic range put
+  every noise peak in bin 0 and overestimated the level by roughly two orders of magnitude. All
+  estimators return `0.0` on an empty array instead of NaN or `IndexError`.
+
+### Fixes — mzML / spectrl interoperability
+* **Swapped scan-window accessions.** `MS:1000500` is "scan window *upper* limit" and `MS:1000501`
+  is the lower limit; these were reversed. Round-trips were symmetric so tests passed, but emitted
+  tokens told external mzML consumers the window was inverted.
+* Precursor ion mobility uses the scalar ion-selection terms `MS:1002815` / `MS:1002476` rather than
+  a binary-data-array accession (legacy accessions still decode).
+* `MS:1002481` decodes to `HCD` rather than `PASEF`; `MS:1003007` no longer claims to mean CCS.
+* `injection_time` and `Precursor.is_monoisotopic` now survive the round-trip; isolation window and
+  activation attach only to the first precursor.
+* Readers emit the canonical enums, so `spec.activation_type == ActivationType.CID` is now true for
+  reader-produced spectra.
+* `MzmlReader` no longer marks ordinary centroid data as `DECONVOLUTED` merely because it carries a
+  charge array.
+* `fetch_usi` validates the USI locally before any network call, resolves precursor m/z by fixed
+  accession precedence rather than server ordering, and retains `scan_number` / `native_id`.
+* `MzmlReader.open()` no longer orphans an existing handle; `DReader` no longer leaks a sqlite
+  connection per instance; `Reader` accepts uppercase `.D` and `.mzML.gz`.
+* Optional backends that fail with `OSError` (broken native library) no longer break
+  `import spxtacular`.
+
+### Packaging
+* **The sdist is 74 KB, down from 91 MB.** It had swept in 74 MB of Bruker test fixtures and both
+  generated plot directories, leaving releases one fixture away from PyPI's 100 MB limit. Tests are
+  no longer shipped.
+* Publishing uses PyPI trusted publishing (OIDC) instead of a long-lived API token.
+* CI gained a `pull_request` trigger (packaging changes previously got no check at all), a 3.12/3.13
+  matrix, and a job that installs **without** extras to test that the readers stay importable —
+  the load-bearing promise in `CLAUDE.md`, previously untested.
+* `[tool.uv] dev-dependencies` moved to PEP 735 `[dependency-groups]`; `Typing :: Typed` classifier
+  added; PEP 639 license metadata; pytest/coverage config added with `filterwarnings = ["error"]`.
+* Removed the committed `junit.xml`, the stray `try.py`, the redundant `plots/` directory, the
+  vestigial `MANIFEST.in`, and the dead `draft-pdf.yml` workflow.
+
+### Tests
+* `test_numba_fallback.py` restored modules by rewriting `sys.modules`, which does nothing after
+  `importlib.reload` mutates the module dict in place — so **every test collected after it ran the
+  pure-Python path**, and the JIT path was silently uncovered. Fixed, with a new test asserting the
+  two backends produce identical results and a guard against the leak recurring.
+
+### Docs
+* The README and docs landing-page quick starts produced an **empty spectrum** (the `.denoise()`
+  threshold exceeded every peak in the sample data). Replaced with realistic data and real output.
+* The deconvolution basic-usage and worked examples showed output that did not match what the code
+  produces; both are now generated from actual runs, and the algorithm description covers the new
+  anchor search.
+* Fixed API references that raised on copy-paste: `reader.aquisition_type` (misspelled),
+  `mirror_plot(raw, decon=...)` (the parameter is `deconvoluted`), `next(reader.ms2)` (the lookup
+  objects are iterable but not iterators), `facet_plot(spectra)` in `llms.txt`, and a `decharge()`
+  call on non-deconvoluted data that violated the docs' own guidance.
+* `Spectrum` constructor signature now lists `iso_score`; plotly and pandas correctly documented as
+  required rather than optional; `docs/scoring.md` added to the nav; dead anchors repointed.
+
 ## 0.4.0 (2026-07-09)
 
 ### Breaking changes

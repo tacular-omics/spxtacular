@@ -20,5 +20,6 @@ nav:
   - Spectrum: spectrum.md
   - Deconvolution: deconvolution.md
   - Readers: readers.md
+  - Matching & Scoring: scoring.md
   - Visualization: visualization.md
   - API Reference: api.md

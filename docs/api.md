@@ -1,16 +1,39 @@
 # API Reference
 
-All public names importable from `spxtacular`:
+Every name in `spxtacular.__all__`, grouped by area:
 
 ```python
 from spxtacular import (
-    Spectrum, MsnSpectrum, Peak,
-    DReader, MzmlReader,
+    # Core data structures
+    Spectrum, MsnSpectrum, Peak, Precursor,
+    # Enums and their permissive type aliases
+    ToleranceType, ToleranceLike,
+    PeakSelection, PeakSelectionLike,
+    Polarity, PolarityLike,
+    ActivationType, ActivationTypeLike,
+    IMType, IMTypeLike,
+    Analyzer, AnalyzerLike,
+    # Readers
+    Reader, DReader, MzmlReader, CentroidConfig,
+    # Matching and scoring
     match_fragments, score,
-    plot_spectrum, mirror_plot, annotate_spectrum,
+    # Visualization
+    plot_spectrum, mirror_plot, annotate_spectrum, mass_error_plot, facet_plot,
+    # Plot tables
     build_plot_table, build_annot_plot_table, plot_from_table,
+    # Utilities
+    da_to_ppm, ppm_to_da,
+    # Remote / serialised spectra
+    fetch_usi,
+    to_inline_spectrum,
+    to_spectrl_token, from_spectrl_token,
+    to_spectrl_url, from_spectrl_url,
 )
 ```
+
+`SpectrumType`, `AcquisitionType`, `MatchedFragment`, `estimate_noise_level`, and the reader lookup
+classes are **not** exported from the package root; import them from their defining modules as shown
+in the relevant sections below.
 
 ---
 
@@ -28,17 +51,23 @@ Spectrum(
     intensity: NDArray[np.float64],
     charge: NDArray[np.int32] | None = None,
     im: NDArray[np.float64] | None = None,
+    iso_score: NDArray[np.float64] | None = None,
     spectrum_type: SpectrumType | str | None = None,
     denoised: str | None = None,
     normalized: str | None = None,
 )
 ```
 
+`iso_score` sits between `im` and `spectrum_type` — pass the trailing fields by keyword to avoid
+positional mix-ups.
+
 **Methods:**
 
 | Method | Returns | Summary |
 |---|---|---|
 | `.peaks` | `list[Peak]` | All peaks as `Peak` objects |
+| `.is_decharged` | `bool` | Property: `True` once every peak's `charge == 0` |
+| `len(spec)` | `int` | Number of peaks (`__len__`) |
 | `.top_peaks(n, by, reverse)` | `list[Peak]` | Top N peaks sorted by attribute |
 | `.has_peak(target_mz, ...)` | `bool` | Check for a peak near target m/z |
 | `.get_peak(target_mz, ...)` | `Peak \| None` | Single best-matching peak |
@@ -90,8 +119,11 @@ Extends `Spectrum` with instrument metadata fields. Returned by both readers.
 | `native_id` | `str \| None` | Instrument-specific scan identifier |
 | `rt` | `float \| None` | Retention time in seconds |
 | `injection_time` | `float \| None` | Ion accumulation time in ms |
+| `total_ion_current` | `float \| None` | Total ion current for the scan |
 | `mz_range` | `tuple[float, float] \| None` | Acquisition m/z window |
-| `im_range` | `tuple[float, float] \| None` | Ion mobility window |
+| `im_range` | `tuple[float, float] \| None` | Ion mobility acquisition window |
+| `isolation_mz_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (m/z) |
+| `isolation_im_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (ion mobility) |
 | `im_type` | `IMType \| str \| None` | Ion mobility unit (open vocabulary) |
 | `polarity` | `Polarity \| "positive" \| "negative" \| None` | Scan polarity (closed vocabulary) |
 | `resolution` | `float \| None` | Instrument resolution |
@@ -129,6 +161,33 @@ from spxtacular import MsnSpectrum, ActivationType
 
 spec = MsnSpectrum(mz=mz, intensity=intensity, activation_type=ActivationType.HCD)
 ```
+
+#### Type aliases
+
+Every enum ships a `…Like` alias — the permissive union that the library's own parameters and
+fields are annotated with. Use them when you type your own wrappers so callers can pass either an
+enum member or a plain string.
+
+```python
+from spxtacular import ToleranceLike, PeakSelectionLike, PolarityLike
+from spxtacular import ActivationTypeLike, IMTypeLike, AnalyzerLike
+```
+
+| Alias | Definition |
+|---|---|
+| `ToleranceLike` | `ToleranceType \| Literal["da", "ppm"]` |
+| `PeakSelectionLike` | `PeakSelection \| Literal["closest", "largest", "all"]` |
+| `PolarityLike` | `Polarity \| Literal["positive", "negative"]` |
+| `ActivationTypeLike` | `ActivationType \| str` |
+| `IMTypeLike` | `IMType \| str` |
+| `AnalyzerLike` | `Analyzer \| str` |
+
+The first three are closed unions (only the listed literals type-check); the last three are open —
+any `str` is accepted so raw PSI-MS accessions and vendor shorthands pass through.
+
+`ToleranceType` (`DA` = `"da"`, `PPM` = `"ppm"`) and `PeakSelection` (`CLOSEST`, `LARGEST`, `ALL`)
+are the processing-side enums behind the `tolerance_type` and `peak_selection` parameters used
+throughout matching, scoring, and plotting.
 
 ---
 
@@ -174,18 +233,54 @@ from spxtacular.core import SpectrumType
 
 ## Readers
 
-### `MzmlReader`
+`.ms1` and `.ms2` are **lookup objects**, not generators: iterable *and* indexable, but not
+iterators. `next(reader.ms2)` raises `TypeError` — use `next(iter(reader.ms2))`.
 
-Reads `.mzML` files. No context manager required.
+### `Reader`
+
+Format-agnostic entry point. Detects `.d` (Bruker timsTOF) or `.mzML` from the path suffix and
+delegates to `DReader` / `MzmlReader`; any other suffix raises `ValueError`.
 
 ```python
-MzmlReader(mzml_path: str)
+Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
 ```
 
-| Property | Yields |
-|---|---|
-| `.ms1` | `Generator[MsnSpectrum]` — all MS1 spectra |
-| `.ms2` | `Generator[MsnSpectrum]` — all MS2 spectra |
+| Property / Method | Type | Description |
+|---|---|---|
+| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup` | MS1 spectra — iterate or index |
+| `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup` | MS2 spectra — iterate or index |
+| `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
+
+```python
+from spxtacular import Reader
+
+with Reader("run.mzML") as r:   # or Reader("/data/sample.d")
+    for spec in r.ms1:
+        ...
+```
+
+Full documentation: [Readers — Reader](readers.md#reader)
+
+---
+
+### `MzmlReader`
+
+Reads `.mzML` files. A context manager is optional but recommended — it keeps one file handle open
+instead of reopening the file per operation.
+
+```python
+MzmlReader(mzml_path: str | Path)
+```
+
+| Property / Method | Type | Description |
+|---|---|---|
+| `.ms1` | `MzmlSpectraLookup` | MS1 spectra — iterate, or index by overall index / native ID |
+| `.ms2` | `MzmlSpectraLookup` | MS2 spectra — iterate, or index by overall index / native ID |
+| `reader[key]` | `MsnSpectrum` | Spectrum by 0-based index (`reader[0]`) or native ID (`reader["scan=19"]`) |
+| `.open()` / `.close()` | `None` | Open / close the persistent `mzmlpy` handle |
+
+Index access is not MS-level filtered — `reader.ms2[0]` is the first spectrum in the file, not the
+first MS2 spectrum.
 
 Full documentation: [Readers — MzmlReader](readers.md#mzmlreader)
 
@@ -193,19 +288,43 @@ Full documentation: [Readers — MzmlReader](readers.md#mzmlreader)
 
 ### `DReader`
 
-Reads Bruker timsTOF `.d` directories. **Must be used as a context manager.**
+Reads Bruker timsTOF `.d` directories. **Must be opened before use** — via `open()`/`close()` or, preferably, as a context manager.
 
 ```python
-DReader(analysis_dir: str)
+DReader(analysis_dir: str | Path, centroid_config: CentroidConfig | None = None)
 ```
 
 | Property / Attribute | Type | Description |
 |---|---|---|
-| `.ms1` | `Generator[MsnSpectrum]` | All MS1 frames |
-| `.ms2` | `Generator[MsnSpectrum]` | All MS2 spectra |
+| `.ms1` | `DReaderMs1Lookup` | All MS1 frames — iterate, or index by tdfpy `frame_id` |
+| `.ms2` | `DReaderMs2Lookup` | All MS2 spectra — iterate, or index by tdfpy `precursor_id` (DDA only; DIA/PRM raise `NotImplementedError`) |
 | `.acquisition_type` | `AcquisitionType` | DDA / DIA / PRM / UNKNOWN |
+| `.open()` / `.close()` | `None` | Open / close the underlying `tdfpy` reader |
 
 Full documentation: [Readers — DReader](readers.md#dreader)
+
+---
+
+### `CentroidConfig`
+
+Dataclass of parameters forwarded to `tdfpy`'s `frame.centroid()`. Only used by `DReader` (and by
+`Reader` for `.d` inputs); ignored by `MzmlReader`.
+
+```python
+from spxtacular import CentroidConfig
+
+CentroidConfig(
+    mz_tolerance: float = 8.0,
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    im_tolerance: float = 0.1,
+    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    min_peaks: int = 3,
+    noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
+                  | float | None = None,
+)
+```
+
+Full documentation: [Readers — CentroidConfig](readers.md#centroidconfig)
 
 ---
 
@@ -345,7 +464,8 @@ RT, precursors, isolation window, …) in addition to the peak arrays.
 
 ## Visualization
 
-Requires `plotly` (`pip install plotly`). All three functions return a `plotly.graph_objects.Figure`.
+`plotly` is a required dependency of `spxtacular`, so these are available out of the box — nothing
+extra to install. All of them return a `plotly.graph_objects.Figure`.
 
 Full documentation: [Visualization](visualization.md)
 
@@ -384,13 +504,17 @@ from spxtacular import mirror_plot
 ```python
 mirror_plot(
     raw: Spectrum,
-    decon: Spectrum,
+    deconvoluted: Spectrum,
     title: str | None = None,
     normalize: bool = True,
+    show_charges: bool = True,
     show_scores: bool = True,
     **layout_kwargs,
 )
 ```
+
+The second parameter is named `deconvoluted`. `show_charges` colours the deconvoluted (upper) half
+by charge state; `show_scores` annotates its peaks with their isotope profile score.
 
 ### `annotate_spectrum`
 
@@ -409,6 +533,69 @@ annotate_spectrum(
     include_sequence: bool = False,
     **layout_kwargs,
 )
+```
+
+### `mass_error_plot`
+
+```python
+from spxtacular import mass_error_plot
+```
+
+```python
+mass_error_plot(
+    spectrum: Spectrum,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    unit: Literal["ppm", "da"] = "ppm",
+    title: str | None = None,
+    **layout_kwargs,
+)
+```
+
+### `facet_plot`
+
+```python
+from spxtacular import facet_plot
+```
+
+```python
+facet_plot(
+    spectrum: Spectrum,
+    fragments=None,
+    mirror_spectrum: Spectrum | None = None,
+    title: str | None = None,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    include_sequence: bool = False,
+    unit: str = "ppm",
+    **layout_kwargs,
+)
+```
+
+Takes a **single** spectrum, not a list. The optional second spectrum is `mirror_spectrum`.
+
+---
+
+## Utilities
+
+```python
+from spxtacular import da_to_ppm, ppm_to_da
+```
+
+```python
+da_to_ppm(delta_mz: float, mz: float) -> float   # delta_mz / mz * 1e6
+ppm_to_da(delta_ppm: float, mz: float) -> float  # delta_ppm * mz / 1e6
+```
+
+Convert a mass difference between Dalton and ppm at a given reference `mz`. Both take the
+*difference* first and the reference m/z second.
+
+```python
+da_to_ppm(0.01, 500.0)   # 20.0 ppm
+ppm_to_da(20.0, 500.0)   # 0.01 Da
 ```
 
 ---
@@ -461,9 +648,11 @@ Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched
 
 ## Plot table API
 
-Provides an intermediate `pandas.DataFrame` that holds all data and visual properties for a spectrum plot. Users can freely modify the DataFrame before passing it to `plot_from_table`.
+Provides an intermediate `pandas.DataFrame` that holds all data and visual properties for a spectrum
+plot. Users can freely modify the DataFrame before passing it to `plot_from_table`. `pandas` is a
+required dependency, so this API is always available.
 
-Full documentation: [Visualization — Plot table API](visualization.md#plot-table-api)
+Full documentation: [Spectrum reference — `plot_table`](spectrum.md#plot_table)
 
 ### `build_plot_table`
 

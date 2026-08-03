@@ -7,6 +7,7 @@ import pytest
 tdfpy = pytest.importorskip("tdfpy")
 
 from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
+from spxtacular.enums import ActivationType, Analyzer  # noqa: E402
 from spxtacular.reader import AcquisitionType, DReader  # noqa: E402
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
@@ -76,7 +77,7 @@ def test_ms1_rt_is_float(ms1_spectrum):
 
 
 def test_ms1_analyzer_is_tof(ms1_spectrum):
-    assert ms1_spectrum.analyzer == "TOF"
+    assert ms1_spectrum.analyzer == Analyzer.TOF
 
 
 def test_ms1_polarity_is_positive(ms1_spectrum):
@@ -119,7 +120,7 @@ def test_ms2_mz_intensity_same_length(ms2_spectrum):
 
 
 def test_ms2_analyzer_is_tof(ms2_spectrum):
-    assert ms2_spectrum.analyzer == "TOF"
+    assert ms2_spectrum.analyzer == Analyzer.TOF
 
 
 def test_ms2_has_precursor(ms2_spectrum):
@@ -214,7 +215,7 @@ def test_prm_ms1_is_msn_spectrum(prm_ms1_spectrum):
     assert isinstance(prm_ms1_spectrum, MsnSpectrum)
     assert prm_ms1_spectrum.ms_level == 1
     assert prm_ms1_spectrum.spectrum_type == SpectrumType.CENTROID
-    assert prm_ms1_spectrum.analyzer == "TOF"
+    assert prm_ms1_spectrum.analyzer == Analyzer.TOF
     assert prm_ms1_spectrum.polarity == "positive"
     assert prm_ms1_spectrum.scan_number is not None
     assert prm_ms1_spectrum.precursors is None
@@ -231,7 +232,7 @@ def test_prm_ms2_is_msn_spectrum(prm_ms2_spectrum):
     assert isinstance(prm_ms2_spectrum, MsnSpectrum)
     assert prm_ms2_spectrum.ms_level == 2
     assert prm_ms2_spectrum.spectrum_type == SpectrumType.CENTROID
-    assert prm_ms2_spectrum.analyzer == "TOF"
+    assert prm_ms2_spectrum.analyzer == Analyzer.TOF
 
 
 def test_prm_ms2_native_id_format(prm_ms2_spectrum):
@@ -259,7 +260,7 @@ def test_prm_ms2_isolation_window(prm_ms2_spectrum):
 def test_prm_ms2_collision_energy(prm_ms2_spectrum):
     assert prm_ms2_spectrum.collision_energy is not None
     assert prm_ms2_spectrum.collision_energy > 0
-    assert prm_ms2_spectrum.activation_type == "MS:1002481"
+    assert prm_ms2_spectrum.activation_type == ActivationType.PASEF
 
 
 def test_prm_ms2_iteration_yields_multiple():
@@ -308,7 +309,7 @@ def test_dia_ms1_is_msn_spectrum(dia_ms1_spectrum):
     assert isinstance(dia_ms1_spectrum, MsnSpectrum)
     assert dia_ms1_spectrum.ms_level == 1
     assert dia_ms1_spectrum.spectrum_type == SpectrumType.CENTROID
-    assert dia_ms1_spectrum.analyzer == "TOF"
+    assert dia_ms1_spectrum.analyzer == Analyzer.TOF
     assert dia_ms1_spectrum.polarity == "positive"
     assert dia_ms1_spectrum.scan_number is not None
     assert dia_ms1_spectrum.precursors is None
@@ -330,7 +331,7 @@ def test_dia_ms2_is_msn_spectrum(dia_ms2_spectrum):
     assert isinstance(dia_ms2_spectrum, MsnSpectrum)
     assert dia_ms2_spectrum.ms_level == 2
     assert dia_ms2_spectrum.spectrum_type == SpectrumType.CENTROID
-    assert dia_ms2_spectrum.analyzer == "TOF"
+    assert dia_ms2_spectrum.analyzer == Analyzer.TOF
 
 
 def test_dia_ms2_native_id_format(dia_ms2_spectrum):
@@ -354,7 +355,7 @@ def test_dia_ms2_isolation_window(dia_ms2_spectrum):
 def test_dia_ms2_collision_energy(dia_ms2_spectrum):
     assert dia_ms2_spectrum.collision_energy is not None
     assert dia_ms2_spectrum.collision_energy > 0
-    assert dia_ms2_spectrum.activation_type == "MS:1002481"
+    assert dia_ms2_spectrum.activation_type == ActivationType.PASEF
 
 
 def test_dia_ms2_has_ion_mobility(dia_ms2_spectrum):

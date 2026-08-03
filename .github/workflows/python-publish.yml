@@ -12,18 +12,32 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # Publishing uses PyPI Trusted Publishing (OIDC) rather than a long-lived
+    # API token, so no PyPI credentials live in this repo.
+    #
+    # MAINTAINER SETUP (one time): on https://pypi.org/manage/project/spxtacular/settings/publishing/
+    # add a GitHub trusted publisher with
+    #   owner: tacular-omics   repository: spxtacular
+    #   workflow: python-publish.yml   environment: pypi
+    # Then create the `pypi` environment under repo Settings -> Environments
+    # and DELETE the now-unused `PYPI_API_TOKEN` repository secret.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/spxtacular
+
+    permissions:
+      contents: read
+      id-token: write  # required for trusted publishing
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
+    - uses: actions/checkout@v5
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+        python-version: "3.12"
     - name: Build package with uv
       run: uv build
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}

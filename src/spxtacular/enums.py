@@ -1,5 +1,7 @@
 """Enum types shared across spxtacular modules."""
 
+from __future__ import annotations
+
 from enum import StrEnum
 from typing import Literal
 
@@ -48,6 +50,19 @@ class ActivationType(StrEnum):
     BIRD = "BIRD"  # blackbody infrared radiative dissociation
     SORI = "SORI"  # sustained off-resonance irradiation
     PASEF = "PASEF"  # Bruker PASEF (fragmented via beam-type CID; see spectrl_bridge)
+
+    @classmethod
+    def from_accession(cls, accession: str) -> ActivationType | str:
+        """Map a PSI-MS dissociation-method accession to its member.
+
+        Readers see raw ``"MS:NNNNNNN"`` accessions (or vendor enums whose value
+        is one). Normalising them here keeps ``spec.activation_type ==
+        ActivationType.CID`` true for reader-produced spectra. Unrecognised
+        accessions are returned unchanged — the field is an open vocabulary.
+        """
+        from .spectrl_bridge import _ACTIVATION_NAMES
+
+        return _ACTIVATION_NAMES.get(str(accession), str(accession))
 
 
 class IMType(StrEnum):

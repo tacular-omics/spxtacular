@@ -107,8 +107,9 @@ collapsed to avoid inflating factorial terms in the hyperscore.
 import peptacular as pt
 from spxtacular import MzmlReader, score
 
-reader = MzmlReader("run.mzML")
-spec = next(reader.ms2)
+with MzmlReader("run.mzML") as reader:
+    # reader.ms2 is an iterable lookup object, not an iterator — wrap it in iter()
+    spec = next(iter(reader.ms2))
 
 fragments = pt.fragment("ACDEFGHIK", ion_types=("b", "y"), charges=(1, 2))
 result = score(spec, fragments, tolerance=10, tolerance_type="ppm")

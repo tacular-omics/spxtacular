@@ -113,6 +113,13 @@ def test_accession_values_well_formed() -> None:
 
 
 def test_activation_inverse_map_round_trips() -> None:
+    # HCD and PASEF both encode to MS:1002481 ("higher energy beam-type CID"),
+    # so that accession cannot round-trip to both. It decodes to HCD, which is
+    # what the term means to every other mzML consumer; PASEF is encode-only.
+    shared = {ActivationType.HCD, ActivationType.PASEF}
     for member, acc in _ACTIVATION_ACCESSIONS.items():
-        assert _ACTIVATION_NAMES[acc] == member
         assert isinstance(_ACTIVATION_NAMES[acc], ActivationType)
+        if member in shared:
+            assert _ACTIVATION_NAMES[acc] == ActivationType.HCD
+        else:
+            assert _ACTIVATION_NAMES[acc] == member

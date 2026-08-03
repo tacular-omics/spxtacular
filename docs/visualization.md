@@ -1,8 +1,9 @@
 # Visualization
 
 spxtacular uses [Plotly](https://plotly.com/python/) for interactive HTML visualizations.
-All three functions return a `plotly.graph_objects.Figure` object. Plotly is an optional
-dependency — install it with `pip install plotly`.
+Every function on this page returns a `plotly.graph_objects.Figure` object. Plotly is a **required**
+dependency of spxtacular (as is `pandas`, which backs the plot-table API), so nothing extra needs
+installing.
 
 ---
 
@@ -57,11 +58,12 @@ spec.plot(title="My spectrum", color="charge").show()
 from spxtacular.visualization import mirror_plot
 
 fig = mirror_plot(
-    raw,             # Spectrum -- drawn inverted below the x-axis
-    decon,           # Spectrum -- drawn upright above the x-axis
+    raw,                 # Spectrum -- drawn inverted below the x-axis
+    deconvoluted,        # Spectrum -- drawn upright above the x-axis
     title=None,
-    normalize=True,  # scale each half to its own maximum independently
-    show_scores=True,
+    normalize=True,      # scale each half to its own maximum independently
+    show_charges=True,   # colour the deconvoluted half by charge state
+    show_scores=True,    # annotate deconvoluted peaks with iso_score
     **layout_kwargs,
 )
 fig.show()
@@ -69,8 +71,10 @@ fig.show()
 
 Mirror plot for comparing a raw spectrum (inverted, below) against its deconvoluted counterpart
 (upright, above). Useful for visually confirming that isotope clusters have been correctly
-identified and scored. Deconvoluted peaks are coloured by charge state; score annotations appear
-above each cluster.
+identified and scored. With `show_charges=True` (default) deconvoluted peaks are coloured by charge
+state; with `show_scores=True` the `iso_score` annotations appear above each cluster.
+
+The second parameter is named `deconvoluted` — pass it by that name if you use keywords.
 
 **Example:**
 

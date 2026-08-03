@@ -16,11 +16,13 @@ Public entry point::
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import peptacular as pt
 from numpy.typing import NDArray
 
-from .greedy import PROTON_MASS, _find_isotope_cluster
+from .greedy import PROTON_MASS, _find_anchor_candidates, _find_isotope_cluster
 
 try:
     from numba import njit as _njit
@@ -38,7 +40,12 @@ except ImportError:
 
 _MAX_ISO: int = 10
 _MASS_STEP: int = 50
-_MAX_MASS: int = 5000
+_MAX_MASS: int = 20000
+
+#: How many neutron steps to search *below* the seed for the monoisotopic peak.
+#: The seed is the most intense peak, which drifts to A+1 above ~1900 Da and to
+#: A+2 above ~3500 Da; 4 covers analytes well beyond the template ceiling.
+_MAX_BACK: int = 4
 
 _TEMPLATE_MASSES: NDArray[np.float64] | None = None
 _TEMPLATE_DISTS: NDArray[np.float64] | None = None  # shape (T, _MAX_ISO)
@@ -105,7 +112,12 @@ def _score_cluster(
         are treated as undetectable and not penalised when absent.
     """
     k = len(obs)
-    if k == 0:
+    if k < 2:
+        # A single peak is not evidence of a charge state.  Scoring it against
+        # a one-element template would give a perfect 1.0 (the vector is
+        # trivially identical to itself after normalisation), which would beat
+        # every genuine multi-peak cluster and destroy it.  Clusters of one are
+        # rejected downstream anyway, so score them as no evidence at all.
         return 0.0
 
     max_obs = float(obs.max())
@@ -197,8 +209,13 @@ def deconvolve_spectrum(
         return empty, np.empty(0, dtype=np.int32), empty, empty
 
     min_charge, max_charge = charge_range
-    mz32 = mz.astype(np.float32)
-    int32 = intensity.astype(np.float32)
+    if min_charge < 1 or max_charge < 1:
+        raise ValueError(f"charge_range must contain positive charges, got {charge_range}")
+    if min_charge > max_charge:
+        raise ValueError(f"charge_range must be (min, max) with min <= max, got {charge_range}")
+
+    mz64 = np.ascontiguousarray(mz, dtype=np.float64)
+    int64 = np.ascontiguousarray(intensity, dtype=np.float64)
 
     n = len(mz)
     used = np.zeros(n, dtype=np.bool_)
@@ -211,7 +228,7 @@ def deconvolve_spectrum(
     n_out = 0
 
     while n_out < max_dpeaks:
-        masked_intensity = np.where(~used, int32, -np.inf)
+        masked_intensity = np.where(~used, int64, -np.inf)
         seed_idx = int(np.argmax(masked_intensity))
         if used[seed_idx]:
             break
@@ -220,34 +237,51 @@ def deconvolve_spectrum(
         best_charge = min_charge
         best_indices = np.full(10, -1, dtype=np.intp)
         best_n = 1
-        best_total = float(int32[seed_idx])
-        best_base = float(int32[seed_idx])
+        best_anchor = seed_idx
+        best_total = float(int64[seed_idx])
+        best_base = float(int64[seed_idx])
 
         for charge in range(min_charge, max_charge + 1):
-            n_peaks, total_intensity, base_intensity, indices = _find_isotope_cluster(
-                mz32, int32, used, seed_idx, charge, tolerance, is_ppm
-            )
-            cluster_idx = indices[:n_peaks]
-            obs = int32[cluster_idx].astype(np.float64)
-            neutral_mass = (float(mz32[seed_idx]) - PROTON_MASS) * charge
-            template = _lookup_template(neutral_mass)
-            score = _score_cluster(obs, template, min_intensity)
-            if score > best_score or (score == best_score and n_peaks > best_n):
-                best_score = score
-                best_charge = charge
-                best_indices[:] = indices
-                best_n = n_peaks
-                best_total = total_intensity
-                best_base = base_intensity
-
-        if best_n > 1 and best_score >= min_score:
-            for ki in range(best_n):
-                used[best_indices[ki]] = True
-        else:
-            used[seed_idx] = True  # reject: only consume the seed, leave cluster peaks free
+            # The seed is the most intense peak, which is only the monoisotopic
+            # peak for smaller analytes.  Try anchoring the cluster at the seed
+            # and at each peak reachable by stepping backwards, then let the
+            # isotope template decide which alignment is real.
+            anchors, n_anchors = _find_anchor_candidates(mz64, used, seed_idx, charge, tolerance, is_ppm, _MAX_BACK)
+            for ai in range(n_anchors):
+                anchor = int(anchors[ai])
+                n_peaks, total_intensity, base_intensity, indices = _find_isotope_cluster(
+                    mz64, int64, used, anchor, charge, tolerance, is_ppm
+                )
+                cluster_idx = indices[:n_peaks]
+                # A cluster that does not reach back to the seed describes a
+                # different feature.  Accepting it would leave the seed unused
+                # and re-seed on it forever, so skip it.
+                if not np.any(cluster_idx == seed_idx):
+                    continue
+                obs = int64[cluster_idx]
+                neutral_mass = (float(mz64[anchor]) - PROTON_MASS) * charge
+                template = _lookup_template(neutral_mass)
+                score = _score_cluster(obs, template, min_intensity)
+                if score > best_score or (score == best_score and n_peaks > best_n):
+                    best_score = score
+                    best_charge = charge
+                    best_indices[:] = indices
+                    best_n = n_peaks
+                    best_anchor = anchor
+                    best_total = total_intensity
+                    best_base = base_intensity
 
         accepted = best_n > 1 and best_score >= min_score
-        out_mz[n_out] = float(mz32[seed_idx])
+
+        if accepted:
+            for ki in range(best_n):
+                used[best_indices[ki]] = True
+        # Always consume the seed: on rejection the rest of the tried cluster
+        # stays free and is re-seeded later, and on acceptance this guarantees
+        # forward progress even if the seed somehow fell outside the cluster.
+        used[seed_idx] = True
+
+        out_mz[n_out] = float(mz64[best_anchor]) if accepted else float(mz64[seed_idx])
         out_charges[n_out] = best_charge if accepted else -1
         out_scores[n_out] = best_score if accepted else 0.0
         if accepted:
@@ -257,10 +291,19 @@ def deconvolve_spectrum(
             # Rejected: only the seed is consumed here; the rest of the tried
             # cluster stays free and is re-seeded later, so record the seed's own
             # intensity (not best_total) to avoid double-counting it in "total" mode.
-            seed_int = float(int32[seed_idx])
+            seed_int = float(int64[seed_idx])
             out_total_int[n_out] = seed_int
             out_base_int[n_out] = seed_int
         n_out += 1
+
+    if n_out >= max_dpeaks and not np.all(used):
+        warnings.warn(
+            f"Deconvolution stopped at max_dpeaks={max_dpeaks} with "
+            f"{int((~used).sum())} input peaks still unprocessed; raise max_dpeaks "
+            "to deconvolute the whole spectrum.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     if n_out == 0:
         empty = np.empty(0, dtype=np.float64)

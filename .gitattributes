@@ -1,1 +1,8 @@
 plots/** linguist-vendored
+
+# Bruker timsTOF raw data — binary, never diff or merge these.
+*.tdf_bin binary
+*.tdf binary
+
+# Lockfile is machine-generated; keep it out of diffs and language stats.
+uv.lock -diff linguist-generated

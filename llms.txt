@@ -140,7 +140,16 @@ Handles DDA, DIA, and PRM acquisitions transparently via `reader.acquisition_typ
 `open()`/`close()` or use as a context manager — using the reader before `open()` or after
 `close()` raises `RuntimeError`.
 
-`MzmlReader(path)` wraps `mzmlpy`; same `ms1`/`ms2` iteration/lookup interface.
+`MzmlReader(path)` wraps `mzmlpy`; same `ms1`/`ms2` iteration/lookup interface, plus
+`reader[0]` / `reader["scan=19"]` for direct index / native-ID access. `open()`/`close()` (or the
+context manager) keep one file handle open; without them every access reopens the file.
+
+`.ms1`/`.ms2` return **iterable, indexable lookup objects, not generators/iterators** — `next(r.ms2)`
+raises `TypeError`; write `next(iter(r.ms2))`. For mzML, index access is *not* MS-level filtered:
+`reader.ms2[0]` is the first spectrum in the file, not the first MS2 spectrum.
+
+`Reader` proxies only `ms1`, `ms2`, `open`, and `close` — `acquisition_type` and `reader[key]` live
+on the concrete `DReader`/`MzmlReader`.
 
 `Spectrum.from_usi(usi)` fetches a spectrum from PRIDE/MassIVE/PeptideAtlas/jPOST by Universal
 Spectrum Identifier via the PROXI protocol.
@@ -168,8 +177,15 @@ spec.plot(color="im").show()                             # Viridis scale by ion 
 `color`, `show_scores`, `show_charges`, and `**layout_kwargs` are **keyword-only** on both
 `Spectrum.plot()` and `plot_spectrum()` — `spec.plot("title", False)` is a `TypeError`, not a
 silent bug, by design. `show_charges` is a deprecated alias for `color="charge"`/`color=None`.
-Also available: `mirror_plot(spec_a, spec_b)`, `annotate_spectrum(spec, fragments)`,
-`mass_error_plot(spec, fragments)`, `facet_plot(spectra)`.
+Also available: `mirror_plot(raw, deconvoluted)`, `annotate_spectrum(spec, fragments)`,
+`mass_error_plot(spec, fragments)`, and
+`facet_plot(spectrum, fragments=None, mirror_spectrum=None, ...)` — `facet_plot` takes a **single**
+spectrum plus an optional `mirror_spectrum`, never a list. All five are exported from `spxtacular`
+and mirrored as `Spectrum` methods (`.plot()`, `.annotate()`, `.mass_error_plot()`,
+`.facet_plot()`).
+
+Utilities: `da_to_ppm(delta_mz, mz)` and `ppm_to_da(delta_ppm, mz)` — difference first, reference
+m/z second.
 
 ## Gotchas / rules for correct code
 

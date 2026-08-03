@@ -19,6 +19,7 @@ from .enums import (
     PeakSelection,
     PeakSelectionLike,
     ToleranceLike,
+    ToleranceType,
 )
 from .utils import da_to_ppm
 
@@ -61,9 +62,11 @@ def match_fragments(
     tolerance:
         Tolerance value.
     tolerance_type:
-        ``"Da"`` for absolute or ``"ppm"`` for parts-per-million.
+        ``"da"`` for absolute or ``"ppm"`` for parts-per-million.  Matched
+        case-insensitively; anything else raises ``ValueError``.
     peak_selection:
-        How to resolve multiple peaks within tolerance for a single fragment:
+        How to resolve multiple peaks within tolerance for a single fragment
+        (matched case-insensitively; anything else raises ``ValueError``):
 
         - ``"closest"`` — keep the peak with the smallest m/z error (default).
         - ``"largest"`` — keep the peak with the highest intensity.
@@ -76,6 +79,13 @@ def match_fragments(
     Returns
     -------
     list of :class:`MatchedFragment` sorted by ``peak_index``.
+
+    Raises
+    ------
+    ValueError
+        If ``tolerance_type`` / ``peak_selection`` is not a recognised value, if
+        ``spectrum.mz`` is not sorted in non-decreasing order, or if a dict key
+        carries ``charge_state == 0`` (an m/z cannot be converted to a mass).
 
     Notes
     -----
@@ -95,11 +105,23 @@ def match_fragments(
       ``peak_mz`` is the stored neutral mass and the ppm/Da errors are
       against ``fragment.neutral_mass`` rather than ``fragment.mz``.
     """
+    # Normalise the string-ish inputs once: comparing raw strings further down
+    # made ``"PPM"`` silently fall back to Da (a 10^6x too wide window) and any
+    # ``peak_selection`` typo silently behave like ``"all"``.
+    tol_type = ToleranceType(str(tolerance_type).lower())
+    selection = PeakSelection(str(peak_selection).lower())
+
     mz = spectrum.mz
     intensity = spectrum.intensity
     charge = spectrum.charge  # None for raw/centroid spectra
     total_intensity = float(intensity.sum())
     results: list[MatchedFragment] = []
+
+    # Every lookup below goes through np.searchsorted, which returns meaningless
+    # positions on unsorted input — that would surface as silently missing or
+    # wrong matches rather than as an error, so check up front (one O(n) pass).
+    if mz.size > 1 and bool(np.any(mz[1:] < mz[:-1])):
+        raise ValueError("spectrum.mz must be sorted in non-decreasing order to match fragments")
 
     # Detect spectrum state once. Decharged spectra have every (non-dropped)
     # peak's charge set to 0; deconvoluted spectra carry per-peak charges in
@@ -118,6 +140,10 @@ def match_fragments(
 
     def _ppm_err(delta: float, target_mz: float) -> float:
         return da_to_ppm(delta, target_mz) if target_mz != 0.0 else 0.0
+
+    def _err(delta: float, target_mz: float) -> float:
+        """``delta`` (always in Da) expressed in the active tolerance unit."""
+        return _ppm_err(delta, target_mz) if tol_type is ToleranceType.PPM else delta
 
     def _build_matched(peak_idx: int, frag: Fragment) -> MatchedFragment:
         p_mz = float(mz[peak_idx])
@@ -141,25 +167,32 @@ def match_fragments(
         idx = int(np.searchsorted(mz, target_mz))
         candidates: list[tuple[int, float]] = []
 
-        if peak_selection == "closest":
-            for i in (idx - 1, idx):
-                if 0 <= i < len(mz) and _charge_ok(i, frag_charge):
+        if selection is PeakSelection.CLOSEST:
+            # Walk outward from the insertion point on both sides. |delta| grows
+            # monotonically away from `idx`, so the first charge-compatible peak on
+            # each side is the nearest one there. Only the tolerance may stop a walk:
+            # breaking on a charge mismatch would hide a compatible peak that sits
+            # just beyond an incompatible immediate neighbour.
+            for start, step in ((idx - 1, -1), (idx, 1)):
+                i = start
+                while 0 <= i < len(mz):
                     delta = abs(float(mz[i]) - target_mz)
-                    err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
-                    if err <= tolerance:
+                    if _err(delta, target_mz) > tolerance:
+                        break
+                    if _charge_ok(i, frag_charge):
                         candidates.append((i, delta))
+                        break
+                    i += step
         else:
             for i in range(idx - 1, -1, -1):
                 delta = abs(float(mz[i]) - target_mz)
-                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
-                if err > tolerance:
+                if _err(delta, target_mz) > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
             for i in range(idx, len(mz)):
                 delta = abs(float(mz[i]) - target_mz)
-                err = _ppm_err(delta, target_mz) if tolerance_type == "ppm" else delta
-                if err > tolerance:
+                if _err(delta, target_mz) > tolerance:
                     break
                 if _charge_ok(i, frag_charge):
                     candidates.append((i, delta))
@@ -169,10 +202,10 @@ def match_fragments(
     def _emit(candidates: list[tuple[int, float]], frag: Fragment) -> None:
         if not candidates:
             return
-        if peak_selection == "closest":
+        if selection is PeakSelection.CLOSEST:
             best_i = min(candidates, key=lambda c: c[1])[0]
             results.append(_build_matched(best_i, frag))
-        elif peak_selection == "largest":
+        elif selection is PeakSelection.LARGEST:
             best_i = max(candidates, key=lambda c: float(intensity[c[0]]))[0]
             results.append(_build_matched(best_i, frag))
         else:  # "all"
@@ -180,10 +213,18 @@ def match_fragments(
                 results.append(_build_matched(i, frag))
 
     def _make_frag(ion_type: IonType, pos: int, charge_state: int, mz_val: float) -> Fragment:
+        # Fragment.mz is ``mass / abs(charge_state)``, so the round trip from an
+        # m/z back to a mass has to use the magnitude of the charge: a negative
+        # charge_state would otherwise flip the sign of every derived m/z.
+        if charge_state == 0:
+            raise ValueError(
+                f"fragment dict key ({ion_type!r}, 0) has charge_state == 0; "
+                "an m/z cannot be converted to a fragment mass without a charge"
+            )
         return Fragment(
             ion_type=ion_type,
             position=pos,
-            mass=mz_val * charge_state,
+            mass=mz_val * abs(charge_state),
             monoisotopic=is_monoisotopic,
             charge_state=charge_state,
         )
@@ -191,6 +232,13 @@ def match_fragments(
     if isinstance(fragments, dict):
         frag_dict = cast(dict[tuple[IonType, int], list[float]], fragments)
         for (ion_type, charge_state), masses in frag_dict.items():
+            # Validate up front so the error does not depend on whether a peak
+            # happened to match (Fragment construction is deferred below).
+            if charge_state == 0:
+                raise ValueError(
+                    f"fragment dict key ({ion_type!r}, 0) has charge_state == 0; "
+                    "an m/z cannot be converted to a fragment mass without a charge"
+                )
             for pos, mz_val in enumerate(masses, start=1):
                 # Only decharged spectra need the neutral-mass target, which requires
                 # building the Fragment up front; otherwise defer construction until

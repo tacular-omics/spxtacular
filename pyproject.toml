@@ -4,8 +4,9 @@ dynamic = ["version"]
 description = "Mass spectrometry spectrum processing library."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { file = "LICENSE" }
-keywords = ["mass spectrometry", "proteomics", "deconvolution", "bioinformatics", "peptide"]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords =["mass spectrometry", "proteomics", "deconvolution", "bioinformatics", "peptide"]
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
@@ -21,12 +22,13 @@ maintainers = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Chemistry",
+    "Typing :: Typed",
 ]
 
 [project.urls]
@@ -36,7 +38,8 @@ Documentation = "https://tacular-omics.github.io/spxtacular"
 "Bug Tracker" = "https://github.com/tacular-omics/spxtacular/issues"
 
 [build-system]
-requires = ["hatchling"]
+# hatchling>=1.27 is required for PEP 639 `license`/`license-files` support.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -44,6 +47,18 @@ path = "src/spxtacular/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spxtacular"]
+
+# Keep the sdist small: tests/data holds ~73 MB of Bruker .d binaries and
+# plots/ + docs/plots/ another ~76 MB of generated HTML. None of it needs to
+# ship to PyPI (per-file limit is 100 MB).
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/spxtacular",
+    "README.md",
+    "HISTORY.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [project.optional-dependencies]
 numba = ["numba>=0.64.0"]
@@ -53,24 +68,34 @@ readers = ["tdfpy>=2.0.0", "mzmlpy>=0.5.0"]
 spectrl = ["spectrl>=0.2.1"]
 all = ["numba>=0.64.0", "tdfpy>=2.0.0", "mzmlpy>=0.5.0", "spectrl>=0.2.1"]
 
-[tool.uv]
-package = true
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
-    "mzmlpy>=0.4.0",
+    "mzmlpy>=0.5.0",
     "numba>=0.64.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.11",
     "spectrl>=0.2.1",
-    "tdfpy>=1.2.0",
+    "tdfpy>=2.0.0",
     "ty>=0.0.11",
 ]
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+# Left off deliberately: enabling it reformats the ``>>>`` examples in
+# core.py/reader.py docstrings, which would be a large unrelated diff.
+docstring-code-format = false
 
 [tool.ruff.lint]
 select = [
@@ -80,6 +105,62 @@ select = [
     "I",   # isort
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+    "NPY", # NumPy-specific rules
+    "PT",  # flake8-pytest-style
+    "RUF", # Ruff-specific rules
+    "SIM", # flake8-simplify
+]
+ignore = [
+    # Collapsing long numeric if/else blocks into ternaries hurts readability here.
+    "SIM108",
+    # Docstrings intentionally use scientific unicode (×, −, –).
+    "RUF002",
+]
+
+# Everything below is a *suppression of a real finding*, added so that enabling
+# C4/NPY/PT/RUF/SIM did not leave the repo failing lint. Fix the code and delete
+# the entry rather than letting these accumulate.
+[tool.ruff.lint.per-file-ignores]
+"src/spxtacular/__init__.py" = ["RUF022"]      # `__all__` is not sorted
+"src/spxtacular/core.py" = ["SIM401"]          # use `dict.get(key, default)`
+"src/spxtacular/decon/scored.py" = ["PT018"]   # compound assertion
+"src/spxtacular/plot_table.py" = ["C401", "C408"]
+"src/spxtacular/scoring.py" = ["RUF007"]       # prefer `itertools.pairwise()`
+"src/spxtacular/visualization.py" = ["C401", "C408"]
+"tests/**" = [
+    "NPY002",  # legacy `np.random.seed`/`np.random.normal` instead of Generator
+    "PT011",   # `pytest.raises(ValueError)` without `match=`
+    "PT018",   # compound assertions
+    "PT030",   # `pytest.warns(UserWarning)` without `match=`
+    "RUF059",  # unused unpacked variable
+    "RUF100",  # stale `# noqa: E402` directives
+    "SIM117",  # nested `with` statements
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    "error",
+    # tdfpy leaks its sqlite3 connections; the ResourceWarning surfaces at GC
+    # time in unrelated tests and is not actionable from this repo.
+    "ignore::ResourceWarning",
+]
+
+[tool.coverage.run]
+source = ["src/spxtacular"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "@(typing\\.)?overload",
+    "class .*\\(Protocol\\):",
 ]
 
 #[tool.uv.sources]

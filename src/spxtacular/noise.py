@@ -12,8 +12,20 @@ def _estimate_noise_mad(intensity_array: np.ndarray) -> float:
 
 
 def _estimate_noise_histogram(intensity_array: np.ndarray) -> float:
-    """Estimate noise using histogram mode."""
-    hist, bin_edges = np.histogram(intensity_array, bins=100)
+    """Estimate noise using histogram mode.
+
+    The histogram is built over the low-intensity bulk rather than the full
+    dynamic range. Real spectra span several orders of magnitude, so binning
+    everything puts every noise peak in bin 0: the mode is then one bin wide,
+    the "FWHM" degenerates to that bin width, and the estimate comes out
+    roughly two orders of magnitude too high.
+    """
+    cutoff = np.median(intensity_array)
+    low = intensity_array[intensity_array <= cutoff]
+    if len(low) < 2:
+        low = intensity_array
+
+    hist, bin_edges = np.histogram(low, bins=100)
     noise_bin_idx = int(np.argmax(hist))
     noise_mode = (bin_edges[noise_bin_idx] + bin_edges[noise_bin_idx + 1]) / 2
 
@@ -84,10 +96,24 @@ def estimate_noise_level(
     Returns:
     --------
     float : Estimated noise level threshold
+
+    Notes:
+    ------
+    ``'mad'``, ``'histogram'``, ``'baseline'`` and ``'iterative_median'`` all
+    return a *threshold* of the form ``centre + 3 * spread``.  ``'percentile'``
+    is different: it returns the raw 5th percentile of the intensities, which
+    is a level rather than a threshold and is therefore substantially lower.
+
+    An empty intensity array returns ``0.0`` for every method.
     """
     # If a numeric value is provided, use it directly as the noise level.
     if isinstance(method, (int, float)):
         return float(method)
+
+    if len(intensity_array) == 0:
+        # Every estimator below reduces over the array; on an empty one they
+        # variously return NaN with RuntimeWarnings or raise IndexError.
+        return 0.0
 
     if method == "mad":
         return _estimate_noise_mad(intensity_array)

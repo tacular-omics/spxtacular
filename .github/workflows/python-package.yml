@@ -5,10 +5,17 @@ name: Python package
 
 on:
   push:
-    paths:
-      - 'src/**'
-      - 'tests/**'
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,28 +24,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+    - uses: actions/checkout@v5
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v7
       with:
-        enable-cache: false
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+        python-version: ${{ matrix.python-version }}
     - name: Install just
       uses: extractions/setup-just@v2
     - name: Install dependencies
       run: just install
     - name: Lint with ruff
       run: just lint
+    - name: Check formatting with ruff
+      run: just fmt-check
     - name: Type check with ty
       run: just check
     - name: Test with pytest
-      run: just test-cov codecov-tests
+      run: just test-cov
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
       with:
@@ -53,3 +60,25 @@ jobs:
         slug: tacular-omics/spxtacular
         report_type: test_results
         fail_ci_if_error: false
+
+  # Guards the CLAUDE.md promise: spxtacular must import with *no* optional
+  # extras installed, and DReader/MzmlReader must stay importable while raising
+  # ImportError only on instantiation. Downstream libraries (e.g. pydiode)
+  # depend on this, so it gets its own job with no dev deps and no extras.
+  minimal-install:
+    name: Minimal install (no extras, no dev deps)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+        python-version: "3.12"
+    - name: Install the package alone (no extras, no dependency groups)
+      run: |
+        uv venv
+        uv pip install .
+    - name: Assert optional backends degrade correctly
+      run: uv run --no-project python .github/scripts/check_minimal_install.py
