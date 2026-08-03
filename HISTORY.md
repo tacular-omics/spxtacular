@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+### Visualisation — new theme
+
+* **New `spxtacular.theme` module** — the single source of truth for plot colour,
+  replacing the palettes that were duplicated across `plot_table.py` and
+  `visualization.py` and "kept in sync" by comment. Every palette is validated for
+  colour-vision deficiency (protanopia/deuteranopia) in both light and dark modes.
+* **Charge state is now an ordinal ramp, not a categorical cycle.** Charge has a
+  natural order, so it takes one hue running light to dark and the reader sees
+  1+ < 2+ < 3+ in the colour. This also fixes a real bug: the old ten-colour cycle
+  made `z=1` and `z=11` identical, and colours depended on which charge states
+  happened to be present rather than on the charge itself.
+* **Dark mode** — `theme.set_plot_theme("dark")` globally, or `theme_mode="dark"`
+  per call. The dark palette is its own validated set of steps for the dark
+  surface, not an automatic inversion.
+* Ion series take a fixed eight-slot categorical order (b and y first, the pair
+  that co-occurs most often). Internal fragments and anything past the eighth slot
+  fold to a neutral colour rather than inventing an indistinguishable ninth hue.
+* Ion mobility uses a single-hue sequential ramp instead of Viridis; a multi-hue
+  ramp bands a magnitude that has no bands.
+* Chrome is recessive: no panel fill, solid hairline horizontal gridlines, no
+  vertical grid, generous margins, consistent sans typography, and unmatched peaks
+  drawn thinner and dimmer so the annotated peaks lead.
+
+### Visualisation — fixes
+
+* **`facet_plot` built one plotly trace per peak.** A 3000-peak spectrum produced
+  3000 traces in 1.37s where the identical picture takes 1 trace and 0.05s; at
+  5000 peaks the figure was effectively unusable in a browser. It now groups like
+  `plot_from_table` does. It also silently dropped the ion labels that are the
+  whole point of the annotated panel.
+* **Direct labels are thinned instead of flooding the plot.** Every annotated peak
+  used to get a layout annotation, so a deconvoluted spectrum rendered thousands of
+  overlapping labels as an unreadable smear along the baseline. Labels are now
+  capped (`max_labels`, default 25) *and* collision-avoided along the m/z axis,
+  strongest peak wins. Dropped values remain in the hover text and the plot table.
+* **`plot_from_table` silently deleted peaks** whose `series` or `color` was NA —
+  `groupby` drops NA keys by default, and NA is exactly what a `merge`/`reindex`
+  on a user-edited table produces. A 4-peak table rendered 3 peaks with no error.
+* **`mirror_plot` hover reported normalised values** under an "intensity" label,
+  so a peak of 50 000 showed as `5.00e-01`. It now reports the true intensity.
+* `mirror_plot` produced an all-NaN, silently blank panel when either half had zero
+  maximum intensity, and its charge colours did not match `plot_spectrum`'s, so the
+  same spectrum changed colour between the two figures.
+* `mass_error_plot` and `facet_plot` raised `ZeroDivisionError` on an all-zero
+  intensity match set (real for thresholded or background-subtracted data) — the
+  existing guard only caught an empty list. `mass_error_plot` also labelled `b3^1`
+  and `b3^2` identically as `b3`; it now uses mzPAF labels.
+* An NA label rendered the literal text `"nan"` onto the figure.
+* `plot_from_table` now validates its required columns up front, instead of failing
+  part-way through rendering or only on data that happens to carry labels.
+* The zero-error reference line in `mass_error_plot` is a solid hairline rather than
+  dashed — dashing reads as a threshold when it is just a reference.
+
+### Tests
+
+* New `tests/test_theme_and_viz.py` (24 tests) pins the properties that make these
+  plots correct: trace counts, label thinning and collision separation, the sign of
+  the mirrored half, hover values, colour assignment, and degenerate inputs. The
+  existing plotting tests asserted only that a `Figure` came back, so none of the
+  defects above would have been caught.
+
 ### Fixes — deconvolution (scientific correctness)
 * **Monoisotopic peak recovery.** Cluster finding seeded on the most intense peak and extended
   *forward only*. Above ~1900 Da the A+1 peak is more intense than A (and above ~3500 Da it is

@@ -16,9 +16,9 @@ import pytest
 from peptacular import IonType
 from peptacular.annotation.frag import Fragment
 
+from spxtacular import theme
 from spxtacular.core import Spectrum
 from spxtacular.plot_table import (
-    _SINGLETON_COLOR,
     build_annot_plot_table,
     build_plot_table,
     plot_from_table,
@@ -119,9 +119,9 @@ def test_build_plot_table_data_values() -> None:
 
 def test_build_plot_table_defaults() -> None:
     table = build_plot_table(_spectrum())
-    assert (table["linewidth"] == 1.0).all()
+    assert (table["linewidth"] == 1.6).all()  # matched/plain peaks; unmatched are thinner
     assert (table["opacity"] == 1.0).all()
-    assert (table["label_size"] == 10.0).all()
+    assert (table["label_size"] == 11.0).all()
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def test_build_plot_table_defaults() -> None:
 
 def test_build_plot_table_no_charge_color() -> None:
     table = build_plot_table(_spectrum())
-    assert (table["color"] == "steelblue").all()
+    assert (table["color"] == theme.charge_color(1)).all()
     assert (table["series"] == "peaks").all()
 
 
@@ -173,7 +173,7 @@ def test_build_plot_table_singleton_color() -> None:
     table = build_plot_table(spec)
     singleton_row = table.loc[table["mz"] == 100.0]
     assert singleton_row["series"].iloc[0] == "singleton"
-    assert singleton_row["color"].iloc[0] == _SINGLETON_COLOR
+    assert singleton_row["color"].iloc[0] == theme.neutral_color()
 
 
 def test_build_plot_table_score_label() -> None:
@@ -203,7 +203,7 @@ def test_build_plot_table_show_scores_false() -> None:
 
 def test_build_plot_table_show_charges_false() -> None:
     table = build_plot_table(_decon_spectrum(), show_charges=False)
-    assert (table["color"] == "steelblue").all()
+    assert (table["color"] == theme.charge_color(1)).all()
     assert (table["series"] == "peaks").all()
 
 
@@ -238,7 +238,7 @@ def test_annot_plot_table_unmatched_color() -> None:
     # Fragment at 999.0 will not match any peak in _spectrum()
     frag = _make_frag(999.0)
     table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
-    assert (table["color"] == "#cccccc").all()
+    assert (table["color"] == theme.unmatched_color()).all()
     assert (table["series"] == "unmatched").all()
 
 
@@ -258,7 +258,7 @@ def test_annot_plot_table_matched_color() -> None:
     frag = _real_frag(200.005, ion_type="b", position=2)
     table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     matched_row = table.loc[table["mz"] == 200.0]
-    assert matched_row["color"].iloc[0] == "#1f77b4"
+    assert matched_row["color"].iloc[0] == theme.ion_color("b")
     assert matched_row["series"].iloc[0] == "b"
 
 
@@ -273,7 +273,7 @@ def test_annot_plot_table_y_ion_color() -> None:
     frag = _real_frag(200.005, ion_type="y", position=2)
     table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)
     matched_row = table.loc[table["mz"] == 200.0]
-    assert matched_row["color"].iloc[0] == "#d62728"
+    assert matched_row["color"].iloc[0] == theme.ion_color("y")
     assert matched_row["series"].iloc[0] == "y"
 
 

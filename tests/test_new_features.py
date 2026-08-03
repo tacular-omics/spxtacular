@@ -419,28 +419,46 @@ class TestFacetPlot:
 
 
 class TestIonTypeColors:
-    def test_standard_ions_have_colors(self) -> None:
-        from spxtacular.plot_table import _ION_COLORS
+    def test_standard_ions_have_distinct_colors(self) -> None:
+        from spxtacular import theme
 
-        for ion in ("b", "y", "a", "c", "z", "x"):
-            assert ion in _ION_COLORS
+        colors = [theme.ion_color(ion) for ion in ("b", "y", "a", "c", "z", "x")]
+        assert len(set(colors)) == len(colors), "each standard ion series needs its own hue"
+        assert theme.neutral_color() not in colors
 
-    def test_immonium_has_color(self) -> None:
-        from spxtacular.plot_table import _ION_COLORS
+    def test_immonium_and_precursor_have_their_own_colors(self) -> None:
+        from spxtacular import theme
 
-        assert "i" in _ION_COLORS
-        assert _ION_COLORS["i"] != "#aaaaaa"  # not the default grey
+        for ion in ("i", "p"):
+            assert theme.ion_color(ion) != theme.neutral_color()
+        assert theme.ion_color("i") != theme.ion_color("p")
 
-    def test_precursor_has_color(self) -> None:
-        from spxtacular.plot_table import _ION_COLORS
+    def test_internal_fragments_fold_to_neutral(self) -> None:
+        from spxtacular import theme
 
-        assert "p" in _ION_COLORS
-
-    def test_internal_fragments_have_colors(self) -> None:
-        from spxtacular.plot_table import _ION_COLORS
-
+        # Internal fragments are the "other" bucket: past the eighth slot a new
+        # hue would not be distinguishable, so they share the neutral colour.
         for ion in ("by", "ax", "cz", "ay", "az", "bx", "bz", "cx", "cy"):
-            assert ion in _ION_COLORS
+            assert theme.ion_color(ion) == theme.neutral_color()
+
+    def test_ion_color_is_case_insensitive(self) -> None:
+        from spxtacular import theme
+
+        assert theme.ion_color("B") == theme.ion_color("b")
+
+    def test_light_and_dark_modes_differ(self) -> None:
+        from spxtacular import theme
+
+        assert theme.ion_color("b", "light") != theme.ion_color("b", "dark")
+
+    def test_charge_ramp_is_ordinal_and_does_not_wrap(self) -> None:
+        from spxtacular import theme
+
+        # The old palette cycled every 10 charges, making z=1 and z=11 identical.
+        assert theme.charge_color(1) != theme.charge_color(11)
+        # Unassigned (-1) and decharged (0) peaks are neutral, not a charge hue.
+        assert theme.charge_color(-1) == theme.neutral_color()
+        assert theme.charge_color(0) == theme.neutral_color()
 
 
 # ---------------------------------------------------------------------------

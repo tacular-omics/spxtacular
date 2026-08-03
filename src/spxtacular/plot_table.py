@@ -6,6 +6,15 @@ both the raw data (m/z, intensity, charge, …) and all visual properties
 (color, linewidth, label, font settings, …).  Users can freely modify the
 DataFrame before passing it to :func:`plot_from_table`.
 
+What the renderer reads
+-----------------------
+:func:`plot_from_table` draws from ``mz``, ``intensity``, ``series``, ``color``,
+``linewidth``, ``opacity``, ``hover``, and the ``label*`` columns *only*.  The
+``charge``, ``score``, and ``im`` columns are inputs to the *builders* and are
+carried along for reference; editing them after the table is built changes
+nothing on the figure.  In particular ``hover`` is baked in by the builder, so
+to change a tooltip edit ``hover`` directly rather than the value behind it.
+
 Public API
 ----------
 build_plot_table        -- plain spectrum → DataFrame
@@ -22,6 +31,7 @@ import pandas as pd
 from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
 
+from . import theme
 from .core import Spectrum
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
@@ -36,56 +46,112 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 # ---------------------------------------------------------------------------
-# Colour constants (kept in sync with visualization.py)
-# ---------------------------------------------------------------------------
-
-_ION_COLORS: dict[str, str] = {
-    "b": "#1f77b4",
-    "y": "#d62728",
-    "a": "#2ca02c",
-    "c": "#9467bd",
-    "z": "#ff7f0e",
-    "x": "#8c564b",
-    "i": "#455A64",  # immonium
-    "p": "#512DA8",  # precursor
-    "by": "#FBC02D",  # internal fragments
-    "ax": "#FBC02D",
-    "cz": "#FBC02D",
-    "ay": "#FBC02D",
-    "az": "#FBC02D",
-    "bx": "#FBC02D",
-    "bz": "#FBC02D",
-    "cx": "#FBC02D",
-    "cy": "#FBC02D",
-}
-_DEFAULT_ION_COLOR = "#aaaaaa"
-
-# Qualitative colour cycle for charge states (plotly G10 palette)
-_CHARGE_COLORS: list[str] = [
-    "#1f77b4",
-    "#ff7f0e",
-    "#2ca02c",
-    "#d62728",
-    "#9467bd",
-    "#8c564b",
-    "#e377c2",
-    "#7f7f7f",
-    "#bcbd22",
-    "#17becf",
-]
-_SINGLETON_COLOR = "#aaaaaa"
-
-# ---------------------------------------------------------------------------
 # Column defaults
+#
+# Colour itself lives in theme.py -- this module reads from there so a palette
+# change lands in one place. See that module for why charge is an ordinal ramp
+# and ion type is categorical.
 # ---------------------------------------------------------------------------
 
-_LABEL_SIZE_DEFAULT: float = 10.0
-_LABEL_FONT_DEFAULT: str = "Arial"
-_LABEL_COLOR_DEFAULT: str = "#333333"
-_LABEL_YSHIFT_DEFAULT: float = 6.0
+_LABEL_SIZE_DEFAULT: float = 11.0
+_LABEL_FONT_DEFAULT: str = theme._FONT_FAMILY
+_LABEL_YSHIFT_DEFAULT: float = 8.0
 _LABEL_XANCHOR_DEFAULT: str = "center"
-_LINEWIDTH_DEFAULT: float = 1.0
+#: Matched peaks. Thin, but heavier than the unmatched context behind them.
+_LINEWIDTH_DEFAULT: float = 1.6
+#: Unmatched peaks are context: thinner and dimmer so the annotated peaks lead.
+_LINEWIDTH_UNMATCHED: float = 1.0
 _OPACITY_DEFAULT: float = 1.0
+_OPACITY_UNMATCHED: float = 0.55
+
+#: Default cap on directly-drawn labels, highest-intensity first.
+#:
+#: Labelling every annotated peak is the single worst thing a spectrum plot can
+#: do: a deconvoluted 5000-peak spectrum emits 5000 overlapping annotations that
+#: render as an unreadable smear along the baseline and cost ~10x the build time.
+#: Direct labels work precisely because they are sparing; the rest of the values
+#: stay one hover away.
+_MAX_LABELS_DEFAULT: int = 25
+
+#: Columns :func:`plot_from_table` requires. Validated up front so a missing
+#: column fails immediately with a clear message rather than part-way through
+#: rendering, or -- worse -- only on a dataset that happens to have labels.
+_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "mz",
+    "intensity",
+    "series",
+    "color",
+    "linewidth",
+    "opacity",
+    "hover",
+    "label",
+    "label_size",
+    "label_font",
+    "label_color",
+    "label_yshift",
+    "label_xanchor",
+)
+
+
+def _charge_series(charge: int) -> str:
+    """Legend label for a charge state, using the library's charge conventions."""
+    if charge == -1:
+        return "singleton"
+    if charge == 0:
+        return "decharged"
+    return f"z={charge}"
+
+
+#: Minimum gap between two direct labels, as a fraction of the m/z axis span.
+#: Plotly does no collision avoidance for layout annotations, so without this a
+#: cluster of matched peaks renders its labels on top of each other regardless of
+#: how few there are.
+_LABEL_MIN_SEPARATION: float = 0.022
+
+
+def _cap_labels(
+    labels: list[str],
+    intensity: NDArray[np.float64],
+    max_labels: int | None,
+    mz: NDArray[np.float64] | None = None,
+) -> list[str]:
+    """Thin direct labels down to a readable set; blank the rest.
+
+    Two passes, both needed:
+
+    * **Collision** -- walking the candidates from most to least intense, a label
+      is dropped when a stronger one already sits within
+      ``_LABEL_MIN_SEPARATION`` of the m/z axis. Intensity order means the peak a
+      reader cares about wins the space.
+    * **Count** -- at most ``max_labels`` survive.
+
+    The dropped values are not lost; they stay in the hover text and in the plot
+    table itself.
+    """
+    idx = [i for i, text in enumerate(labels) if text]
+    if not idx:
+        return labels
+
+    idx.sort(key=lambda i: float(intensity[i]), reverse=True)
+
+    if mz is not None and len(mz) > 1:
+        span = float(np.nanmax(mz)) - float(np.nanmin(mz))
+        min_sep = span * _LABEL_MIN_SEPARATION
+        if min_sep > 0:
+            placed: list[float] = []
+            survivors: list[int] = []
+            for i in idx:
+                x = float(mz[i])
+                if all(abs(x - p) >= min_sep for p in placed):
+                    placed.append(x)
+                    survivors.append(i)
+            idx = survivors
+
+    if max_labels is not None:
+        idx = idx[:max_labels]
+
+    keep = set(idx)
+    return [text if i in keep else "" for i, text in enumerate(labels)]
 
 
 def _hover(mz: float, intensity: float, im: float | None = None) -> str:
@@ -110,6 +176,8 @@ def build_plot_table(
     spectrum: Spectrum,
     show_charges: bool = True,
     show_scores: bool = True,
+    max_labels: int | None = _MAX_LABELS_DEFAULT,
+    theme_mode: theme.ThemeMode | None = None,
 ) -> pd.DataFrame:
     """Build a plot table from a plain spectrum (no fragment annotations).
 
@@ -159,26 +227,21 @@ def build_plot_table(
     else:
         im_col = [float("nan")] * n
 
-    # Colours and series
+    # Colours and series. Charge is ordinal, so it takes a single-hue ramp keyed
+    # directly on the charge value -- not a cycle over encounter order, which
+    # made the colours depend on which charges happened to be present and
+    # repeated itself after ten distinct states.
     if has_charge and charge_arr is not None:
-        unique_charges = sorted(set(int(c) for c in charge_arr))
-        charge_to_color: dict[int, str] = {}
-        color_idx = 0
-        for z in unique_charges:
-            if z == -1:
-                charge_to_color[z] = _SINGLETON_COLOR
-            else:
-                charge_to_color[z] = _CHARGE_COLORS[color_idx % len(_CHARGE_COLORS)]
-                color_idx += 1
-        colors = [charge_to_color[int(c)] for c in charge_arr]
-        series = ["singleton" if int(c) == -1 else f"z={int(c)}" for c in charge_arr]
+        colors = [theme.charge_color(int(c), theme_mode) for c in charge_arr]
+        series = [_charge_series(int(c)) for c in charge_arr]
     else:
-        colors = ["steelblue"] * n
+        colors = [theme.charge_color(1, theme_mode)] * n
         series = ["peaks"] * n
 
     # Labels
     if show_scores and score_arr is not None:
         labels = [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in score_arr]
+        labels = _cap_labels(labels, intensity, max_labels, mz)
     else:
         labels = [""] * n
 
@@ -205,7 +268,7 @@ def build_plot_table(
             "label": labels,
             "label_size": [_LABEL_SIZE_DEFAULT] * n,
             "label_font": [_LABEL_FONT_DEFAULT] * n,
-            "label_color": [_LABEL_COLOR_DEFAULT] * n,
+            "label_color": [theme.text_color("secondary", theme_mode)] * n,
             "label_yshift": [_LABEL_YSHIFT_DEFAULT] * n,
             "label_xanchor": [_LABEL_XANCHOR_DEFAULT] * n,
             "hover": hovers,
@@ -216,6 +279,12 @@ def build_plot_table(
 # ---------------------------------------------------------------------------
 # build_annot_plot_table
 # ---------------------------------------------------------------------------
+
+
+def _ion_priority(ion_type: str) -> int:
+    """Sort key giving each ion series a fixed rank, unknown series last."""
+    key = str(ion_type).lower()
+    return theme._ION_SLOTS.index(key) if key in theme._ION_SLOTS else len(theme._ION_SLOTS)
 
 
 def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
@@ -231,6 +300,8 @@ def build_annot_plot_table(
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
+    max_labels: int | None = _MAX_LABELS_DEFAULT,
+    theme_mode: theme.ThemeMode | None = None,
 ) -> pd.DataFrame:
     """Build a plot table with fragment-ion annotations.
 
@@ -291,6 +362,10 @@ def build_annot_plot_table(
     series_list: list[str] = []
     labels: list[str] = []
     hovers: list[str] = []
+    linewidths: list[float] = []
+    opacities: list[float] = []
+
+    unmatched = theme.unmatched_color(theme_mode)
 
     for i in range(n):
         mz_val = float(mz[i])
@@ -298,19 +373,28 @@ def build_annot_plot_table(
         frags = peak_frags.get(i)
         im_val = _im_value(im_col, im_arr, i)
         if frags:
-            ion_type = str(frags[0].ion_type)
-            color = _ION_COLORS.get(ion_type, _DEFAULT_ION_COLOR)
+            # When one peak matches several ions, pick the colour deterministically
+            # by the fixed series order rather than taking whichever fragment the
+            # caller happened to list first -- otherwise reordering the input
+            # fragment list silently repaints the plot.
+            ion_type = min((str(f.ion_type) for f in frags), key=_ion_priority)
             label_text = "<br>".join(_fragment_label(f, include_sequence) for f in frags)
             hover_text = _hover(mz_val, int_val, im_val) + f"<br>{label_text}"
-            colors.append(color)
+            colors.append(theme.ion_color(ion_type, theme_mode))
             series_list.append(ion_type)
             labels.append(label_text)
             hovers.append(hover_text)
+            linewidths.append(_LINEWIDTH_DEFAULT)
+            opacities.append(_OPACITY_DEFAULT)
         else:
-            colors.append("#cccccc")
+            colors.append(unmatched)
             series_list.append("unmatched")
             labels.append("")
             hovers.append(_hover(mz_val, int_val, im_val))
+            linewidths.append(_LINEWIDTH_UNMATCHED)
+            opacities.append(_OPACITY_UNMATCHED)
+
+    labels = _cap_labels(labels, intensity, max_labels, mz)
 
     return pd.DataFrame(
         {
@@ -320,13 +404,13 @@ def build_annot_plot_table(
             "score": score_col,
             "im": im_col,
             "color": colors,
-            "linewidth": [_LINEWIDTH_DEFAULT] * n,
-            "opacity": [_OPACITY_DEFAULT] * n,
+            "linewidth": linewidths,
+            "opacity": opacities,
             "series": series_list,
             "label": labels,
             "label_size": [_LABEL_SIZE_DEFAULT] * n,
             "label_font": [_LABEL_FONT_DEFAULT] * n,
-            "label_color": [_LABEL_COLOR_DEFAULT] * n,
+            "label_color": [theme.text_color("secondary", theme_mode)] * n,
             "label_yshift": [_LABEL_YSHIFT_DEFAULT] * n,
             "label_xanchor": [_LABEL_XANCHOR_DEFAULT] * n,
             "hover": hovers,
@@ -359,6 +443,7 @@ def _sticks(
 def plot_from_table(
     table: pd.DataFrame,
     title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
     **layout_kwargs,
 ) -> go.Figure:
     """Render a stick plot from a plot table DataFrame.
@@ -386,10 +471,22 @@ def plot_from_table(
     """
     import plotly.graph_objects as go
 
+    missing = [c for c in _REQUIRED_COLUMNS if c not in table.columns]
+    if missing:
+        raise ValueError(f"plot table is missing required column(s): {', '.join(missing)}")
+
     traces: list[go.Scatter] = []
 
-    # One trace per (series, color) — preserves legend grouping and colour
-    for (series, color), group in table.groupby(["series", "color"], sort=False):  # type: ignore
+    # One trace per (series, color) — preserves legend grouping and colour.
+    #
+    # dropna=False matters: groupby drops NA keys by default, so a peak whose
+    # series or colour came back NA (easy to produce with merge/reindex/concat on
+    # a user-edited table) would vanish from the figure with no error at all.
+    for (series, color), group in table.groupby(["series", "color"], sort=False, dropna=False):  # type: ignore
+        if pd.isna(color):
+            color = theme.unmatched_color(theme_mode)
+        if pd.isna(series):
+            series = "unlabelled"
         mz_arr = group["mz"].to_numpy(dtype=np.float64)
         int_arr = group["intensity"].to_numpy(dtype=np.float64)
         hover_arr = group["hover"].tolist()
@@ -418,9 +515,10 @@ def plot_from_table(
             )
         )
 
-    # Annotations for labelled peaks
+    # Annotations for labelled peaks. notna() as well as != "" — an NA label is
+    # not empty, and str(NaN) renders the literal text "nan" onto the plot.
     annotations = []
-    label_mask = table["label"] != ""
+    label_mask = table["label"].notna() & (table["label"] != "")
     for _, row in table[label_mask].iterrows():
         annotations.append(
             dict(
@@ -439,13 +537,19 @@ def plot_from_table(
         )
 
     fig = go.Figure(traces)
-    unique_series = table["series"].nunique()
+    unique_series = table["series"].nunique(dropna=False)
     fig.update_layout(
+        template=theme.template(theme_mode),
         title=title or "Spectrum",
         xaxis_title="m/z",
         yaxis_title="Intensity",
+        # A single series needs no legend box: one colour, and the title already
+        # names what is plotted.
         showlegend=unique_series > 1,
         annotations=annotations,
         **layout_kwargs,
     )
+    # Anchor the baseline so sticks read as growing from zero, and keep the
+    # y-axis off the data.
+    fig.update_yaxes(rangemode="tozero")
     return fig
