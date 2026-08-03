@@ -111,6 +111,75 @@ _SEQUENTIAL: dict[ThemeMode, list[list]] = {
 
 _FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
+# ---------------------------------------------------------------------------
+# Texture — the non-colour channel
+# ---------------------------------------------------------------------------
+
+#: Dash patterns per ion slot, for print, forced-colours, and readers who cannot
+#: separate two hues. Opt-in (``texture=True``) rather than always on: at stick
+#: density dashes add noise, and the direct ion labels already carry identity in
+#: the normal case.
+_ION_DASH: tuple[str, ...] = (
+    "solid",
+    "dash",
+    "dot",
+    "dashdot",
+    "longdash",
+    "longdashdot",
+    "solid",
+    "dash",
+)
+
+
+def ion_dash(ion_type: str) -> str:
+    """Dash pattern for a fragment ion series (the texture channel)."""
+    key = str(ion_type).lower()
+    return _ION_DASH[_ION_SLOTS.index(key)] if key in _ION_SLOTS else "solid"
+
+
+def set_palette(
+    *,
+    categorical: dict[ThemeMode, list[str]] | None = None,
+    charge_ramp: dict[ThemeMode, list[str]] | None = None,
+    sequential: dict[ThemeMode, list[list]] | None = None,
+) -> None:
+    """Replace a palette with your own, for brand colours.
+
+    Each argument takes a ``{"light": [...], "dark": [...]}`` mapping and
+    replaces that palette wholesale in both modes.
+
+    The shipped palettes were checked with a colour-vision-deficiency validator
+    (protanopia and deuteranopia) against both surfaces. **A substituted palette
+    is not checked** -- validate your own hues before relying on them, or you
+    lose the property the defaults were chosen for. Categorical hues want a
+    fixed order with adjacent pairs kept apart; a charge ramp wants one hue with
+    monotone lightness.
+
+    Raises
+    ------
+    ValueError
+        If a mapping is missing a mode, or a categorical palette has fewer
+        entries than there are ion slots.
+    """
+    for name, value in (("categorical", categorical), ("charge_ramp", charge_ramp), ("sequential", sequential)):
+        if value is None:
+            continue
+        missing = {"light", "dark"} - set(value)
+        if missing:
+            raise ValueError(f"{name} palette must define both modes; missing {sorted(missing)}")
+
+    if categorical is not None:
+        for mode, hues in categorical.items():
+            if len(hues) < len(_ION_SLOTS):
+                raise ValueError(
+                    f"categorical palette for {mode!r} needs at least {len(_ION_SLOTS)} hues, got {len(hues)}"
+                )
+        _CATEGORICAL.update(categorical)
+    if charge_ramp is not None:
+        _CHARGE_RAMP.update(charge_ramp)
+    if sequential is not None:
+        _SEQUENTIAL.update(sequential)
+
 
 # ---------------------------------------------------------------------------
 # Public lookups
@@ -226,6 +295,20 @@ def template(theme: ThemeMode | None = None) -> go.layout.Template:
         "automargin": True,
     }
 
+    # A crosshair on the m/z axis. Sticks are ~1.5px wide, so without it the
+    # reader has to hit a hairline to find out where the pointer is; the spike
+    # answers "which m/z am I on" without any hit at all. Solid, one step off the
+    # surface, so it reads as chrome rather than as data.
+    x_axis = {
+        **axis_common,
+        "showspikes": True,
+        "spikemode": "across",
+        "spikesnap": "cursor",
+        "spikethickness": 1,
+        "spikedash": "solid",
+        "spikecolor": axis,
+    }
+
     return go.layout.Template(
         layout={
             "paper_bgcolor": surf,
@@ -242,7 +325,15 @@ def template(theme: ThemeMode | None = None) -> go.layout.Template:
                 "pad": {"l": 8, "t": 4},
             },
             "margin": {"l": 72, "r": 28, "t": 64, "b": 60},
-            "xaxis": {**axis_common},
+            # Fill the container rather than a fixed default box, so figures sit
+            # correctly in docs pages and notebooks.
+            "autosize": True,
+            # Hit target bigger than the mark: a 1.5px stick is a pinpoint. The
+            # hit layer added by the renderer does the rest.
+            "hovermode": "closest",
+            "hoverdistance": 24,
+            "spikedistance": -1,
+            "xaxis": x_axis,
             # Horizontal grid only: it carries the intensity values the peaks are
             # measured against. A vertical grid would just add ink.
             "yaxis": {**axis_common, "showgrid": True, "gridcolor": grid, "gridwidth": 1},

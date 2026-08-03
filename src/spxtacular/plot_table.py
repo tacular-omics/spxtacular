@@ -24,7 +24,7 @@ plot_from_table         -- DataFrame → plotly Figure
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -91,6 +91,45 @@ _REQUIRED_COLUMNS: tuple[str, ...] = (
     "label_yshift",
     "label_xanchor",
 )
+
+
+#: Diameter of the transparent hover target placed on each peak tip.
+#: The guidance is that a mark's hit area must exceed the mark; a 1.6px stick is
+#: a pinpoint, so an invisible marker carries the tooltip instead.
+_HIT_TARGET_SIZE: float = 22.0
+
+
+def _scaled_intensity(
+    intensity: NDArray[np.float64],
+    scale: Literal["absolute", "relative"],
+    transform: Literal["sqrt", "log"] | None,
+) -> tuple[NDArray[np.float64], str]:
+    """Return the intensity to *plot* plus the axis label for it.
+
+    The unscaled values stay in ``intensity_abs`` and drive every tooltip, so
+    rescaling only ever changes the axis, never the number the reader is told.
+    """
+    values = np.asarray(intensity, dtype=np.float64)
+    label = "Intensity"
+
+    if scale == "relative":
+        peak = float(np.nanmax(values)) if len(values) else 0.0
+        if peak > 0:
+            values = values / peak * 100.0
+        label = "Relative intensity (%)"
+    elif scale != "absolute":
+        raise ValueError(f"intensity_scale must be 'absolute' or 'relative', got {scale!r}")
+
+    if transform == "sqrt":
+        values = np.sqrt(np.clip(values, 0.0, None))
+        label = f"√ {label[0].lower()}{label[1:]}"
+    elif transform == "log":
+        values = np.log10(np.clip(values, 0.0, None) + 1.0)
+        label = f"log₁₀ {label[0].lower()}{label[1:]}"
+    elif transform is not None:
+        raise ValueError(f"intensity_transform must be None, 'sqrt' or 'log', got {transform!r}")
+
+    return values, label
 
 
 def _charge_series(charge: int) -> str:
@@ -178,6 +217,9 @@ def build_plot_table(
     show_scores: bool = True,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
 ) -> pd.DataFrame:
     """Build a plot table from a plain spectrum (no fragment annotations).
 
@@ -204,6 +246,8 @@ def build_plot_table(
     mz = spectrum.mz
     intensity = spectrum.intensity
     n = len(mz)
+
+    plotted, intensity_label = _scaled_intensity(intensity, intensity_scale, intensity_transform)
 
     charge_arr = spectrum.charge
     score_arr = spectrum.iso_score
@@ -254,16 +298,18 @@ def build_plot_table(
         for i in range(n)
     ]
 
-    return pd.DataFrame(
+    table = pd.DataFrame(
         {
             "mz": mz.astype(np.float64),
-            "intensity": intensity.astype(np.float64),
+            "intensity": plotted,
+            "intensity_abs": intensity.astype(np.float64),
             "charge": charge_col,
             "score": score_col,
             "im": im_col,
             "color": colors,
             "linewidth": [_LINEWIDTH_DEFAULT] * n,
             "opacity": [_OPACITY_DEFAULT] * n,
+            "dash": ["solid"] * n,
             "series": series,
             "label": labels,
             "label_size": [_LABEL_SIZE_DEFAULT] * n,
@@ -274,6 +320,10 @@ def build_plot_table(
             "hover": hovers,
         }
     )
+    # Carried on the frame so the renderer can title the axis correctly
+    # without re-deriving what scaling was applied.
+    table.attrs["intensity_label"] = intensity_label
+    return table
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +352,9 @@ def build_annot_plot_table(
     include_sequence: bool = False,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
 ) -> pd.DataFrame:
     """Build a plot table with fragment-ion annotations.
 
@@ -339,6 +392,8 @@ def build_annot_plot_table(
     intensity = spectrum.intensity
     n = len(mz)
 
+    plotted, intensity_label = _scaled_intensity(intensity, intensity_scale, intensity_transform)
+
     charge_arr = spectrum.charge
     score_arr = spectrum.iso_score
     im_arr = spectrum.im
@@ -364,6 +419,7 @@ def build_annot_plot_table(
     hovers: list[str] = []
     linewidths: list[float] = []
     opacities: list[float] = []
+    dashes: list[str] = []
 
     unmatched = theme.unmatched_color(theme_mode)
 
@@ -386,6 +442,7 @@ def build_annot_plot_table(
             hovers.append(hover_text)
             linewidths.append(_LINEWIDTH_DEFAULT)
             opacities.append(_OPACITY_DEFAULT)
+            dashes.append(theme.ion_dash(ion_type) if texture else "solid")
         else:
             colors.append(unmatched)
             series_list.append("unmatched")
@@ -393,19 +450,22 @@ def build_annot_plot_table(
             hovers.append(_hover(mz_val, int_val, im_val))
             linewidths.append(_LINEWIDTH_UNMATCHED)
             opacities.append(_OPACITY_UNMATCHED)
+            dashes.append("solid")
 
     labels = _cap_labels(labels, intensity, max_labels, mz)
 
-    return pd.DataFrame(
+    table = pd.DataFrame(
         {
             "mz": mz.astype(np.float64),
-            "intensity": intensity.astype(np.float64),
+            "intensity": plotted,
+            "intensity_abs": intensity.astype(np.float64),
             "charge": charge_col,
             "score": score_col,
             "im": im_col,
             "color": colors,
             "linewidth": linewidths,
             "opacity": opacities,
+            "dash": dashes,
             "series": series_list,
             "label": labels,
             "label_size": [_LABEL_SIZE_DEFAULT] * n,
@@ -416,6 +476,10 @@ def build_annot_plot_table(
             "hover": hovers,
         }
     )
+    # Carried on the frame so the renderer can title the axis correctly
+    # without re-deriving what scaling was applied.
+    table.attrs["intensity_label"] = intensity_label
+    return table
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +502,74 @@ def _sticks(
     y[1::3] = intensity
     y[2::3] = np.nan
     return x.tolist(), y.tolist()
+
+
+def table_view(
+    table: pd.DataFrame,
+    max_rows: int | None = None,
+    annotated_only: bool = False,
+) -> str:
+    """Render a plot table as an HTML table -- the accessible companion to the figure.
+
+    A tooltip enhances, it never gates: every value the figure shows should be
+    reachable without hovering. That matters here because label capping
+    deliberately drops labels off the plot, and a hover is unusable for keyboard
+    and screen-reader users.
+
+    Parameters
+    ----------
+    table:
+        A table from :func:`build_plot_table` or :func:`build_annot_plot_table`.
+    max_rows:
+        Keep only the this many most intense peaks. ``None`` (default) keeps all.
+    annotated_only:
+        Keep only peaks carrying a label. Useful beside an annotated spectrum,
+        where the unmatched peaks are context rather than results.
+
+    Returns
+    -------
+    An HTML ``<table>`` as a string.
+    """
+    from html import escape
+
+    view = table
+    if annotated_only and "label" in view.columns:
+        view = view[view["label"].notna() & (view["label"] != "")]
+    if max_rows is not None:
+        sort_col = "intensity_abs" if "intensity_abs" in view.columns else "intensity"
+        view = view.nlargest(max_rows, sort_col)
+    view = view.sort_values("mz")
+
+    columns: list[tuple[str, str]] = [("mz", "m/z"), ("intensity_abs", "Intensity")]
+    if "intensity_abs" not in view.columns:
+        columns = [("mz", "m/z"), ("intensity", "Intensity")]
+    for col, heading in (("charge", "z"), ("score", "Score"), ("im", "Ion mobility")):
+        if col in view.columns and view[col].notna().any():
+            columns.append((col, heading))
+    if "label" in view.columns and (view["label"] != "").any():
+        columns.append(("label", "Annotation"))
+
+    def _fmt(col: str, value) -> str:
+        if pd.isna(value):
+            return ""
+        if col == "mz":
+            return f"{float(value):.4f}"
+        if col in ("intensity", "intensity_abs"):
+            return f"{float(value):.4g}"
+        if col in ("score", "im"):
+            return f"{float(value):.3f}"
+        if col == "charge":
+            return str(int(value))
+        # Labels are data and may contain markup; escape, and turn the <br>
+        # separators the plot uses into commas.
+        return escape(str(value).replace("<br>", ", "))
+
+    head = "".join(f"<th scope='col'>{escape(h)}</th>" for _, h in columns)
+    rows = "".join(
+        "<tr>" + "".join(f"<td>{_fmt(col, row[col])}</td>" for col, _ in columns) + "</tr>"
+        for _, row in view.iterrows()
+    )
+    return f"<table><caption>Peak list</caption><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
 
 
 def plot_from_table(
@@ -501,6 +633,9 @@ def plot_from_table(
         first = group.iloc[0]
         linewidth = float(first["linewidth"])
         opacity = float(first["opacity"])
+        line: dict = {"color": str(color), "width": linewidth}
+        if "dash" in group.columns and str(first["dash"]) != "solid":
+            line["dash"] = str(first["dash"])
 
         traces.append(
             go.Scatter(
@@ -508,12 +643,29 @@ def plot_from_table(
                 y=ys,
                 mode="lines",
                 name=str(series),
-                line={"color": str(color), "width": linewidth},
+                line=line,
                 opacity=opacity,
-                customdata=hover_data,
-                hovertemplate="%{customdata}<extra></extra>",
+                # The hit layer below carries the tooltip; letting the hairline
+                # itself answer hovers would mean the reader has to land on it.
+                hoverinfo="skip",
             )
         )
+
+    # Transparent hover targets on the peak tips. One trace for the whole
+    # spectrum, invisible, sized well beyond the sticks so the pointer only has
+    # to be near a peak rather than on it.
+    traces.append(
+        go.Scatter(
+            x=table["mz"].to_numpy(dtype=np.float64),
+            y=table["intensity"].to_numpy(dtype=np.float64),
+            mode="markers",
+            marker={"size": _HIT_TARGET_SIZE, "color": "rgba(0,0,0,0)"},
+            customdata=table["hover"].tolist(),
+            hovertemplate="%{customdata}<extra></extra>",
+            showlegend=False,
+            name="",
+        )
+    )
 
     # Annotations for labelled peaks. notna() as well as != "" — an NA label is
     # not empty, and str(NaN) renders the literal text "nan" onto the plot.
@@ -542,7 +694,7 @@ def plot_from_table(
         template=theme.template(theme_mode),
         title=title or "Spectrum",
         xaxis_title="m/z",
-        yaxis_title="Intensity",
+        yaxis_title=table.attrs.get("intensity_label", "Intensity"),
         # A single series needs no legend box: one colour, and the title already
         # names what is plotted.
         showlegend=unique_series > 1,

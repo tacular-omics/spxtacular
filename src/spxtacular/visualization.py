@@ -7,6 +7,7 @@ from __future__ import annotations
 import functools
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -35,6 +36,96 @@ from .plot_table import (
     build_plot_table,
     plot_from_table,
 )
+
+
+def _add_precursor_marker(
+    fig: go.Figure,
+    spectrum: Spectrum,
+    theme_mode: theme.ThemeMode | None = None,
+) -> None:
+    """Mark the precursor m/z and its isolation window on an MSn figure.
+
+    Reference chrome, not data: the window is a faint band and the precursor a
+    hairline, both behind the peaks. Silently does nothing for a spectrum that
+    carries no precursor information.
+    """
+    precursors = getattr(spectrum, "precursors", None)
+    if not precursors:
+        return
+
+    muted = theme.text_color("muted", theme_mode)
+    window = getattr(spectrum, "isolation_mz_range", None)
+    if window is not None and len(window) == 2:
+        lo, hi = float(window[0]), float(window[1])
+        if hi > lo:
+            fig.add_vrect(
+                x0=lo,
+                x1=hi,
+                fillcolor=muted,
+                opacity=0.08,
+                line_width=0,
+                layer="below",
+            )
+
+    for prec in precursors:
+        mz_val = getattr(prec, "mz", None)
+        if mz_val is None:
+            continue
+        charge = getattr(prec, "charge", None)
+        text = f"precursor {float(mz_val):.4f}" + (f" ({charge}+)" if charge else "")
+        fig.add_vline(
+            x=float(mz_val),
+            line_width=1,
+            line_color=muted,
+            layer="below",
+            annotation_text=text,
+            annotation_position="top right",
+            annotation_font={"size": 10, "color": muted},
+        )
+
+
+def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) -> Path:
+    """Write a figure to disk, choosing the writer from the file extension.
+
+    ``.html`` always works. Static formats (``.png``, ``.svg``, ``.pdf``,
+    ``.jpg``, ``.webp``) go through plotly's static export, which needs the
+    ``kaleido`` package -- so a missing dependency is reported here with the
+    install command rather than as a bare exception from deep inside plotly.
+
+    Parameters
+    ----------
+    fig:
+        Figure to write.
+    path:
+        Destination. The suffix picks the format.
+    scale:
+        Device pixel ratio for raster formats; ``2.0`` gives a figure that still
+        looks sharp in a paper or on a high-density display.
+
+    Returns
+    -------
+    The path written.
+    """
+    out = Path(path)
+    suffix = out.suffix.lower()
+
+    if suffix in ("", ".html"):
+        out = out.with_suffix(".html")
+        fig.write_html(str(out), **kwargs)
+        return out
+
+    static = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp", ".eps")
+    if suffix not in static:
+        raise ValueError(f"unsupported figure format {suffix!r}; expected .html or one of {', '.join(static)}")
+
+    try:
+        fig.write_image(str(out), scale=scale, **kwargs)
+    except Exception as exc:  # kaleido missing, or its browser dependency
+        raise ImportError(
+            f"writing {suffix} requires the kaleido package: pip install kaleido "
+            "(or save to .html, which needs nothing extra)"
+        ) from exc
+    return out
 
 
 def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -188,6 +279,9 @@ def plot_spectrum(
     show_charges: bool | None = None,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    show_precursor: bool = True,
     **layout_kwargs,
 ) -> go.Figure:
     """Plot spectrum as a stick plot using plotly.
@@ -243,13 +337,18 @@ def plot_spectrum(
         show_scores=show_scores,
         max_labels=max_labels,
         theme_mode=theme_mode,
+        intensity_scale=intensity_scale,
+        intensity_transform=intensity_transform,
     )
-    return plot_from_table(
+    fig = plot_from_table(
         table,
         title=title or str(spectrum.spectrum_type or "Spectrum"),
         theme_mode=theme_mode,
         **layout_kwargs,
     )
+    if show_precursor:
+        _add_precursor_marker(fig, spectrum, theme_mode)
+    return fig
 
 
 @requires_plotly
@@ -422,6 +521,10 @@ def annotate_spectrum(
     include_sequence: bool = False,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
+    show_precursor: bool = True,
     **layout_kwargs,
 ) -> go.Figure:
     """Plot a spectrum with matched fragment ion annotations.
@@ -463,8 +566,136 @@ def annotate_spectrum(
         include_sequence,
         max_labels=max_labels,
         theme_mode=theme_mode,
+        intensity_scale=intensity_scale,
+        intensity_transform=intensity_transform,
+        texture=texture,
     )
     fig = plot_from_table(table, title=title or "Annotated spectrum", theme_mode=theme_mode, **layout_kwargs)
+    if show_precursor:
+        _add_precursor_marker(fig, spectrum, theme_mode)
+    return fig
+
+
+@requires_plotly
+def sequence_coverage_plot(
+    spectrum: Spectrum,
+    peptide: str,
+    fragments: FragmentInput,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
+    **layout_kwargs,
+) -> go.Figure:
+    """Sequence coverage ladder: which backbone bonds the spectrum actually evidences.
+
+    The residues run left to right. A tick above and to the *left* of a residue
+    marks an N-terminal (a/b/c) fragment ending at that bond; a tick below and to
+    the *right* marks a C-terminal (x/y/z) fragment starting there. A bond with
+    ticks on both sides is confirmed from both directions.
+
+    This is the standard companion to an annotated spectrum: the spectrum shows
+    that peaks matched, the ladder shows *where along the peptide* they matched,
+    which is what tells you whether an identification is localised or leaning on
+    one end of the molecule.
+
+    Parameters
+    ----------
+    spectrum:
+        The spectrum the fragments were matched against.
+    peptide:
+        Residue sequence, one character per residue. Modifications in ProForma
+        brackets are not rendered -- pass the stripped sequence.
+    fragments:
+        Fragment objects to match, as for :func:`~spxtacular.matching.match_fragments`.
+    tolerance, tolerance_type, peak_selection:
+        Matching parameters.
+    title:
+        Plot title.
+    theme_mode:
+        ``"light"`` or ``"dark"``.
+
+    Returns
+    -------
+    plotly ``Figure``.
+    """
+    import plotly.graph_objects as go
+
+    from .matching import match_fragments
+
+    residues = list(peptide)
+    n_res = len(residues)
+    if n_res == 0:
+        raise ValueError("peptide must contain at least one residue")
+
+    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+
+    # A fragment of length k evidences the bond after residue k (N-terminal
+    # series) or before residue n-k (C-terminal series).
+    n_term_bonds: set[int] = set()
+    c_term_bonds: set[int] = set()
+    n_series = {"a", "b", "c"}
+    c_series = {"x", "y", "z"}
+
+    for m in matches:
+        frag = m.fragment
+        ion = str(getattr(frag, "ion_type", "")).lower()
+        pos = getattr(frag, "position", None)
+        if not isinstance(pos, int) or pos <= 0 or pos >= n_res:
+            continue
+        if ion in n_series:
+            n_term_bonds.add(pos)
+        elif ion in c_series:
+            c_term_bonds.add(n_res - pos)
+
+    fig = go.Figure()
+    ink = theme.text_color("primary", theme_mode)
+    n_color = theme.ion_color("b", theme_mode)
+    c_color = theme.ion_color("y", theme_mode)
+
+    for i, residue in enumerate(residues):
+        fig.add_annotation(
+            x=i,
+            y=0,
+            text=residue,
+            showarrow=False,
+            font={"size": 15, "color": ink, "family": theme._FONT_FAMILY},
+            xanchor="center",
+            yanchor="middle",
+        )
+
+    # Ticks sit on the bond, i.e. halfway between two residues.
+    for bond in n_term_bonds:
+        x = bond - 0.5
+        fig.add_shape(type="line", x0=x, x1=x, y0=0.18, y1=0.55, line={"color": n_color, "width": 2})
+        fig.add_shape(type="line", x0=x, x1=x - 0.28, y0=0.55, y1=0.55, line={"color": n_color, "width": 2})
+    for bond in c_term_bonds:
+        x = bond - 0.5
+        fig.add_shape(type="line", x0=x, x1=x, y0=-0.18, y1=-0.55, line={"color": c_color, "width": 2})
+        fig.add_shape(type="line", x0=x, x1=x + 0.28, y0=-0.55, y1=-0.55, line={"color": c_color, "width": 2})
+
+    n_bonds = max(n_res - 1, 1)
+    covered = len(n_term_bonds | c_term_bonds)
+    subtitle = f"{covered}/{n_bonds} backbone bonds covered ({covered / n_bonds:.0%})"
+
+    # Legend proxies: two invisible traces so the ion-series colours are named
+    # rather than left for the reader to infer from the ticks.
+    for name, color in (("N-term (a/b/c)", n_color), ("C-term (x/y/z)", c_color)):
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", line={"color": color, "width": 2}, name=name))
+
+    fig.update_layout(
+        template=theme.template(theme_mode),
+        # The count belongs in the title, not repeated underneath it.
+        title=title or f"Sequence coverage — {subtitle}",
+        showlegend=True,
+        height=210,
+        # Wider right margin so the legend keys are not clipped by the paper edge.
+        margin={"l": 28, "r": 64, "t": 64, "b": 28},
+        **layout_kwargs,
+    )
+    fig.update_xaxes(range=[-0.8, n_res - 0.2], visible=False)
+    fig.update_yaxes(range=[-1.0, 1.0], visible=False)
     return fig
 
 

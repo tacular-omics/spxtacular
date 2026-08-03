@@ -15,8 +15,15 @@ import pytest
 
 from spxtacular import theme
 from spxtacular.core import Spectrum
-from spxtacular.plot_table import build_plot_table, plot_from_table
-from spxtacular.visualization import facet_plot, mass_error_plot, mirror_plot, plot_spectrum
+from spxtacular.plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
+from spxtacular.visualization import (
+    facet_plot,
+    mass_error_plot,
+    mirror_plot,
+    plot_spectrum,
+    save_figure,
+    sequence_coverage_plot,
+)
 
 
 def _spectrum(n: int = 6) -> Spectrum:
@@ -26,10 +33,14 @@ def _spectrum(n: int = 6) -> Spectrum:
 
 
 def _stick_points(fig) -> int:
-    """Count real (non-separator) stick endpoints across every trace."""
+    """Count real (non-separator) stick endpoints across the line traces.
+
+    Skips the transparent hover hit-layer, which is a marker trace carrying one
+    point per peak rather than stick geometry.
+    """
     total = 0
     for tr in fig.data:
-        if tr.x is None:
+        if tr.x is None or tr.mode != "lines":
             continue
         total += sum(1 for v in tr.x if v is not None and v == v)
     return total
@@ -226,6 +237,200 @@ class TestMirrorPlot:
 # ---------------------------------------------------------------------------
 # Degenerate inputs
 # ---------------------------------------------------------------------------
+
+
+class TestHoverLayer:
+    def test_a_transparent_hit_layer_covers_every_peak(self) -> None:
+        # A 1.6px stick is a pinpoint; the hit target has to exceed the mark.
+        spec = _spectrum(12)
+        fig = plot_spectrum(spec)
+        hits = [tr for tr in fig.data if tr.mode == "markers"]
+        assert len(hits) == 1
+        hit = hits[0]
+        assert len(hit.x) == len(spec)
+        assert hit.marker.color == "rgba(0,0,0,0)", "the hit layer must be invisible"
+        assert hit.marker.size >= 18
+        assert hit.showlegend is False
+
+    def test_sticks_defer_hovering_to_the_hit_layer(self) -> None:
+        fig = plot_spectrum(_spectrum(5))
+        lines = [tr for tr in fig.data if tr.mode == "lines"]
+        assert lines and all(tr.hoverinfo == "skip" for tr in lines)
+
+    def test_template_provides_a_crosshair_and_a_generous_hit_distance(self) -> None:
+        layout = theme.template("light").layout
+        assert layout.xaxis.showspikes is True
+        assert layout.xaxis.spikedash == "solid"  # dashed reads as a threshold
+        assert layout.hoverdistance >= 20
+        assert layout.autosize is True
+
+
+class TestIntensityScaling:
+    def test_relative_is_the_default_and_peaks_at_100(self) -> None:
+        spec = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([4e4, 1e5]))
+        table = build_plot_table(spec)
+        assert table["intensity"].max() == pytest.approx(100.0)
+        assert table.attrs["intensity_label"] == "Relative intensity (%)"
+
+    def test_scaling_never_changes_the_reported_number(self) -> None:
+        # The axis may be rescaled; the tooltip must still say what the data says.
+        spec = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([4e4, 1e5]))
+        table = build_plot_table(spec, intensity_scale="relative")
+        assert "1.00e+05" in table.loc[1, "hover"]
+
+    def test_transforms_compress_dynamic_range(self) -> None:
+        spec = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([1.0, 1e6]))
+        plain = build_plot_table(spec, intensity_scale="absolute")
+        logged = build_plot_table(spec, intensity_scale="absolute", intensity_transform="log")
+        plain_ratio = plain["intensity"].max() / max(plain["intensity"].min(), 1e-12)
+        log_ratio = logged["intensity"].max() / max(logged["intensity"].min(), 1e-12)
+        assert log_ratio < plain_ratio
+        assert "log" in logged.attrs["intensity_label"]
+
+    def test_unknown_scale_or_transform_raises(self) -> None:
+        spec = _spectrum(3)
+        with pytest.raises(ValueError, match="intensity_scale"):
+            build_plot_table(spec, intensity_scale="percent")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        with pytest.raises(ValueError, match="intensity_transform"):
+            build_plot_table(spec, intensity_transform="cbrt")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+
+    def test_all_zero_intensity_does_not_divide_by_zero(self) -> None:
+        spec = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.zeros(2))
+        table = build_plot_table(spec, intensity_scale="relative")
+        assert np.isfinite(table["intensity"]).all()
+
+
+class TestSequenceCoverage:
+    def _matched(self, peptide: str):
+        import peptacular as pt
+
+        frags = pt.fragment(peptide, ion_types="by", charges=[1])
+        mz = np.sort(np.array([f.mz for f in frags]))
+        spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
+        return spec, frags
+
+    def test_full_coverage_is_reported(self) -> None:
+        spec, frags = self._matched("PEPTIDEK")
+        fig = sequence_coverage_plot(spec, "PEPTIDEK", frags, tolerance=0.02, tolerance_type="da")
+        assert "100%" in fig.layout.title.text
+
+    def test_one_annotation_per_residue(self) -> None:
+        peptide = "PEPTIDEK"
+        spec, frags = self._matched(peptide)
+        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.02, tolerance_type="da")
+        residues = [a.text for a in fig.layout.annotations if len(str(a.text)) == 1]
+        assert residues == list(peptide)
+
+    def test_no_matches_means_no_coverage_and_no_ticks(self) -> None:
+        peptide = "PEPTIDEK"
+        spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
+        _, frags = self._matched(peptide)
+        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.001, tolerance_type="da")
+        assert "0/7" in fig.layout.title.text
+        assert len(fig.layout.shapes) == 0
+
+    def test_empty_peptide_raises(self) -> None:
+        spec, frags = self._matched("PEPTIDEK")
+        with pytest.raises(ValueError, match="at least one residue"):
+            sequence_coverage_plot(spec, "", frags)
+
+
+class TestPrecursorMarker:
+    def _ms2(self):
+        from spxtacular.core import MsnSpectrum, Precursor
+
+        return MsnSpectrum(
+            mz=np.array([100.0, 200.0, 300.0]),
+            intensity=np.array([1e4, 5e4, 2e4]),
+            ms_level=2,
+            precursors=[Precursor(mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+            isolation_mz_range=(248.0, 252.0),
+        )
+
+    def test_precursor_line_and_isolation_window_are_drawn(self) -> None:
+        fig = plot_spectrum(self._ms2())
+        assert any("precursor" in str(a.text) for a in fig.layout.annotations)
+        assert len(fig.layout.shapes) >= 2  # the window band and the precursor line
+
+    def test_marker_can_be_switched_off(self) -> None:
+        fig = plot_spectrum(self._ms2(), show_precursor=False)
+        assert not any("precursor" in str(a.text) for a in fig.layout.annotations)
+
+    def test_plain_spectrum_gets_no_marker(self) -> None:
+        fig = plot_spectrum(_spectrum(4))
+        assert not any("precursor" in str(a.text) for a in fig.layout.annotations)
+
+
+class TestTableViewAndTexture:
+    def test_table_view_carries_the_values(self) -> None:
+        spec = Spectrum(mz=np.array([123.4567, 200.0]), intensity=np.array([1e5, 5e4]))
+        html = table_view(build_plot_table(spec))
+        assert "123.4567" in html
+        assert "1e+05" in html or "100000" in html
+        assert html.count("<tr>") == 3  # header plus two peaks
+
+    def test_table_view_escapes_label_markup(self) -> None:
+        table = build_plot_table(_spectrum(2))
+        table["label"] = ["<script>x</script>", ""]
+        html = table_view(table)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_table_view_can_restrict_to_annotated_peaks(self) -> None:
+        table = build_plot_table(_spectrum(4))
+        table["label"] = ["a", "", "", "b"]
+        html = table_view(table, annotated_only=True)
+        assert html.count("<tr>") == 3
+
+    def test_texture_gives_each_ion_series_its_own_dash(self) -> None:
+        import peptacular as pt
+
+        frags = pt.fragment("PEPTIDEK", ion_types="by", charges=[1])
+        mz = np.sort(np.array([f.mz for f in frags]))
+        spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
+        table = build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_type="da", texture=True)
+        dashes = set(table.loc[table["series"].isin(["b", "y"]), "dash"])
+        assert len(dashes) == 2, "b and y need distinguishable textures, not just hues"
+
+    def test_texture_is_off_by_default(self) -> None:
+        table = build_plot_table(_spectrum(3))
+        assert (table["dash"] == "solid").all()
+
+
+class TestPaletteOverride:
+    def test_set_palette_replaces_hues(self) -> None:
+        original = {mode: list(hues) for mode, hues in theme._CATEGORICAL.items()}
+        custom = ["#111111", "#222222", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888"]
+        try:
+            theme.set_palette(categorical={"light": custom, "dark": custom})
+            assert theme.ion_color("b", "light") == "#111111"
+        finally:
+            theme.set_palette(categorical=original)
+        assert theme.ion_color("b", "light") == original["light"][0]
+
+    def test_set_palette_requires_both_modes(self) -> None:
+        with pytest.raises(ValueError, match="both modes"):
+            theme.set_palette(categorical={"light": ["#000000"] * 8})
+
+    def test_set_palette_requires_enough_hues(self) -> None:
+        with pytest.raises(ValueError, match="at least"):
+            theme.set_palette(categorical={"light": ["#000000"], "dark": ["#ffffff"]})
+
+
+class TestSaveFigure:
+    def test_html_round_trips(self, tmp_path) -> None:
+        fig = plot_spectrum(_spectrum(4))
+        out = save_figure(fig, tmp_path / "fig.html")
+        assert out.exists() and out.read_text().strip().startswith("<")
+
+    def test_extensionless_path_becomes_html(self, tmp_path) -> None:
+        fig = plot_spectrum(_spectrum(3))
+        assert save_figure(fig, tmp_path / "fig").suffix == ".html"
+
+    def test_unknown_format_is_rejected(self, tmp_path) -> None:
+        fig = plot_spectrum(_spectrum(3))
+        with pytest.raises(ValueError, match="unsupported figure format"):
+            save_figure(fig, tmp_path / "fig.tiff")
 
 
 class TestDegenerateInputs:

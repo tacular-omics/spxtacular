@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Visualisation — new capabilities
+
+* **Hover layer.** Sticks are ~1.6px wide, so the pointer previously had to land on
+  a hairline to get a tooltip. Each figure now carries a transparent hit layer sized
+  well beyond the mark, plus an m/z crosshair, so being *near* a peak is enough.
+* **Relative intensity is the default axis** (`intensity_scale="relative"`), matching
+  the convention every MS viewer uses: base peak = 100%. Raw counts remain available
+  with `intensity_scale="absolute"`, and the true value is what every tooltip reports
+  regardless — rescaling changes the axis, never the reported number. A new
+  `intensity_transform` (`"sqrt"` / `"log"`) compresses dynamic range so
+  low-abundance matched ions stay visible next to a dominant base peak.
+* **`sequence_coverage_plot`** — the standard proteomics ladder: residues left to
+  right, N-terminal (a/b/c) ticks above, C-terminal (x/y/z) below, with the fraction
+  of backbone bonds covered in the title. It answers *where along the peptide* the
+  evidence sits, which an annotated spectrum alone does not show.
+* **Precursor marker.** `plot_spectrum` and `annotate_spectrum` now draw the
+  precursor m/z and its isolation window as recessive reference chrome on any
+  `MsnSpectrum` that carries them (`show_precursor=False` to suppress).
+* **`table_view`** renders a plot table as an accessible HTML table. Labels are
+  deliberately thinned from the figure, and a hover is unusable for keyboard and
+  screen-reader users, so the values need a home that isn't the tooltip. Label text
+  is HTML-escaped.
+* **Texture channel** — `texture=True` gives each ion series its own dash pattern, so
+  identity survives print, forced-colours, and readers who cannot separate two hues.
+* **`theme.set_palette`** allows brand colours to replace any of the three palettes,
+  with a docstring that is explicit that substituted hues are not validated for you.
+* **`save_figure`** picks the writer from the file extension and reports a missing
+  `kaleido` with the install command rather than an exception from inside plotly.
+* Figures set `autosize`, so they fill their container in docs pages and notebooks
+  instead of a fixed default box.
+
 ### Visualisation — new theme
 
 * **New `spxtacular.theme` module** — the single source of truth for plot colour,

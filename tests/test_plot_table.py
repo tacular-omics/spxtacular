@@ -31,12 +31,14 @@ from spxtacular.plot_table import (
 _EXPECTED_COLUMNS = [
     "mz",
     "intensity",
+    "intensity_abs",
     "charge",
     "score",
     "im",
     "color",
     "linewidth",
     "opacity",
+    "dash",
     "series",
     "label",
     "label_size",
@@ -114,7 +116,18 @@ def test_build_plot_table_data_values() -> None:
     spec = _spectrum()
     table = build_plot_table(spec)
     np.testing.assert_array_equal(table["mz"].to_numpy(), spec.mz)
+    # `intensity` is what gets plotted (relative by default); the true values
+    # stay in `intensity_abs` and are what every tooltip reports.
+    np.testing.assert_array_equal(table["intensity_abs"].to_numpy(), spec.intensity)
+    expected_relative = spec.intensity / spec.intensity.max() * 100.0
+    np.testing.assert_allclose(table["intensity"].to_numpy(), expected_relative)
+
+
+def test_build_plot_table_absolute_scale_is_unscaled() -> None:
+    spec = _spectrum()
+    table = build_plot_table(spec, intensity_scale="absolute")
     np.testing.assert_array_equal(table["intensity"].to_numpy(), spec.intensity)
+    assert table.attrs["intensity_label"] == "Intensity"
 
 
 def test_build_plot_table_defaults() -> None:

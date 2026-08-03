@@ -16,7 +16,7 @@ from .enums import (
     ToleranceType,
 )
 from .matching import match_fragments
-from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table
+from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
 from .spectrl_bridge import (
@@ -28,9 +28,21 @@ from .spectrl_bridge import (
 )
 from .usi import fetch_usi
 from .utils import da_to_ppm, ppm_to_da
-from .visualization import annotate_spectrum, facet_plot, mass_error_plot, mirror_plot, plot_spectrum
+from .visualization import (
+    annotate_spectrum,
+    facet_plot,
+    mass_error_plot,
+    mirror_plot,
+    plot_spectrum,
+    save_figure,
+    sequence_coverage_plot,
+)
 
 __all__ = [
+    "theme",
+    "table_view",
+    "sequence_coverage_plot",
+    "save_figure",
     "Peak",
     "Precursor",
     "Spectrum",
