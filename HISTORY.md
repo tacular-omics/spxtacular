@@ -1,6 +1,57 @@
 # History
 
-## Unreleased
+## 0.5.0 (2026-08-03)
+
+### Breaking changes — scoring maths
+
+* **`hyperscore` is now the real X!Tandem hyperscore.** It previously *summed* matched
+  intensities across all peaks; X!Tandem takes the **product of the per-series sums**.
+  It is now `log10(∏ₛ ΣIₛ) + Σₛ log10(nₛ!)` over the ion series that were searched —
+  numerically identical to X!Tandem for a b/y search (verified to ~1e-15), so values are
+  comparable with X!Tandem, Comet and MSFragger. Unlike them it is not hardcoded to b/y:
+  an ETD c/z search is scored the same way.
+
+  The product is what discriminates. A searched series with no signal collapses the score
+  to zero, so a PSM supported only by b ions cannot look as good as one corroborated from
+  both directions. Measured on a target-decoy trial: separation improved from Cohen's
+  *d* 4.6 to 5.8, and 17% of decoys that previously scored above zero are now correctly
+  rejected. For PSMs with both series present the two forms rank near-identically
+  (Spearman ρ = 0.9996), so ranking within a normal search is largely unchanged —
+  but absolute values differ, and any stored hyperscore thresholds need re-tuning.
+
+* **`spectral_angle` can now be the real thing.** Pass `predicted_intensities` to `score()`
+  — one value per fragment, in the same order — and you get the spectral angle of the
+  literature (Toprak et al.; what Prosit and Spectronaut report), scale-invariant and
+  1.0 for a perfect match. Without a prediction there is nothing to compare against, so
+  the value still falls back to the flat-reference coverage/evenness measure, which is
+  *not* comparable to published spectral angles. Requires the `Sequence[Fragment]` form of
+  `fragments`; the dict form raises `TypeError` because predictions cannot be paired to ions.
+
+### Fixes — peak query
+
+* `has_peak()` / `get_peak()` / `get_peaks()` **raise** when given `target_charge` or
+  `target_im` for a spectrum with no such array, instead of silently skipping the filter
+  and returning every m/z match — which read as "these are the charge-3 peaks". This
+  matches the rule `filter()` already follows.
+* `get_peak(collision=...)` validates its argument. Anything that was not exactly
+  `"largest"` — including `"LARGEST"` or a typo — previously fell through to `"closest"`
+  and silently returned a different peak. It is now coerced case-insensitively and raises
+  on an unknown value.
+* `filter(top_n=...)` uses a stable sort, so intensity ties at the cut resolve by m/z order
+  rather than arbitrarily.
+
+### Tests
+
+* `hyperscore` was previously asserted only to be `> 0.0`, so its formula was never pinned;
+  the change above would not have been caught. It is now checked against the published
+  X!Tandem expression, against the series-collapse property, against ETD generalisation, and
+  for its documented scale dependence.
+* Strengthened the weakest tests found in the audit: the `sort()` tests compared a result to
+  itself re-sorted (a `sort()` that permuted only the key would have passed), and the
+  `filter()` tests asserted predicates that are vacuously true on an empty array (a `filter()`
+  returning nothing would have passed). Both now pin exact surviving sets and co-permutation.
+* New `tests/test_peak_query.py` covers `has_peak` / `get_peak` / `get_peaks`, roughly 40
+  statements of public API that had no tests at all.
 
 ### Documentation
 

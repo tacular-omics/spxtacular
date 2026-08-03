@@ -334,7 +334,13 @@ class Spectrum:
         if len(matches) == 0:
             return None
 
-        if collision == "largest":
+        # Coerce rather than falling through to "closest": an unrecognised value
+        # (or "LARGEST") would otherwise silently change which peak you get.
+        resolved = str(collision).lower()
+        if resolved not in ("largest", "closest"):
+            raise ValueError(f"collision must be 'largest' or 'closest', got {collision!r}")
+
+        if resolved == "largest":
             idx = matches[np.argmax(self.intensity[matches])]
         else:  # closest
             mz_diffs = np.abs(self.mz[matches] - target_mz)
@@ -388,6 +394,14 @@ class Spectrum:
             tol_da = tolerance
 
         mask = np.abs(self.mz - target_mz) <= tol_da
+
+        # Asking for a dimension the spectrum does not carry is an error, not a
+        # criterion to skip: silently ignoring it returns every m/z match and
+        # reads as "the charge filter found these". Same rule as filter().
+        if target_charge is not None and self.charge is None:
+            raise ValueError("Cannot filter on charge: this spectrum has no charge array")
+        if target_im is not None and self.im is None:
+            raise ValueError("Cannot filter on im: this spectrum has no im array")
 
         # Charge filter
         if target_charge is not None and self.charge is not None:
@@ -462,7 +476,8 @@ class Spectrum:
         if top_n is not None:
             valid_indices = np.where(mask)[0]
             intensities = self.intensity[valid_indices]
-            order = np.argsort(intensities)
+            # Stable, so ties at the cut resolve by m/z order rather than arbitrarily.
+            order = np.argsort(intensities, kind="stable")
             order = order[-top_n:] if top_n > 0 else order[:0]
             top_indices = valid_indices[order]
             mask = np.zeros(len(self.mz), dtype=bool)

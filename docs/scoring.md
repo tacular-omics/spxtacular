@@ -89,17 +89,53 @@ result = score(spectrum, fragments, tolerance=10, tolerance_type="ppm")
 
 | Key | Description |
 |---|---|
-| `hyperscore` | log10(sum matched intensities) + sum log10(n!) per ion series |
+| `hyperscore` | X!Tandem hyperscore: log10(∏ₛ ΣIₛ) + Σₛ log10(nₛ!) over the searched ion series |
 | `probability_score` | -log10 P(>= k matches by chance) |
 | `total_matched_intensity` | Sum of matched peak intensities |
 | `matched_fraction` | Fraction of theoretical ions matched |
 | `intensity_fraction` | Fraction of total spectrum intensity explained by matches |
 | `mean_ppm_error` | Mean absolute ppm error of matches |
-| `spectral_angle` | Normalised spectral angle (0-1, higher is better) |
+| `spectral_angle` | Spectral angle vs `predicted_intensities` (0–1). Without a prediction, a coverage/evenness fallback — see below |
 | `longest_run` | Longest consecutive ion sequence matched |
 
 Neutral-loss and isotope variants of the same fragment share `(ion_type, position)` and are
 collapsed to avoid inflating factorial terms in the hyperscore.
+
+### Hyperscore
+
+For a b/y search this is numerically identical to the X!Tandem hyperscore, so values are
+comparable with X!Tandem, Comet and MSFragger. The product runs over whichever series you
+*searched* rather than a hardcoded b/y, so an ETD c/z search is scored the same way.
+
+The product is what makes it discriminating: a searched series with no signal collapses the whole
+score to zero, so a PSM supported only by b ions cannot look as convincing as one corroborated
+from both directions.
+
+!!! warning
+    The intensity term uses **raw** intensities, so the score shifts by `log10(s)` per series if
+    the spectrum is scaled by `s`, and can go negative on a normalised spectrum. Only compare
+    hyperscores computed on identically scaled spectra.
+
+### Spectral angle
+
+Supply `predicted_intensities` — one value per fragment, in the same order — and you get the
+spectral angle of the literature (Toprak et al.; the metric Prosit and Spectronaut report):
+
+```python
+result = spx.score(
+    spec, fragments,
+    tolerance=10, tolerance_type="ppm",
+    predicted_intensities=predicted,   # aligned with `fragments`
+)
+```
+
+It is a cosine, so it is scale-invariant: 1.0 means the observed pattern matches the prediction.
+
+!!! warning
+    Without `predicted_intensities` there is nothing to compare against, and the value falls back
+    to a cosine against a *flat* reference — which measures intensity evenness × coverage, not
+    similarity to a predicted spectrum. A perfect match with realistic intensities `[100, 50, 10, 1]`
+    scores 0.509 that way. Do not compare the fallback to published spectral angles.
 
 **Example:**
 

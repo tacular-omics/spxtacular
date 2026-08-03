@@ -112,6 +112,12 @@ from peptacular import ProFormaAnnotation
 frags = ProFormaAnnotation.parse("PEPTIDE").fragment(ion_types=["b", "y"], charges=[1, 2])
 matches = spec.match_fragments(frags, tolerance=10, tolerance_type="ppm")  # frags: list[Fragment]
 scores = spec.score(frags, tolerance=10, tolerance_type="ppm")
+# hyperscore = X!Tandem: log10(prod_s sum(I_s)) + sum_s log10(n_s!) over the SEARCHED series.
+#   Identical to X!Tandem for b/y; generalises to c/z. A searched series with no signal -> 0.
+#   Uses RAW intensities: scale-dependent, can go negative on a normalised spectrum.
+# spectral_angle = the literature metric ONLY if you pass predicted_intensities (one per
+#   fragment, Sequence[Fragment] form only). Without it, a flat-reference coverage/evenness
+#   fallback that is NOT comparable to published spectral angles.
 # scores: hyperscore, probability_score, total_matched_intensity, matched_fraction,
 #         intensity_fraction, mean_ppm_error, spectral_angle, longest_run
 ```

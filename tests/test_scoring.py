@@ -5,6 +5,7 @@ Fragments are mocked with MagicMock — score() only accesses .mz, .ion_type,
 and .position through match_fragments and the internal helpers.
 """
 
+import math
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -302,3 +303,129 @@ def test_score_dict_fragments_returns_expected_keys() -> None:
     }
     result = score(spec, frag_dict, tolerance=0.02, tolerance_type="da")
     assert set(result.keys()) == _EXPECTED_KEYS
+
+
+# ---------------------------------------------------------------------------
+# Hyperscore: the formula itself, not just "> 0"
+# ---------------------------------------------------------------------------
+
+
+class TestHyperscoreFormula:
+    """Pin the hyperscore to X!Tandem.
+
+    Previously the only assertions were ``> 0.0`` and ``== 0`` with no matches,
+    so the formula could have been anything at all. These pin it to the published
+    definition and to the property that makes it discriminating.
+    """
+
+    def _by_spectrum(self):
+        """A spectrum with two b ions and two y ions of known intensity."""
+        import peptacular as pt
+
+        frags = list(pt.fragment("PEPTIDEK", ion_types=("b", "y"), charges=(1,)))
+        b = [f for f in frags if str(f.ion_type) == "b"][:2]
+        y = [f for f in frags if str(f.ion_type) == "y"][:2]
+        chosen = b + y
+        mz = np.array([f.mz for f in chosen], dtype=np.float64)
+        # sum I_b = 30, sum I_y = 70
+        inten = np.array([10.0, 20.0, 30.0, 40.0], dtype=np.float64)
+        order = np.argsort(mz)
+        return Spectrum(mz=mz[order], intensity=inten[order]), chosen, b, y
+
+    def test_matches_the_xtandem_formula_exactly(self) -> None:
+        spec, frags, b, y = self._by_spectrum()
+        result = score(spec, frags, tolerance=0.01, tolerance_type="da")
+        # X!Tandem: log10(sum(I_b) * sum(I_y) * n_b! * n_y!) with sums 30 and 70, n=2 each
+        expected = math.log10(30.0 * 70.0 * math.factorial(2) * math.factorial(2))
+        assert result["hyperscore"] == pytest.approx(expected, rel=1e-12)
+
+    def test_a_searched_series_with_no_signal_collapses_the_score(self) -> None:
+        """The product is what discriminates: y-only evidence must not look good.
+
+        A sum over all matched peaks would happily score this; the product form
+        rejects it, which is what X!Tandem does and why it separates decoys better.
+        """
+        spec, frags, b, y = self._by_spectrum()
+        # Keep only the y peaks in the spectrum; b was still searched for.
+        y_mz = np.array(sorted(f.mz for f in y), dtype=np.float64)
+        y_only = Spectrum(mz=y_mz, intensity=np.array([30.0, 40.0]))
+        result = score(y_only, frags, tolerance=0.01, tolerance_type="da")
+        assert result["matched_fraction"] > 0.0, "the y ions really did match"
+        assert result["hyperscore"] == 0.0
+
+    def test_generalises_beyond_b_and_y(self) -> None:
+        """An ETD c/z search scores; X!Tandem's hardcoded b/y would give zero."""
+        import peptacular as pt
+
+        frags = pt.fragment("PEPTIDEK", ion_types=("c", "z"), charges=(1,))
+        mz = np.array(sorted(f.mz for f in frags), dtype=np.float64)
+        spec = Spectrum(mz=mz, intensity=np.linspace(10.0, 100.0, len(mz)))
+        assert score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"] > 0.0
+
+    def test_is_intensity_scale_dependent(self) -> None:
+        """Documented caveat — pin it so it cannot change silently."""
+        spec, frags, _, _ = self._by_spectrum()
+        base = score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
+        scaled = Spectrum(mz=spec.mz, intensity=spec.intensity * 100.0)
+        got = score(scaled, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
+        # Two series, so scaling every intensity by s shifts the score by 2*log10(s).
+        assert got == pytest.approx(base + 2 * math.log10(100.0), rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Spectral angle against predicted intensities
+# ---------------------------------------------------------------------------
+
+
+class TestSpectralAngleWithPrediction:
+    def _setup(self):
+        import peptacular as pt
+
+        frags = list(pt.fragment("PEPTIDEK", ion_types=("b", "y"), charges=(1,)))
+        pred = np.linspace(1.0, 0.1, len(frags))
+        mz = np.array([f.mz for f in frags], dtype=np.float64)
+        order = np.argsort(mz)
+        return frags, pred, mz, order
+
+    def test_identical_to_prediction_scores_one(self) -> None:
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[order])
+        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        # arccos is ill-conditioned near cos = 1, so ~1e-16 of float error in the
+        # cosine surfaces as ~1e-8 here. That is inherent to the metric, not slack.
+        assert got["spectral_angle"] == pytest.approx(1.0, abs=1e-7)
+
+    def test_is_scale_invariant(self) -> None:
+        """Unlike hyperscore, the spectral angle is a cosine — scaling must not move it."""
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=(pred * 1000.0)[order])
+        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        assert got["spectral_angle"] == pytest.approx(1.0, abs=1e-7)
+
+    def test_a_mismatched_pattern_scores_lower(self) -> None:
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[::-1][order])
+        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        assert 0.0 <= got["spectral_angle"] < 0.9
+
+    def test_length_mismatch_raises(self) -> None:
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[order])
+        with pytest.raises(ValueError, match="predicted_intensities"):
+            score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred[:-1])
+
+    def test_dict_fragments_are_rejected(self) -> None:
+        """Predictions must be pairable with ions, which the dict form cannot do."""
+        import peptacular as pt
+
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[order])
+        as_dict = pt.ProFormaAnnotation.parse("PEPTIDEK").fast_fragment(ion_types="by", charges=[1])
+        with pytest.raises(TypeError, match="Sequence"):
+            score(spec, as_dict, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+
+    def test_without_prediction_the_coverage_measure_is_still_returned(self) -> None:
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[order])
+        got = score(spec, frags, tolerance=0.01, tolerance_type="da")
+        assert 0.0 <= got["spectral_angle"] <= 1.0
