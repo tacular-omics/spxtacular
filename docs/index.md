@@ -104,6 +104,28 @@ with Reader("/data/sample.d") as reader:   # or Reader("run.mzML")
         print(spec)
 ```
 
+### Plot, annotate, and show sequence coverage
+
+```python
+import peptacular as pt
+import spxtacular as spx
+
+spx.theme.set_plot_theme("dark")   # global default: "light" (default) or "dark"
+
+frags = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
+
+fig = spec.annotate(frags)                                   # annotated fragment spectrum
+ladder = spx.sequence_coverage_plot(spec, "PEPTIDE", frags)  # backbone coverage ladder
+html = spx.table_view(spx.build_annot_plot_table(spec, frags))  # accessible peak table
+
+spx.save_figure(fig, "spectrum.html")   # .png/.svg/.pdf also work — those need kaleido
+```
+
+Peaks are plotted as a percentage of the base peak by default (`intensity_scale="absolute"`
+restores raw counts), direct labels are capped at 25 and collision-avoided along m/z, and every
+tooltip reports the true intensity regardless of scaling. See
+[Visualization](visualization.md) for the full set of plots and options.
+
 ### Share a spectrum as a URL-safe token
 
 Requires the `[spectrl]` extra. The whole spectrum lives in the token — no backend needed.
@@ -125,6 +147,24 @@ restored = Spectrum.from_spectrl_url(url)
 | `Peak` | Frozen dataclass for a single `(mz, intensity, charge, im, iso_score)` observation. |
 | `SpectrumType` | Enum: `CENTROID`, `PROFILE`, or `DECONVOLUTED`. Guards prevent calling `.decharge()` before `.deconvolute()`. |
 | `Reader` | Format-agnostic file reader — detects `.d` vs `.mzML` from the path and delegates to `DReader` / `MzmlReader`. |
+| `spxtacular.theme` | Single source of truth for plot colour. `set_plot_theme("light"\|"dark")` sets the global mode; `set_palette()` swaps in your own hues. The shipped palettes were validated for colour-vision deficiency in both modes — substituted ones are not. |
+| Plot table | `build_plot_table()` / `build_annot_plot_table()` return the `DataFrame` behind every figure; `plot_from_table()` draws it and `table_view()` renders it as an accessible HTML table. |
+
+## Plotting
+
+- **One theme, two modes.** Colour is assigned by job: ion type is a fixed 8-slot categorical
+  palette, charge state is an *ordinal* single-hue ramp, and `iso_score` / ion mobility use a
+  sequential ramp. Unmatched peaks stay recessive grey.
+- **Relative intensity by default.** The y-axis is a percentage of the base peak; pass
+  `intensity_scale="absolute"` for raw counts, or `intensity_transform="sqrt"` / `"log"` to
+  compress a large dynamic range. Tooltips always report the true intensity.
+- **Readable labels.** Direct labels are capped (`max_labels=25`) and collision-avoided; dropped
+  labels remain in the hover and in the plot table.
+- **Beyond colour.** On annotated plots, `texture=True` adds per-ion-series dash patterns for
+  print and forced-colours displays, and `table_view()` gives a non-visual route to the same data.
+- **Plots available.** `plot_spectrum`, `annotate_spectrum`, `mirror_plot`, `facet_plot`,
+  `mass_error_plot`, and `sequence_coverage_plot`, plus `save_figure()` to write HTML or (with
+  kaleido) static images.
 
 ## Documentation
 
@@ -132,5 +172,5 @@ restored = Spectrum.from_spectrl_url(url)
 - [Deconvolution](deconvolution.md) — how the greedy algorithm works and how to use it
 - [Readers](readers.md) — loading data from mzML and Bruker `.d` files
 - [Matching & scoring](scoring.md) — `match_fragments()` and PSM `score()` metrics
-- [Visualization](visualization.md) — stick, mirror, annotated, and facet plots
+- [Visualization](visualization.md) — stick, mirror, annotated, facet, mass-error, and sequence coverage plots; theming, intensity scaling, and the accessible table view
 - [API reference](api.md) — concise listing of all public names

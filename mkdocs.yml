@@ -14,6 +14,9 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.inlinehilite
   - md_in_html
+  # Without these, `!!! warning` blocks render as literal text rather than callouts.
+  - admonition
+  - pymdownx.details
 
 nav:
   - Home: index.md

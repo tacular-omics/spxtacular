@@ -943,7 +943,9 @@ def facet_plot(
             row=1,
             col=1,
         )
-    fig.update_yaxes(title_text="Intensity", row=1, col=1, rangemode="tozero")
+    # The table knows what scaling it applied; hardcoding "Intensity" here
+    # mislabels the panel, which is relative-scaled by default.
+    fig.update_yaxes(title_text=table.attrs.get("intensity_label", "Intensity"), row=1, col=1, rangemode="tozero")
 
     current_row = 2
 

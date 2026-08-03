@@ -219,9 +219,11 @@ def build_plot_table(
     theme_mode: theme.ThemeMode | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
-    texture: bool = False,
 ) -> pd.DataFrame:
     """Build a plot table from a plain spectrum (no fragment annotations).
+
+    There is no ``texture`` option here: the texture channel distinguishes ion
+    *series*, and a plain spectrum has none. See :func:`build_annot_plot_table`.
 
     Parameters
     ----------

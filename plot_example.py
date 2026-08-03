@@ -81,3 +81,45 @@ save_or_show(
     ),
     "annotated",
 )
+
+# ── sequence coverage ladder ───────────────────────────────────────────────────
+# Where along the peptide the evidence sits, which the spectrum alone can't show.
+save_or_show(
+    spx.sequence_coverage_plot(
+        raw,
+        PEPTIDE,
+        fragments,
+        tolerance=5,
+        tolerance_type="da",
+    ),
+    "sequence_coverage",
+)
+
+# ── dark mode ──────────────────────────────────────────────────────────────────
+# The dark palette is its own set of steps for the dark surface, not an inversion.
+save_or_show(
+    spx.annotate_spectrum(
+        raw,
+        fragments,
+        tolerance=5,
+        tolerance_type="da",
+        title=f"Annotated (dark) – {PEPTIDE}",
+        theme_mode="dark",
+    ),
+    "annotated_dark",
+)
+
+# ── log intensity ──────────────────────────────────────────────────────────────
+# Compresses dynamic range so low-abundance matched ions stay visible next to a
+# dominant base peak.
+save_or_show(
+    spx.annotate_spectrum(
+        raw,
+        fragments,
+        tolerance=5,
+        tolerance_type="da",
+        title=f"Annotated, log intensity – {PEPTIDE}",
+        intensity_transform="log",
+    ),
+    "annotated_log",
+)

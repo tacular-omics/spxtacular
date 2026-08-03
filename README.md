@@ -107,7 +107,8 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d")
 | **Neutral mass conversion** | `decharge()` converts charged clusters to neutral masses |
 | **Fragment matching** | `match_fragments()` with ppm/Da tolerance |
 | **PSM scoring** | Hyperscore, spectral angle, matched fraction, and more |
-| **Interactive visualization** | Stick plots, mirror plots, annotated fragment spectra (Plotly) |
+| **Interactive visualization** | Stick, mirror, faceted, mass-error, and annotated fragment plots (Plotly), plus a sequence coverage ladder |
+| **Accessible by design** | Colour-vision-safe palette validated in light *and* dark modes (`spxtacular.theme`), relative-intensity y-axis by default, capped/collision-avoided labels, and `table_view()` for a screen-reader-friendly peak table |
 | **File reading** | Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`), or `Reader` to auto-detect the format from the path |
 | **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 
@@ -126,6 +127,29 @@ filtered = decon.filter(min_score=0.5)
 
 # 3. Convert to neutral masses (drops singletons)
 neutral = filtered.decharge()
+```
+
+## Visualization
+
+Every plot is drawn from one theme module — a palette checked with a colour-vision-deficiency
+validator in both light and dark modes. Intensities are shown relative to the base peak by
+default, direct labels are capped and collision-avoided (the rest stay in the hover), and
+`table_view()` renders the same data as an accessible HTML table for keyboard and screen-reader
+users.
+
+```python
+import peptacular as pt
+import spxtacular as spx
+
+spx.theme.set_plot_theme("dark")   # global default: "light" (default) or "dark"
+
+frags = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
+
+fig = spec.annotate(frags)                                   # annotated fragment spectrum
+ladder = spx.sequence_coverage_plot(spec, "PEPTIDE", frags)  # backbone coverage ladder
+html = spx.table_view(spx.build_annot_plot_table(spec, frags))
+
+spx.save_figure(fig, "spectrum.html")   # .png/.svg/.pdf also work — those need kaleido
 ```
 
 ## Sharing spectra

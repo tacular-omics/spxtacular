@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Documentation
+
+* `docs/visualization.md` gained a "How these plots are built" preamble (relative intensity, label
+  thinning, the hover layer, colour-by-job), sections for `sequence_coverage_plot`, `table_view`,
+  `save_figure` and the theme (light/dark, brand palettes, texture), and updated parameter tables
+  for every plotting function.
+* `docs/api.md` gained a full `Theme` section, the three new functions, a rewritten plot-table
+  schema (including `intensity_abs` vs `intensity`), and explicit notes that `mirror_plot`,
+  `facet_plot` and `mass_error_plot` do *not* take `intensity_scale` / `intensity_transform` /
+  `texture`.
+* `llms.txt` documents the new surface plus the pitfalls an assistant would otherwise get wrong.
+* `README.md` and `docs/index.md` cover the theme, the coverage ladder, and the accessible table.
+* `CLAUDE.md` gained `theme.py` in the architecture tree, a "Plot colour" section recording the
+  colour-by-job rules, and new entries under "What NOT to do".
+* `plot_example.py` now also generates the sequence coverage ladder, a dark-mode spectrum, and a
+  log-intensity spectrum, so the docs show them.
+* Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
+  previously rendering as literal text.
+
 ### Visualisation — new capabilities
 
 * **Hover layer.** Sticks are ~1.6px wide, so the pointer previously had to land on

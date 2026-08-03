@@ -19,8 +19,11 @@ from spxtacular import (
     match_fragments, score,
     # Visualization
     plot_spectrum, mirror_plot, annotate_spectrum, mass_error_plot, facet_plot,
+    sequence_coverage_plot, save_figure,
     # Plot tables
-    build_plot_table, build_annot_plot_table, plot_from_table,
+    build_plot_table, build_annot_plot_table, plot_from_table, table_view,
+    # Theme (a submodule, not a function)
+    theme,
     # Utilities
     da_to_ppm, ppm_to_da,
     # Remote / serialised spectra
@@ -469,6 +472,20 @@ extra to install. All of them return a `plotly.graph_objects.Figure`.
 
 Full documentation: [Visualization](visualization.md)
 
+### Conventions shared by every figure
+
+These defaults apply to all the plotting functions below; they are described once here rather than
+repeated in each parameter table.
+
+| Behaviour | Detail |
+|---|---|
+| **Relative intensity by default** | Table-driven figures (`plot_spectrum`, `annotate_spectrum`, `plot_from_table`) scale the y-axis so the base peak is 100% and title the axis `Relative intensity (%)`. Pass `intensity_scale="absolute"` for raw counts. Tooltips always report the **true** intensity, whatever the scaling. |
+| **Optional intensity transform** | `intensity_transform="sqrt"` or `"log"` compresses a range spanning orders of magnitude; the axis title is prefixed accordingly (`√ relative intensity (%)`, `log₁₀ …`). |
+| **Labels are capped and collision-avoided** | `max_labels` (default `25`) keeps only the strongest labels, and any label falling within 2.2% of the m/z span of a stronger one is dropped. `max_labels=None` removes the count cap but *not* the collision pass. Dropped values stay in the hover text, in the plot table, and in `table_view()`. |
+| **Hovering does not require precision** | Table-driven figures carry a transparent hit layer of 22px markers on the peak tips — the sticks themselves are `hoverinfo="skip"` — so being *near* a peak is enough rather than landing on a 1.6px hairline. Every figure additionally gets the m/z crosshair from the theme template (`showspikes`, `spikemode="across"`, snapped to the cursor), with `hoverdistance=24`. |
+| **Autosize** | Figures fill their container (`autosize=True`, from the template) rather than a fixed pixel box, so they lay out correctly in notebooks and docs pages. |
+| **Theme** | Every function takes `theme_mode="light" \| "dark"`; `None` (default) uses the module default from `theme.set_plot_theme()`. See [Theme](#theme). |
+
 ### `plot_spectrum`
 
 ```python
@@ -483,38 +500,30 @@ plot_spectrum(
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     show_charges: bool | None = None,  # deprecated alias of color
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    show_precursor: bool = True,
     **layout_kwargs,
 )
 ```
 
-`color`, `show_scores`, and `show_charges` are keyword-only.
+Everything after `title` is keyword-only.
 
-``color="charge"`` (default) colours sticks by charge state. ``color="im"``
-colours by ion mobility on a Viridis scale (falls back to ``"charge"`` when no
-IM array is present). ``color=None`` renders all sticks in a uniform colour.
-``show_charges`` is kept as a deprecated alias mapping to ``color="charge"`` /
-``color=None``.
+| Parameter | Default | Description |
+|---|---|---|
+| `color` | `"charge"` | `"charge"` colours sticks by charge state on the ordinal ramp; `"im"` colours by ion mobility on the single-hue sequential scale with a colourbar (falls back to `"charge"` when no IM array is present); `None` renders every stick in one colour |
+| `show_scores` | `True` | Label peaks whose `iso_score > 0` with their score |
+| `show_charges` | `None` | Deprecated alias — `True` → `color="charge"`, `False` → `color=None`; emits `DeprecationWarning` |
+| `max_labels` | `25` | Cap on directly drawn labels, strongest first; `None` for no count cap |
+| `theme_mode` | `None` | `"light"` / `"dark"`; `None` uses the global default |
+| `intensity_scale` | `"relative"` | `"relative"` (base peak = 100%) or `"absolute"` |
+| `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
+| `show_precursor` | `True` | On an `MsnSpectrum` carrying precursors, draw the precursor m/z hairline and the isolation window as recessive chrome behind the peaks |
 
-### `mirror_plot`
-
-```python
-from spxtacular import mirror_plot
-```
-
-```python
-mirror_plot(
-    raw: Spectrum,
-    deconvoluted: Spectrum,
-    title: str | None = None,
-    normalize: bool = True,
-    show_charges: bool = True,
-    show_scores: bool = True,
-    **layout_kwargs,
-)
-```
-
-The second parameter is named `deconvoluted`. `show_charges` colours the deconvoluted (upper) half
-by charge state; `show_scores` annotates its peaks with their isotope profile score.
+`color="im"` takes a separate rendering path that bins ion mobility into 20 steps of the sequential
+scale; `intensity_scale` and `intensity_transform` are not applied on that path.
 
 ### `annotate_spectrum`
 
@@ -531,9 +540,57 @@ annotate_spectrum(
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
+    show_precursor: bool = True,
     **layout_kwargs,
 )
 ```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `tolerance` / `tolerance_type` | `0.02` / `"da"` | Matching tolerance |
+| `peak_selection` | `"closest"` | `"closest"`, `"largest"`, or `"all"` |
+| `include_sequence` | `False` | Embed the residue sequence in each label (`b3{PEP}` instead of `b3`) |
+| `max_labels` | `25` | Cap on directly drawn ion labels |
+| `theme_mode` | `None` | `"light"` / `"dark"` |
+| `intensity_scale` / `intensity_transform` | `"relative"` / `None` | y-axis scaling, as above |
+| `texture` | `False` | Also encode ion series as a dash pattern (the non-colour channel) — for print, forced-colours modes, and readers who cannot separate two hues. Off by default because at stick density dashes add noise |
+| `show_precursor` | `True` | Draw precursor m/z + isolation window when present |
+
+Matched peaks are coloured by ion series and labelled with their mzPAF identifier; unmatched peaks
+are drawn in recessive grey, thinner (`1.0` vs `1.6`) and dimmer (opacity `0.55`).
+
+### `mirror_plot`
+
+```python
+from spxtacular import mirror_plot
+```
+
+```python
+mirror_plot(
+    raw: Spectrum,
+    deconvoluted: Spectrum,
+    title: str | None = None,
+    normalize: bool = True,
+    show_charges: bool = True,
+    show_scores: bool = True,
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
+    **layout_kwargs,
+)
+```
+
+The second parameter is named `deconvoluted`. `show_charges` colours the deconvoluted (upper) half
+by charge state; `show_scores` annotates its peaks with their isotope profile score, capped by
+`max_labels`. The `raw` half is drawn in the unmatched grey.
+
+`mirror_plot` does **not** take `intensity_scale`, `intensity_transform`, or `texture` — its y-axis
+scaling is controlled by `normalize`, which scales each half independently to its own maximum so the
+two fill their halves symmetrically. Either way the hover reports the pre-normalisation intensity.
 
 ### `mass_error_plot`
 
@@ -548,11 +605,17 @@ mass_error_plot(
     tolerance: float = 0.02,
     tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
-    unit: Literal["ppm", "da"] = "ppm",
+    unit: str = "ppm",              # "ppm" or "da"
     title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 )
 ```
+
+Bubbles are coloured by ion series from the categorical palette and labelled with their mzPAF
+identifier, so a 2+ and a 1+ of the same ion do not both render as `b3`. There is no `max_labels`
+here — every match is labelled — and no `intensity_scale`, `intensity_transform`, or `texture`:
+the y-axis is mass error, not intensity.
 
 ### `facet_plot`
 
@@ -571,11 +634,233 @@ facet_plot(
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     unit: str = "ppm",
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 )
 ```
 
 Takes a **single** spectrum, not a list. The optional second spectrum is `mirror_spectrum`.
+`max_labels` caps the ion labels in the annotated panel. Like `mirror_plot` and `mass_error_plot`,
+`facet_plot` accepts no `intensity_scale`, `intensity_transform`, or `texture`; its panels are built
+from plot tables at their defaults (so relative intensity), and each panel axis is titled
+`Intensity`.
+
+### `sequence_coverage_plot`
+
+```python
+from spxtacular import sequence_coverage_plot
+```
+
+```python
+sequence_coverage_plot(
+    spectrum: Spectrum,
+    peptide: str,
+    fragments,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
+    title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
+    **layout_kwargs,
+) -> go.Figure
+```
+
+The coverage ladder: an annotated spectrum shows *that* peaks matched, this shows **where along the
+peptide** they matched — which is what tells you whether an identification is localised or leaning
+on one end of the molecule.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `spectrum` | | The spectrum the fragments are matched against |
+| `peptide` | | Residue sequence, **one character per residue**. Pass the *stripped* sequence — ProForma modification brackets are not rendered. Raises `ValueError` when empty |
+| `fragments` | | Fragment objects, as for `match_fragments` |
+| `tolerance` / `tolerance_type` / `peak_selection` | `0.02` / `"da"` / `"closest"` | Matching parameters |
+| `title` | `None` | Overrides the generated title |
+| `theme_mode` | `None` | `"light"` / `"dark"` |
+
+**Tick convention.** Residues run left to right. A tick drawn **above and to the left** of a residue
+marks an N-terminal (a/b/c) fragment that *ended* at that bond; a tick **below and to the right**
+marks a C-terminal (x/y/z) fragment that *started* there. A bond carrying ticks on both sides is
+confirmed from both directions. N-terminal ticks take the `b` colour, C-terminal ticks the `y`
+colour, and both are named in the legend.
+
+The default title reports the count of distinct bonds covered — e.g.
+`Sequence coverage — 17/17 backbone bonds covered (100%)`.
+
+```python
+import numpy as np
+import peptacular as pt
+import spxtacular as spx
+
+peptide = "FDSFGDLSSASAIMGNPK"
+fragments = pt.fragment(peptide, ion_types=("b", "y"), charges=(1, 2))
+
+# A toy spectrum: one peak per theoretical fragment (m/z must be sorted).
+mz = np.sort(np.array([f.mz for f in fragments]))
+spectrum = spx.Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
+
+fig = spx.sequence_coverage_plot(spectrum, peptide, fragments)   # note: spectrum first
+print(fig.layout.title.text)
+# Sequence coverage — 17/17 backbone bonds covered (100%)
+```
+
+### `save_figure`
+
+```python
+from spxtacular import save_figure
+```
+
+```python
+save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) -> Path
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `fig` | | Figure to write |
+| `path` | | Destination; the **suffix picks the writer** |
+| `scale` | `2.0` | Device pixel ratio for raster formats — `2.0` stays sharp on a high-density display or in print |
+| `**kwargs` | | Forwarded to `fig.write_html` / `fig.write_image` |
+
+| Suffix | Backend | Extra install |
+|---|---|---|
+| `.html`, or no suffix (`.html` is appended) | `fig.write_html` | none — always works |
+| `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp`, `.eps` | `fig.write_image` | `pip install kaleido` |
+| anything else | — | raises `ValueError` |
+
+A missing static-export backend is reported as an `ImportError` naming `kaleido`, rather than as a
+bare exception from inside plotly. Returns the path actually written (useful when the suffix was
+appended).
+
+```python
+import numpy as np
+import spxtacular as spx
+
+spectrum = spx.Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([10.0, 40.0]))
+fig = spx.plot_spectrum(spectrum)
+
+path = spx.save_figure(fig, "spectrum")     # -> Path('spectrum.html')
+print(path)
+```
+
+---
+
+## Theme
+
+```python
+from spxtacular import theme
+```
+
+`spxtacular.theme` is the single source of truth for plot colour — both `plot_table.py` and
+`visualization.py` read from it, so a palette change lands on every figure at once rather than being
+kept in sync by comment. Every plotting function's `theme_mode` argument selects the mode for one
+figure; `theme.set_plot_theme()` sets the default for all of them.
+
+### Colour is assigned by job, not by taste
+
+| Job | Encoding | Lookup |
+|---|---|---|
+| Fragment ion series | **Nominal categorical** — eight fixed hues in the fixed slot order `b, y, a, c, x, z, p, i` | `ion_color` |
+| Charge state | **Ordinal** — one hue, running light → dark as charge rises, so the reader sees 1+ < 2+ < 3+ in the colour | `charge_color` |
+| Continuous magnitude — ion mobility (`plot_spectrum(color="im")`), and any per-peak score you colour yourself | **Sequential** — one hue, light → dark, with a colourbar. Not Viridis: a multi-hue ramp invents banding that is not in the data | `sequential_scale` |
+| Unmatched peaks | **Recessive grey**, also thinner and dimmer — unmatched peaks are context, not subject | `unmatched_color` |
+
+Three consequences worth knowing:
+
+* **Ion hues never cycle.** Slots are assigned in order and stop at eight. Anything not in the eight
+  slots — including internal fragments, whose ion types are two letters like `"by"` — folds to
+  `neutral_color()` rather than being handed a ninth hue that would collide with an existing series.
+  `b` and `y` take the first two slots because they are by far the most common pair, so the pair
+  that co-occurs most often is the most separable.
+* **The charge ramp clamps, it does not wrap.** The shipped ramp has five steps, and charges past
+  its end all take the far end: `charge_color(11) == charge_color(5)`. The previous 10-colour cycle
+  rendered `z=1` and `z=11`
+  in *identical* colours, which is the one failure an ordinal encoding must not have.
+  `charge <= 0` — singletons (`-1`) and decharged peaks (`0`) — is neutral grey: absence of
+  identity, not another category.
+* **Dark mode is not an inversion.** The dark charge ramp runs dark → light so it stays legible
+  against the dark surface, and the sequential scale is reversed to match.
+
+### Functions
+
+| Function | Signature | Returns |
+|---|---|---|
+| `set_plot_theme` | `(mode: ThemeMode) -> None` | Sets the default mode for every subsequent plot. `ValueError` on anything but `"light"` / `"dark"` |
+| `resolve_mode` | `(theme: ThemeMode \| None = None) -> ThemeMode` | The effective mode — the argument if given, otherwise the global default |
+| `set_palette` | `(*, categorical=None, charge_ramp=None, sequential=None) -> None` | Replaces a palette wholesale (see below) |
+| `ion_color` | `(ion_type: str, theme=None) -> str` | Hex colour for a fragment series; neutral for anything outside the eight slots |
+| `charge_color` | `(charge: int, theme=None) -> str` | Hex colour from the ordinal ramp; clamped at the end, neutral for `charge <= 0` |
+| `ion_dash` | `(ion_type: str) -> str` | Plotly dash pattern for a series — the texture channel used by `texture=True`. Mode-independent, so it takes no `theme` |
+| `sequential_scale` | `(theme=None) -> list[list]` | Plotly colourscale for continuous magnitude — `[[stop, hex], …]`, five stops |
+| `surface` | `(theme=None) -> str` | Chart surface (paper and plot background) |
+| `text_color` | `(level: Literal["primary","secondary","muted"] = "secondary", theme=None) -> str` | Ink. Labels never wear the series colour — identity comes from the mark |
+| `unmatched_color` | `(theme=None) -> str` | Colour for peaks carrying no annotation |
+| `neutral_color` | `(theme=None) -> str` | Colour for singletons and any category past the eighth slot |
+| `template` | `(theme=None) -> go.layout.Template` | The plotly template: recessive chrome, horizontal gridlines only, m/z crosshair, autosize |
+| `apply` | `(fig: go.Figure, theme=None) -> go.Figure` | Applies that template to an existing figure in place and returns it |
+
+`ThemeMode` is the type alias for the mode: `Literal["light", "dark"]`.
+
+Note the naming: inside `theme` the mode argument is called `theme` (`ion_color("b", theme="dark")`),
+while the plotting functions call the same thing `theme_mode` — there, `theme` would shadow the
+module.
+
+```python
+import plotly.graph_objects as go
+from spxtacular import theme
+
+theme.set_plot_theme("dark")            # global default for every subsequent figure
+
+theme.ion_color("b")                    # '#3987e5'  (dark-mode slot 0)
+theme.ion_color("by")                   # neutral — internal fragments get no hue of their own
+theme.ion_color("y", theme="light")     # '#eb6834' — one-off override, global default untouched
+theme.charge_color(11) == theme.charge_color(5)   # True — the ramp clamps
+theme.charge_color(-1) == theme.neutral_color()   # True — singletons are not a category
+
+fig = theme.apply(go.Figure())          # borrow the template for your own figure
+theme.set_plot_theme("light")
+```
+
+### `set_palette`
+
+```python
+theme.set_palette(
+    *,
+    categorical: dict[ThemeMode, list[str]] | None = None,   # >= 8 hues per mode
+    charge_ramp: dict[ThemeMode, list[str]] | None = None,
+    sequential: dict[ThemeMode, list[list]] | None = None,
+) -> None
+```
+
+Each argument takes a `{"light": [...], "dark": [...]}` mapping and replaces that palette in both
+modes. `categorical` and `charge_ramp` take lists of hex strings; `sequential` takes a plotly
+colourscale, `[[0.0, "#…"], …, [1.0, "#…"]]`. `ValueError` is raised when a mapping is missing a
+mode, or when a categorical palette has fewer entries than there are ion slots (8).
+
+> **Substituted palettes are not validated for colour-vision deficiency.**
+> The shipped palettes were checked with a CVD validator (protanopia and deuteranopia,
+> Machado-Oliveira-Fernandes at severity 1.0) against both surfaces. A palette you pass to
+> `set_palette` is **not** checked — the only validation is the structural one above (both modes
+> present, at least 8 categorical hues). Validate your own hues before relying on them, or you lose
+> the property the defaults were chosen for. Categorical hues want a fixed order with adjacent pairs
+> kept far apart; a charge ramp wants a single hue with monotone lightness.
+
+```python
+from spxtacular import theme
+
+theme.set_palette(
+    categorical={
+        "light": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+                  "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+        "dark": ["#3987e5", "#d95926", "#199e70", "#c98500",
+                 "#d55181", "#008300", "#9085e9", "#e66767"],
+    },
+    charge_ramp={
+        "light": ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"],
+        "dark": ["#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4"],
+    },
+)
+```
 
 ---
 
@@ -654,6 +939,49 @@ required dependency, so this API is always available.
 
 Full documentation: [Spectrum reference — `plot_table`](spectrum.md#plot_table)
 
+### Table schema
+
+Both builders return the same columns, in this order:
+
+```text
+mz, intensity, intensity_abs, charge, score, im,
+color, linewidth, opacity, dash, series,
+label, label_size, label_font, label_color, label_yshift, label_xanchor,
+hover
+```
+
+| Column | dtype | Read by `plot_from_table`? | Meaning |
+|---|---|---|---|
+| `mz` | `float64` | yes | Peak m/z |
+| `intensity` | `float64` | yes | **The plotted value** — relative-scaled (base peak = 100) unless `intensity_scale="absolute"`, then transformed if `intensity_transform` was given |
+| `intensity_abs` | `float64` | no | **The true intensity**, always unscaled. This is what the tooltips report and what `table_view(max_rows=…)` ranks by |
+| `charge` | `Int64` (nullable; `pd.NA` when the spectrum has no charge array) | no | Charge state |
+| `score` | `float64` (`NaN` when absent) | no | `iso_score` |
+| `im` | `float64` (`NaN` when absent) | no | Ion mobility |
+| `color` | `str` | yes | Hex colour, from `theme` |
+| `linewidth` | `float` | yes, from the first row of each group | `1.6` matched / `1.0` unmatched |
+| `opacity` | `float` | yes, from the first row of each group | `1.0` matched / `0.55` unmatched |
+| `dash` | `str` | yes, from the first row of each group (only when not `"solid"`) | Texture channel — set per ion series when `texture=True` |
+| `series` | `str` | yes | Trace name and grouping key |
+| `label` | `str` | yes | Direct label; `""` for peaks whose label was capped or collided away |
+| `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor` | | yes | Label styling |
+| `hover` | `str` | yes | Tooltip text, baked in by the builder — to change a tooltip edit `hover` itself, not the value behind it |
+
+`table.attrs["intensity_label"]` carries the y-axis title that matches the scaling applied
+(`"Intensity"`, `"Relative intensity (%)"`, `"√ relative intensity (%)"`, `"log₁₀ …"`).
+`plot_from_table` reads it, so a rescaled table titles its own axis.
+
+Because `intensity` and `intensity_abs` are separate, tooltips are unaffected by rescaling: change
+`intensity_scale` and the axis changes, never the number the reader is told.
+
+`series` values:
+
+| Table | `series` values |
+|---|---|
+| `build_plot_table` with charge data | `"z=1"`, `"z=2"`, … plus `"singleton"` (`charge == -1`) and `"decharged"` (`charge == 0`) |
+| `build_plot_table` without charge data, or `show_charges=False` | `"peaks"` |
+| `build_annot_plot_table` | the ion type of the matched fragment (`"b"`, `"y"`, …), or `"unmatched"` |
+
 ### `build_plot_table`
 
 ```python
@@ -665,8 +993,23 @@ build_plot_table(
     spectrum: Spectrum,
     show_charges: bool = True,
     show_scores: bool = True,
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
 ) -> pd.DataFrame
 ```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `show_charges` | `True` | Colour peaks by charge state on the ordinal ramp and set `series` to `"z=N"` / `"singleton"` / `"decharged"` |
+| `show_scores` | `True` | Label peaks whose `iso_score > 0` with their score |
+| `max_labels` | `25` | Cap on labels kept non-empty, strongest first, after the collision pass |
+| `theme_mode` | `None` | `"light"` / `"dark"` — decides the hex values written into `color` and `label_color` |
+| `intensity_scale` | `"relative"` | Scaling written into `intensity` (`intensity_abs` is unaffected) |
+| `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
+| `texture` | `False` | Accepted for signature parity with `build_annot_plot_table`; a plain spectrum has no ion series to texture, so `dash` stays `"solid"` either way |
 
 ### `build_annot_plot_table`
 
@@ -682,8 +1025,19 @@ build_annot_plot_table(
     tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
+    max_labels: int | None = 25,
+    theme_mode: Literal["light", "dark"] | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
+    texture: bool = False,
 ) -> pd.DataFrame
 ```
+
+Same trailing parameters as `build_plot_table`, and here `texture=True` does have an effect: each
+matched peak's `dash` is set from `theme.ion_dash(ion_type)`. When one peak matches several ions,
+the colour and `series` are chosen by the fixed ion slot order rather than by input order, so
+reordering the fragment list never silently repaints the plot; the label lists every matching ion,
+joined by `<br>`.
 
 ### `plot_from_table`
 
@@ -695,6 +1049,76 @@ from spxtacular import plot_from_table
 plot_from_table(
     table: pd.DataFrame,
     title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 ) -> go.Figure
+```
+
+Renders one `go.Scatter` trace per unique `(series, color)` group, plus the transparent hit-target
+trace, plus one annotation per row with a non-empty `label`.
+
+The required columns are validated up front — a missing one raises
+`ValueError: plot table is missing required column(s): …` immediately, rather than part-way through
+rendering or only on data that happens to carry labels:
+
+```text
+mz, intensity, series, color, linewidth, opacity, hover,
+label, label_size, label_font, label_color, label_yshift, label_xanchor
+```
+
+`intensity_abs` and `dash` are *not* required, so a table built by an older version still renders.
+Grouping keeps NA keys (`dropna=False`): a row whose `series` or `color` came back NA — easy to
+produce with `merge` / `reindex` / `concat` on a hand-edited table — is drawn in the unmatched
+colour under the series name `"unlabelled"` instead of silently vanishing from the figure.
+
+The legend is shown only when the table holds more than one `series`.
+
+### `table_view`
+
+```python
+from spxtacular import table_view
+```
+
+```python
+table_view(
+    table: pd.DataFrame,
+    max_rows: int | None = None,
+    annotated_only: bool = False,
+) -> str
+```
+
+Renders a plot table as an accessible HTML `<table>` string — the companion to the figure, not a
+replacement for it. It exists because a tooltip should enhance, never gate: label capping
+deliberately drops labels off the figure, and hovering is unusable for keyboard and screen-reader
+users, so every value needs a non-hover route.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `table` | | A table from `build_plot_table` or `build_annot_plot_table` |
+| `max_rows` | `None` | Keep only this many most-intense peaks (ranked on `intensity_abs`); `None` keeps all |
+| `annotated_only` | `False` | Keep only peaks carrying a label — useful beside an annotated spectrum, where unmatched peaks are context rather than results |
+
+Rows are emitted in m/z order. The columns are `m/z` and `Intensity` (the **true** intensity from
+`intensity_abs`), plus `z`, `Score`, and `Ion mobility` when those columns hold any non-NA value,
+plus `Annotation` when any label is present. Label text is HTML-escaped, and the `<br>` separators
+the plot uses between co-matching ions become commas.
+
+```python
+import numpy as np
+import peptacular as pt
+import spxtacular as spx
+
+peptide = "FDSFGDLSSASAIMGNPK"
+fragments = pt.fragment(peptide, ion_types=("b", "y"), charges=(1, 2))
+
+# A toy spectrum: one peak per theoretical fragment (m/z must be sorted).
+mz = np.sort(np.array([f.mz for f in fragments]))
+spectrum = spx.Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
+
+table = spx.build_annot_plot_table(spectrum, fragments)
+print(table.attrs["intensity_label"])           # Relative intensity (%)
+
+html = spx.table_view(table, max_rows=3, annotated_only=True)
+print(html)
+# <table><caption>Peak list</caption>…
 ```

@@ -170,22 +170,128 @@ Requires the `spectrl` extra. `lossless=True` skips lossy numeric compression. C
 ## Plotting (requires plotly)
 
 ```python
+import peptacular as pt
+import spxtacular as spx
+
+spx.theme.set_plot_theme("dark")     # global default mode: "light" (default) | "dark"
+
+frags = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
+
 spec.plot(title="My spectrum", color="charge").show()   # color: "charge" | "im" | None
-spec.plot(color="im").show()                             # Viridis scale by ion mobility
+fig = spx.annotate_spectrum(spec, frags, max_labels=15, theme_mode="dark")
+cov = spx.sequence_coverage_plot(spec, "PEPTIDE", frags)   # STRIPPED sequence, not ProForma
+spx.save_figure(fig, "spectrum.html")                      # .png/.svg/.pdf need kaleido
 ```
+
+Functions (all exported from `spxtacular`):
+
+| Function | Notes |
+|---|---|
+| `plot_spectrum(spectrum, title=None, *, color="charge", show_scores=True, show_charges=None, max_labels=25, theme_mode=None, intensity_scale="relative", intensity_transform=None, show_precursor=True, **layout_kwargs)` | stick plot |
+| `annotate_spectrum(spectrum, fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, max_labels=25, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False, show_precursor=True, **layout_kwargs)` | annotated fragment spectrum |
+| `mirror_plot(raw, deconvoluted, title=None, normalize=True, show_charges=True, show_scores=True, max_labels=25, theme_mode=None, **layout_kwargs)` | |
+| `facet_plot(spectrum, fragments=None, mirror_spectrum=None, title=None, ..., unit="ppm", max_labels=25, theme_mode=None, **layout_kwargs)` | a **single** spectrum plus an optional `mirror_spectrum`, never a list |
+| `mass_error_plot(spectrum, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit="ppm", title=None, theme_mode=None, **layout_kwargs)` | |
+| `sequence_coverage_plot(spectrum, peptide, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", title=None, theme_mode=None, **layout_kwargs)` | backbone coverage ladder |
+| `save_figure(fig, path, scale=2.0, **kwargs) -> Path` | extension picks the writer |
+| `table_view(table, max_rows=None, annotated_only=False) -> str` | accessible HTML `<table>` from a plot table |
+
+`Spectrum` methods: `.plot()`, `.annotate()`, `.mass_error_plot()`, `.facet_plot()`,
+`.plot_table()`, `.annot_plot_table()`. There is **no** `Spectrum.mirror_plot()` or
+`Spectrum.sequence_coverage_plot()` — call the functions. The plotting methods do not declare the
+new parameters but forward them through `**layout_kwargs`, so
+`spec.annotate(frags, theme_mode="dark", max_labels=10, texture=True)` works.
 
 `color`, `show_scores`, `show_charges`, and `**layout_kwargs` are **keyword-only** on both
 `Spectrum.plot()` and `plot_spectrum()` — `spec.plot("title", False)` is a `TypeError`, not a
 silent bug, by design. `show_charges` is a deprecated alias for `color="charge"`/`color=None`.
-Also available: `mirror_plot(raw, deconvoluted)`, `annotate_spectrum(spec, fragments)`,
-`mass_error_plot(spec, fragments)`, and
-`facet_plot(spectrum, fragments=None, mirror_spectrum=None, ...)` — `facet_plot` takes a **single**
-spectrum plus an optional `mirror_spectrum`, never a list. All five are exported from `spxtacular`
-and mirrored as `Spectrum` methods (`.plot()`, `.annotate()`, `.mass_error_plot()`,
-`.facet_plot()`).
 
 Utilities: `da_to_ppm(delta_mz, mz)` and `ppm_to_da(delta_ppm, mz)` — difference first, reference
 m/z second.
+
+### `spxtacular.theme` — the single source of plot colour
+
+```python
+from spxtacular import theme
+
+theme.set_plot_theme("dark")     # global default; "light" | "dark"
+theme.ion_color("y")             # categorical hue for a fragment series
+theme.charge_color(3)            # ordinal ramp colour
+theme.apply(fig, "dark")         # apply the spxtacular template to any plotly figure
+
+theme.set_palette(charge_ramp={  # every palette must define BOTH modes
+    "light": ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"],
+    "dark": ["#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4"],
+})
+```
+
+Also public: `resolve_mode`, `surface`, `ion_dash`, `sequential_scale`, `text_color`,
+`unmatched_color`, `neutral_color`, `template`, and the `ThemeMode = Literal["light", "dark"]`
+alias. `set_palette(*, categorical=None, charge_ramp=None, sequential=None)` — each takes a
+`{"light": [...], "dark": [...]}` mapping and raises `ValueError` if a mode is missing or a
+categorical palette has fewer than 8 hues. **Substituted hues are not checked for colour-vision
+deficiency**; the shipped ones were (protanopia + deuteranopia, both surfaces).
+
+Colour is assigned by *job*:
+
+- **ion type** — nominal categorical, 8 fixed slots in order `b, y, a, c, x, z, p, i`.
+- **charge state** — *ordinal*, a single-hue ramp running light→dark (dark→light in dark mode).
+- **iso_score / ion mobility** — sequential single-hue ramp (no longer Viridis).
+- **unmatched peaks** — recessive grey, thinner and dimmer.
+
+### Plot table (`build_plot_table` / `build_annot_plot_table` / `plot_from_table`)
+
+```python
+table = spx.build_plot_table(spec, show_charges=True, show_scores=True, max_labels=25,
+                             theme_mode=None, intensity_scale="relative",
+                             intensity_transform=None, texture=False)
+table = spx.build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_type="da",
+                                   peak_selection="closest", include_sequence=False,
+                                   max_labels=25, theme_mode=None,
+                                   intensity_scale="relative", intensity_transform=None,
+                                   texture=False)
+fig = spx.plot_from_table(table, title=None, theme_mode=None, **layout_kwargs)
+html = spx.table_view(table, max_rows=None, annotated_only=False)
+```
+
+Columns, in order: `mz`, `intensity`, `intensity_abs`, `charge`, `score`, `im`, `color`,
+`linewidth`, `opacity`, `dash`, `series`, `label`, `label_size`, `label_font`, `label_color`,
+`label_yshift`, `label_xanchor`, `hover`. `table.attrs["intensity_label"]` carries the y-axis
+title (e.g. `"Relative intensity (%)"`, `"Intensity"`, `"√ relative intensity (%)"`).
+`plot_from_table` validates the required columns and no longer drops NA `series`/`color`.
+
+`series` values: from `build_plot_table` they are `"z=N"`, `"singleton"` (charge `-1`),
+`"decharged"` (charge `0`), or `"peaks"` when `show_charges=False` or the spectrum has no charge
+array; from `build_annot_plot_table` they are the ion type (`"b"`, `"y"`, …) or `"unmatched"`.
+
+`Spectrum.plot_table()` / `Spectrum.annot_plot_table()` accept only the old arguments — call the
+module-level `build_plot_table` / `build_annot_plot_table` to use `max_labels`, `theme_mode`,
+`intensity_scale`, `intensity_transform`, or `texture`.
+
+### Plotting gotchas (get these wrong and the output is subtly incorrect)
+
+- **Relative intensity is the DEFAULT y-axis** (base peak = 100%). Pass
+  `intensity_scale="absolute"` for raw counts. `intensity_transform="sqrt"|"log"` compresses
+  dynamic range. Tooltips always report the *true* intensity regardless of scaling.
+- **`intensity` in the plot table is the plotted (scaled) value; `intensity_abs` is the true
+  one.** Never read `intensity` when you want counts.
+- **`mirror_plot`, `facet_plot`, and `mass_error_plot` do NOT take `intensity_scale`,
+  `intensity_transform`, or `texture`** — only `max_labels` and `theme_mode` (and
+  `mass_error_plot` takes only `theme_mode`). Passing the others lands in `**layout_kwargs` and
+  fails as an unknown plotly layout property. `plot_spectrum` takes no `texture` either — only
+  `annotate_spectrum` and the two `build_*_plot_table` functions do.
+- **Charge colouring is an ordinal ramp that CLAMPS, not a cycle.** Charges past the end of the
+  ramp all take its extreme colour; `charge <= 0` (singletons and decharged peaks) is neutral grey.
+- **Internal fragments (two-letter types like `"by"`) and any ion type past the eighth slot fold
+  to a neutral colour by design** — never a ninth hue. That is not a bug to patch.
+- **`sequence_coverage_plot` takes the STRIPPED peptide sequence** (one character per residue);
+  ProForma modification brackets are not rendered. An empty peptide raises `ValueError`.
+- **`save_figure` needs `kaleido` for static formats.** `.html` (or no suffix → `.html`) always
+  works; `.png/.svg/.pdf/.jpg/.jpeg/.webp/.eps` raise `ImportError` naming kaleido if it is
+  missing; any other suffix raises `ValueError`.
+- **Labels are deliberately dropped.** `max_labels` (default 25) plus m/z collision avoidance
+  means not every peak is labelled; the dropped values survive in the hover and in the plot
+  table — that is what `table_view()` is for.
 
 ## Gotchas / rules for correct code
 

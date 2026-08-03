@@ -27,8 +27,10 @@ src/spxtacular/
 ├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
 ├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
 ├── noise.py         # noise estimation (MAD, fixed threshold)
-├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table)
-└── visualization.py # plotly-based plotting (plot_spectrum, mirror_plot, annotate_spectrum)
+├── theme.py         # plot palettes + plotly template (single source of truth for colour)
+├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table, table_view)
+└── visualization.py # plotly plotting (plot_spectrum, mirror_plot, annotate_spectrum,
+                     #   sequence_coverage_plot, mass_error_plot, facet_plot, save_figure)
 ```
 
 ## Core concepts
@@ -100,7 +102,27 @@ whether their backends are installed; only instantiation raises `ImportError`
 when the corresponding optional dep is missing. This lets downstream libraries
 (e.g. `pydiode`) depend on `spxtacular` without pulling in the raw-file readers.
 
+## Plot colour
+
+`theme.py` is the single source of truth — never hardcode a hex value in `plot_table.py` or
+`visualization.py`. Colour is assigned by the **job** it does:
+
+| Job | Encoding |
+|---|---|
+| ion type | nominal categorical, 8 fixed slots `b y a c x z p i`; anything else folds to neutral |
+| charge state | **ordinal** — one hue, light→dark; clamps past the ramp; `charge <= 0` is neutral |
+| `iso_score`, ion mobility | sequential — one hue, light→dark |
+| unmatched peaks | recessive grey, thinner and dimmer |
+
+The palettes were validated for colour-vision deficiency (protanopia/deuteranopia) against both the
+light and dark surfaces. Both modes are explicit sets of steps; dark is not an inversion of light.
+
 ## What NOT to do
 
 - Do not call `decharge()` on a non-deconvoluted spectrum — it will raise `ValueError`.
 - Do not move isotope scoring logic into `greedy.py` — keep cluster finding and scoring separate.
+- Do not colour charge states with a categorical cycle — charge is ordinal, and a cycle repeats
+  (the old 10-colour version made `z=1` and `z=11` identical).
+- Do not label every annotated peak — labels are capped and collision-avoided on purpose; a
+  deconvoluted spectrum with a label per peak is an unreadable smear.
+- Do not add a hex value straight into a plot function; add it to `theme.py` and validate it.
