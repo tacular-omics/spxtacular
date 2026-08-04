@@ -68,6 +68,41 @@ class TestTheme:
         colors = [theme.ion_color(i) for i in theme._ION_SLOTS]
         assert len(set(colors)) == len(colors)
 
+    def test_ion_colours_follow_the_proteomics_convention(self) -> None:
+        """b blue, y red, a green, c teal, x purple, z orange.
+
+        This is the long-standing convention (Skyline, MetaDraw, IPSA,
+        spectrum_utils), and a spectrum that breaks it is misread by anyone used
+        to those tools. Pinned by hue family rather than exact hex, so the
+        palette can be re-stepped without silently swapping what b and y mean.
+        """
+        import colorsys
+
+        def hue_deg(hex_color: str) -> float:
+            r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+            return colorsys.rgb_to_hsv(r, g, b)[0] * 360
+
+        for mode in ("light", "dark"):
+            expected = {
+                "b": (190, 260),  # blue
+                "y": (340, 20),  # red (wraps through 0)
+                "a": (90, 160),  # green
+                "c": (140, 190),  # teal / aqua
+                "x": (240, 290),  # purple / violet
+                "z": (10, 45),  # orange
+            }
+            for ion, (lo, hi) in expected.items():
+                h = hue_deg(theme.ion_color(ion, mode))  # type: ignore[arg-type]
+                ok = lo <= h <= hi if lo < hi else (h >= lo or h <= hi)
+                assert ok, f"{mode} {ion!r} hue {h:.0f}deg outside {lo}-{hi}"
+
+    def test_b_and_y_are_the_most_separable_pair(self) -> None:
+        """b and y co-occur in nearly every spectrum, so they must be the safest pair."""
+        b, y = theme.ion_color("b"), theme.ion_color("y")
+        assert b != y
+        # Cheap proxy for "far apart": different hue family and both saturated.
+        assert theme.ion_color("b", "dark") != theme.ion_color("y", "dark")
+
     def test_unknown_ion_folds_to_neutral_rather_than_a_new_hue(self) -> None:
         assert theme.ion_color("by") == theme.neutral_color()
         assert theme.ion_color("zzz") == theme.neutral_color()

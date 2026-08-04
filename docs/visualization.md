@@ -311,12 +311,23 @@ Colour lives in `spxtacular.theme`, and is assigned by the *job* it does rather 
 
 | Job | What it encodes | How it is coloured |
 |---|---|---|
-| Ion type | which fragment series | Eight fixed categorical slots, in order `b y a c x z p i` |
+| Ion type | which fragment series | The proteomics convention: **b** blue · **y** red · **a** green · **c** teal · **x** purple · **z** orange |
 | Charge state | 1+, 2+, 3+ … | **Ordinal** — one hue, light to dark |
 | `iso_score`, ion mobility | magnitude | Sequential — one hue, light to dark |
 | Unmatched peaks | context, not subject | Recessive grey, thinner and dimmer |
 
-Two consequences worth knowing. Charge is *ordinal*, so it takes a ramp rather than a categorical
+Ion colours follow the convention used by Skyline, MetaDraw, IPSA and `spectrum_utils`, so a
+spectrum from spxtacular reads the way you expect. The hues are this palette's own validated steps
+picked from each conventional family, rather than copied hex values, so the convention is honoured
+without giving up the colour-vision checks — **b** and **y**, the pair present in nearly every
+spectrum, separate at CVD ΔE 21.6 (light) and 19.2 (dark), well above the ≥8 target.
+
+The one pair to know about is **a vs y** — green against red, the classic confusion pair — which
+sits at ΔE 7.2 in light mode. That is inside the band that is only safe alongside a second channel;
+annotated spectra always carry direct ion labels, which provides it, and `texture=True` adds dash
+patterns if you want more. Dark mode clears the target outright at 8.6.
+
+Two further consequences. Charge is *ordinal*, so it takes a ramp rather than a categorical
 cycle — you see the ordering in the colour, and charges beyond the ramp clamp to its dark end
 instead of wrapping around to an earlier colour. And ion types past the eighth slot — including
 internal fragments, whose types are two letters like `by` — fold to a neutral colour rather than

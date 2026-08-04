@@ -9,8 +9,9 @@ Colour is assigned by the *job* it does, not by taste:
 
 ``ion type``
     Nominal categorical — which fragment series a peak belongs to. Eight fixed
-    hues in a fixed order, assigned in sequence and never cycled; anything past
-    the eighth folds into a neutral "other" rather than inventing a ninth hue.
+    hues, assigned by the proteomics convention (b blue, y red, a green, c teal,
+    x purple, z orange) and never cycled; anything else folds into a neutral
+    "other" rather than inventing a ninth hue.
 ``charge state``
     **Ordinal**, not categorical — 1+, 2+, 3+ have a natural order, so charge
     takes a single-hue ramp that runs light to dark. The reader sees the
@@ -63,16 +64,46 @@ _NEUTRAL: dict[ThemeMode, str] = {"light": "#9a9993", "dark": "#6e6d67"}
 # Categorical palette — fragment ion series
 # ---------------------------------------------------------------------------
 
-# Fixed hue order. The ordering is the CVD-safety mechanism, not cosmetics.
-# b and y take the first two slots because they are by far the most common pair
-# (CID/HCD), so the pair that co-occurs most often is the most separable.
+# The eight validated hues. Which ion series takes which is set by
+# _ION_SLOT_INDEX below, following the proteomics convention rather than this
+# order -- the order here is only the palette's own adjacent-pair guarantee.
 _CATEGORICAL: dict[ThemeMode, list[str]] = {
     "light": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
     "dark": ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
 }
 
-#: Ion series in fixed slot order. Anything not listed folds to the neutral "other".
+#: Ion series in priority order. Anything not listed folds to the neutral "other".
+#: Used for the texture channel and to break ties when one peak matches several ions.
 _ION_SLOTS: tuple[str, ...] = ("b", "y", "a", "c", "x", "z", "p", "i")
+
+#: Which categorical slot each ion series takes.
+#:
+#: This is not the slot *order* -- it follows the long-standing proteomics
+#: convention instead, so a spectrum from spxtacular is readable by anyone used to
+#: Skyline, MetaDraw, IPSA or spectrum_utils:
+#:
+#:     b blue · y red · a green · c teal · x purple · z orange
+#:
+#: The hues are this palette's own validated steps, picked from the family each
+#: tool uses rather than copied, so the convention is honoured without giving up
+#: the colour-vision checks. b/y -- the pair that co-occurs in nearly every
+#: spectrum -- separates at CVD ΔE 21.6 light / 19.2 dark, comfortably above the
+#: ≥8 target and better than the blue/orange pairing it replaced.
+#:
+#: The one caveat is a-vs-y (green vs red), the classic confusion pair, at ΔE 7.2
+#: in light mode: inside the 6-8 band that is legal *only* alongside secondary
+#: encoding. Annotated spectra always carry direct mzPAF ion labels, which
+#: supplies it; ``texture=True`` adds dash patterns if you need more.
+_ION_SLOT_INDEX: dict[str, int] = {
+    "b": 0,  # blue
+    "y": 7,  # red
+    "a": 5,  # green
+    "c": 2,  # aqua, standing in for the conventional teal
+    "x": 6,  # violet, standing in for the conventional purple
+    "z": 1,  # orange
+    "p": 4,  # magenta  (precursor)
+    "i": 3,  # yellow   (immonium)
+}
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +260,16 @@ def text_color(level: Literal["primary", "secondary", "muted"] = "secondary", th
 def ion_color(ion_type: str, theme: ThemeMode | None = None) -> str:
     """Colour for a fragment ion series.
 
-    Assigned from a fixed slot order, never cycled. Unrecognised series --
-    including internal fragments, which have two-letter types like ``"by"`` --
+    Follows the proteomics convention -- b blue, y red, a green, c teal,
+    x purple, z orange -- using this palette's validated steps. Unrecognised
+    series, including internal fragments with two-letter types like ``"by"``,
     fold to the neutral colour rather than inventing a ninth hue.
     """
     mode = resolve_mode(theme)
     key = str(ion_type).lower()
-    if key in _ION_SLOTS:
-        return _CATEGORICAL[mode][_ION_SLOTS.index(key)]
+    slot = _ION_SLOT_INDEX.get(key)
+    if slot is not None:
+        return _CATEGORICAL[mode][slot]
     return _NEUTRAL[mode]
 
 

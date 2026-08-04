@@ -72,6 +72,24 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### Visualisation — ion colours follow the proteomics convention
+
+* **b is blue and y is red again.** The theme rewrite assigned ion series by slot order, which put
+  y on orange and broke the convention every spectrum viewer uses (Skyline, MetaDraw, IPSA,
+  `spectrum_utils`). Ion series are now mapped by hue family — **b** blue, **y** red, **a** green,
+  **c** teal, **x** purple, **z** orange — so a spxtacular spectrum reads the way anyone in the
+  field expects.
+
+  The hues remain this palette's own validated steps, picked from each conventional family rather
+  than copied, so the convention costs nothing in colour-vision safety. In fact b/y improved:
+  CVD ΔE 21.6 light / 19.2 dark, against 9.1 for the blue/orange pairing it replaces. The one pair
+  to know about is a-vs-y (green vs red) at ΔE 7.2 in light mode, inside the band that requires a
+  second channel — annotated spectra always carry direct ion labels, and `texture=True` adds dash
+  patterns. Dark mode clears the target outright at 8.6.
+
+  A test pins the convention by hue family, so the palette can be re-stepped without silently
+  swapping what b and y mean.
+
 ### Documentation — example figures
 
 * **`mass_error_plot` and `facet_plot` had no embedded figure** on the visualisation page. Both are

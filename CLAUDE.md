@@ -109,7 +109,7 @@ when the corresponding optional dep is missing. This lets downstream libraries
 
 | Job | Encoding |
 |---|---|
-| ion type | nominal categorical, 8 fixed slots `b y a c x z p i`; anything else folds to neutral |
+| ion type | nominal categorical following the proteomics convention: b blue, y red, a green, c teal, x purple, z orange; anything else folds to neutral |
 | charge state | **ordinal** — one hue, light→dark; clamps past the ramp; `charge <= 0` is neutral |
 | `iso_score`, ion mobility | sequential — one hue, light→dark |
 | unmatched peaks | recessive grey, thinner and dimmer |
