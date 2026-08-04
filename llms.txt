@@ -296,6 +296,13 @@ module-level `build_plot_table` / `build_annot_plot_table` to use `max_labels`, 
 - **`save_figure` needs `kaleido` for static formats.** `.html` (or no suffix → `.html`) always
   works; `.png/.svg/.pdf/.jpg/.jpeg/.webp/.eps` raise `ImportError` naming kaleido if it is
   missing; any other suffix raises `ValueError`.
+- **Similarity** (spectrum vs spectrum, NOT peptide vs spectrum -- that is `score`):
+  `cosine(a, b, tolerance, tolerance_type, transform='sqrt')`,
+  `modified_cosine(a, b, precursor_a, precursor_b, ...)` tolerates a precursor mass shift,
+  `entropy_similarity(a, b, ...)`. All symmetric, scale-invariant, in [0,1]. Peaks match
+  ONE-TO-ONE (greedy by descending contribution).
+- `centroid(min_intensity=None|'noise'|float)`. Default None = every local maximum is a peak,
+  which on noisy data gives orders of magnitude too many. Pass a floor on real data.
 - **Run-level**: `extract_chromatogram(spectra, mode='tic'|'bpc')`, `extract_xic(spectra, targets,
   tolerance=20, tolerance_type='ppm', im_window=None, aggregate='sum'|'max')` -> list[Chromatogram].
   `plot_chromatogram(...)` accepts a Chromatogram, a list, or raw spectra (extracts a TIC).

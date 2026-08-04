@@ -849,3 +849,28 @@ for spec in reader.ms2:
         print(f"  Precursor: {prec.mz:.4f} m/z, z={prec.charge}")
     break
 ```
+
+
+---
+
+## Centroiding
+
+```python
+spec.centroid()                          # every local maximum becomes a peak
+spec.centroid(min_intensity="noise")     # MAD-estimated floor
+spec.centroid(min_intensity=2000)        # absolute floor
+```
+
+`min_intensity` is the floor an apex must clear to count as a peak.
+
+!!! warning
+    Without one, **every** local maximum is a peak. On data with any noise floor that returns far
+    more centroids than there are real peaks — a test spectrum with 6 real peaks and a modest noise
+    floor gives 769 centroids at the default, 6 with `min_intensity=2000`. The default is `None`
+    for backwards compatibility, but on real data you almost always want a floor.
+
+Use [`profile_centroid_plot()`](visualization.md#checking-centroiding) to see what the centroider
+actually did.
+
+A flat apex counts as one peak: requiring a strict `prev < curr > next` would discard any peak
+whose maximum spans two or more equal samples, which is routine in quantised or saturated data.

@@ -72,6 +72,35 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### New — spectrum-to-spectrum similarity
+
+* **`spxtacular.similarity`** answers "how alike are these two spectra", which
+  `scoring` (peptide vs spectrum) never did — the basis of spectral library search, replicate
+  comparison and clustering, and the number that belonged next to `mirror_plot`'s picture.
+  * `cosine` — the standard spectral dot product: sqrt-transformed intensities, unit-normalised,
+    peaks matched **one-to-one**. Matching every pair within tolerance instead would let one
+    intense peak match several neighbours and push the score past 1.
+  * `modified_cosine` — also matches peaks displaced by the precursor mass difference, the GNPS
+    molecular-networking metric. On a peptide pair differing by one +79.966 modification, a plain
+    cosine scores 0.53 while this recovers 1.00. Reduces exactly to `cosine` when the precursors
+    match.
+  * `entropy_similarity` — entropy similarity (Li et al. 2021), which discriminates more sharply
+    and has largely displaced cosine for library search.
+
+  All three are symmetric, scale-invariant and bounded in `[0, 1]`, and accept unsorted m/z.
+
+### Fixes — centroiding
+
+* **`centroid()` takes an intensity threshold.** Without one every local maximum is a peak, so a
+  test spectrum with 6 real peaks and a modest noise floor produced **769** centroids;
+  `min_intensity=2000` gives exactly 6, and `min_intensity="noise"` uses the MAD estimate. The
+  default stays `None` so existing callers are unaffected, but on real data you want a floor.
+* **A flat apex is no longer discarded.** Detection required a strict `prev < curr > next`, which
+  silently dropped any peak whose maximum spans two or more equal samples — routine in quantised or
+  saturated data. Runs of equal intensity are now collapsed before the comparison, so a plateau is
+  compared against its neighbouring *values*; a rising plateau that never descends is still
+  correctly not a peak.
+
 ### New — run-level extraction
 
 * **`spxtacular.chromatogram`**, the first module that works on a *run* rather than a spectrum.

@@ -697,3 +697,65 @@ def test_msn_str_repr_with_rt_none() -> None:
     s = str(msn)
     assert "rt=None" in s
     assert repr(msn) == s
+
+
+# ---------------------------------------------------------------------------
+# Centroid intensity threshold and flat apexes
+# ---------------------------------------------------------------------------
+
+
+class TestCentroidThreshold:
+    def _noisy_profile(self):
+        """Six real Gaussian peaks over a noise floor."""
+        mz = np.linspace(400.0, 412.0, 2400)
+        peaks = [(402.10, 1e5), (402.60, 5.2e4), (403.10, 1.6e4), (405.85, 7e4), (406.35, 3.1e4), (409.40, 4e4)]
+        prof = sum(a * np.exp(-0.5 * ((mz - c) / 0.013) ** 2) for c, a in peaks)
+        prof = prof + np.abs(np.random.default_rng(1).normal(0.0, 120.0, mz.size))
+        return Spectrum(mz=mz, intensity=prof, spectrum_type=SpectrumType.PROFILE), 6
+
+    def test_without_a_threshold_noise_becomes_peaks(self) -> None:
+        """Documents why the threshold exists: every local maximum is a peak."""
+        spec, real = self._noisy_profile()
+        assert len(spec.centroid()) > 100 * real
+
+    def test_an_absolute_threshold_recovers_the_real_peaks(self) -> None:
+        spec, real = self._noisy_profile()
+        assert len(spec.centroid(min_intensity=2000)) == real
+
+    def test_noise_threshold_cuts_the_count_dramatically(self) -> None:
+        spec, _ = self._noisy_profile()
+        assert len(spec.centroid(min_intensity="noise")) < len(spec.centroid()) / 10
+
+    def test_threshold_never_invents_peaks(self) -> None:
+        spec, _ = self._noisy_profile()
+        assert len(spec.centroid(min_intensity=1e9)) == 0
+
+    def test_a_higher_threshold_never_keeps_more(self) -> None:
+        spec, _ = self._noisy_profile()
+        counts = [len(spec.centroid(min_intensity=t)) for t in (0, 500, 2000, 10000, 50000)]
+        assert counts == sorted(counts, reverse=True)
+
+    def test_default_is_unchanged(self) -> None:
+        """The floor is opt-in; existing callers keep their behaviour."""
+        spec, _ = self._noisy_profile()
+        assert len(spec.centroid()) == len(spec.centroid(min_intensity=None))
+
+
+class TestCentroidFlatApex:
+    def test_a_two_sample_plateau_is_still_a_peak(self) -> None:
+        """A strict prev < curr > next test drops these, and they are routine in
+        quantised or saturated data."""
+        mz = np.array([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+        plateau = Spectrum(mz=mz, intensity=np.array([1.0, 5.0, 9.0, 9.0, 5.0, 1.0]))
+        assert len(plateau.centroid()) == 1
+
+    def test_a_sharp_apex_still_works(self) -> None:
+        mz = np.array([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+        sharp = Spectrum(mz=mz, intensity=np.array([1.0, 5.0, 9.0, 8.0, 5.0, 1.0]))
+        assert len(sharp.centroid()) == 1
+
+    def test_a_rising_plateau_is_not_a_peak(self) -> None:
+        """Relaxing the test must not turn every flat shoulder into a peak."""
+        mz = np.array([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+        rising = Spectrum(mz=mz, intensity=np.array([1.0, 2.0, 3.0, 3.0, 3.0, 3.0]))
+        assert len(rising.centroid()) == 0

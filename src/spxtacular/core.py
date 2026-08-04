@@ -39,12 +39,48 @@ from .noise import estimate_noise_level
 # ============================================================================
 
 
+def _apex_indices(intensity: NDArray[np.float64]) -> NDArray[np.intp]:
+    """Indices of local maxima, treating a flat top as one peak.
+
+    The obvious test — ``prev < curr > next`` — silently discards any peak whose
+    apex is two or more equal samples, which is routine in quantised or saturated
+    data. Runs of equal intensity are collapsed first, so a plateau is compared
+    against its neighbouring *values* rather than against itself, and the apex is
+    reported at the middle of the run.
+    """
+    n = intensity.size
+    if n < 3:
+        return np.empty(0, dtype=np.intp)
+
+    change = np.empty(n, dtype=bool)
+    change[0] = True
+    change[1:] = intensity[1:] != intensity[:-1]
+    starts = np.flatnonzero(change)
+    if starts.size < 3:
+        return np.empty(0, dtype=np.intp)
+
+    values = intensity[starts]
+    is_max = (values[:-2] < values[1:-1]) & (values[1:-1] > values[2:])
+    run = np.flatnonzero(is_max) + 1  # index into `starts`
+
+    # Middle sample of each winning run; for a single-sample run this is itself.
+    lo = starts[run]
+    hi = np.where(run + 1 < starts.size, starts[np.minimum(run + 1, starts.size - 1)] - 1, n - 1)
+    return ((lo + hi) // 2).astype(np.intp)
+
+
 def _centroid_peaks(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
     im: NDArray[np.float64] | None = None,
+    min_intensity: float | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64] | None]:
-    """Centroid peaks using numpy-optimized vectorized Gaussian fitting."""
+    """Centroid peaks using numpy-optimized vectorized Gaussian fitting.
+
+    ``min_intensity`` drops apexes at or below the given value *before* fitting.
+    Without one every local maximum is a peak, so noise alone produces orders of
+    magnitude more centroids than there are real peaks.
+    """
     if len(intensity) < 4:
         empty_im = np.empty(0, dtype=np.float64) if im is not None else None
         return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64), empty_im
@@ -58,8 +94,16 @@ def _centroid_peaks(
     mz_curr = mz[2:-1]
     mz_next = mz[3:]
 
-    # Match pymzml peak detection exactly
-    is_peak = (i_prev > 0) & (i_prev < i_curr) & (i_curr > i_next) & (i_next > 0)
+    # Apexes found on the run-collapsed sequence, expressed in this window's
+    # coordinates (the window starts at index 2 of the full array).
+    apex = _apex_indices(intensity) - 2
+    is_peak = np.zeros(i_curr.size, dtype=bool)
+    apex = apex[(apex >= 0) & (apex < i_curr.size)]
+    is_peak[apex] = True
+    is_peak &= (i_prev > 0) & (i_next > 0)
+
+    if min_intensity is not None:
+        is_peak &= i_curr > min_intensity
 
     # Filter out peaks with irregular spacing
     dx1 = mz_curr - mz_prev
@@ -738,13 +782,38 @@ class Spectrum:
             iso_score=new_score,
         )
 
-    def centroid(self, inplace: bool = False) -> Self:
+    def centroid(
+        self,
+        min_intensity: float | Literal["noise"] | None = None,
+        inplace: bool = False,
+    ) -> Self:
         """
         Centroid profile peaks using Gaussian fitting.
 
         Converts profile mode spectra to centroid mode by detecting local maxima
         and fitting Gaussian peaks to determine precise peak centers.
         Ion mobility data is preserved if present.
+
+        Parameters
+        ----------
+        min_intensity:
+            Intensity floor for a local maximum to count as a peak.
+
+            * ``None`` (default) — no floor. **Every** local maximum becomes a
+              peak, so on data with any noise this returns far more centroids
+              than there are real peaks: a test spectrum with 6 real peaks and a
+              modest noise floor yields 769.
+            * ``"noise"`` — use :func:`~spxtacular.noise.estimate_noise_level`
+              (MAD) on this spectrum, which is the sensible default for real data.
+            * a number — absolute floor.
+        inplace:
+            Mutate this spectrum instead of returning a new one.
+
+        Notes
+        -----
+        A flat apex counts as one peak. Requiring a strict ``prev < curr > next``
+        would discard any peak whose maximum spans two or more equal samples,
+        which is routine in quantised or saturated data.
         """
         if self.spectrum_type == SpectrumType.CENTROID:
             warnings.warn(
@@ -754,7 +823,14 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
-        mz_cent, int_cent, im_cent = _centroid_peaks(self.mz, self.intensity, self.im)
+        if min_intensity == "noise":
+            floor = estimate_noise_level(self.intensity, method="mad") if len(self.intensity) else None
+        elif min_intensity is None:
+            floor = None
+        else:
+            floor = float(min_intensity)
+
+        mz_cent, int_cent, im_cent = _centroid_peaks(self.mz, self.intensity, self.im, floor)
 
         return self.update(
             mz=mz_cent,

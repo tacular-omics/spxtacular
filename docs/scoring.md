@@ -154,3 +154,46 @@ print(f"Hyperscore:      {result['hyperscore']:.3f}")
 print(f"Spectral angle:  {result['spectral_angle']:.3f}")
 print(f"Matched ions:    {result['matched_fraction']:.1%}")
 ```
+
+
+---
+
+## Spectrum-to-spectrum similarity
+
+`score()` answers *how well does this peptide explain this spectrum*. These answer *how alike are
+these two spectra*, which is what spectral library search, replicate comparison and clustering are
+built on.
+
+```python
+from spxtacular import cosine, modified_cosine, entropy_similarity
+
+cosine(query, reference, tolerance=20, tolerance_type="ppm")   # 0-1
+entropy_similarity(query, reference, tolerance=0.02)           # 0-1
+```
+
+| Function | What it is |
+|---|---|
+| `cosine` | The standard spectral dot product: sqrt-transformed intensities, unit-normalised, peaks matched one-to-one |
+| `modified_cosine` | Cosine that also matches peaks displaced by the precursor mass difference — the GNPS molecular-networking metric |
+| `entropy_similarity` | Entropy similarity (Li et al. 2021), which discriminates more sharply and has largely displaced cosine for library search |
+
+All three are symmetric, scale-invariant, and bounded in `[0, 1]`: identical spectra score 1,
+spectra with no shared peaks score 0.
+
+Matching is **one-to-one** — a peak may back at most one match, resolved greedily by descending
+contribution. Allowing every pair within tolerance instead would let one intense peak match several
+neighbours and push the score past 1.
+
+### Modified cosine
+
+Two spectra of the same molecule differing by one modification share many fragments, but every
+fragment containing the modified site is shifted by the modification's mass. A plain cosine reads
+those as mismatches:
+
+```python
+# same peptide, one +79.966 phospho on the C-terminal half
+cosine(a, b, tolerance=0.02)                              # 0.53 - looks unrelated
+modified_cosine(a, b, 500.0, 579.966, tolerance=0.02)     # 1.00 - recovered
+```
+
+It reduces exactly to `cosine` when the two precursors are equal.

@@ -25,6 +25,7 @@ src/spxtacular/
 │   └── scored.py    # scored deconvolution entry point (Bhattacharyya scoring)
 ├── matching.py      # fragment peak matching (match_fragments)
 ├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
+├── similarity.py    # spectrum-to-spectrum similarity (cosine, modified_cosine, entropy)
 ├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
 ├── chromatogram.py  # run-level extraction (extract_chromatogram, extract_xic)
 ├── noise.py         # noise estimation (MAD, fixed threshold)

@@ -20,6 +20,7 @@ from .matching import match_fragments
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
+from .similarity import cosine, entropy_similarity, modified_cosine
 from .spectrl_bridge import (
     from_spectrl_token,
     from_spectrl_url,
@@ -43,6 +44,9 @@ from .visualization import (
 )
 
 __all__ = [
+    "entropy_similarity",
+    "modified_cosine",
+    "cosine",
     "plot_xic",
     "plot_chromatogram",
     "extract_xic",
