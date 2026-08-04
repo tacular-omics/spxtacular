@@ -260,7 +260,14 @@ class TestRealRun:
         from spxtacular.reader import DReader
 
         with DReader(str(self.DATA)) as reader:
-            return [Spectrum(mz=s.mz.copy(), intensity=s.intensity.copy(), im=s.im.copy()) for s in reader.ms1]
+            return [
+                Spectrum(
+                    mz=s.mz.copy(),
+                    intensity=s.intensity.copy(),
+                    im=None if s.im is None else s.im.copy(),
+                )
+                for s in reader.ms1
+            ]
 
     def test_frames_really_are_unsorted(self) -> None:
         """If this ever fails the fixture changed, and the tests below lose their point."""
