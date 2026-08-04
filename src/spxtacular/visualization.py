@@ -985,7 +985,9 @@ def facet_plot(
     if mirror_spectrum is not None:
         mirror_table = build_plot_table(mirror_spectrum, max_labels=max_labels, theme_mode=theme_mode)
         _add_stick_traces(fig, mirror_table, row=current_row, col=1, theme_mode=theme_mode, negate=True)
-        fig.update_yaxes(title_text="Intensity", row=current_row, col=1)
+        # As for panel 1: take the label from the table rather than hardcoding
+        # "Intensity" onto axis values that are relative-scaled by default.
+        fig.update_yaxes(title_text=mirror_table.attrs.get("intensity_label", "Intensity"), row=current_row, col=1)
 
     fig.update_xaxes(title_text="m/z", row=n_rows, col=1)
     fig.update_layout(

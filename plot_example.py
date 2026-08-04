@@ -10,6 +10,7 @@ Usage:
 import sys
 from pathlib import Path
 
+import numpy as np
 import peptacular as pt
 
 import spxtacular as spx
@@ -59,9 +60,20 @@ save_or_show(
 )
 
 # ── annotated spectrum ─────────────────────────────────────────────────────────
-# Use a peptide whose fragment m/z values land in the example spectrum range
-# (~280–1900 Da).  PEPTIDE is a tryptic peptide with charge-2 precursor in
-# that window; adjust as needed.
+# The annotation figures need a spectrum the peptide genuinely explains.
+#
+# EXAMPLE_SPECTRUM is real data whose true identification we do not have, and
+# PEPTIDE does not match it: at a realistic 10-20 ppm tolerance it matches
+# *nothing*. Annotating it anyway needed a 5 Da window (~10,000 ppm at m/z 500),
+# which produces 57 purely coincidental "matches" -- and a mass-error plot of
+# coincidental matches just draws the tolerance window, teaching the reader
+# something false.
+#
+# So the annotation-based figures below use a simulated MS2: this peptide's own
+# fragments, displaced by a few ppm the way a real instrument would, over a noise
+# floor. The annotations, the mass errors and the coverage ladder are then all
+# genuine. The raw/deconvolution/mirror figures above still use the real spectrum,
+# where no peptide is involved.
 PEPTIDE = "FDSFGDLSSASAIMGNPK"
 
 fragments = pt.fragment(
@@ -71,12 +83,36 @@ fragments = pt.fragment(
     monoisotopic=True,
 )
 
+
+def _simulated_ms2(frags, ppm_error=5.0, n_noise=140, seed=0):
+    """An MS2 that the peptide actually explains, with realistic ppm scatter."""
+    rng = np.random.default_rng(seed)
+    frag_mz = np.array([f.mz for f in frags], dtype=np.float64)
+    # Keep a realistic subset: not every theoretical ion is observed.
+    keep = rng.random(len(frag_mz)) < 0.75
+    frag_mz = frag_mz[keep]
+    # Per-peak mass error, normally distributed within a few ppm.
+    observed = frag_mz * (1.0 + rng.normal(0.0, ppm_error / 3.0, frag_mz.size) / 1e6)
+    signal = rng.lognormal(10.5, 0.9, observed.size)
+    noise_mz = rng.uniform(observed.min() - 40, observed.max() + 40, n_noise)
+    noise_i = rng.lognormal(7.5, 0.8, n_noise)
+    mz = np.concatenate([observed, noise_mz])
+    inten = np.concatenate([signal, noise_i])
+    order = np.argsort(mz)
+    return spx.Spectrum(mz=mz[order], intensity=inten[order])
+
+
+annot_spec = _simulated_ms2(fragments)
+annot_decon = annot_spec.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_type="ppm")
+# A tolerance a real search would use, on data the peptide really explains.
+ANNOT_TOL, ANNOT_TOL_TYPE = 20, "ppm"
+
 save_or_show(
     spx.annotate_spectrum(
-        raw,
+        annot_spec,
         fragments,
-        tolerance=5,
-        tolerance_type="da",
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
         title=f"Annotated – {PEPTIDE}",
     ),
     "annotated",
@@ -86,11 +122,11 @@ save_or_show(
 # Where along the peptide the evidence sits, which the spectrum alone can't show.
 save_or_show(
     spx.sequence_coverage_plot(
-        raw,
+        annot_spec,
         PEPTIDE,
         fragments,
-        tolerance=5,
-        tolerance_type="da",
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
     ),
     "sequence_coverage",
 )
@@ -99,10 +135,10 @@ save_or_show(
 # The dark palette is its own set of steps for the dark surface, not an inversion.
 save_or_show(
     spx.annotate_spectrum(
-        raw,
+        annot_spec,
         fragments,
-        tolerance=5,
-        tolerance_type="da",
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
         title=f"Annotated (dark) – {PEPTIDE}",
         theme_mode="dark",
     ),
@@ -114,12 +150,40 @@ save_or_show(
 # dominant base peak.
 save_or_show(
     spx.annotate_spectrum(
-        raw,
+        annot_spec,
         fragments,
-        tolerance=5,
-        tolerance_type="da",
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
         title=f"Annotated, log intensity – {PEPTIDE}",
         intensity_transform="log",
     ),
     "annotated_log",
+)
+
+# ── mass error plot ────────────────────────────────────────────────────────────
+# Bubble chart of fragment mass error vs m/z; bubble size tracks peak intensity.
+save_or_show(
+    spx.mass_error_plot(
+        annot_spec,
+        fragments,
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
+        unit="ppm",
+        title=f"Mass errors – {PEPTIDE}",
+    ),
+    "mass_errors",
+)
+
+# ── facet plot ─────────────────────────────────────────────────────────────────
+# Annotated spectrum + mass errors + a mirror panel, on a shared m/z axis.
+save_or_show(
+    spx.facet_plot(
+        annot_spec,
+        fragments,
+        mirror_spectrum=annot_decon,
+        tolerance=ANNOT_TOL,
+        tolerance_type=ANNOT_TOL_TYPE,
+        title=f"Facet – {PEPTIDE}",
+    ),
+    "facet",
 )

@@ -196,6 +196,12 @@ the plot.
 
 **Annotated spectrum:**
 
+!!! note
+    This figure and the mass-error, coverage and facet figures below are drawn from a *simulated*
+    MS2 — this peptide's own fragments displaced by a few ppm, over a noise floor — so the
+    annotations and mass errors are genuine. The raw, deconvolution and mirror figures above use a
+    real spectrum, where no peptide is involved.
+
 <iframe src="../plots/annotated.html" width="100%" height="500" frameborder="0"></iframe>
 
 ---
@@ -223,6 +229,12 @@ Bubble chart of fragment mass errors vs m/z. Each matched fragment is a bubble w
 the observed m/z, y-position is the mass error (ppm or Da), and size is proportional to the peak
 intensity. Bubbles are coloured by ion series. Useful for spotting calibration drifts or
 systematic mass errors. Also available as `Spectrum.mass_error_plot()`.
+
+<iframe src="../plots/mass_errors.html" width="100%" height="500" frameborder="0"></iframe>
+
+A well-calibrated instrument gives a cloud centred on zero and comfortably inside the search
+tolerance, as above. A cloud offset from zero means a systematic calibration error; one that fans
+out with m/z means the calibration is drifting across the mass range.
 
 ---
 
@@ -252,6 +264,11 @@ Multi-panel plot combining (1) the annotated spectrum, (2) the mass-error bubble
 mirror spectrum — all on a shared m/z axis. Panels 2 and 3 are opt-in; supplying `fragments`
 enables the mass-error panel and the annotations, supplying `mirror_spectrum` enables the mirror.
 Also available as `Spectrum.facet_plot()`.
+
+<iframe src="../plots/facet.html" width="100%" height="920" frameborder="0"></iframe>
+
+The shared m/z axis is the point: zooming one panel zooms all three, so you can follow a single
+peak from its annotation, to its mass error, to its deconvoluted counterpart.
 
 ---
 
@@ -369,6 +386,14 @@ and screen-reader users. This gives those values a home that is not the tooltip.
 HTML-escaped.
 
 `annotated_only=True` keeps just the peaks carrying a label; `max_rows` keeps the *n* most intense.
+
+The result renders as an ordinary table — here the six most intense annotated peaks from the
+spectrum above:
+
+<table><caption>Peak list</caption><thead><tr><th scope="col">m/z</th><th scope="col">Intensity</th><th scope="col">Annotation</th></tr></thead><tbody><tr><td>122.5865</td><td>1.599e+05</td><td>y2^2</td></tr><tr><td>649.7990</td><td>1.862e+05</td><td>b13^2</td></tr><tr><td>956.3997</td><td>1.194e+05</td><td>b9</td></tr><tr><td>1290.6364</td><td>9.6e+04</td><td>y13</td></tr><tr><td>1486.6503</td><td>1.283e+05</td><td>b15</td></tr><tr><td>1600.6938</td><td>1.022e+05</td><td>b16</td></tr></tbody></table>
+
+Note the `Intensity` column carries the **true** value, not the relative-scaled one the y-axis
+shows — the table is the place values are reported exactly.
 
 ---
 
