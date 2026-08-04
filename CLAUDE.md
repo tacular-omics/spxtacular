@@ -26,6 +26,7 @@ src/spxtacular/
 ├── matching.py      # fragment peak matching (match_fragments)
 ├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
 ├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
+├── chromatogram.py  # run-level extraction (extract_chromatogram, extract_xic)
 ├── noise.py         # noise estimation (MAD, fixed threshold)
 ├── theme.py         # plot palettes + plotly template (single source of truth for colour)
 ├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table, table_view)
@@ -126,6 +127,8 @@ light and dark surfaces. Both modes are explicit sets of steps; dark is not an i
 - Do not label every annotated peak — labels are capped and collision-avoided on purpose; a
   deconvoluted spectrum with a label per peak is an unreadable smear.
 - Do not add a hex value straight into a plot function; add it to `theme.py` and validate it.
+- Do not assume `spectrum.mz` is sorted — a timsTOF frame is ordered by ion-mobility scan,
+  so roughly half its m/z steps descend. Sort a working copy and map indices back.
 - Do not draw profile spectra as sticks — `plot_spectrum` renders `SpectrumType.PROFILE` as a
   continuous trace. And never thin a profile by taking every Nth sample; that deletes peaks.
   Use `_decimate_profile` (min/max per bucket).

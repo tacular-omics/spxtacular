@@ -1,5 +1,6 @@
 __version__ = "0.5.0"
 
+from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
 from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType
 from .enums import (
     ActivationType,
@@ -33,13 +34,20 @@ from .visualization import (
     facet_plot,
     mass_error_plot,
     mirror_plot,
+    plot_chromatogram,
     plot_spectrum,
+    plot_xic,
     profile_centroid_plot,
     save_figure,
     sequence_coverage_plot,
 )
 
 __all__ = [
+    "plot_xic",
+    "plot_chromatogram",
+    "extract_xic",
+    "extract_chromatogram",
+    "Chromatogram",
     "profile_centroid_plot",
     "theme",
     "table_view",

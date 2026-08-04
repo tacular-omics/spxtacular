@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import functools
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -17,6 +17,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from . import theme
+from .chromatogram import Chromatogram
 from .core import Spectrum
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
@@ -595,6 +596,145 @@ def annotate_spectrum(
     if show_precursor:
         _add_precursor_marker(fig, spectrum, theme_mode)
     return fig
+
+
+@requires_plotly
+def plot_chromatogram(
+    chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
+    title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
+    show_apex: bool = True,
+    fill: bool | None = None,
+    **layout_kwargs,
+) -> go.Figure:
+    """Plot one or more chromatograms against retention time.
+
+    Accepts :class:`~spxtacular.chromatogram.Chromatogram` objects, or an iterable
+    of spectra -- in which case a TIC is extracted for you, which is the usual
+    "what does this run look like" first glance::
+
+        with spx.Reader("run.d") as reader:
+            spx.plot_chromatogram(reader.ms1).show()
+
+    Parameters
+    ----------
+    chromatograms:
+        A chromatogram, a sequence of them, or an iterable of spectra to
+        extract a TIC from.
+    title:
+        Plot title.
+    theme_mode:
+        ``"light"`` or ``"dark"``.
+    show_apex:
+        Label each trace's apex with its retention time. Suppressed above four
+        traces, where the labels start competing with the data.
+    fill:
+        Fill under the trace. Defaults to on for a single trace and off for
+        several, where overlapping washes obscure each other.
+
+    Returns
+    -------
+    plotly ``Figure``.
+    """
+    import plotly.graph_objects as go
+
+    from .chromatogram import Chromatogram as _Chrom
+    from .chromatogram import extract_chromatogram
+
+    if isinstance(chromatograms, _Chrom):
+        traces_in = [chromatograms]
+    elif isinstance(chromatograms, Sequence) and all(isinstance(c, _Chrom) for c in chromatograms):
+        traces_in = list(chromatograms)
+    else:
+        spectra = cast("Iterable[Spectrum]", chromatograms)
+        traces_in = [extract_chromatogram(spectra)]
+
+    if fill is None:
+        fill = len(traces_in) == 1
+
+    fig = go.Figure()
+    for i, chrom in enumerate(traces_in):
+        # Several traces are distinct series, so they take categorical slots; a
+        # lone trace has no identity to signal and takes the default hue.
+        color = theme.ion_color(theme._ION_SLOTS[i % len(theme._ION_SLOTS)], theme_mode)
+        if len(traces_in) == 1:
+            color = theme.charge_color(1, theme_mode)
+
+        fig.add_trace(
+            go.Scatter(
+                x=chrom.rt,
+                y=chrom.intensity,
+                mode="lines",
+                name=chrom.label or f"trace {i + 1}",
+                line={"color": color, "width": 1.8},
+                fill="tozeroy" if fill else None,
+                fillcolor=_rgba(color, 0.12) if fill else None,
+                hovertemplate="RT: %{x:.2f} s<br>intensity: %{y:.4g}<extra>" + (chrom.label or "") + "</extra>",
+            )
+        )
+
+        if show_apex and len(traces_in) <= 4 and len(chrom):
+            apex = int(np.argmax(chrom.intensity))
+            if chrom.intensity[apex] > 0:
+                fig.add_annotation(
+                    x=float(chrom.rt[apex]),
+                    y=float(chrom.intensity[apex]),
+                    text=f"{chrom.rt[apex]:.1f} s",
+                    showarrow=False,
+                    yshift=10,
+                    font={"size": 10, "color": theme.text_color("secondary", theme_mode)},
+                    xanchor="center",
+                )
+
+    fig.update_layout(
+        template=theme.template(theme_mode),
+        title=title or (traces_in[0].label if len(traces_in) == 1 else "Chromatograms"),
+        xaxis_title="Retention time (s)",
+        yaxis_title="Intensity",
+        showlegend=len(traces_in) > 1,
+        **layout_kwargs,
+    )
+    fig.update_yaxes(rangemode="tozero")
+    return fig
+
+
+@requires_plotly
+def plot_xic(
+    spectra: Iterable[Spectrum],
+    targets: Sequence[float] | float,
+    tolerance: float = 20.0,
+    tolerance_type: ToleranceLike = "ppm",
+    im_window: tuple[float, float] | None = None,
+    aggregate: Literal["sum", "max"] = "sum",
+    title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
+    **layout_kwargs,
+) -> go.Figure:
+    """Extract and plot ion chromatograms in one call.
+
+    Every target is extracted in a single pass over ``spectra``, so tracing ten
+    m/z values costs one walk of the reader rather than ten::
+
+        with spx.Reader("run.d") as reader:
+            spx.plot_xic(reader.ms1, [500.2649, 622.0290], tolerance=20).show()
+
+    See :func:`~spxtacular.chromatogram.extract_xic` for the extraction
+    parameters, including ``im_window``, which is what makes a trace selective on
+    ion-mobility data.
+    """
+    from .chromatogram import extract_xic
+
+    chroms = extract_xic(
+        spectra,
+        targets,
+        tolerance=tolerance,
+        tolerance_type=tolerance_type,
+        im_window=im_window,
+        aggregate=aggregate,
+    )
+    unit = "ppm" if str(tolerance_type).lower() == "ppm" else "Da"
+    default_title = f"Extracted ion chromatogram{'s' if len(chroms) > 1 else ''} (±{tolerance:g} {unit})"
+    return plot_chromatogram(chroms, title=title or default_title, theme_mode=theme_mode, **layout_kwargs)
 
 
 @requires_plotly

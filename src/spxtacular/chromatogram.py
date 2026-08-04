@@ -1,0 +1,248 @@
+"""
+Run-level extraction: chromatograms and extracted ion chromatograms.
+
+Everything else in the library works on one spectrum. These functions work on a
+*run* -- any iterable of spectra carrying retention times, which is exactly what
+``reader.ms1`` yields.
+
+    with spx.Reader("run.d") as reader:
+        tic = extract_chromatogram(reader.ms1)
+        xics = extract_xic(reader.ms1, [500.2649, 622.0290], tolerance=20)
+
+Two properties shape the design:
+
+**One pass.** A reader is expensive to iterate -- a 65-frame timsTOF run takes
+several seconds to load -- and ``reader.ms1`` may be a generator that cannot be
+replayed. So every function here consumes the iterable exactly once, and
+``extract_xic`` takes a *list* of targets rather than one, so extracting twenty
+traces costs one pass rather than twenty.
+
+**Any m/z order.** timsTOF frames are ordered by ion-mobility scan and are only
+sorted by m/z *within* each scan, so a ``DReader`` MS1 frame is not globally
+sorted. Each frame is sorted once on arrival when needed, after which every
+target is a binary search rather than a full scan -- which is what makes many
+targets cheap.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from typing import Literal
+
+import numpy as np
+from numpy.typing import NDArray
+
+from .core import Spectrum
+from .enums import ToleranceLike, ToleranceType
+
+Aggregate = Literal["sum", "max"]
+
+
+@dataclass(slots=True)
+class Chromatogram:
+    """Intensity against retention time.
+
+    Attributes
+    ----------
+    rt:
+        Retention times, seconds, ascending.
+    intensity:
+        One value per retention time.
+    label:
+        Short name for the legend, e.g. ``"TIC"`` or ``"m/z 500.2649"``.
+    mz:
+        Target m/z, for an extracted ion chromatogram. ``None`` for a TIC/BPC.
+    tolerance, tolerance_type:
+        The extraction window, kept so a figure can say what it plotted.
+    """
+
+    rt: NDArray[np.float64]
+    intensity: NDArray[np.float64]
+    label: str = ""
+    mz: float | None = None
+    tolerance: float | None = None
+    tolerance_type: str | None = None
+    meta: dict = field(default_factory=dict)
+
+    def __len__(self) -> int:
+        return len(self.rt)
+
+    @property
+    def apex_rt(self) -> float | None:
+        """Retention time of the most intense point, or ``None`` if empty."""
+        if len(self.rt) == 0:
+            return None
+        return float(self.rt[int(np.argmax(self.intensity))])
+
+    @property
+    def total(self) -> float:
+        """Summed intensity across the trace -- the usual peak-area proxy."""
+        return float(self.intensity.sum())
+
+
+def _rt_of(spectrum: Spectrum, index: int) -> float:
+    """Retention time, falling back to the scan index when the reader gave none."""
+    rt = getattr(spectrum, "rt", None)
+    return float(rt) if rt is not None else float(index)
+
+
+def _sorted_view(mz: NDArray[np.float64], *arrays: NDArray[np.float64] | None):
+    """Return ``mz`` ascending plus the same permutation applied to ``arrays``.
+
+    Sorting once per spectrum turns every subsequent target lookup into a binary
+    search. On unsorted input (any timsTOF frame) the alternative is a full scan
+    per target, which is what makes a many-target extraction expensive.
+    """
+    if mz.size > 1 and bool(np.any(mz[1:] < mz[:-1])):
+        order = np.argsort(mz, kind="stable")
+        return mz[order], [None if a is None else a[order] for a in arrays]
+    return mz, list(arrays)
+
+
+def extract_chromatogram(
+    spectra: Iterable[Spectrum],
+    mode: Literal["tic", "bpc"] = "tic",
+    mz_range: tuple[float, float] | None = None,
+) -> Chromatogram:
+    """Total-ion or base-peak chromatogram over a run.
+
+    Parameters
+    ----------
+    spectra:
+        Any iterable of spectra, typically ``reader.ms1``. Consumed once.
+    mode:
+        ``"tic"`` sums each spectrum's intensity; ``"bpc"`` takes its maximum.
+    mz_range:
+        Optional ``(low, high)`` m/z window to restrict the sum to.
+
+    Returns
+    -------
+    :class:`Chromatogram`
+    """
+    if mode not in ("tic", "bpc"):
+        raise ValueError(f"mode must be 'tic' or 'bpc', got {mode!r}")
+
+    rts: list[float] = []
+    values: list[float] = []
+
+    for i, spec in enumerate(spectra):
+        intensity = np.asarray(spec.intensity, dtype=np.float64)
+        if mz_range is not None:
+            mz = np.asarray(spec.mz, dtype=np.float64)
+            keep = (mz >= mz_range[0]) & (mz <= mz_range[1])
+            intensity = intensity[keep]
+
+        rts.append(_rt_of(spec, i))
+        if intensity.size == 0:
+            values.append(0.0)
+        else:
+            values.append(float(intensity.sum() if mode == "tic" else intensity.max()))
+
+    rt = np.asarray(rts, dtype=np.float64)
+    inten = np.asarray(values, dtype=np.float64)
+    order = np.argsort(rt, kind="stable")
+
+    label = "TIC" if mode == "tic" else "Base peak"
+    if mz_range is not None:
+        label += f" ({mz_range[0]:g}-{mz_range[1]:g} m/z)"
+    return Chromatogram(rt=rt[order], intensity=inten[order], label=label)
+
+
+def extract_xic(
+    spectra: Iterable[Spectrum],
+    targets: Sequence[float] | float,
+    tolerance: float = 20.0,
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    im_window: tuple[float, float] | None = None,
+    aggregate: Aggregate = "sum",
+) -> list[Chromatogram]:
+    """Extracted ion chromatograms for one or more target m/z values.
+
+    All targets are extracted in a **single pass** over ``spectra``, because the
+    iterable is usually a reader that is expensive to walk and may not be
+    replayable.
+
+    Parameters
+    ----------
+    spectra:
+        Any iterable of spectra, typically ``reader.ms1``. Consumed once.
+    targets:
+        One m/z, or a sequence of them.
+    tolerance, tolerance_type:
+        Extraction window, ``"ppm"`` (default) or ``"da"``.
+    im_window:
+        Optional ``(low, high)`` ion-mobility window. On timsTOF data this is
+        what makes a trace selective -- two co-eluting species at the same m/z
+        usually separate in mobility.
+    aggregate:
+        ``"sum"`` of the peaks in the window (the quantification convention), or
+        ``"max"``.
+
+    Returns
+    -------
+    One :class:`Chromatogram` per target, in the order given.
+    """
+    tol_type = ToleranceType(str(tolerance_type).lower())
+    if aggregate not in ("sum", "max"):
+        raise ValueError(f"aggregate must be 'sum' or 'max', got {aggregate!r}")
+
+    single = np.isscalar(targets)
+    target_arr = np.atleast_1d(np.asarray(targets, dtype=np.float64))
+    if target_arr.size == 0:
+        return []
+
+    if tol_type is ToleranceType.PPM:
+        lo_targets = target_arr * (1.0 - tolerance / 1e6)
+        hi_targets = target_arr * (1.0 + tolerance / 1e6)
+    else:
+        lo_targets = target_arr - tolerance
+        hi_targets = target_arr + tolerance
+
+    rts: list[float] = []
+    rows: list[NDArray[np.float64]] = []
+
+    for i, spec in enumerate(spectra):
+        mz = np.asarray(spec.mz, dtype=np.float64)
+        intensity = np.asarray(spec.intensity, dtype=np.float64)
+        im = None if spec.im is None else np.asarray(spec.im, dtype=np.float64)
+
+        if im_window is not None and im is not None:
+            keep = (im >= im_window[0]) & (im <= im_window[1])
+            mz, intensity = mz[keep], intensity[keep]
+
+        mz, (intensity,) = _sorted_view(mz, intensity)  # type: ignore[assignment]
+
+        row = np.zeros(target_arr.size, dtype=np.float64)
+        if mz.size:
+            lo = np.searchsorted(mz, lo_targets, side="left")
+            hi = np.searchsorted(mz, hi_targets, side="right")
+            for k in range(target_arr.size):
+                seg = intensity[lo[k] : hi[k]]
+                if seg.size:
+                    # Summed directly rather than differencing a cumulative sum:
+                    # the window holds a handful of peaks, so this is both faster
+                    # and free of the cancellation error a cumsum accumulates
+                    # across tens of thousands of values.
+                    row[k] = float(seg.sum() if aggregate == "sum" else seg.max())
+        rows.append(row)
+        rts.append(_rt_of(spec, i))
+
+    rt = np.asarray(rts, dtype=np.float64)
+    order = np.argsort(rt, kind="stable")
+    matrix = np.vstack(rows)[order] if rows else np.zeros((0, target_arr.size))
+
+    unit = "ppm" if tol_type is ToleranceType.PPM else "Da"
+    out = [
+        Chromatogram(
+            rt=rt[order],
+            intensity=matrix[:, k] if matrix.size else np.zeros(0),
+            label=f"m/z {target_arr[k]:.4f}",
+            mz=float(target_arr[k]),
+            tolerance=float(tolerance),
+            tolerance_type=unit,
+            meta={"im_window": im_window, "aggregate": aggregate},
+        )
+        for k in range(target_arr.size)
+    ]
+    return out[:1] if single else out

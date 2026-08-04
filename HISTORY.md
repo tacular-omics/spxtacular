@@ -72,6 +72,23 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### New — run-level extraction
+
+* **`spxtacular.chromatogram`**, the first module that works on a *run* rather than a spectrum.
+  `extract_chromatogram(spectra, mode="tic"|"bpc")` and `extract_xic(spectra, targets, …)` consume
+  any iterable of spectra — typically `reader.ms1` — and return `Chromatogram` objects carrying
+  `rt`, `intensity`, `apex_rt` and `total`.
+* **`plot_chromatogram()`** accepts a chromatogram, a list of them, or raw spectra (extracting a TIC
+  for you). **`plot_xic()`** extracts and plots in one call.
+* **Every target extracts in one pass.** A reader is expensive to walk and `reader.ms1` may be a
+  generator that cannot be replayed, so `extract_xic` takes a *list* of targets: twenty traces cost
+  one walk rather than twenty. Pinned by a test that counts iterations.
+* **`im_window`** restricts a trace by ion mobility, which is what makes it selective on timsTOF
+  data; `aggregate` chooses sum (the quantification convention) or max.
+* Extraction is exact — verified against a brute-force reference on the real 65-frame timsTOF run,
+  not just synthetic data. Summing the window slice directly rather than differencing a cumulative
+  sum avoids the cancellation error a cumsum accumulates across tens of thousands of peaks.
+
 ### Fixes — unsorted spectra
 
 * **`match_fragments` and `score` raised on real Bruker data.** The sorted-input guard added

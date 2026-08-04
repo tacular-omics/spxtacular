@@ -296,6 +296,13 @@ module-level `build_plot_table` / `build_annot_plot_table` to use `max_labels`, 
 - **`save_figure` needs `kaleido` for static formats.** `.html` (or no suffix → `.html`) always
   works; `.png/.svg/.pdf/.jpg/.jpeg/.webp/.eps` raise `ImportError` naming kaleido if it is
   missing; any other suffix raises `ValueError`.
+- **Run-level**: `extract_chromatogram(spectra, mode='tic'|'bpc')`, `extract_xic(spectra, targets,
+  tolerance=20, tolerance_type='ppm', im_window=None, aggregate='sum'|'max')` -> list[Chromatogram].
+  `plot_chromatogram(...)` accepts a Chromatogram, a list, or raw spectra (extracts a TIC).
+  `plot_xic(spectra, targets, ...)` does both. ALL targets extract in ONE pass -- the iterable is
+  consumed once, so never call extract_xic in a loop over targets.
+- **Spectrum m/z may be unsorted** (timsTOF frames are mobility-ordered); matching and extraction
+  handle it internally. Do not add a sorted-input guard that raises.
 - **Profile spectra render as a continuous trace, not sticks** -- plot_spectrum reads
   spectrum_type. Override with render='sticks'|'profile'. Above max_points (default 4000) the
   trace is thinned by min/max per bucket, which preserves peak apexes; never subsample by stride.

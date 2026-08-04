@@ -314,6 +314,48 @@ raises `ValueError`.
 
 ---
 
+## Chromatograms and XICs
+
+Everything above works on a single spectrum. These two work on a *run* — any iterable of spectra
+carrying retention times, which is what `reader.ms1` yields.
+
+```python
+with spx.Reader("run.d") as reader:
+    spx.plot_chromatogram(reader.ms1).show()          # TIC, extracted for you
+```
+
+```python
+with spx.Reader("run.d") as reader:
+    spx.plot_xic(reader.ms1, [599.3262, 599.8268, 600.3306], tolerance=20).show()
+```
+
+`extract_chromatogram()` and `extract_xic()` return `Chromatogram` objects if you want the numbers
+rather than a figure — each carries `rt`, `intensity`, `apex_rt` and `total`.
+
+Two things shape the API:
+
+**Everything is one pass.** A reader is expensive to walk (several seconds for a 65-frame timsTOF
+run) and `reader.ms1` may be a generator that cannot be replayed. So `extract_xic()` takes a *list*
+of targets and extracts them all together — twenty traces cost one walk, not twenty.
+
+**Any m/z order is accepted.** A timsTOF frame is ordered by ion-mobility scan and only sorted by
+m/z *within* each scan, so it is not globally sorted. Each frame is sorted once on arrival when
+needed, after which every target is a binary search.
+
+### Ion mobility
+
+On mobility data an `im_window` is what makes a trace selective — two co-eluting species at the
+same m/z usually separate in mobility:
+
+```python
+spx.plot_xic(reader.ms1, [599.3262], tolerance=20, im_window=(1.01, 1.11))
+```
+
+`aggregate="sum"` (default) totals the peaks in the window, the quantification convention;
+`aggregate="max"` takes the largest.
+
+---
+
 ## Profile spectra
 
 A profile spectrum samples a continuous signal, so drawing each sample as its own stick from the
