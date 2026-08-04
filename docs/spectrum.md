@@ -626,7 +626,7 @@ def plot_table(
 ) -> pd.DataFrame
 ```
 
-Returns a `pandas.DataFrame` with one row per peak. Each row contains both the raw peak data (`mz`, `intensity`, `charge`, `score`, `im`) and all visual properties (`color`, `linewidth`, `opacity`, `series`, `label`, `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor`, `hover`). Modify the table freely, then render it with `plot_from_table()`.
+Returns a `pandas.DataFrame` with one row per peak. Each row contains both the raw peak data (`mz`, `intensity`, `charge`, `score`, `im`) and all visual properties (`color`, `linewidth`, `opacity`, `series`, `label`, `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor`, `label_angle`, `hover`). Modify the table freely, then render it with `plot_from_table()`.
 
 ```python
 tbl = decon.plot_table()

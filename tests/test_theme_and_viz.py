@@ -219,7 +219,39 @@ class TestLabelCapping:
         labelled = table.loc[table["label"] != "", "mz"].to_numpy()
         span = float(spec.mz.max() - spec.mz.min())
         gaps = np.diff(np.sort(labelled))
-        assert (gaps >= span * 0.02).all(), "labels placed closer than the minimum separation"
+        # Vertical labels need only ~one line-height of room, so the required
+        # separation is much smaller than it was for horizontal text.
+        assert (gaps >= span * 0.008).all(), "labels placed closer than the minimum separation"
+
+    def test_labels_are_vertical_by_default(self) -> None:
+        """Vertical is the spectrum-viewer convention and the reason so many fit."""
+        table = build_plot_table(self._scored(20))
+        assert (table["label_angle"] == -90.0).all()
+
+        fig = plot_from_table(table)
+        rotated = [a for a in fig.layout.annotations if a.textangle == -90]
+        assert rotated, "labels must be rendered rotated, not just marked as such"
+        # Rotated text grows upward from the tip, so it anchors at its bottom edge.
+        assert all(a.yanchor == "bottom" for a in rotated)
+
+    def test_label_angle_is_editable(self) -> None:
+        table = build_plot_table(self._scored(20))
+        table["label_angle"] = 0.0
+        fig = plot_from_table(table)
+        assert all(a.textangle == 0 for a in fig.layout.annotations)
+
+    def test_a_table_without_label_angle_still_renders(self) -> None:
+        """Hand-built tables predating the column must not break."""
+        table = build_plot_table(self._scored(20)).drop(columns=["label_angle"])
+        fig = plot_from_table(table)
+        assert fig.layout.annotations
+
+    def test_vertical_labels_get_headroom(self) -> None:
+        """Otherwise the tallest peak's label is clipped by the plot edge."""
+        table = build_plot_table(self._scored(20))
+        fig = plot_from_table(table)
+        top = fig.layout.yaxis.range[1]
+        assert top > float(table["intensity"].max())
 
     def test_highest_intensity_peak_always_keeps_its_label(self) -> None:
         spec = self._scored(200)

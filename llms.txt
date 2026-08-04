@@ -193,10 +193,10 @@ Functions (all exported from `spxtacular`):
 
 | Function | Notes |
 |---|---|
-| `plot_spectrum(spectrum, title=None, *, color="charge", show_scores=True, show_charges=None, max_labels=25, theme_mode=None, intensity_scale="relative", intensity_transform=None, show_precursor=True, **layout_kwargs)` | stick plot |
-| `annotate_spectrum(spectrum, fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, max_labels=25, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False, show_precursor=True, **layout_kwargs)` | annotated fragment spectrum |
-| `mirror_plot(raw, deconvoluted, title=None, normalize=True, show_charges=True, show_scores=True, max_labels=25, theme_mode=None, **layout_kwargs)` | |
-| `facet_plot(spectrum, fragments=None, mirror_spectrum=None, title=None, ..., unit="ppm", max_labels=25, theme_mode=None, **layout_kwargs)` | a **single** spectrum plus an optional `mirror_spectrum`, never a list |
+| `plot_spectrum(spectrum, title=None, *, color="charge", show_scores=True, show_charges=None, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, show_precursor=True, **layout_kwargs)` | stick plot |
+| `annotate_spectrum(spectrum, fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False, show_precursor=True, **layout_kwargs)` | annotated fragment spectrum |
+| `mirror_plot(raw, deconvoluted, title=None, normalize=True, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, **layout_kwargs)` | |
+| `facet_plot(spectrum, fragments=None, mirror_spectrum=None, title=None, ..., unit="ppm", max_labels=60, theme_mode=None, **layout_kwargs)` | a **single** spectrum plus an optional `mirror_spectrum`, never a list |
 | `mass_error_plot(spectrum, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit="ppm", title=None, theme_mode=None, **layout_kwargs)` | |
 | `sequence_coverage_plot(spectrum, peptide, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", title=None, theme_mode=None, **layout_kwargs)` | backbone coverage ladder |
 | `save_figure(fig, path, scale=2.0, **kwargs) -> Path` | extension picks the writer |
@@ -248,12 +248,12 @@ Colour is assigned by *job*:
 ### Plot table (`build_plot_table` / `build_annot_plot_table` / `plot_from_table`)
 
 ```python
-table = spx.build_plot_table(spec, show_charges=True, show_scores=True, max_labels=25,
+table = spx.build_plot_table(spec, show_charges=True, show_scores=True, max_labels=60,
                              theme_mode=None, intensity_scale="relative",
                              intensity_transform=None, texture=False)
 table = spx.build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_type="da",
                                    peak_selection="closest", include_sequence=False,
-                                   max_labels=25, theme_mode=None,
+                                   max_labels=60, theme_mode=None,
                                    intensity_scale="relative", intensity_transform=None,
                                    texture=False)
 fig = spx.plot_from_table(table, title=None, theme_mode=None, **layout_kwargs)
@@ -262,7 +262,8 @@ html = spx.table_view(table, max_rows=None, annotated_only=False)
 
 Columns, in order: `mz`, `intensity`, `intensity_abs`, `charge`, `score`, `im`, `color`,
 `linewidth`, `opacity`, `dash`, `series`, `label`, `label_size`, `label_font`, `label_color`,
-`label_yshift`, `label_xanchor`, `hover`. `table.attrs["intensity_label"]` carries the y-axis
+`label_yshift`, `label_xanchor`, `label_angle`, `hover`. label_angle defaults to -90 (vertical
+labels, the spectrum-viewer convention); set 0 for horizontal. `table.attrs["intensity_label"]` carries the y-axis
 title (e.g. `"Relative intensity (%)"`, `"Intensity"`, `"√ relative intensity (%)"`).
 `plot_from_table` validates the required columns and no longer drops NA `series`/`color`.
 
@@ -295,7 +296,8 @@ module-level `build_plot_table` / `build_annot_plot_table` to use `max_labels`, 
 - **`save_figure` needs `kaleido` for static formats.** `.html` (or no suffix → `.html`) always
   works; `.png/.svg/.pdf/.jpg/.jpeg/.webp/.eps` raise `ImportError` naming kaleido if it is
   missing; any other suffix raises `ValueError`.
-- **Labels are deliberately dropped.** `max_labels` (default 25) plus m/z collision avoidance
+- **Labels are vertical by default** (`label_angle` column, -90). Set 0 for horizontal.
+- **Labels are deliberately dropped.** `max_labels` (default 60) plus m/z collision avoidance
   means not every peak is labelled; the dropped values survive in the hover and in the plot
   table — that is what `table_view()` is for.
 

@@ -158,7 +158,8 @@ restored = Spectrum.from_spectrl_url(url)
 - **Relative intensity by default.** The y-axis is a percentage of the base peak; pass
   `intensity_scale="absolute"` for raw counts, or `intensity_transform="sqrt"` / `"log"` to
   compress a large dynamic range. Tooltips always report the true intensity.
-- **Readable labels.** Direct labels are capped (`max_labels=25`) and collision-avoided; dropped
+- **Readable labels.** Direct labels are vertical (the spectrum-viewer convention, so far more
+  fit before colliding), capped (`max_labels=60`) and collision-avoided; dropped
   labels remain in the hover and in the plot table.
 - **Beyond colour.** On annotated plots, `texture=True` adds per-ion-series dash patterns for
   print and forced-colours displays, and `table_view()` gives a non-visual route to the same data.

@@ -481,7 +481,7 @@ repeated in each parameter table.
 |---|---|
 | **Relative intensity by default** | Table-driven figures (`plot_spectrum`, `annotate_spectrum`, `plot_from_table`) scale the y-axis so the base peak is 100% and title the axis `Relative intensity (%)`. Pass `intensity_scale="absolute"` for raw counts. Tooltips always report the **true** intensity, whatever the scaling. |
 | **Optional intensity transform** | `intensity_transform="sqrt"` or `"log"` compresses a range spanning orders of magnitude; the axis title is prefixed accordingly (`√ relative intensity (%)`, `log₁₀ …`). |
-| **Labels are capped and collision-avoided** | `max_labels` (default `25`) keeps only the strongest labels, and any label falling within 2.2% of the m/z span of a stronger one is dropped. `max_labels=None` removes the count cap but *not* the collision pass. Dropped values stay in the hover text, in the plot table, and in `table_view()`. |
+| **Labels are vertical, capped and collision-avoided** | Labels are rotated to read bottom-to-top (`label_angle`, default `-90`), the spectrum-viewer convention — a rotated label occupies about one line-height rather than its full text width, so several times as many peaks can be labelled. `max_labels` (default `60`) keeps only the strongest, and any label falling within 0.9% of the m/z span of a stronger one is dropped. `max_labels=None` removes the count cap but *not* the collision pass. Dropped values stay in the hover text, in the plot table, and in `table_view()`. |
 | **Hovering does not require precision** | Table-driven figures carry a transparent hit layer of 22px markers on the peak tips — the sticks themselves are `hoverinfo="skip"` — so being *near* a peak is enough rather than landing on a 1.6px hairline. Every figure additionally gets the m/z crosshair from the theme template (`showspikes`, `spikemode="across"`, snapped to the cursor), with `hoverdistance=24`. |
 | **Autosize** | Figures fill their container (`autosize=True`, from the template) rather than a fixed pixel box, so they lay out correctly in notebooks and docs pages. |
 | **Theme** | Every function takes `theme_mode="light" \| "dark"`; `None` (default) uses the module default from `theme.set_plot_theme()`. See [Theme](#theme). |
@@ -500,7 +500,7 @@ plot_spectrum(
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     show_charges: bool | None = None,  # deprecated alias of color
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
@@ -516,7 +516,7 @@ Everything after `title` is keyword-only.
 | `color` | `"charge"` | `"charge"` colours sticks by charge state on the ordinal ramp; `"im"` colours by ion mobility on the single-hue sequential scale with a colourbar (falls back to `"charge"` when no IM array is present); `None` renders every stick in one colour |
 | `show_scores` | `True` | Label peaks whose `iso_score > 0` with their score |
 | `show_charges` | `None` | Deprecated alias — `True` → `color="charge"`, `False` → `color=None`; emits `DeprecationWarning` |
-| `max_labels` | `25` | Cap on directly drawn labels, strongest first; `None` for no count cap |
+| `max_labels` | `60` | Cap on directly drawn labels, strongest first; `None` for no count cap |
 | `theme_mode` | `None` | `"light"` / `"dark"`; `None` uses the global default |
 | `intensity_scale` | `"relative"` | `"relative"` (base peak = 100%) or `"absolute"` |
 | `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
@@ -540,7 +540,7 @@ annotate_spectrum(
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
@@ -555,7 +555,7 @@ annotate_spectrum(
 | `tolerance` / `tolerance_type` | `0.02` / `"da"` | Matching tolerance |
 | `peak_selection` | `"closest"` | `"closest"`, `"largest"`, or `"all"` |
 | `include_sequence` | `False` | Embed the residue sequence in each label (`b3{PEP}` instead of `b3`) |
-| `max_labels` | `25` | Cap on directly drawn ion labels |
+| `max_labels` | `60` | Cap on directly drawn ion labels |
 | `theme_mode` | `None` | `"light"` / `"dark"` |
 | `intensity_scale` / `intensity_transform` | `"relative"` / `None` | y-axis scaling, as above |
 | `texture` | `False` | Also encode ion series as a dash pattern (the non-colour channel) — for print, forced-colours modes, and readers who cannot separate two hues. Off by default because at stick density dashes add noise |
@@ -578,7 +578,7 @@ mirror_plot(
     normalize: bool = True,
     show_charges: bool = True,
     show_scores: bool = True,
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 )
@@ -634,7 +634,7 @@ facet_plot(
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     unit: str = "ppm",
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 )
@@ -946,7 +946,7 @@ Both builders return the same columns, in this order:
 ```text
 mz, intensity, intensity_abs, charge, score, im,
 color, linewidth, opacity, dash, series,
-label, label_size, label_font, label_color, label_yshift, label_xanchor,
+label, label_size, label_font, label_color, label_yshift, label_xanchor, label_angle,
 hover
 ```
 
@@ -965,6 +965,7 @@ hover
 | `series` | `str` | yes | Trace name and grouping key |
 | `label` | `str` | yes | Direct label; `""` for peaks whose label was capped or collided away |
 | `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor` | | yes | Label styling |
+| `label_angle` | `float64` | yes | Label rotation in degrees. Defaults to `-90` (vertical, reading bottom-to-top); set `0` for horizontal |
 | `hover` | `str` | yes | Tooltip text, baked in by the builder — to change a tooltip edit `hover` itself, not the value behind it |
 
 `table.attrs["intensity_label"]` carries the y-axis title that matches the scaling applied
@@ -993,7 +994,7 @@ build_plot_table(
     spectrum: Spectrum,
     show_charges: bool = True,
     show_scores: bool = True,
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
@@ -1005,7 +1006,7 @@ build_plot_table(
 |---|---|---|
 | `show_charges` | `True` | Colour peaks by charge state on the ordinal ramp and set `series` to `"z=N"` / `"singleton"` / `"decharged"` |
 | `show_scores` | `True` | Label peaks whose `iso_score > 0` with their score |
-| `max_labels` | `25` | Cap on labels kept non-empty, strongest first, after the collision pass |
+| `max_labels` | `60` | Cap on labels kept non-empty, strongest first, after the collision pass |
 | `theme_mode` | `None` | `"light"` / `"dark"` — decides the hex values written into `color` and `label_color` |
 | `intensity_scale` | `"relative"` | Scaling written into `intensity` (`intensity_abs` is unaffected) |
 | `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
@@ -1025,7 +1026,7 @@ build_annot_plot_table(
     tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
-    max_labels: int | None = 25,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
@@ -1063,7 +1064,7 @@ rendering or only on data that happens to carry labels:
 
 ```text
 mz, intensity, series, color, linewidth, opacity, hover,
-label, label_size, label_font, label_color, label_yshift, label_xanchor
+label, label_size, label_font, label_color, label_yshift, label_xanchor, label_angle
 ```
 
 `intensity_abs` and `dash` are *not* required, so a table built by an older version still renders.

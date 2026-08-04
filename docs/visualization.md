@@ -17,10 +17,15 @@ rescaling changes the axis, never the number you are told. For data spanning ord
 `intensity_transform="sqrt"` or `"log"` compresses the range so low-abundance matched ions stay
 visible beside a dominant base peak.
 
-**Labels are deliberately sparse.** Direct labels are capped (`max_labels`, default 25) and
-collision-avoided along the m/z axis, strongest peak first. Labelling every annotated peak turns a
-deconvoluted spectrum into an unreadable smear along the baseline. Nothing is lost: the dropped
-values remain in the hover text, in the plot table, and in [`table_view()`](#table_view).
+**Labels are vertical, and deliberately sparse.** Direct labels are rotated to read bottom-to-top,
+the spectrum-viewer convention — a horizontal label occupies its full text width, so neighbours
+collide almost immediately, while a rotated one takes about one line-height and several times as
+many peaks can be labelled. Set `label_angle` to `0` in the plot table for horizontal labels.
+
+They are still capped (`max_labels`, default 60) and collision-avoided along the m/z axis, strongest
+peak first: labelling every annotated peak turns a deconvoluted spectrum into an unreadable smear.
+Nothing is lost — the dropped values remain in the hover text, in the plot table, and in
+[`table_view()`](#table_view).
 
 **Hovering does not require precision.** Every figure gets an m/z crosshair from the shared
 template. Sticks are only about 1.5 pixels wide, so `plot_spectrum()` and `annotate_spectrum()`
@@ -41,7 +46,7 @@ fig = plot_spectrum(
     title=None,                  # plot title
     color="charge",              # "charge" | "im" | None
     show_scores=True,            # annotate scored peaks with their score value
-    max_labels=25,               # cap on direct labels; None for no cap
+    max_labels=60,               # cap on direct labels; None for no cap
     theme_mode=None,             # "light" | "dark"; None uses the global default
     intensity_scale="relative",  # "relative" (base peak = 100%) | "absolute"
     intensity_transform=None,    # None | "sqrt" | "log"
@@ -97,7 +102,7 @@ fig = mirror_plot(
     normalize=True,      # scale each half to its own maximum independently
     show_charges=True,   # colour the deconvoluted half by charge state
     show_scores=True,    # annotate deconvoluted peaks with iso_score
-    max_labels=25,       # cap on score labels, strongest first
+    max_labels=60,       # cap on score labels, strongest first
     theme_mode=None,     # "light" | "dark"
     **layout_kwargs,
 )
@@ -157,7 +162,7 @@ fig = annotate_spectrum(
     title=None,
     peak_selection="closest",    # "closest" | "largest" | "all"
     include_sequence=False,
-    max_labels=25,
+    max_labels=60,
     theme_mode=None,
     intensity_scale="relative",
     intensity_transform=None,
@@ -183,7 +188,7 @@ lead rather than competing with the context behind them.
 | `title` | `None` | Plot title |
 | `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance — `"closest"`, `"largest"`, or `"all"` |
 | `include_sequence` | `False` | Embed the residue sequence in each label (e.g. `b3{PEP}`) |
-| `max_labels` | `25` | Cap on direct labels, strongest first; `None` for no cap |
+| `max_labels` | `60` | Cap on direct labels, strongest first; `None` for no cap |
 | `theme_mode` | `None` | `"light"` or `"dark"`; `None` uses the global default |
 | `intensity_scale` | `"relative"` | `"relative"` (base peak = 100%) or `"absolute"` |
 | `intensity_transform` | `None` | `None`, `"sqrt"` or `"log"` |
@@ -253,7 +258,7 @@ fig = facet_plot(
     peak_selection="closest",
     include_sequence=False,
     unit="ppm",
-    max_labels=25,
+    max_labels=60,
     theme_mode=None,
     **layout_kwargs,
 )

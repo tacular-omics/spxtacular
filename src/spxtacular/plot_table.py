@@ -55,8 +55,16 @@ if TYPE_CHECKING:
 
 _LABEL_SIZE_DEFAULT: float = 11.0
 _LABEL_FONT_DEFAULT: str = theme._FONT_FAMILY
-_LABEL_YSHIFT_DEFAULT: float = 8.0
+_LABEL_YSHIFT_DEFAULT: float = 6.0
 _LABEL_XANCHOR_DEFAULT: str = "center"
+#: Rotation for direct labels, degrees. -90 reads bottom-to-top.
+#:
+#: Vertical is the spectrum-viewer convention for a reason: a horizontal label
+#: occupies its full text width (~50px for "b13^2"), so neighbouring labels
+#: collide almost immediately and most have to be dropped. Rotated, each occupies
+#: about one line-height (~14px), which is why several times as many peaks can be
+#: labelled before anything overlaps.
+_LABEL_ANGLE_DEFAULT: float = -90.0
 #: Matched peaks. Thin, but heavier than the unmatched context behind them.
 _LINEWIDTH_DEFAULT: float = 1.6
 #: Unmatched peaks are context: thinner and dimmer so the annotated peaks lead.
@@ -71,7 +79,7 @@ _OPACITY_UNMATCHED: float = 0.55
 #: render as an unreadable smear along the baseline and cost ~10x the build time.
 #: Direct labels work precisely because they are sparing; the rest of the values
 #: stay one hover away.
-_MAX_LABELS_DEFAULT: int = 25
+_MAX_LABELS_DEFAULT: int = 60
 
 #: Columns :func:`plot_from_table` requires. Validated up front so a missing
 #: column fails immediately with a clear message rather than part-way through
@@ -145,7 +153,7 @@ def _charge_series(charge: int) -> str:
 #: Plotly does no collision avoidance for layout annotations, so without this a
 #: cluster of matched peaks renders its labels on top of each other regardless of
 #: how few there are.
-_LABEL_MIN_SEPARATION: float = 0.022
+_LABEL_MIN_SEPARATION: float = 0.009
 
 
 def _cap_labels(
@@ -319,6 +327,7 @@ def build_plot_table(
             "label_color": [theme.text_color("secondary", theme_mode)] * n,
             "label_yshift": [_LABEL_YSHIFT_DEFAULT] * n,
             "label_xanchor": [_LABEL_XANCHOR_DEFAULT] * n,
+            "label_angle": [_LABEL_ANGLE_DEFAULT] * n,
             "hover": hovers,
         }
     )
@@ -475,6 +484,7 @@ def build_annot_plot_table(
             "label_color": [theme.text_color("secondary", theme_mode)] * n,
             "label_yshift": [_LABEL_YSHIFT_DEFAULT] * n,
             "label_xanchor": [_LABEL_XANCHOR_DEFAULT] * n,
+            "label_angle": [_LABEL_ANGLE_DEFAULT] * n,
             "hover": hovers,
         }
     )
@@ -673,7 +683,10 @@ def plot_from_table(
     # not empty, and str(NaN) renders the literal text "nan" onto the plot.
     annotations = []
     label_mask = table["label"].notna() & (table["label"] != "")
+    has_angle = "label_angle" in table.columns
     for _, row in table[label_mask].iterrows():
+        # Fall back for tables built before label_angle existed, or hand-made ones.
+        angle = float(row["label_angle"]) if has_angle and pd.notna(row["label_angle"]) else 0.0
         annotations.append(
             dict(
                 x=float(row["mz"]),
@@ -687,6 +700,10 @@ def plot_from_table(
                     "color": str(row["label_color"]),
                 },
                 xanchor=str(row["label_xanchor"]),
+                # Rotated labels grow upward from the peak tip, so anchor their
+                # bottom edge there; an unrotated one keeps plotly's centring.
+                yanchor="bottom" if angle else "middle",
+                textangle=angle,
             )
         )
 
@@ -704,6 +721,16 @@ def plot_from_table(
         **layout_kwargs,
     )
     # Anchor the baseline so sticks read as growing from zero, and keep the
-    # y-axis off the data.
+    # y-axis off the data. Vertical labels grow upward from the peak tip, so the
+    # tallest peak needs headroom or its label is clipped by the plot edge.
     fig.update_yaxes(rangemode="tozero")
+    if annotations and any(a.get("textangle") for a in annotations):
+        overall = float(table["intensity"].max()) if len(table) else 0.0
+        # Only the *labelled* peaks need room above them. Padding from the overall
+        # maximum wastes the top of the plot whenever the tallest peak is unlabelled.
+        labelled = table.loc[label_mask, "intensity"]
+        tallest_labelled = float(labelled.max()) if len(labelled) else 0.0
+        top = max(overall, tallest_labelled * 1.22)
+        if top > 0:
+            fig.update_yaxes(range=[0, top])
     return fig

@@ -27,6 +27,7 @@ from .enums import (
 )
 from .matching import FragmentInput
 from .plot_table import (
+    _LABEL_ANGLE_DEFAULT,
     _MAX_LABELS_DEFAULT,
     _cap_labels,
     _charge_series,
@@ -250,7 +251,9 @@ def _plot_spectrum_im(
                         y=float(intensity[i]),
                         text=text,
                         showarrow=False,
-                        yshift=8,
+                        yshift=6,
+                        yanchor="bottom",
+                        textangle=_LABEL_ANGLE_DEFAULT,
                         font={"size": 11, "color": theme.text_color("secondary", theme_mode)},
                         xanchor="center",
                     )
@@ -484,7 +487,9 @@ def mirror_plot(
                         y=float(dec_int[i]),
                         text=text,
                         showarrow=False,
-                        yshift=8,
+                        yshift=6,
+                        yanchor="bottom",
+                        textangle=_LABEL_ANGLE_DEFAULT,
                         font={"size": 11, "color": theme.text_color("secondary", theme_mode)},
                         xanchor="center",
                     )
@@ -937,7 +942,9 @@ def facet_plot(
             y=float(lrow["intensity"]),
             text=str(lrow["label"]),
             showarrow=False,
-            yshift=8,
+            yshift=6,
+            yanchor="bottom",
+            textangle=_LABEL_ANGLE_DEFAULT,
             font={"size": 10, "color": theme.text_color("secondary", theme_mode)},
             xanchor="center",
             row=1,

@@ -72,6 +72,20 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### Visualisation — vertical fragment labels
+
+* **Direct labels are now vertical**, reading bottom-to-top, which is what every spectrum viewer
+  does. A horizontal label occupies its full text width (~50 px for `b13^2`), so neighbours collide
+  almost immediately and most have to be dropped; rotated, each occupies about one line-height
+  (~14 px). The knock-on effect is the point: the collision threshold drops from 2.2% of the m/z
+  span to 0.9% and the default cap rises from 25 to 60, so roughly a third more peaks carry a label
+  on the same spectrum, with none overlapping.
+* New `label_angle` column on the plot table (default `-90`). Set it to `0` for horizontal labels,
+  or any angle in between. Tables built without the column still render, treated as horizontal.
+* The y-axis gains headroom for the rotated text, measured from the tallest *labelled* peak rather
+  than the overall maximum — padding from the maximum wastes the top of the plot whenever the
+  tallest peak carries no label.
+
 ### Visualisation — ion colours follow the proteomics convention
 
 * **b is blue and y is red again.** The theme rewrite assigned ion series by slot order, which put

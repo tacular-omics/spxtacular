@@ -46,6 +46,7 @@ _EXPECTED_COLUMNS = [
     "label_color",
     "label_yshift",
     "label_xanchor",
+    "label_angle",
     "hover",
 ]
 
