@@ -32,7 +32,7 @@ from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
 
 from . import theme
-from .core import Spectrum
+from .core import Spectrum, SpectrumType
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
     DEFAULT_FRAGMENT_TOLERANCE_TYPE,
@@ -138,6 +138,49 @@ def _scaled_intensity(
         raise ValueError(f"intensity_transform must be None, 'sqrt' or 'log', got {transform!r}")
 
     return values, label
+
+
+#: Cap on samples drawn for a profile trace. Roughly twice a typical plot width in
+#: pixels, which is the most a screen can resolve.
+_PROFILE_MAX_POINTS: int = 4000
+
+
+def _decimate_profile(
+    mz: NDArray[np.float64],
+    intensity: NDArray[np.float64],
+    max_points: int | None = _PROFILE_MAX_POINTS,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Thin a profile trace to ``max_points`` while keeping every peak apex.
+
+    Splits the samples into buckets of equal width and keeps the **minimum and
+    maximum** of each. This is the standard waveform-drawing technique, and the
+    reason for it is that the obvious alternative is dangerous: taking every Nth
+    sample can step straight over the two or three samples that form a peak, so a
+    real peak silently disappears from the plot. Min/max keeps each bucket's
+    extremes, so an apex survives no matter where it falls.
+
+    Returns the samples unchanged when they already fit.
+    """
+    n = len(mz)
+    if max_points is None or n <= max_points:
+        return mz, intensity
+
+    n_buckets = max(1, max_points // 2)
+    bounds = np.linspace(0, n, n_buckets + 1).astype(np.int64)
+
+    keep = np.empty(n_buckets * 2, dtype=np.int64)
+    for b in range(n_buckets):
+        lo, hi = int(bounds[b]), int(bounds[b + 1])
+        if hi <= lo:
+            keep[2 * b] = keep[2 * b + 1] = lo if lo < n else n - 1
+            continue
+        seg = intensity[lo:hi]
+        keep[2 * b] = lo + int(np.argmin(seg))
+        keep[2 * b + 1] = lo + int(np.argmax(seg))
+
+    # Sorted and de-duplicated so the trace stays monotonic in m/z.
+    idx = np.unique(keep)
+    return mz[idx], intensity[idx]
 
 
 def _charge_series(charge: int) -> str:
@@ -292,8 +335,12 @@ def build_plot_table(
         colors = [theme.charge_color(1, theme_mode)] * n
         series = ["peaks"] * n
 
+    # Profile data is a continuous trace, so a per-sample label is meaningless --
+    # there is no "peak" at a sample, only a point on a curve.
+    is_profile = spectrum.spectrum_type == SpectrumType.PROFILE
+
     # Labels
-    if show_scores and score_arr is not None:
+    if show_scores and score_arr is not None and not is_profile:
         labels = [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in score_arr]
         labels = _cap_labels(labels, intensity, max_labels, mz)
     else:
@@ -334,6 +381,7 @@ def build_plot_table(
     # Carried on the frame so the renderer can title the axis correctly
     # without re-deriving what scaling was applied.
     table.attrs["intensity_label"] = intensity_label
+    table.attrs["render"] = "profile" if is_profile else "sticks"
     return table
 
 
@@ -491,6 +539,8 @@ def build_annot_plot_table(
     # Carried on the frame so the renderer can title the axis correctly
     # without re-deriving what scaling was applied.
     table.attrs["intensity_label"] = intensity_label
+    # Fragment matching is a centroid operation, so this table always draws sticks.
+    table.attrs["render"] = "sticks"
     return table
 
 
@@ -584,10 +634,68 @@ def table_view(
     return f"<table><caption>Peak list</caption><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
 
 
+def _plot_profile_trace(
+    table: pd.DataFrame,
+    title: str | None,
+    theme_mode: theme.ThemeMode | None,
+    max_points: int | None,
+    **layout_kwargs,
+) -> go.Figure:
+    """Draw a profile spectrum as a continuous trace rather than sticks.
+
+    Profile data samples a continuous signal, so the peak *shape* is the
+    information -- which is exactly what a stick plot throws away, since it draws
+    every sample as its own bar from the baseline. A connected line keeps the
+    shape, and costs a third of the coordinates.
+    """
+    import plotly.graph_objects as go
+
+    mz = table["mz"].to_numpy(dtype=np.float64)
+    intensity = table["intensity"].to_numpy(dtype=np.float64)
+    mz, intensity = _decimate_profile(mz, intensity, max_points)
+
+    color = str(table["color"].iloc[0]) if len(table) else theme.charge_color(1, theme_mode)
+    fig = go.Figure(
+        go.Scatter(
+            x=mz,
+            y=intensity,
+            mode="lines",
+            line={"color": color, "width": 1.4},
+            # A wash, not a saturated block: the fill says "area under the trace"
+            # without competing with the trace itself.
+            fill="tozeroy",
+            fillcolor=_rgba(color, 0.10),
+            name="profile",
+            hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:.4g}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        template=theme.template(theme_mode),
+        title=title or "Profile spectrum",
+        xaxis_title="m/z",
+        yaxis_title=table.attrs.get("intensity_label", "Intensity"),
+        showlegend=False,
+        **layout_kwargs,
+    )
+    fig.update_yaxes(rangemode="tozero")
+    return fig
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """``#rrggbb`` -> ``rgba(r, g, b, alpha)`` for plotly fills."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return hex_color
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def plot_from_table(
     table: pd.DataFrame,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
+    render: Literal["sticks", "profile"] | None = None,
+    max_points: int | None = _PROFILE_MAX_POINTS,
     **layout_kwargs,
 ) -> go.Figure:
     """Render a stick plot from a plot table DataFrame.
@@ -618,6 +726,13 @@ def plot_from_table(
     missing = [c for c in _REQUIRED_COLUMNS if c not in table.columns]
     if missing:
         raise ValueError(f"plot table is missing required column(s): {', '.join(missing)}")
+
+    mode = render if render is not None else table.attrs.get("render", "sticks")
+    if mode not in ("sticks", "profile"):
+        raise ValueError(f"render must be 'sticks' or 'profile', got {mode!r}")
+
+    if mode == "profile":
+        return _plot_profile_trace(table, title, theme_mode, max_points, **layout_kwargs)
 
     traces: list[go.Scatter] = []
 

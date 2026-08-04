@@ -32,6 +32,10 @@ template. Sticks are only about 1.5 pixels wide, so `plot_spectrum()` and `annot
 additionally lay a transparent hit layer over the peak tips — being *near* a peak is enough.
 (The other plots hover on their traces directly, which is fine for bubbles and subplot panels.)
 
+**Profile spectra are drawn as a trace, not sticks.** `plot_spectrum()` reads `spectrum_type`:
+profile data becomes a continuous line with a light fill so the peak *shape* — the only reason
+profile data exists — survives. Everything else stays a stick plot. Override with `render=`.
+
 **Colour is assigned by the job it does**, not by taste — see [Theme](#theme) below.
 
 ---
@@ -307,6 +311,54 @@ title reports the fraction of backbone bonds covered.
 
 Pass the **stripped** sequence — ProForma modification brackets are not rendered. An empty peptide
 raises `ValueError`.
+
+---
+
+## Profile spectra
+
+A profile spectrum samples a continuous signal, so drawing each sample as its own stick from the
+baseline throws away the peak shape and triples the coordinate count. `plot_spectrum()` detects
+`SpectrumType.PROFILE` and draws a connected trace instead:
+
+```python
+spec = Spectrum(mz=mz, intensity=intensity, spectrum_type=SpectrumType.PROFILE)
+spec.plot()                      # continuous trace with a light fill
+spec.plot(render="sticks")       # force the stick rendering
+```
+
+### Thinning
+
+Real profile scans run to hundreds of thousands of samples, well past what a screen can resolve or
+a browser can draw. Above `max_points` (default 4000) the trace is thinned by keeping the
+**minimum and maximum of each bucket**.
+
+!!! warning
+    This matters more than it sounds. The obvious alternative — keeping every *N*th sample — will
+    step straight over the two or three samples that form a narrow peak, and that peak silently
+    disappears from the plot. On a 200,000-sample test spectrum with 40 narrow peaks, every-*N*th
+    sampling preserved **0 of 40** apexes; min/max preserved **39 of 40**, and the global maximum
+    exactly. Pass `max_points=None` to draw every sample.
+
+### Checking centroiding
+
+`profile_centroid_plot()` puts the centroided peaks on top of the profile trace, which is how you
+confirm centroiding did the right thing:
+
+```python
+from spxtacular import profile_centroid_plot
+
+profile_centroid_plot(profile)                    # centroids computed for you
+profile_centroid_plot(profile, my_centroids)      # or supply your own
+```
+
+A stick off the apex means a mis-assigned centre; an apex with no stick means a peak was dropped.
+Two things are worth watching for:
+
+- `centroid()` applies **no intensity threshold** — every local maximum becomes a peak, so on noisy
+  data it produces far more centroids than there are real peaks. On a test spectrum with 6 real
+  peaks it returned 769; `filter(min_intensity=…)` afterwards brought it back to exactly 6.
+- It also requires a strict maximum (`prev < curr > next`), so a peak whose apex is a two-sample
+  plateau — routine in quantised or saturated data — is discarded silently.
 
 ---
 

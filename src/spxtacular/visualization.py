@@ -27,11 +27,15 @@ from .enums import (
 )
 from .matching import FragmentInput
 from .plot_table import (
+    _HIT_TARGET_SIZE,
     _LABEL_ANGLE_DEFAULT,
     _MAX_LABELS_DEFAULT,
+    _PROFILE_MAX_POINTS,
     _cap_labels,
     _charge_series,
+    _decimate_profile,
     _fragment_label,
+    _rgba,
     _sticks,
     build_annot_plot_table,
     build_plot_table,
@@ -285,9 +289,11 @@ def plot_spectrum(
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
     show_precursor: bool = True,
+    render: Literal["sticks", "profile"] | None = None,
+    max_points: int | None = _PROFILE_MAX_POINTS,
     **layout_kwargs,
 ) -> go.Figure:
-    """Plot spectrum as a stick plot using plotly.
+    """Plot a spectrum: sticks for centroid data, a continuous trace for profile.
 
     Parameters
     ----------
@@ -306,6 +312,14 @@ def plot_spectrum(
         present. Only peaks with score > 0 are labelled. Defaults to True.
     show_charges:
         Deprecated. Use ``color="charge"`` or ``color=None`` instead.
+    render:
+        ``"sticks"`` or ``"profile"``. ``None`` (default) picks from
+        ``spectrum.spectrum_type``: profile data is drawn as a continuous trace
+        with a light fill, everything else as sticks.
+    max_points:
+        Cap on samples drawn for a profile trace (default 4000). Thinning keeps
+        the minimum and maximum of each bucket, so no peak apex is lost;
+        ``None`` draws every sample.
     max_labels:
         Cap on directly-drawn labels, highest-intensity peaks first
         (default 25). ``None`` labels every scored peak, which on a large
@@ -347,6 +361,8 @@ def plot_spectrum(
         table,
         title=title or str(spectrum.spectrum_type or "Spectrum"),
         theme_mode=theme_mode,
+        render=render,
+        max_points=max_points,
         **layout_kwargs,
     )
     if show_precursor:
@@ -578,6 +594,116 @@ def annotate_spectrum(
     fig = plot_from_table(table, title=title or "Annotated spectrum", theme_mode=theme_mode, **layout_kwargs)
     if show_precursor:
         _add_precursor_marker(fig, spectrum, theme_mode)
+    return fig
+
+
+@requires_plotly
+def profile_centroid_plot(
+    profile: Spectrum,
+    centroids: Spectrum | None = None,
+    title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
+    max_points: int | None = _PROFILE_MAX_POINTS,
+    **layout_kwargs,
+) -> go.Figure:
+    """Profile trace with the centroided peaks drawn on top.
+
+    The view for checking that centroiding did the right thing: the continuous
+    signal underneath, and a stick at each m/z the centroider decided was a peak.
+    A stick off the apex means a mis-assigned centre; an apex with no stick means
+    a peak was dropped.
+
+    That second case is worth looking for. :func:`~spxtacular.core.Spectrum.centroid`
+    requires a strict maximum (``prev < curr > next``), so a peak whose apex is a
+    two-sample plateau -- routine in quantised or saturated data -- is discarded
+    silently. This plot is how you would notice.
+
+    Parameters
+    ----------
+    profile:
+        The profile-mode spectrum.
+    centroids:
+        Centroided peaks to overlay. Defaults to ``profile.centroid()``.
+    title:
+        Plot title.
+    theme_mode:
+        ``"light"`` or ``"dark"``.
+    max_points:
+        Cap on drawn profile samples; see :func:`~spxtacular.plot_table.plot_from_table`.
+
+    Returns
+    -------
+    plotly ``Figure``.
+    """
+    import plotly.graph_objects as go
+
+    if centroids is None:
+        centroids = profile.centroid()
+
+    prof_mz, prof_int = _decimate_profile(
+        np.asarray(profile.mz, dtype=np.float64),
+        np.asarray(profile.intensity, dtype=np.float64),
+        max_points,
+    )
+
+    profile_color = theme.unmatched_color(theme_mode)
+    centroid_color = theme.charge_color(1, theme_mode)
+
+    fig = go.Figure()
+    # Profile underneath and recessive: it is the context the centroids are
+    # checked against, not the subject.
+    fig.add_trace(
+        go.Scatter(
+            x=prof_mz,
+            y=prof_int,
+            mode="lines",
+            line={"color": profile_color, "width": 1.2},
+            fill="tozeroy",
+            fillcolor=_rgba(profile_color, 0.18),
+            name="profile",
+            hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:.4g}<extra>profile</extra>",
+        )
+    )
+
+    if len(centroids) > 0:
+        xs, ys = _sticks(
+            np.asarray(centroids.mz, dtype=np.float64),
+            np.asarray(centroids.intensity, dtype=np.float64),
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                line={"color": centroid_color, "width": 1.6},
+                name="centroids",
+                hoverinfo="skip",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=centroids.mz,
+                y=centroids.intensity,
+                mode="markers",
+                marker={"size": _HIT_TARGET_SIZE, "color": "rgba(0,0,0,0)"},
+                customdata=[
+                    f"m/z: {m:.4f}<br>intensity: {i:.4g}"
+                    for m, i in zip(centroids.mz, centroids.intensity, strict=True)
+                ],
+                hovertemplate="%{customdata}<extra>centroid</extra>",
+                showlegend=False,
+            )
+        )
+
+    fig.update_layout(
+        template=theme.template(theme_mode),
+        title=title or f"Profile vs centroids — {len(centroids)} peaks from {len(profile)} samples",
+        xaxis_title="m/z",
+        yaxis_title="Intensity",
+        showlegend=True,
+        **layout_kwargs,
+    )
+    fig.update_yaxes(rangemode="tozero")
     return fig
 
 

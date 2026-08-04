@@ -296,6 +296,11 @@ module-level `build_plot_table` / `build_annot_plot_table` to use `max_labels`, 
 - **`save_figure` needs `kaleido` for static formats.** `.html` (or no suffix → `.html`) always
   works; `.png/.svg/.pdf/.jpg/.jpeg/.webp/.eps` raise `ImportError` naming kaleido if it is
   missing; any other suffix raises `ValueError`.
+- **Profile spectra render as a continuous trace, not sticks** -- plot_spectrum reads
+  spectrum_type. Override with render='sticks'|'profile'. Above max_points (default 4000) the
+  trace is thinned by min/max per bucket, which preserves peak apexes; never subsample by stride.
+- `profile_centroid_plot(profile, centroids=None)` overlays centroids on the profile trace.
+  NOTE: centroid() applies NO intensity threshold -- filter(min_intensity=...) afterwards.
 - **Labels are vertical by default** (`label_angle` column, -90). Set 0 for horizontal.
 - **Labels are deliberately dropped.** `max_labels` (default 60) plus m/z collision avoidance
   means not every peak is labelled; the dropped values survive in the hover and in the plot

@@ -21,6 +21,7 @@ from spxtacular.visualization import (
     mass_error_plot,
     mirror_plot,
     plot_spectrum,
+    profile_centroid_plot,
     save_figure,
     sequence_coverage_plot,
 )
@@ -530,3 +531,126 @@ class TestDegenerateInputs:
         np.testing.assert_array_equal(spec.mz, mz_before)
         np.testing.assert_array_equal(spec.intensity, int_before)
         pd.testing.assert_frame_equal(table, table_before)
+
+
+# ---------------------------------------------------------------------------
+# Profile spectra
+# ---------------------------------------------------------------------------
+
+
+def _profile(n: int = 2000, n_peaks: int = 5) -> Spectrum:
+    """A profile spectrum: Gaussian peaks sampled continuously over a noise floor."""
+    rng = np.random.default_rng(3)
+    mz = np.linspace(400.0, 412.0, n)
+    centres = np.linspace(401.5, 411.0, n_peaks)
+    inten = np.zeros_like(mz)
+    for i, c in enumerate(centres):
+        inten += (1e5 / (i + 1)) * np.exp(-0.5 * ((mz - c) / 0.013) ** 2)
+    inten += np.abs(rng.normal(0.0, 80.0, mz.size))
+    from spxtacular.core import SpectrumType
+
+    return Spectrum(mz=mz, intensity=inten, spectrum_type=SpectrumType.PROFILE)
+
+
+class TestProfileRendering:
+    def test_profile_draws_a_continuous_trace_not_sticks(self) -> None:
+        """Sticks throw away the peak shape, which is the only reason profile data exists."""
+        fig = plot_spectrum(_profile())
+        assert len(fig.data) == 1
+        trace = fig.data[0]
+        assert trace.mode == "lines"
+        assert trace.fill == "tozeroy"
+        # A stick plot interleaves a NaN separator after every peak; a profile
+        # trace is continuous, so it has none.
+        assert not any(v != v for v in trace.y)
+
+    def test_centroid_spectra_still_draw_sticks(self) -> None:
+        fig = plot_spectrum(_spectrum(6))
+        assert fig.data[0].fill is None
+
+    def test_render_can_be_overridden_both_ways(self) -> None:
+        prof = build_plot_table(_profile(500))
+        assert prof.attrs["render"] == "profile"
+        assert plot_from_table(prof, render="sticks").data[0].fill is None
+
+        cent = build_plot_table(_spectrum(6))
+        assert cent.attrs["render"] == "sticks"
+        assert plot_from_table(cent, render="profile").data[0].fill == "tozeroy"
+
+    def test_unknown_render_mode_raises(self) -> None:
+        with pytest.raises(ValueError, match="render must be"):
+            plot_from_table(build_plot_table(_spectrum(4)), render="area")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+
+    def test_profile_suppresses_per_sample_labels(self) -> None:
+        """There is no "peak" at a profile sample, only a point on a curve."""
+        from spxtacular.core import SpectrumType
+
+        spec = _profile(400)
+        scored = Spectrum(
+            mz=spec.mz,
+            intensity=spec.intensity,
+            iso_score=np.full(len(spec), 0.9),
+            spectrum_type=SpectrumType.PROFILE,
+        )
+        assert (build_plot_table(scored)["label"] == "").all()
+
+
+class TestProfileDecimation:
+    def test_large_profile_is_capped(self) -> None:
+        fig = plot_spectrum(_profile(50_000), max_points=2000)
+        assert len(fig.data[0].x) <= 2000
+
+    def test_small_profile_is_left_alone(self) -> None:
+        spec = _profile(500)
+        fig = plot_spectrum(spec, max_points=4000)
+        assert len(fig.data[0].x) == len(spec)
+
+    def test_decimation_keeps_every_peak_apex(self) -> None:
+        """The whole point: naive subsampling can step straight over a peak."""
+        from spxtacular.plot_table import _decimate_profile
+
+        rng = np.random.default_rng(0)
+        n = 100_000
+        mz = np.linspace(300.0, 1800.0, n)
+        inten = rng.exponential(50.0, n)
+        centres = rng.uniform(320.0, 1780.0, 25)
+        for c in centres:
+            inten += 5e4 * np.exp(-0.5 * ((mz - c) / 0.004) ** 2)
+
+        _, kept = _decimate_profile(mz, inten, 4000)
+        apexes = [inten[int(np.argmin(np.abs(mz - c)))] for c in centres]
+        survived = sum(bool(np.isclose(kept, a, rtol=1e-9).any()) for a in apexes)
+        assert survived >= len(centres) - 1, f"only {survived}/{len(centres)} apexes survived"
+        # And the global maximum is never lost.
+        assert kept.max() == pytest.approx(inten.max())
+
+    def test_max_points_none_disables_decimation(self) -> None:
+        spec = _profile(9000)
+        assert len(plot_spectrum(spec, max_points=None).data[0].x) == len(spec)
+
+
+class TestProfileCentroidOverlay:
+    def test_draws_profile_and_centroids(self) -> None:
+        spec = _profile()
+        fig = profile_centroid_plot(spec)
+        names = [t.name for t in fig.data if t.name]
+        assert "profile" in names and "centroids" in names
+
+    def test_centroids_are_computed_when_not_supplied(self) -> None:
+        spec = _profile()
+        auto = profile_centroid_plot(spec)
+        explicit = profile_centroid_plot(spec, spec.centroid())
+        assert auto.layout.title.text == explicit.layout.title.text
+
+    def test_supplied_centroids_are_used_verbatim(self) -> None:
+        spec = _profile()
+        picked = spec.centroid().filter(min_intensity=5e3)
+        fig = profile_centroid_plot(spec, picked)
+        stick = next(t for t in fig.data if t.name == "centroids")
+        # Three coordinates per stick (base, tip, separator).
+        assert len(stick.x) == 3 * len(picked)
+
+    def test_handles_a_profile_with_no_detectable_peaks(self) -> None:
+        flat = Spectrum(mz=np.linspace(400.0, 410.0, 200), intensity=np.zeros(200))
+        fig = profile_centroid_plot(flat)
+        assert fig.data  # the profile trace is still drawn

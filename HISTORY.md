@@ -72,6 +72,29 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### Visualisation — profile spectra
+
+* **Profile spectra were rendered wrong.** Plotting never consulted `spectrum_type`, so a profile
+  spectrum was drawn as one stick from the baseline per *sample* — discarding the peak shape, which
+  is the only reason profile data exists. `MzmlReader` genuinely emits `SpectrumType.PROFILE`, so
+  this was reachable with real data. `plot_spectrum()` now draws profile data as a continuous trace
+  with a light fill, and sticks for everything else. `render="sticks"` / `"profile"` overrides it.
+* **Thinning that does not lose peaks.** Real profile scans run to hundreds of thousands of samples
+  (a 100k-sample scan produced a 14.7 MB figure of the wrong picture). Above `max_points`
+  (default 4000) the trace is thinned by keeping the minimum and maximum of each bucket. The
+  obvious alternative — every *N*th sample — steps over narrow peaks: on a 200k-sample test with 40
+  narrow peaks, stride sampling preserved **0 of 40** apexes while min/max preserved **39 of 40**
+  and the global maximum exactly, in 5 ms.
+* **New `profile_centroid_plot()`** overlays centroided peaks on the profile trace — the view for
+  confirming that centroiding put each centre on an apex, and for spotting peaks it dropped.
+* Per-sample labels are suppressed on profile spectra; there is no "peak" at a sample, only a point
+  on a curve.
+
+Two `centroid()` limitations this made visible, documented but not changed: it applies **no
+intensity threshold**, so every local maximum becomes a peak (769 centroids from 6 real peaks on a
+noisy test spectrum — `filter(min_intensity=…)` brought it back to 6), and it requires a strict
+maximum, so a peak whose apex is a two-sample plateau is dropped silently.
+
 ### Visualisation — vertical fragment labels
 
 * **Direct labels are now vertical**, reading bottom-to-top, which is what every spectrum viewer

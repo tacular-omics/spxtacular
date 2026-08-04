@@ -34,11 +34,13 @@ from .visualization import (
     mass_error_plot,
     mirror_plot,
     plot_spectrum,
+    profile_centroid_plot,
     save_figure,
     sequence_coverage_plot,
 )
 
 __all__ = [
+    "profile_centroid_plot",
     "theme",
     "table_view",
     "sequence_coverage_plot",

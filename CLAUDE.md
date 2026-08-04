@@ -126,3 +126,6 @@ light and dark surfaces. Both modes are explicit sets of steps; dark is not an i
 - Do not label every annotated peak — labels are capped and collision-avoided on purpose; a
   deconvoluted spectrum with a label per peak is an unreadable smear.
 - Do not add a hex value straight into a plot function; add it to `theme.py` and validate it.
+- Do not draw profile spectra as sticks — `plot_spectrum` renders `SpectrumType.PROFILE` as a
+  continuous trace. And never thin a profile by taking every Nth sample; that deletes peaks.
+  Use `_decimate_profile` (min/max per bucket).
