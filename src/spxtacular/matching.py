@@ -5,10 +5,11 @@ Fragment-to-peak matching.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 import numpy as np
+from numpy.typing import NDArray
 from peptacular import IonType
 from peptacular.annotation.frag import Fragment
 
@@ -54,7 +55,10 @@ def match_fragments(
     Parameters
     ----------
     spectrum:
-        Spectrum to search.  Must be sorted by m/z (standard for centroid data).
+        Spectrum to search. Any m/z order is accepted -- an unsorted spectrum is
+        sorted internally and the reported ``peak_index`` still refers to the
+        array you passed in. (timsTOF frames arrive ordered by ion mobility
+        scan, so they are not globally m/z-sorted.)
     fragments:
         Fragment objects from peptacular (each with a ``.mz`` property), **or** the
         ``dict[tuple[IonType, int], list[float]]`` returned by
@@ -83,9 +87,9 @@ def match_fragments(
     Raises
     ------
     ValueError
-        If ``tolerance_type`` / ``peak_selection`` is not a recognised value, if
-        ``spectrum.mz`` is not sorted in non-decreasing order, or if a dict key
-        carries ``charge_state == 0`` (an m/z cannot be converted to a mass).
+        If ``tolerance_type`` / ``peak_selection`` is not a recognised value, or if
+        a dict key carries ``charge_state == 0`` (an m/z cannot be converted to a
+        mass).
 
     Notes
     -----
@@ -118,10 +122,19 @@ def match_fragments(
     results: list[MatchedFragment] = []
 
     # Every lookup below goes through np.searchsorted, which returns meaningless
-    # positions on unsorted input — that would surface as silently missing or
-    # wrong matches rather than as an error, so check up front (one O(n) pass).
+    # positions on unsorted input -- silently missing or wrong matches rather than
+    # an error. Unsorted input is not exotic: a timsTOF frame is ordered by ion
+    # mobility scan and only sorted by m/z *within* each scan, so roughly half the
+    # steps in a DReader MS1 frame descend. Sort a working copy and map the
+    # reported peak indices back, so `peak_index` still refers to the caller's
+    # array whatever order it arrived in.
+    unsort: NDArray[np.intp] | None = None
     if mz.size > 1 and bool(np.any(mz[1:] < mz[:-1])):
-        raise ValueError("spectrum.mz must be sorted in non-decreasing order to match fragments")
+        unsort = np.argsort(mz, kind="stable")
+        mz = mz[unsort]
+        intensity = intensity[unsort]
+        if charge is not None:
+            charge = charge[unsort]
 
     # Detect spectrum state once. Decharged spectra have every (non-dropped)
     # peak's charge set to 0; deconvoluted spectra carry per-peak charges in
@@ -258,6 +271,11 @@ def match_fragments(
         for frag in fragments:
             candidates = _search(_target(frag), frag.charge_state)
             _emit(candidates, frag)
+
+    if unsort is not None:
+        # Indices currently refer to the sorted working copy; translate them back
+        # to positions in the caller's array.
+        results = [replace(m, peak_index=int(unsort[m.peak_index])) for m in results]
 
     results.sort(key=lambda m: m.peak_index)
     return results

@@ -72,6 +72,16 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### Fixes — unsorted spectra
+
+* **`match_fragments` and `score` raised on real Bruker data.** The sorted-input guard added
+  earlier in this release was right that `np.searchsorted` gives silently wrong answers on
+  unsorted m/z, but rejecting the input hard-failed on the library's main data source: a timsTOF
+  frame is ordered by ion-mobility scan and only sorted by m/z *within* each scan, so roughly half
+  the steps in a `DReader` MS1 frame descend. Matching now sorts a working copy and maps the
+  reported `peak_index` back, so any m/z order is accepted and the index still refers to the array
+  you passed in. Verified against a real 65-frame timsTOF run.
+
 ### Visualisation — profile spectra
 
 * **Profile spectra were rendered wrong.** Plotting never consulted `spectrum_type`, so a profile

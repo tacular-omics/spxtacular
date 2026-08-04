@@ -8,6 +8,7 @@ and .position, so the mock is sufficient for all matching tests.
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 from spxtacular.core import Spectrum
 from spxtacular.matching import MatchedFragment, match_fragments
@@ -382,3 +383,60 @@ def test_decharged_ignores_fragment_charge_state() -> None:
     result = match_fragments(spec, [frag], tolerance=0.05, tolerance_type="da")
     assert len(result) == 1
     assert result[0].peak_index == 0
+
+
+# ---------------------------------------------------------------------------
+# Unsorted input
+# ---------------------------------------------------------------------------
+
+
+class TestUnsortedSpectra:
+    """timsTOF frames are ordered by ion-mobility scan, not globally by m/z.
+
+    Roughly half the steps in a real DReader MS1 frame descend, so matching has
+    to cope with it. Rejecting unsorted input hard-failed on the library's main
+    Bruker data source; silently trusting it gave wrong answers via searchsorted.
+    """
+
+    def _fragments(self):
+        import peptacular as pt
+
+        return list(pt.fragment("PEPTIDEK", ion_types=("b", "y"), charges=(1,)))
+
+    def test_unsorted_spectrum_matches_same_peaks_as_sorted(self) -> None:
+        frags = self._fragments()
+        mz = np.array([f.mz for f in frags], dtype=np.float64)
+        intensity = np.linspace(1e4, 1e5, mz.size)
+
+        order = np.argsort(mz)
+        sorted_spec = Spectrum(mz=mz[order], intensity=intensity[order])
+
+        shuffle = np.random.default_rng(0).permutation(mz.size)
+        unsorted_spec = Spectrum(mz=mz[shuffle], intensity=intensity[shuffle])
+
+        a = match_fragments(sorted_spec, frags, tolerance=0.01, tolerance_type="da")
+        b = match_fragments(unsorted_spec, frags, tolerance=0.01, tolerance_type="da")
+        assert len(a) == len(b) > 0
+        # Same physical peaks matched, whatever order they arrived in.
+        assert sorted(round(m.peak_mz, 6) for m in a) == sorted(round(m.peak_mz, 6) for m in b)
+
+    def test_peak_index_refers_to_the_callers_array(self) -> None:
+        """The index must address the array passed in, not an internal sorted copy."""
+        frags = self._fragments()
+        mz = np.array([f.mz for f in frags], dtype=np.float64)
+        intensity = np.linspace(1e4, 1e5, mz.size)
+        shuffle = np.random.default_rng(1).permutation(mz.size)
+        spec = Spectrum(mz=mz[shuffle], intensity=intensity[shuffle])
+
+        for m in match_fragments(spec, frags, tolerance=0.01, tolerance_type="da"):
+            assert spec.mz[m.peak_index] == pytest.approx(m.peak_mz)
+            assert spec.intensity[m.peak_index] == pytest.approx(m.peak_intensity)
+
+    def test_scoring_works_on_unsorted_input(self) -> None:
+        from spxtacular.scoring import score
+
+        frags = self._fragments()
+        mz = np.array([f.mz for f in frags], dtype=np.float64)
+        shuffle = np.random.default_rng(2).permutation(mz.size)
+        spec = Spectrum(mz=mz[shuffle], intensity=np.linspace(1e4, 1e5, mz.size)[shuffle])
+        assert score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"] > 0
