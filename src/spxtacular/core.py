@@ -720,7 +720,10 @@ class Spectrum:
 
             total_intensity = np.sum(window_int)
             if total_intensity > 0:
-                avg_mz = np.average(window_mz, weights=window_int)
+                # np.dot rather than np.average: the latter is a Python wrapper
+                # that validates and reshapes, and at one call per merged peak it
+                # accounted for ~44% of this method's runtime.
+                avg_mz = float(np.dot(window_mz, window_int) / total_intensity)
             else:
                 avg_mz = np.mean(window_mz)
 
@@ -739,7 +742,7 @@ class Spectrum:
             if im is not None:
                 window_im = im[valid_indices]
                 if total_intensity > 0:
-                    avg_im = np.average(window_im, weights=window_int)
+                    avg_im = float(np.dot(window_im, window_int) / total_intensity)
                 else:
                     avg_im = np.mean(window_im)
                 new_im_list.append(avg_im)

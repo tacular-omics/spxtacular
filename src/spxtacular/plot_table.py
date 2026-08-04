@@ -552,8 +552,14 @@ def build_annot_plot_table(
 def _sticks(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
-) -> tuple[list, list]:
-    """Interleave (mz, 0, mz, intensity, None) triples for a stick plot."""
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Interleave (mz, 0, mz, NaN) triples for a stick plot.
+
+    Returns numpy arrays rather than lists. Plotly validates a Python list
+    element by element -- around 2,000 calls per figure for a modest spectrum,
+    which dominated figure construction -- but takes a numpy array through a
+    fast path. NaN reads as a line break exactly as ``None`` does.
+    """
     n = len(mz)
     x = np.empty(n * 3, dtype=np.float64)
     y = np.empty(n * 3, dtype=np.float64)
@@ -563,7 +569,7 @@ def _sticks(
     y[0::3] = 0.0
     y[1::3] = intensity
     y[2::3] = np.nan
-    return x.tolist(), y.tolist()
+    return x, y
 
 
 def table_view(

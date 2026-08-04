@@ -72,6 +72,32 @@
 * Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
   previously rendering as literal text.
 
+### Performance
+
+Profiled against a real timsTOF MS1 frame. Deconvolution output is **bit-identical** to before
+across four parameter combinations — these are implementation changes, not algorithm changes.
+
+| Operation | Before | After | |
+|---|---|---|---|
+| `deconvolute()` (1,483 peaks) | 68.1 ms | 38.2 ms | 1.8× |
+| `merge()` (1,483 peaks) | 22.4 ms | 13.0 ms | 1.7× |
+| `plot()` (1,483 peaks) | 21.4 ms | 11.6 ms | 1.8× |
+
+* **Deconvolution picked each seed with an `argmax` over the whole array**, making seed selection
+  O(n) per peak and O(n²) overall. Peaks only ever become used, never un-used, so one descending
+  sort plus a cursor gives the identical sequence in O(n log n). A stable sort on the negated
+  intensity reproduces `argmax`'s first-index tie-break exactly.
+* The remaining cost was numpy call overhead on ten-element arrays, not the numba kernels (the
+  profile showed only 2,606 kernel calls for that frame). The per-seed scratch array is now
+  allocated once and reused, the seed-membership test is a Python loop over ≤10 entries rather than
+  `np.any`, and the isotope-template lookup is arithmetic on a regular grid rather than a
+  `searchsorted` — it runs once per (seed, charge, anchor) combination.
+* **`merge()` spent ~44% of its time inside `np.average`**, a Python wrapper that validates and
+  reshapes on every call. Replaced with an explicit `np.dot` weighted mean.
+* **`_sticks` returned Python lists**, and plotly validates a list element by element — around
+  2,000 calls per figure. Returning numpy arrays takes plotly's fast path; NaN reads as a line
+  break exactly as `None` did.
+
 ### New — spectrum-to-spectrum similarity
 
 * **`spxtacular.similarity`** answers "how alike are these two spectra", which

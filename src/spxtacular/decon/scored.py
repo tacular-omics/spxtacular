@@ -78,14 +78,18 @@ def _get_templates() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
 
 
 def _lookup_template(neutral_mass: float) -> NDArray[np.float64]:
-    """Return the normalised isotope distribution closest to neutral_mass."""
-    masses, dists = _get_templates()
-    idx = int(np.searchsorted(masses, neutral_mass))
-    if idx >= len(masses):
-        idx = len(masses) - 1
-    elif idx > 0 and abs(masses[idx - 1] - neutral_mass) < abs(masses[idx] - neutral_mass):
-        idx -= 1
-    return dists[idx]
+    """Return the normalised isotope distribution closest to neutral_mass.
+
+    The template masses are the regular grid ``_MASS_STEP, 2*_MASS_STEP, ...``, so
+    the nearest one is arithmetic rather than a search. This is called once per
+    (seed, charge, anchor) combination -- tens of thousands of times for a single
+    spectrum -- so the searchsorted it replaces was measurable.
+    """
+    _, dists = _get_templates()
+    # +0.5 then truncate is round-half-up, matching the tie-break of the
+    # searchsorted form this replaced (numpy's round() is half-to-even).
+    idx = int(neutral_mass / _MASS_STEP + 0.5) - 1
+    return dists[min(max(idx, 0), dists.shape[0] - 1)]
 
 
 # ---------------------------------------------------------------------------
@@ -227,15 +231,27 @@ def deconvolve_spectrum(
     out_scores = np.zeros(max_dpeaks, dtype=np.float64)
     n_out = 0
 
+    # Seeds are taken most-intense-first. Scanning for the maximum on each pass
+    # makes that O(n) per seed and O(n^2) overall; peaks only ever become used,
+    # never un-used, so one descending sort plus a cursor gives the same sequence
+    # in O(n log n). Stable sort on the negated intensity reproduces argmax's
+    # first-index tie-break exactly.
+    seed_order = np.argsort(-int64, kind="stable")
+    cursor = 0
+    # Reused across seeds rather than reallocated: np.full on a ten-element array
+    # is dominated by call overhead, and this runs once per output peak.
+    best_indices = np.full(10, -1, dtype=np.intp)
+
     while n_out < max_dpeaks:
-        masked_intensity = np.where(~used, int64, -np.inf)
-        seed_idx = int(np.argmax(masked_intensity))
-        if used[seed_idx]:
+        while cursor < n and used[seed_order[cursor]]:
+            cursor += 1
+        if cursor >= n:
             break
+        seed_idx = int(seed_order[cursor])
 
         best_score = -np.inf
         best_charge = min_charge
-        best_indices = np.full(10, -1, dtype=np.intp)
+        best_indices.fill(-1)
         best_n = 1
         best_anchor = seed_idx
         best_total = float(int64[seed_idx])
@@ -256,7 +272,17 @@ def deconvolve_spectrum(
                 # A cluster that does not reach back to the seed describes a
                 # different feature.  Accepting it would leave the seed unused
                 # and re-seed on it forever, so skip it.
-                if not np.any(cluster_idx == seed_idx):
+                #
+                # Checked with a Python loop rather than np.any(...): the cluster
+                # holds at most ten entries, and at that size numpy's per-call
+                # overhead costs more than the comparison it performs. The loop
+                # runs once per (seed, charge, anchor) combination, so it is hot.
+                found = False
+                for ci in range(n_peaks):
+                    if indices[ci] == seed_idx:
+                        found = True
+                        break
+                if not found:
                     continue
                 obs = int64[cluster_idx]
                 neutral_mass = (float(mz64[anchor]) - PROTON_MASS) * charge
