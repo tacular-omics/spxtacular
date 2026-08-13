@@ -7,6 +7,7 @@ spectrl = pytest.importorskip("spectrl")
 
 from spectrl.model import (  # noqa: E402
     SpectrlCvParam,
+    SpectrlIsolationWindow,
     SpectrlPrecursor,
     SpectrlScan,
     SpectrlScanWindow,
@@ -34,6 +35,9 @@ _UNIT_MINUTE = "UO:0000031"
 _SCAN_WINDOW_LOWER = "MS:1000501"
 _SCAN_WINDOW_UPPER = "MS:1000500"
 _SELECTED_ION_MZ = "MS:1000744"
+_ISOL_TARGET_MZ = "MS:1000827"
+_ISOL_LOWER_OFFSET = "MS:1000828"
+_ISOL_UPPER_OFFSET = "MS:1000829"
 _UP_PREC_MONOISOTOPIC = "spxtacular:precursor_is_monoisotopic"
 
 # ---------------------------------------------------------------------------
@@ -462,6 +466,27 @@ def test_scan_window_without_values_decodes_without_mz_range() -> None:
     restored = from_decoded_spectrum(decoded)
     assert isinstance(restored, MsnSpectrum)
     assert restored.mz_range is None
+
+
+def test_isolation_window_without_values_decodes_without_range() -> None:
+    """A degenerate isolation window (terms present, values absent) must not raise."""
+    decoded = _foreign_decoded(
+        precursors=[
+            SpectrlPrecursor(
+                selected_ions=[_selected_ion(500.0)],
+                isolation_window=SpectrlIsolationWindow(
+                    params=[
+                        SpectrlCvParam(accession=_ISOL_TARGET_MZ, value=500.0),
+                        SpectrlCvParam(accession=_ISOL_LOWER_OFFSET),
+                        SpectrlCvParam(accession=_ISOL_UPPER_OFFSET),
+                    ]
+                ),
+            )
+        ]
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.isolation_mz_range is None
 
 
 # ---------------------------------------------------------------------------

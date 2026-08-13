@@ -692,7 +692,14 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                 target_p = _find_param(sp.isolation_window.params, _ISOL_TARGET_MZ)
                 lo_p = _find_param(sp.isolation_window.params, _ISOL_LOWER_OFFSET)
                 hi_p = _find_param(sp.isolation_window.params, _ISOL_UPPER_OFFSET)
-                if target_p is not None and lo_p is not None and hi_p is not None:
+                if (
+                    target_p is not None
+                    and target_p.value is not None
+                    and lo_p is not None
+                    and lo_p.value is not None
+                    and hi_p is not None
+                    and hi_p.value is not None
+                ):
                     center = float(target_p.value)
                     isolation_mz_range = (center - float(lo_p.value), center + float(hi_p.value))
             if sp.activation is not None:
