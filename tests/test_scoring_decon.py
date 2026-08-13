@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from spxtacular.core import Spectrum, SpectrumType
+from spxtacular.decon.scored import deconvolve_spectrum
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -169,6 +170,58 @@ def test_min_score_zero_allows_best_cluster_to_be_assigned() -> None:
     decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm", min_score=0.0)
     assert decon.charge is not None
     assert np.any(decon.charge > 0), "expected at least one assigned cluster"
+
+
+# ---------------------------------------------------------------------------
+# intensity_mode validation
+# ---------------------------------------------------------------------------
+
+
+class TestIntensityModeValidation:
+    """An unrecognised ``intensity_mode`` must fail loudly.
+
+    The mode is selected by a single ``== "base"`` test, so every other spelling
+    used to fall through to cluster totals: ``"Base"`` silently returned summed
+    intensities under the name of monoisotopic ones.
+    """
+
+    def _deconvolve(self, intensity_mode: str, empty: bool = False):
+        mz = np.empty(0, dtype=np.float64) if empty else _MZ.copy()
+        intensity = np.empty(0, dtype=np.float64) if empty else _INTENSITY.copy()
+        return deconvolve_spectrum(
+            mz,
+            intensity,
+            charge_range=(1, 3),
+            tolerance=50.0,
+            is_ppm=True,
+            intensity_mode=intensity_mode,
+        )
+
+    @pytest.mark.parametrize("bad_mode", ["mono", "monoisotopic", "sum", "", "totals"])
+    def test_unknown_mode_raises(self, bad_mode: str) -> None:
+        with pytest.raises(ValueError, match="intensity_mode"):
+            self._deconvolve(bad_mode)
+
+    def test_unknown_mode_raises_on_an_empty_spectrum_too(self) -> None:
+        """Validation is up front, so it does not depend on how many peaks came in."""
+        with pytest.raises(ValueError, match="intensity_mode"):
+            self._deconvolve("mono", empty=True)
+
+    @pytest.mark.parametrize("mode", ["total", "base", "Base", "TOTAL"])
+    def test_known_modes_are_accepted_case_insensitively(self, mode: str) -> None:
+        _, _, out_intensity, _ = self._deconvolve(mode)
+        assert len(out_intensity) > 0
+
+    def test_base_reports_less_intensity_than_total(self) -> None:
+        """The two modes must actually differ, or 'base' would be silently ignored."""
+        _, _, total_int, _ = self._deconvolve("total")
+        _, _, base_int, _ = self._deconvolve("base")
+        assert base_int.sum() < total_int.sum()
+
+    def test_a_capitalised_mode_is_not_silently_treated_as_total(self) -> None:
+        _, _, base_int, _ = self._deconvolve("base")
+        _, _, capitalised_int, _ = self._deconvolve("Base")
+        assert capitalised_int == pytest.approx(base_int)
 
 
 # ---------------------------------------------------------------------------

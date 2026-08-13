@@ -53,6 +53,15 @@ def _unique_series_positions(
     return sp
 
 
+def _count_matched_ions(matches: list[MatchedFragment]) -> int:
+    """Unique matched ``(ion_type, position)`` pairs.
+
+    The counterpart of :func:`_count_unique_ions` on the matched side, counted the
+    same way so the two are comparable as a ratio.
+    """
+    return sum(len(positions) for positions in _unique_series_positions(matches).values())
+
+
 def _count_unique_ions(fragments: FragmentInput) -> int:
     """Unique ``(ion_type, position)`` pairs — collapses loss/isotope variants.
 
@@ -229,7 +238,12 @@ def _probability_score(
     k = len(_unique_peak_indices(matches))
     if k == 0 or n_exp == 0 or n_unique == 0:
         return 0.0
-    mz_range = float(spectrum.mz[-1] - spectrum.mz[0])
+    # Span, not first-to-last: an unsorted spectrum is not exotic (a timsTOF frame
+    # is ordered by ion-mobility scan, and match_fragments sorts a working copy to
+    # cope), and taking the endpoints made the same peaks and matches score
+    # differently for a reordering -- or, for a spectrum ending below its start,
+    # gave a negative range that the guard below turned into a silent 0.0.
+    mz_range = float(spectrum.mz.max() - spectrum.mz.min())
     if mz_range <= 0.0:
         return 0.0
     if ToleranceType(str(tolerance_type).lower()) is ToleranceType.PPM:
@@ -255,9 +269,17 @@ def _matched_fraction(
     matches: list[MatchedFragment],
     n_unique: int,
 ) -> float:
+    """Share of the theoretical ions that found a peak, in ``[0, 1]``.
+
+    Both sides of the ratio count **ions**, not peaks. Counting matched peaks
+    instead broke the ratio under ``peak_selection="all"``, where one theoretical
+    ion can claim every peak within tolerance: a single ion sitting on three
+    peaks reported a "fraction" of 3.0. ``_spectral_angle`` guards the same case
+    by trimming its observed vector back to ``n_unique`` entries.
+    """
     if n_unique == 0:
         return 0.0
-    return len(_unique_peak_indices(matches)) / n_unique
+    return _count_matched_ions(matches) / n_unique
 
 
 def _intensity_fraction(
