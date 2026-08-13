@@ -180,4 +180,4 @@ Full documentation with API reference, guides, and interactive plots is availabl
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/tacular-omics/spxtacular/blob/main/LICENSE)
