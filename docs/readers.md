@@ -1,15 +1,15 @@
 # Readers
 
-spxtacular provides five format-specific reader classes — `MzmlReader`, `DReader`, `ThermoReader`,
-`MgfReader`, and `Ms2Reader` — plus a format-agnostic `Reader` that picks the right one from the
-file extension. All of them expose a uniform interface for iterating over `MsnSpectrum` objects
-regardless of the underlying file format.
+spxtacular provides six format-specific reader classes — `MzmlReader`, `DReader`, `ThermoReader`,
+`MgfReader`, `Ms2Reader`, and `MspReader` — plus a format-agnostic `Reader` that picks the right
+one from the file extension. All of them expose a uniform interface for iterating over
+`MsnSpectrum` objects regardless of the underlying file format.
 
 Every reader yields `MsnSpectrum` instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (`.filter()`, `.denoise()`, `.deconvolute()`, etc.) are immediately available on each yielded object.
 
 `MzmlReader`, `DReader`, and `ThermoReader` need an optional extra (`mzmlpy` / `tdfpy` /
-`fisher-py`); `MgfReader` and `Ms2Reader` are pure standard library and always available, as are
-the matching writers `write_mgf` and `write_ms2`.
+`fisher-py`); `MgfReader`, `Ms2Reader`, and `MspReader` are pure standard library and always
+available, as are the matching writers `write_mgf`, `write_ms2`, and `write_msp`.
 
 ## Lookup objects
 
@@ -21,7 +21,7 @@ the matching writers `write_mgf` and `write_ms2`.
 | `MzmlReader` | `MzmlSpectraLookup` | `MzmlSpectraLookup` |
 | `DReader` | `DReaderMs1Lookup` | `DReaderMs2Lookup` |
 | `ThermoReader` | `ThermoScanLookup` | `ThermoScanLookup` |
-| `MgfReader` / `Ms2Reader` | `PeakListLookup` (always empty) | `PeakListLookup` |
+| `MgfReader` / `Ms2Reader` / `MspReader` | `PeakListLookup` (always empty) | `PeakListLookup` |
 | `Reader` | whichever the detected backend provides | whichever the detected backend provides |
 
 Because they are iterables and not iterators, `next(reader.ms2)` raises `TypeError` — use
@@ -40,7 +40,7 @@ Index semantics differ per backend:
 | `DReader.ms1[frame_id]` | MS1 spectrum by tdfpy `frame_id` |
 | `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); iterate instead |
 | `ThermoReader.ms1[scan]` / `.ms2[scan]` | Spectrum by native **1-based scan number**; `KeyError` if the scan does not exist or is not of that MS level. `ThermoReader[scan]` fetches any level |
-| `MgfReader[key]` / `Ms2Reader[key]` | Spectrum by 0-based position in the file, or by `native_id` string. Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
+| `MgfReader[key]` / `Ms2Reader[key]` / `MspReader[key]` | Spectrum by 0-based position in the file, or by `native_id` string (first match wins — library files repeat names across collision energies). Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
 `DReader` and `ThermoReader` lookups raise `RuntimeError` if the reader has not been opened.
 
@@ -51,10 +51,10 @@ Index semantics differ per backend:
 ## Reader
 
 `Reader` is the format-agnostic entry point: it inspects the path suffix and delegates to `DReader`
-(`.d`), `MzmlReader` (`.mzml`), `ThermoReader` (`.raw`), `MgfReader` (`.mgf`), or `Ms2Reader`
-(`.ms2`) — case-insensitive, and a trailing `.gz` is stripped before matching so `.mzML.gz`,
-`.mgf.gz`, and `.ms2.gz` all dispatch correctly. Anything else raises `ValueError`. Usage is
-identical regardless of the underlying format.
+(`.d`), `MzmlReader` (`.mzml`), `ThermoReader` (`.raw`), `MgfReader` (`.mgf`), `Ms2Reader`
+(`.ms2`), or `MspReader` (`.msp`) — case-insensitive, and a trailing `.gz` is stripped before
+matching so `.mzML.gz`, `.mgf.gz`, `.ms2.gz`, and `.msp.gz` all dispatch correctly. Anything else
+raises `ValueError`. Usage is identical regardless of the underlying format.
 
 ```python
 class Reader:
@@ -510,16 +510,16 @@ with ThermoReader("run.raw", prefer_vendor_centroid=False) as reader:
 
 ---
 
-## MGF / MS2
+## MGF / MS2 / MSP
 
-MGF (Mascot Generic Format) and MS2 are plain-text peak lists. Both are handled by
-`spxtacular.peaklist`, which is **pure standard library** — no optional extra, nothing to install,
-always importable. Both formats hold fragmentation spectra only, so every spectrum read back is an
-`MsnSpectrum` with `ms_level=2` and `spectrum_type=SpectrumType.CENTROID`, and `reader.ms1` is a
-valid but always empty walk.
+MGF (Mascot Generic Format), MS2, and MSP (the NIST spectral-library format) are plain-text peak
+lists. All three are handled by `spxtacular.peaklist`, which is **pure standard library** — no
+optional extra, nothing to install, always importable. All three formats hold fragmentation
+spectra only, so every spectrum read back is an `MsnSpectrum` with `ms_level=2` and
+`spectrum_type=SpectrumType.CENTROID`, and `reader.ms1` is a valid but always empty walk.
 
 ```python
-class MgfReader:            # and Ms2Reader — identical interface
+class MgfReader:            # and Ms2Reader / MspReader — identical interface
     def __init__(self, path: str | Path): ...
 
     def open(self) -> None: ...
@@ -595,6 +595,33 @@ result.
 
 `H` header lines and `D` analysis lines are read and skipped. Unmapped `I` keys are skipped too.
 
+### Metadata populated from MSP
+
+MSP has no formal spec; `MspReader` handles both dialects found in the wild — NIST/SpectraST
+peptide libraries and metabolomics exports (MoNA, GNPS, MS-DIAL). Header keys are matched
+case-insensitively, ignoring spaces, underscores, and hyphens, so `PrecursorMZ`, `PRECURSORMZ`,
+and `Precursor_mz` are all the same key. A record is header lines up to `Num Peaks: N` followed by
+exactly `N` peaks — the count is both metadata and the record terminator.
+
+| Field | Source (first hit wins) |
+|---|---|
+| `mz` / `intensity` | Peak lines after `Num Peaks`; several peaks may share a line, semicolon-separated; a trailing annotation column (`"b2/0.001"`) is ignored |
+| `native_id` | `Name`, verbatim |
+| `ms_level` | Always `2` |
+| `precursors` | One `Precursor` from `PrecursorMZ`, falling back to `Parent=` inside `Comment` |
+| precursor `charge` | `Charge` header, `Charge=` comment pair, or a trailing `/2` on a peptide `Name` |
+| `polarity` | `Ion_mode` / `Polarity` (`P`/`N`/`Positive`/`Negative`), else implied by the charge sign |
+| `rt` | `RetentionTime` / `RT` header or `RT=` comment pair — **verbatim, no unit conversion**: MSP has no unit convention (NIST peptide libraries write seconds, most metabolomics exporters minutes), so no guess is made. Know your library |
+| `collision_energy` | `Collision_energy` header or `CE=` comment pair; the first number is used, so `35`, `35 eV`, and `HCD 35%` all parse |
+| `spectrum_type` | Always `CENTROID` |
+
+`Comment:` is parsed as space-separated `Key=value` pairs (values optionally quoted) and the known
+keys above are extracted. Everything else — `Formula:`, `SMILES:`, `InChIKey:`, `Precursor_type:`
+adducts, `Synon:`, `Mods=` — is skipped: `MsnSpectrum` has no fields for compound identity, and
+per-peak annotation strings have no per-peak storage. Count mismatches in either direction, a
+record with no `Num Peaks` line, and unparsable numbers raise `ValueError` naming the file and
+line, in keeping with the leniency table above.
+
 ### Leniency, and where it stops
 
 Real peak lists are written by a long tail of tools, so parsing is deliberately forgiving:
@@ -627,6 +654,7 @@ Unterminated blocks, nested `BEGIN IONS`, short `S`/`Z` lines, and unparsable nu
 ```python
 write_mgf(spectra, path) -> Path
 write_ms2(spectra, path) -> Path
+write_msp(spectra, path) -> Path
 ```
 
 Both take an iterable of `Spectrum`/`MsnSpectrum` (a lone spectrum is accepted too) and return the
@@ -638,9 +666,11 @@ them **exactly**; the mapped metadata in the tables above round-trips with them.
 | Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
 | Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
 | Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent scan number becomes the 1-based position in the input and an absent precursor m/z becomes `0.0` |
-| MGF `TITLE` | `native_id`, falling back to `scan=<scan_number>` |
+| MGF `TITLE` / MSP `Name` | `native_id`, falling back to `scan=<scan_number>` |
 | MS2 `Z` mass | Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read |
 | `rt` in MS2 | Written as minutes (`I RTime`), so it returns to within floating-point noise rather than bit-exact. MGF's `RTINSECONDS` is exact |
+| `rt` in MSP | Written verbatim under `RetentionTime:` (spxtacular's `rt` is seconds; MSP has no unit convention), so it round-trips exactly |
+| Polarity in MSP | Written as an explicit `Ion_mode: P`/`N` line — MSP has its own field, so unlike MGF/MS2 the charge keeps its sign |
 
 Things that do **not** survive a round trip, by design: `im`, `iso_score`, `mz_range`,
 `isolation_mz_range`, `collision_energy`, `resolution`, `analyzer`, and `MsnSpectrum.ms_level` for

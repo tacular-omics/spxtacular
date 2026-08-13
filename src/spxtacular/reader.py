@@ -12,7 +12,7 @@ import numpy as np
 
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
-from .peaklist import MgfReader, Ms2Reader, PeakListLookup
+from .peaklist import MgfReader, Ms2Reader, MspReader, PeakListLookup
 from .thermo import ThermoReader, ThermoScanLookup
 
 # The optional backends load native libraries, so a broken install can raise
@@ -868,9 +868,9 @@ class Reader:
     ----------
     path:
         Path to a Bruker ``.d`` directory, an ``.mzML`` file, a Thermo
-        ``.raw`` file, or an ``.mgf`` / ``.ms2`` peak list. Every text format
-        may be gzipped (``.mzML.gz``, ``.mgf.gz``, ``.ms2.gz``). Extension
-        matching is case-insensitive.
+        ``.raw`` file, or an ``.mgf`` / ``.ms2`` / ``.msp`` peak list. Every
+        text format may be gzipped (``.mzML.gz``, ``.mgf.gz``, ``.ms2.gz``,
+        ``.msp.gz``). Extension matching is case-insensitive.
 
     Raises
     ------
@@ -890,7 +890,7 @@ class Reader:
             suffixes = suffixes[:-1]
         suffix = suffixes[-1] if suffixes else ""
         if suffix == ".d":
-            self._reader: DReader | MzmlReader | ThermoReader | MgfReader | Ms2Reader = DReader(
+            self._reader: DReader | MzmlReader | ThermoReader | MgfReader | Ms2Reader | MspReader = DReader(
                 p, centroid_config=centroid_config
             )
         elif suffix == ".mzml":
@@ -901,9 +901,11 @@ class Reader:
             self._reader = MgfReader(p)
         elif suffix == ".ms2":
             self._reader = Ms2Reader(p)
+        elif suffix == ".msp":
+            self._reader = MspReader(p)
         else:
             raise ValueError(
-                f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', '.raw', '.mgf', or '.ms2' "
+                f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', '.raw', '.mgf', '.ms2', or '.msp' "
                 "(the text formats optionally gzipped)."
             )
 

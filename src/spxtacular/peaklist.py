@@ -1,17 +1,17 @@
-"""MGF and MS2 peak-list reading and writing — pure standard library.
+"""MGF, MS2, and MSP peak-list reading and writing — pure standard library.
 
 Unlike :class:`~spxtacular.reader.DReader` and :class:`~spxtacular.reader.MzmlReader`,
-nothing here is behind an optional extra: MGF and MS2 are plain text and are parsed and
-written with nothing but the standard library (plus numpy, which spxtacular always has).
-Both formats are always available.
+nothing here is behind an optional extra: MGF, MS2, and MSP (the NIST spectral-library
+format) are plain text and are parsed and written with nothing but the standard library
+(plus numpy, which spxtacular always has). All three formats are always available.
 
-Both hold fragmentation spectra only, so every spectrum read back is an
+All three hold fragmentation spectra only, so every spectrum read back is an
 :class:`~spxtacular.core.MsnSpectrum` with ``ms_level=2`` and
 ``spectrum_type=SpectrumType.CENTROID``.
 
 Reading::
 
-    from spxtacular import MgfReader, Ms2Reader
+    from spxtacular import MgfReader, Ms2Reader, MspReader
 
     with MgfReader("run.mgf") as reader:      # .mgf.gz works too
         for spec in reader:
@@ -19,10 +19,11 @@ Reading::
 
 Writing::
 
-    from spxtacular import write_mgf, write_ms2
+    from spxtacular import write_mgf, write_ms2, write_msp
 
     write_mgf(spectra, "out.mgf")
     write_ms2(spectra, "out.ms2.gz")          # gzipped by suffix
+    write_msp(spectra, "library.msp")
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ import peptacular as pt
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
 
-__all__ = ["MgfReader", "Ms2Reader", "PeakListLookup", "write_mgf", "write_ms2"]
+__all__ = ["MgfReader", "Ms2Reader", "MspReader", "PeakListLookup", "write_mgf", "write_ms2", "write_msp"]
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +416,221 @@ def _ms2_spectrum(block: _Ms2Block) -> MsnSpectrum:
 
 
 # ---------------------------------------------------------------------------
+# MSP parsing
+# ---------------------------------------------------------------------------
+
+# MSP has no formal spec, and the proteomics (NIST peptide libraries) and
+# metabolomics (MoNA, GNPS, MS-DIAL) dialects spell their headers differently:
+# ``Num Peaks`` vs ``Num peaks``, ``PrecursorMZ`` vs ``PRECURSORMZ`` vs
+# ``Precursor_mz``, ``Ion_mode`` vs ``IONMODE``. Keys are therefore normalised
+# by upper-casing and dropping spaces/underscores/hyphens before lookup.
+_MSP_KEY_STRIP_RE = re.compile(r"[\s_\-]+")
+
+
+def _msp_key(key: str) -> str:
+    return _MSP_KEY_STRIP_RE.sub("", key).upper()
+
+
+_MSP_NUM_PEAKS_KEY = "NUMPEAKS"
+
+# ``Comment:`` in NIST peptide libraries is a run of space-separated
+# ``Key=value`` pairs, values optionally double-quoted.
+_MSP_COMMENT_PAIR_RE = re.compile(r'([\w./-]+)=("[^"]*"|\S+)')
+
+# A trailing ``/2`` on a peptide ``Name`` is the precursor charge.
+_MSP_NAME_CHARGE_RE = re.compile(r"/(\d+)\s*$")
+
+
+@dataclass
+class _MspBlock:
+    """One MSP record, mid-parse."""
+
+    start_line: int
+    # normalised header key -> (raw value, line number it was seen on)
+    headers: dict[str, tuple[str, int]] = field(default_factory=dict)
+    num_peaks: int | None = None
+    num_peaks_line: int = 0
+    mz: list[float] = field(default_factory=list)
+    intensity: list[float] = field(default_factory=list)
+
+
+def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
+    """Yield one :class:`MsnSpectrum` per MSP record.
+
+    MSP records have no BEGIN/END markers: a record is header lines up to
+    ``Num Peaks: N``, then exactly N peaks. Parsing is count-driven — the
+    declared count is both metadata and the record terminator, so a mismatch in
+    either direction is a structural error, not a guess.
+    """
+    block: _MspBlock | None = None
+
+    for line_no, raw in enumerate(handle, start=1):
+        line = raw.strip()
+        if line and line[0] in _COMMENT_PREFIXES:
+            continue
+
+        if block is not None and block.num_peaks is not None:
+            # Inside the peak list. A blank line here means the record declared
+            # more peaks than it holds.
+            if not line:
+                raise ValueError(
+                    f"{path}:{line_no}: record starting at line {block.start_line} declares "
+                    f"{block.num_peaks} peaks but ends after {len(block.mz)}"
+                )
+            # Several peaks may share a line, semicolon-separated (NIST allows
+            # it). Within one chunk the first two tokens are m/z and intensity;
+            # anything after — usually a quoted annotation — is ignored.
+            for chunk in line.split(";"):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                if len(block.mz) >= block.num_peaks:
+                    raise ValueError(
+                        f"{path}:{line_no}: record starting at line {block.start_line} declares "
+                        f"{block.num_peaks} peaks but holds more"
+                    )
+                parts = _PEAK_SPLIT_RE.split(chunk)
+                if len(parts) < 2:
+                    raise ValueError(f"{path}:{line_no}: expected 'mz intensity' on a peak line, got {chunk!r}")
+                block.mz.append(_parse_float(parts[0], field_name="peak m/z", path=path, line_no=line_no))
+                block.intensity.append(_parse_float(parts[1], field_name="peak intensity", path=path, line_no=line_no))
+            if len(block.mz) == block.num_peaks:
+                yield _msp_spectrum(block, path=path)
+                block = None
+            continue
+
+        if not line:
+            if block is not None:
+                raise ValueError(
+                    f"{path}:{block.start_line}: record has no 'Num Peaks' line before the blank line at line {line_no}"
+                )
+            continue
+
+        key, sep, value = line.partition(":")
+        if not sep:
+            raise ValueError(f"{path}:{line_no}: expected a 'Key: value' header line, got {line!r}")
+        if block is None:
+            block = _MspBlock(start_line=line_no)
+        normalised = _msp_key(key)
+        if normalised == _MSP_NUM_PEAKS_KEY:
+            block.num_peaks = _first_int(value, field_name="Num Peaks", path=path, line_no=line_no)
+            block.num_peaks_line = line_no
+            if block.num_peaks < 0:
+                raise ValueError(f"{path}:{line_no}: negative 'Num Peaks' count {block.num_peaks}")
+            if block.num_peaks == 0:
+                yield _msp_spectrum(block, path=path)
+                block = None
+        else:
+            block.headers[normalised] = (value.strip(), line_no)
+
+    if block is not None:
+        if block.num_peaks is None:
+            raise ValueError(f"{path}:{block.start_line}: record has no 'Num Peaks' line before end of file")
+        raise ValueError(
+            f"{path}:{block.start_line}: record declares {block.num_peaks} peaks "
+            f"but the file ends after {len(block.mz)}"
+        )
+
+
+def _msp_comment_pairs(block: _MspBlock) -> dict[str, str]:
+    """``Key=value`` pairs of the ``Comment:``/``Comments:`` header, keys upper-cased."""
+    for key in ("COMMENT", "COMMENTS"):
+        if key in block.headers:
+            value, _ = block.headers[key]
+            return {k.upper(): v.strip('"') for k, v in _MSP_COMMENT_PAIR_RE.findall(value)}
+    return {}
+
+
+def _msp_spectrum(block: _MspBlock, *, path: Path) -> MsnSpectrum:
+    """Build an :class:`MsnSpectrum` from a finished MSP record."""
+    headers = block.headers
+    comment = _msp_comment_pairs(block)
+
+    def header(*keys: str) -> tuple[str, int] | None:
+        for key in keys:
+            if key in headers:
+                return headers[key]
+        return None
+
+    name = header("NAME")
+    native_id = name[0] if name is not None else None
+
+    precursor_mz: float | None = None
+    found = header("PRECURSORMZ", "PRECURSORM/Z")
+    if found is not None:
+        precursor_mz = _first_float(found[0], field_name="PrecursorMZ", path=path, line_no=found[1])
+    elif "PARENT" in comment:
+        precursor_mz = _first_float(comment["PARENT"], field_name="Comment Parent", path=path, line_no=block.start_line)
+
+    charge: int | None = None
+    found = header("CHARGE")
+    if found is not None:
+        charge = _first_charge(found[0], path=path, line_no=found[1])
+    elif "CHARGE" in comment:
+        charge = _first_charge(comment["CHARGE"], path=path, line_no=block.start_line)
+    elif native_id is not None:
+        match = _MSP_NAME_CHARGE_RE.search(native_id)
+        if match is not None:
+            charge = int(match.group(1))
+
+    polarity: Polarity | None = None
+    found = header("IONMODE", "POLARITY")
+    if found is not None:
+        mode = found[0].strip().upper()
+        if mode.startswith("P"):
+            polarity = Polarity.POSITIVE
+        elif mode.startswith("N"):
+            polarity = Polarity.NEGATIVE
+    if polarity is None:
+        polarity = _polarity_of(charge)
+
+    # MSP has no retention-time unit convention — NIST peptide libraries write
+    # seconds, most metabolomics exporters write minutes. The value is kept
+    # exactly as given rather than silently guessed at; know your library.
+    rt: float | None = None
+    found = header("RETENTIONTIME", "RT")
+    if found is not None:
+        rt = _first_float(found[0], field_name="RetentionTime", path=path, line_no=found[1])
+    elif "RT" in comment:
+        rt = _first_float(comment["RT"], field_name="Comment RT", path=path, line_no=block.start_line)
+
+    collision_energy: float | None = None
+    found = header("COLLISIONENERGY", "CE")
+    if found is not None:
+        # Real files hold "35", "35 eV", "HCD 35%": the first number is the energy.
+        collision_energy = _first_float(found[0], field_name="Collision_energy", path=path, line_no=found[1])
+    elif "CE" in comment:
+        collision_energy = _first_float(comment["CE"], field_name="Comment CE", path=path, line_no=block.start_line)
+
+    precursors = None
+    if precursor_mz is not None:
+        precursors = [
+            Precursor(
+                mz=precursor_mz,
+                intensity=0.0,
+                charge=charge,
+                im=None,
+                is_monoisotopic=None,
+            )
+        ]
+
+    return MsnSpectrum(
+        mz=np.asarray(block.mz, dtype=np.float64),
+        intensity=np.asarray(block.intensity, dtype=np.float64),
+        charge=None,
+        im=None,
+        spectrum_type=SpectrumType.CENTROID,
+        scan_number=None,
+        ms_level=2,
+        native_id=native_id,
+        rt=rt,
+        polarity=polarity,
+        collision_energy=collision_energy,
+        precursors=precursors,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lookup object
 # ---------------------------------------------------------------------------
 
@@ -575,6 +791,31 @@ class Ms2Reader(_PeakListReader):
 
     def _is_record_start(self, line: str) -> bool:
         return line[:1].upper() == "S" and (len(line) == 1 or line[1].isspace())
+
+
+class MspReader(_PeakListReader):
+    """Read the MSP spectral-library format (``.msp``, optionally gzipped).
+
+    Handles both dialects found in the wild: NIST/SpectraST peptide libraries
+    (``Name: PEPTIDE/2``, metadata in ``Comment:`` ``Key=value`` pairs) and
+    metabolomics exports from MoNA / GNPS / MS-DIAL (``PRECURSORMZ:``,
+    ``IONMODE:``, …) — header keys are matched case-insensitively, ignoring
+    spaces, underscores, and hyphens. Unknown headers (``Formula:``,
+    ``SMILES:``, ``InChIKey:``, ``Synon:``…) and per-peak annotation columns
+    are skipped: ``MsnSpectrum`` has no fields for them.
+
+    Records are count-driven — ``Num Peaks: N`` ends the header and exactly
+    ``N`` peaks must follow, so a count mismatch, a record with no ``Num
+    Peaks`` line, or an unparsable number raises ``ValueError`` naming the
+    file and line number.
+    """
+
+    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
+        return _iter_msp(handle, self.path)
+
+    def _is_record_start(self, line: str) -> bool:
+        key, sep, _ = line.partition(":")
+        return bool(sep) and _msp_key(key) == _MSP_NUM_PEAKS_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +996,68 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             for i in range(len(spec.mz)):
                 fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
+    return out
+
+
+def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+    """Write spectra to an MSP spectral-library file.
+
+    Parameters
+    ----------
+    spectra:
+        Spectra to write. A lone :class:`~spxtacular.core.Spectrum` is accepted.
+        Metadata is taken from :class:`~spxtacular.core.MsnSpectrum` fields where
+        present; a plain ``Spectrum`` writes ``Num Peaks`` and the peaks alone.
+    path:
+        Output path. A ``.gz`` suffix gzips the output.
+
+    Returns
+    -------
+    Path
+        The path written.
+
+    Raises
+    ------
+    ValueError
+        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
+
+    Notes
+    -----
+    ``mz`` and ``intensity`` are written at repr precision, so reading the file
+    back reproduces them exactly. Polarity goes out as an explicit
+    ``Ion_mode: P``/``N`` line (MSP's own field — unlike MGF/MS2, no charge-sign
+    encoding is needed), and ``rt`` is written verbatim under
+    ``RetentionTime:``; spxtacular's ``rt`` is seconds, but MSP has no unit
+    convention, so no conversion is applied in either direction.
+    """
+    out = Path(path)
+    with _open_text_write(out) as fh:
+        for index, spec in enumerate(_as_spectra(spectra)):
+            _check_writable(spec, index, "MSP")
+            msn = _meta(spec)
+
+            name = msn.native_id if msn is not None else None
+            if name is None and msn is not None and msn.scan_number is not None:
+                name = f"scan={msn.scan_number}"
+            if name is not None:
+                fh.write(f"Name: {name}\n")
+
+            prec = _first_precursor(spec)
+            if prec is not None:
+                fh.write(f"PrecursorMZ: {_fmt(prec.mz)}\n")
+                if prec.charge is not None:
+                    fh.write(f"Charge: {int(prec.charge)}\n")
+            if msn is not None and msn.polarity is not None:
+                fh.write(f"Ion_mode: {'N' if msn.polarity == Polarity.NEGATIVE else 'P'}\n")
+            if msn is not None and msn.rt is not None:
+                fh.write(f"RetentionTime: {_fmt(msn.rt)}\n")
+            if msn is not None and msn.collision_energy is not None:
+                fh.write(f"Collision_energy: {_fmt(msn.collision_energy)}\n")
+
+            fh.write(f"Num Peaks: {len(spec.mz)}\n")
+            for i in range(len(spec.mz)):
+                fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
+            fh.write("\n")
     return out
 
 

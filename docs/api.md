@@ -15,7 +15,7 @@ from spxtacular import (
     Analyzer, AnalyzerLike,
     # Readers and peak-list writers
     Reader, DReader, MzmlReader, ThermoReader, CentroidConfig,
-    MgfReader, Ms2Reader, write_mgf, write_ms2,
+    MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
     # Matching and scoring
     match_fragments, score,
     # Visualization
@@ -242,9 +242,10 @@ iterators. `next(reader.ms2)` raises `TypeError` — use `next(iter(reader.ms2))
 
 ### `Reader`
 
-Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (Thermo), `.mgf`, or
-`.ms2` from the path suffix — a trailing `.gz` is stripped first — and delegates to `DReader` /
-`MzmlReader` / `ThermoReader` / `MgfReader` / `Ms2Reader`; any other suffix raises `ValueError`.
+Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (Thermo), `.mgf`,
+`.ms2`, or `.msp` from the path suffix — a trailing `.gz` is stripped first — and delegates to `DReader` /
+`MzmlReader` / `ThermoReader` / `MgfReader` / `Ms2Reader` / `MspReader`; any other suffix raises
+`ValueError`.
 
 ```python
 Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
@@ -335,16 +336,19 @@ Full documentation: [Readers — ThermoReader](readers.md#thermoreader)
 
 ---
 
-### `MgfReader` / `Ms2Reader`
+### `MgfReader` / `Ms2Reader` / `MspReader`
 
-Read the MGF and MS2 peak-list formats. Pure standard library — no optional extra, always available.
-Both formats hold fragmentation spectra only: every spectrum comes back with `ms_level=2` and
-`spectrum_type=SpectrumType.CENTROID`. Gzip is detected by magic bytes, so `.mgf.gz` / `.ms2.gz`
-just work.
+Read the MGF, MS2, and MSP (NIST spectral-library) peak-list formats. Pure standard library — no
+optional extra, always available. All three formats hold fragmentation spectra only: every
+spectrum comes back with `ms_level=2` and `spectrum_type=SpectrumType.CENTROID`. Gzip is detected
+by magic bytes, so `.mgf.gz` / `.ms2.gz` / `.msp.gz` just work. `MspReader` handles both the
+NIST/SpectraST peptide-library dialect and metabolomics exports (MoNA, GNPS, MS-DIAL) with
+case-insensitive header matching.
 
 ```python
 MgfReader(path: str | Path)
 Ms2Reader(path: str | Path)
+MspReader(path: str | Path)
 ```
 
 | Property / Method | Type | Description |
@@ -359,24 +363,25 @@ Ms2Reader(path: str | Path)
 Malformed input raises `ValueError` naming the file and line number. Unknown headers, multi-charge
 values, comment lines, and peak-less blocks are tolerated.
 
-Full documentation: [Readers — MGF / MS2](readers.md#mgf-ms2)
+Full documentation: [Readers — MGF / MS2 / MSP](readers.md#mgf-ms2-msp)
 
 ---
 
-### `write_mgf` / `write_ms2`
+### `write_mgf` / `write_ms2` / `write_msp`
 
 Write spectra to a peak-list file, returning the path. A `.gz` suffix gzips the output.
 
 ```python
 write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
 write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
 ```
 
 | Behaviour | Detail |
 |---|---|
 | Peak values | `mz` / `intensity` at repr precision — a write → read round trip is exact |
 | `SpectrumType.PROFILE` | Raises `ValueError`; peak lists are centroid data |
-| Polarity | Carried by the sign of the written charge (`CHARGE=2-`, `Z -2`) |
+| Polarity | MGF/MS2: carried by the sign of the written charge (`CHARGE=2-`, `Z -2`). MSP: explicit `Ion_mode: P`/`N` line |
 | Missing metadata | Omitted, except MS2's mandatory `S` fields (scan number → 1-based position, precursor m/z → `0.0`) |
 
 Full documentation: [Readers — Writing](readers.md#writing)

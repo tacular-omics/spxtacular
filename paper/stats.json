@@ -1,0 +1,215 @@
+{
+  "_about": "Numbers the manuscript states in prose, read as #s(\"<id>\"). Scripts own each entry's value; fmt, unit, desc and expect are the author's to edit here. Entries with origin.by = \"hand\" are entirely yours.",
+  "sources": {
+    "analysis/scripts/gen_stats.py": {
+      "analysis/scripts/gen_stats.py": "sha256:a6124a7fd591996f7024db47cc2c6ee70af91017fce5afd406dfe21edc3b12bb",
+      "analysis/scripts/_demo.py": "sha256:8ba95987302545c836a5727d7595d268d0bf0f8bef5cc9b06d933a93d9c8ff17",
+      "../tests/data/example_dda.d/analysis.tdf": "sha256:417878100007967f1eb15e82f2a272f66734dc4308253aa8de87f0d1963480b1",
+      "../tests/data/example_dda.d/analysis.tdf_bin": "sha256:12ef8459c7bd3ce3bab02928b061ce878213c0b7ff23691739168b536cabb439"
+    }
+  },
+  "values": {
+    "demo.clusters": {
+      "value": 38,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Isotope clusters assigned a charge state",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:aea92132c4cbeb26",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.max_charge_found": {
+      "value": 4,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Highest charge state actually assigned in the demo spectrum",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:4b227777d4dd1fc6",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.max_charge_searched": {
+      "value": 4,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Highest charge state the deconvolution searched",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:4b227777d4dd1fc6",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.max_neutral_mass": {
+      "value": 2282.1241031773448,
+      "fmt": ",.0f",
+      "unit": "Da",
+      "desc": "Largest neutral mass recovered from the demo spectrum",
+      "expect": {
+        "sign": "+",
+        "min": 100,
+        "max": 100000
+      },
+      "checksum": "v2:9c7fa71ed1ba7522",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.mean_score": {
+      "value": 0.8617025729823407,
+      "fmt": ".2f",
+      "unit": "",
+      "desc": "Mean isotope profile score across the assigned clusters",
+      "expect": {
+        "min": 0.5,
+        "max": 1.0
+      },
+      "checksum": "v2:74667b92e7609954",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.min_score": {
+      "value": 0.5,
+      "fmt": ".2f",
+      "unit": "",
+      "desc": "Minimum Bhattacharyya isotope score for a cluster to be kept",
+      "expect": {
+        "min": 0,
+        "max": 1
+      },
+      "checksum": "v2:d2cbad71ff333de6",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.neutral_masses": {
+      "value": 38,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Neutral masses surviving the score filter, after decharge()",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:aea92132c4cbeb26",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.precursor_charge": {
+      "value": 3,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Charge of the precursor selected for the demo MS2 spectrum",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:4e07408562bedb8b",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.raw_peaks": {
+      "value": 500,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Centroid peaks in the demo MS2 spectrum as read from the file",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:0604cd3138feed20",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.scan": {
+      "value": 2,
+      "fmt": ",",
+      "unit": "",
+      "desc": "MS2 scan number used for the figure, table and numbers",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:d4735e3a265e16ee",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.tic_share": {
+      "value": 0.22549158296788796,
+      "fmt": ".1%",
+      "unit": "",
+      "desc": "Share of the spectrum's total ion current in assigned clusters",
+      "expect": {
+        "sign": "+",
+        "min": 0,
+        "max": 1
+      },
+      "checksum": "v2:b8234d4e8a0d46a8",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "demo.tolerance_ppm": {
+      "value": 15.0,
+      "fmt": ".0f",
+      "unit": "ppm",
+      "desc": "Deconvolution matching tolerance",
+      "expect": {
+        "sign": "+",
+        "min": 1,
+        "max": 100
+      },
+      "checksum": "v2:c72ae9676454d7cc",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "lib.public_symbols": {
+      "value": 58,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Names exported from the top-level spxtacular namespace",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:6208ef0f7750c111",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    },
+    "lib.version": {
+      "value": "0.5.0",
+      "fmt": "",
+      "unit": "",
+      "desc": "spxtacular version the paper describes",
+      "expect": {},
+      "checksum": "v2:99f980892d5dcda1",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T06:01:17Z"
+      }
+    }
+  }
+}

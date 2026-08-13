@@ -27,12 +27,19 @@
   *not* comparable to published spectral angles. Requires the `Sequence[Fragment]` form of
   `fragments`; the dict form raises `TypeError` because predictions cannot be paired to ions.
 
-### New — MGF / MS2 peak lists
+### New — MGF / MS2 / MSP peak lists
 
 * `MgfReader`, `Ms2Reader`, `write_mgf`, and `write_ms2` (`spxtacular.peaklist`) read *and*
   write the two classic peak-list formats — pure standard library, no optional extra, gzip
   handled transparently (magic bytes on read, `.gz` suffix on write). `mz`/`intensity`
   round-trip bit-exactly; `Reader` auto-detects `.mgf` / `.ms2` (also gzipped).
+* `MspReader` and `write_msp` add the NIST spectral-library format on the same terms.
+  Both wild dialects are handled — NIST/SpectraST peptide libraries (charge on the
+  `Name`, metadata in `Comment:` `key=value` pairs) and metabolomics exports from
+  MoNA / GNPS / MS-DIAL — with case-insensitive header matching. Parsing is
+  count-driven off `Num Peaks`, so count mismatches are structural errors, not
+  guesses; retention times are kept verbatim (MSP has no unit convention).
+  `Reader` auto-detects `.msp` / `.msp.gz`.
 
 ### New — Thermo .raw reading
 

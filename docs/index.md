@@ -147,7 +147,7 @@ restored = Spectrum.from_spectrl_url(url)
 | `MsnSpectrum` | Extends `Spectrum` with instrument metadata: scan number, MS level, retention time, precursors, etc. |
 | `Peak` | Frozen dataclass for a single `(mz, intensity, charge, im, iso_score)` observation. |
 | `SpectrumType` | Enum: `CENTROID`, `PROFILE`, or `DECONVOLUTED`. Guards prevent calling `.decharge()` before `.deconvolute()`. |
-| `Reader` | Format-agnostic file reader — detects `.d`, `.mzML`, `.raw`, `.mgf`, or `.ms2` from the path and delegates to `DReader` / `MzmlReader` / `ThermoReader` / the peak-list readers. |
+| `Reader` | Format-agnostic file reader — detects `.d`, `.mzML`, `.raw`, `.mgf`, `.ms2`, or `.msp` from the path and delegates to `DReader` / `MzmlReader` / `ThermoReader` / the peak-list readers. |
 | `spxtacular.theme` | Single source of truth for plot colour. `set_plot_theme("light"\|"dark")` sets the global mode; `set_palette()` swaps in your own hues. The shipped palettes were validated for colour-vision deficiency in both modes — substituted ones are not. |
 | Plot table | `build_plot_table()` / `build_annot_plot_table()` return the `DataFrame` behind every figure; `plot_from_table()` draws it and `table_view()` renders it as an accessible HTML table. |
 
