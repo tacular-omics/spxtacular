@@ -229,11 +229,12 @@ def filter(
     min_score: float | None = None,
     max_score: float | None = None,
     top_n: int | None = None,
+    top_n_per_window: tuple[int, float] | None = None,
     inplace: bool = False,
 ) -> Self
 ```
 
-Removes peaks outside the given bounds. All parameters are optional and combinable. `top_n` is applied last — after all range filters — keeping the `top_n` most intense survivors.
+Removes peaks outside the given bounds. All parameters are optional and combinable. `top_n` is applied last — after all range filters — keeping the `top_n` most intense survivors. `top_n_per_window=(n, width)` is its windowed counterpart: keep the `n` most intense peaks per fixed-width m/z window (bins anchored at 0, `[k*width, (k+1)*width)`), preserving quiet regions that a global `top_n` erases. The two are mutually exclusive.
 
 Charge, ion mobility, and score filters are silently ignored if the spectrum lacks those arrays.
 
@@ -250,6 +251,9 @@ filtered = spec.filter(min_mz=200, max_mz=1500, min_intensity=1000)
 
 # Keep only the 50 most intense peaks after m/z filtering
 filtered = spec.filter(min_mz=200, top_n=50)
+
+# Keep the 10 most intense peaks per 100 Th window (search-engine-style preprocessing)
+filtered = spec.filter(top_n_per_window=(10, 100.0))
 ```
 
 #### `normalize`
