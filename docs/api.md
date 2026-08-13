@@ -523,7 +523,9 @@ Everything after `title` is keyword-only.
 | `show_precursor` | `True` | On an `MsnSpectrum` carrying precursors, draw the precursor m/z hairline and the isolation window as recessive chrome behind the peaks |
 
 `color="im"` takes a separate rendering path that bins ion mobility into 20 steps of the sequential
-scale; `intensity_scale` and `intensity_transform` are not applied on that path.
+scale; `intensity_scale`, `intensity_transform`, and `show_precursor` apply there as on the other
+colour modes. Profile spectra cannot take the IM path — centroid first, or pass `render="sticks"`
+explicitly.
 
 ### `annotate_spectrum`
 
