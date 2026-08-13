@@ -1,0 +1,211 @@
+"""Tests for ThermoReader (Thermo .raw via fisher-py).
+
+The fixture ``Angiotensin_325-CID.raw`` is fisher-py's own test file (MIT
+licensed): an Orbitrap Fusion Lumos run of 10 profile-mode FTMS CID MS2 scans
+of angiotensin (precursor m/z 325, z=1, CE 35).
+
+fisher-py needs a .NET runtime at *import* time, so everything touching the
+backend is skipped — not failed — on machines without one.
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+import spxtacular.thermo as thermo_module
+from spxtacular import MsnSpectrum, Reader, SpectrumType, ThermoReader
+from spxtacular.enums import ActivationType, Analyzer, Polarity
+
+RAW_PATH = Path(__file__).parent / "data" / "Angiotensin_325-CID.raw"
+
+try:
+    thermo_module._require_fisher()
+    _HAS_FISHER = True
+except ImportError:
+    _HAS_FISHER = False
+
+needs_fisher = pytest.mark.skipif(not _HAS_FISHER, reason="fisher-py or its .NET runtime is unavailable")
+
+
+# ---------------------------------------------------------------------------
+# Import-failure translation (no backend needed)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_fisher_py_raises_install_hint(monkeypatch):
+    monkeypatch.setattr(thermo_module, "_fisher_modules", None)
+    monkeypatch.setitem(sys.modules, "fisher_py", None)
+    monkeypatch.setitem(sys.modules, "fisher_py.data", None)
+    with pytest.raises(ImportError, match=r"spxtacular\[thermo\]"):
+        ThermoReader(RAW_PATH)
+
+
+def test_missing_dotnet_runtime_raises_dotnet_hint(monkeypatch):
+    # fisher_py boots the .NET runtime at import; simulate that failing with
+    # the RuntimeError pythonnet raises when no runtime is found.
+    broken = types.ModuleType("fisher_py.data")
+
+    def _boom(_name):
+        raise RuntimeError("Failed to create a .NET runtime (coreclr)")
+
+    broken.__getattr__ = _boom  # ty: ignore[invalid-assignment]
+    monkeypatch.setattr(thermo_module, "_fisher_modules", None)
+    monkeypatch.setitem(sys.modules, "fisher_py", types.ModuleType("fisher_py"))
+    monkeypatch.setitem(sys.modules, "fisher_py.data", broken)
+    with pytest.raises(ImportError, match=r"\.NET"):
+        ThermoReader(RAW_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Path validation
+# ---------------------------------------------------------------------------
+
+
+@needs_fisher
+def test_missing_file_raises():
+    with pytest.raises(FileNotFoundError):
+        ThermoReader("no_such_file.raw")
+
+
+@needs_fisher
+def test_raw_directory_rejected_as_waters(tmp_path):
+    waters_dir = tmp_path / "sample.raw"
+    waters_dir.mkdir()
+    with pytest.raises(ValueError, match="Waters"):
+        ThermoReader(waters_dir)
+
+
+@needs_fisher
+def test_lookup_before_open_raises():
+    reader = ThermoReader(RAW_PATH)
+    with pytest.raises(RuntimeError, match="open"):
+        next(iter(reader.ms2))
+
+
+# ---------------------------------------------------------------------------
+# Reading the fixture
+# ---------------------------------------------------------------------------
+
+
+@needs_fisher
+def test_reader_autodetects_raw_suffix():
+    reader = Reader(RAW_PATH)
+    assert isinstance(reader._reader, ThermoReader)
+    with reader:
+        spectra = list(reader.ms2)
+    assert len(spectra) == 10
+
+
+@needs_fisher
+def test_iterate_ms2():
+    with ThermoReader(RAW_PATH) as reader:
+        spectra = list(reader.ms2)
+    assert len(spectra) == 10
+    for spec in spectra:
+        assert isinstance(spec, MsnSpectrum)
+        assert spec.ms_level == 2
+        assert spec.spectrum_type == SpectrumType.CENTROID
+        assert len(spec) > 0
+        assert np.all(spec.intensity >= 0)
+
+
+@needs_fisher
+def test_ms1_iteration_is_empty_for_ms2_only_file():
+    with ThermoReader(RAW_PATH) as reader:
+        assert list(reader.ms1) == []
+
+
+@needs_fisher
+def test_scan_metadata():
+    with ThermoReader(RAW_PATH) as reader:
+        spec = reader.ms2[1]
+    assert spec.scan_number == 1
+    assert spec.native_id == "controllerType=0 controllerNumber=1 scan=1"
+    assert spec.polarity == Polarity.POSITIVE
+    assert spec.analyzer == Analyzer.ORBITRAP
+    assert spec.mz_range == (150.0, 2000.0)
+    assert spec.rt is not None and 0 < spec.rt < 60  # seconds, not minutes
+    assert spec.total_ion_current == pytest.approx(37687076.0, rel=1e-3)
+    assert spec.injection_time == pytest.approx(7.422, abs=1e-3)
+    assert spec.resolution == 60000
+    assert np.all(spec.mz >= 150.0)
+    assert np.all(spec.mz <= 2000.0)
+
+
+@needs_fisher
+def test_precursor_metadata():
+    with ThermoReader(RAW_PATH) as reader:
+        spec = reader.ms2[1]
+    assert spec.activation_type == ActivationType.CID
+    assert spec.collision_energy == 35.0
+    assert spec.isolation_mz_range == (324.0, 326.0)
+    assert spec.precursors is not None and len(spec.precursors) == 1
+    prec = spec.precursors[0]
+    assert prec.mz == 325.0
+    assert prec.charge == 1
+    # Trailer "Monoisotopic M/Z" is -1 (unset) in this file, so the isolation
+    # target is used and not claimed to be monoisotopic.
+    assert prec.is_monoisotopic is False
+    assert prec.intensity > 0
+
+
+@needs_fisher
+def test_vendor_centroid_charges_use_spxtacular_conventions():
+    with ThermoReader(RAW_PATH) as reader:
+        spec = reader.ms2[1]
+    # Thermo label streams store 0 for "unknown charge"; spxtacular reserves 0
+    # for decharged spectra, so unknowns must arrive as -1.
+    assert spec.charge is not None
+    assert spec.charge.dtype == np.int32
+    assert np.all((spec.charge == -1) | (spec.charge > 0))
+    assert not np.any(spec.charge == 0)
+
+
+@needs_fisher
+def test_profile_mode_returns_profile_trace():
+    with ThermoReader(RAW_PATH, prefer_vendor_centroid=False) as reader:
+        profile = reader.ms2[1]
+    with ThermoReader(RAW_PATH) as reader:
+        centroid = reader.ms2[1]
+    assert profile.spectrum_type == SpectrumType.PROFILE
+    assert profile.charge is None
+    assert len(profile) > len(centroid)  # trace has many samples per peak
+    # Same scan, same metadata either way.
+    assert profile.rt == centroid.rt
+    assert profile.precursors is not None and centroid.precursors is not None
+    assert profile.precursors[0].mz == centroid.precursors[0].mz
+
+
+@needs_fisher
+def test_getitem_by_scan_number():
+    with ThermoReader(RAW_PATH) as reader:
+        assert reader[3].scan_number == 3
+        assert reader.ms2[10].scan_number == 10
+        with pytest.raises(KeyError):
+            reader[999]
+        with pytest.raises(KeyError):
+            reader.ms1[1]  # scan 1 is MS2
+
+
+@needs_fisher
+def test_spectrum_is_processable():
+    with ThermoReader(RAW_PATH) as reader:
+        spec = reader.ms2[1]
+    processed = spec.filter(min_intensity=1000.0).normalize()
+    assert len(processed) > 0
+    assert processed.intensity.max() == pytest.approx(1.0)
+
+
+@needs_fisher
+def test_reopen_after_close():
+    reader = ThermoReader(RAW_PATH)
+    with reader:
+        first = reader.ms2[1]
+    with reader:
+        again = reader.ms2[1]
+    np.testing.assert_array_equal(first.mz, again.mz)

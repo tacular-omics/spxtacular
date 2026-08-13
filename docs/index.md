@@ -17,14 +17,15 @@ Reader backends are optional extras:
 ```bash
 pip install spxtacular[bruker]   # Bruker timsTOF (.d) via tdfpy
 pip install spxtacular[mzml]     # mzML via mzmlpy
-pip install spxtacular[readers]  # both
+pip install spxtacular[thermo]   # Thermo .raw via fisher-py (also needs a .NET runtime)
+pip install spxtacular[readers]  # all three
 pip install spxtacular[spectrl]  # share spectra as URL-safe tokens (spectrl)
 pip install spxtacular[all]      # readers + numba JIT + spectrl
 ```
 
-`DReader` and `MzmlReader` remain importable from `spxtacular` regardless of which backends are
-installed; only instantiation raises a clear `ImportError` pointing to the right extra when the
-corresponding dependency is missing.
+`DReader`, `MzmlReader`, and `ThermoReader` remain importable from `spxtacular` regardless of which
+backends are installed; only instantiation raises a clear `ImportError` pointing to the right extra
+when the corresponding dependency is missing.
 
 ## Quick start
 
@@ -146,7 +147,7 @@ restored = Spectrum.from_spectrl_url(url)
 | `MsnSpectrum` | Extends `Spectrum` with instrument metadata: scan number, MS level, retention time, precursors, etc. |
 | `Peak` | Frozen dataclass for a single `(mz, intensity, charge, im, iso_score)` observation. |
 | `SpectrumType` | Enum: `CENTROID`, `PROFILE`, or `DECONVOLUTED`. Guards prevent calling `.decharge()` before `.deconvolute()`. |
-| `Reader` | Format-agnostic file reader — detects `.d` vs `.mzML` from the path and delegates to `DReader` / `MzmlReader`. |
+| `Reader` | Format-agnostic file reader — detects `.d`, `.mzML`, `.raw`, `.mgf`, or `.ms2` from the path and delegates to `DReader` / `MzmlReader` / `ThermoReader` / the peak-list readers. |
 | `spxtacular.theme` | Single source of truth for plot colour. `set_plot_theme("light"\|"dark")` sets the global mode; `set_palette()` swaps in your own hues. The shipped palettes were validated for colour-vision deficiency in both modes — substituted ones are not. |
 | Plot table | `build_plot_table()` / `build_annot_plot_table()` return the `DataFrame` behind every figure; `plot_from_table()` draws it and `table_view()` renders it as an accessible HTML table. |
 
@@ -171,7 +172,7 @@ restored = Spectrum.from_spectrl_url(url)
 
 - [Spectrum reference](spectrum.md) — all `Spectrum` and `MsnSpectrum` methods
 - [Deconvolution](deconvolution.md) — how the greedy algorithm works and how to use it
-- [Readers](readers.md) — loading data from mzML and Bruker `.d` files
+- [Readers](readers.md) — loading data from mzML, Bruker `.d`, Thermo `.raw`, and MGF / MS2 files
 - [Matching & scoring](scoring.md) — `match_fragments()` and PSM `score()` metrics
 - [Visualization](visualization.md) — stick, mirror, annotated, facet, mass-error, and sequence coverage plots; theming, intensity scaling, and the accessible table view
 - [API reference](api.md) — concise listing of all public names

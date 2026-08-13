@@ -18,6 +18,7 @@ src/spxtacular/
 ├── core.py          # Spectrum, MsnSpectrum, Peak, SpectrumType — all processing lives here
 ├── enums.py         # StrEnums: ToleranceType, PeakSelection, Polarity, ActivationType, IMType, Analyzer
 ├── reader.py        # Reader (auto-detect), DReader (Bruker timsTOF via tdfpy), MzmlReader, CentroidConfig
+├── thermo.py        # ThermoReader (Thermo .raw via fisher-py; lazy import — fisher_py boots .NET at import time)
 ├── peaklist.py      # MGF / MS2 read + write (MgfReader, Ms2Reader, write_mgf, write_ms2) — pure stdlib
 ├── usi.py           # fetch_usi — USI / PROXI spectrum fetching
 ├── utils.py         # da_to_ppm / ppm_to_da
@@ -97,13 +98,15 @@ neutral = filtered.decharge()
 - **plotly** — interactive visualisation
 - **tdfpy** *(optional)* — Bruker `.d` file reading; required only for `DReader`. Install with `pip install spxtacular[bruker]`
 - **mzmlpy** *(optional)* — mzML reading; required only for `MzmlReader`. Install with `pip install spxtacular[mzml]`
+- **fisher-py** *(optional)* — Thermo `.raw` reading; required only for `ThermoReader`. Install with `pip install spxtacular[thermo]`. Needs a .NET runtime on the machine; `import fisher_py` boots it and raises `RuntimeError` without one, so `thermo.py` imports it lazily (never at `import spxtacular` time) — keep it that way
 - **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
 - **spectrl** *(optional)* — token / URL spectrum serialisation used by `spectrl_bridge.py`; required only for `to_spectrl_token`/`to_spectrl_url` and their inverses. Install with `pip install spxtacular[spectrl]`
 
-`DReader` and `MzmlReader` remain importable from `spxtacular` regardless of
-whether their backends are installed; only instantiation raises `ImportError`
-when the corresponding optional dep is missing. This lets downstream libraries
-(e.g. `pydiode`) depend on `spxtacular` without pulling in the raw-file readers.
+`DReader`, `MzmlReader`, and `ThermoReader` remain importable from `spxtacular`
+regardless of whether their backends are installed; only instantiation raises
+`ImportError` when the corresponding optional dep is missing. This lets
+downstream libraries (e.g. `pydiode`) depend on `spxtacular` without pulling in
+the raw-file readers.
 
 `peaklist.py` (MGF / MS2, read and write) has **no** optional dependency — it is
 pure standard library plus numpy, so those formats are always available. Keep it

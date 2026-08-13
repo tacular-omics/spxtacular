@@ -40,12 +40,13 @@ pip install spxtacular[numba]
 # Optional: share spectra as compact URL-safe tokens (spectrl)
 pip install spxtacular[spectrl]
 
-# Optional: raw-file readers — Bruker .d (bruker) and/or mzML (mzml)
+# Optional: raw-file readers — Bruker .d, mzML, Thermo .raw
 pip install spxtacular[bruker]      # tdfpy — DReader
 pip install spxtacular[mzml]        # mzmlpy — MzmlReader
-pip install spxtacular[readers]     # both readers
+pip install spxtacular[thermo]     # fisher-py — ThermoReader (also needs a .NET runtime)
+pip install spxtacular[readers]     # all three readers
 
-# Everything (numba + both readers + spectrl)
+# Everything (numba + readers + spectrl)
 pip install spxtacular[all]
 ```
 
@@ -89,11 +90,11 @@ for peak in neutral.peaks:
 neutral.plot(title="Neutral masses").show()
 ```
 
-Reading raw files works the same either way — `Reader` picks `DReader` or `MzmlReader` from the
-path suffix:
+Reading raw files works the same for every format — `Reader` picks `DReader`, `MzmlReader`, or
+`ThermoReader` from the path suffix:
 
 ```python
-with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d")
+with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx.Reader("run.raw")
     for spec in reader.ms1:              # .ms1/.ms2 are iterable *and* indexable
         ...
 ```
@@ -109,7 +110,7 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d")
 | **PSM scoring** | Hyperscore, spectral angle, matched fraction, and more |
 | **Interactive visualization** | Stick, mirror, faceted, mass-error, and annotated fragment plots (Plotly), plus a sequence coverage ladder |
 | **Accessible by design** | Colour-vision-safe palette validated in light *and* dark modes (`spxtacular.theme`), relative-intensity y-axis by default, capped/collision-avoided labels, and `table_view()` for a screen-reader-friendly peak table |
-| **File reading** | Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`), or `Reader` to auto-detect the format from the path |
+| **File reading** | Bruker timsTOF `.d` files (`DReader`), mzML (`MzmlReader`), and Thermo `.raw` (`ThermoReader`, vendor centroids included), or `Reader` to auto-detect the format from the path |
 | **Peak lists** | Read *and* write MGF and MS2 (`MgfReader`, `Ms2Reader`, `write_mgf`, `write_ms2`) — pure standard library, gzip-aware, no extra to install |
 | **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 

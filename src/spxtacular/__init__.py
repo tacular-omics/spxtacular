@@ -29,6 +29,7 @@ from .spectrl_bridge import (
     to_spectrl_token,
     to_spectrl_url,
 )
+from .thermo import ThermoReader
 from .usi import fetch_usi
 from .utils import da_to_ppm, ppm_to_da
 from .visualization import (
@@ -79,6 +80,7 @@ __all__ = [
     "CentroidConfig",
     "DReader",
     "MzmlReader",
+    "ThermoReader",
     "MgfReader",
     "Ms2Reader",
     "write_mgf",

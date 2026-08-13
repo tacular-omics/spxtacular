@@ -1,15 +1,15 @@
 # Readers
 
-spxtacular provides four format-specific reader classes — `MzmlReader`, `DReader`, `MgfReader`, and
-`Ms2Reader` — plus a format-agnostic `Reader` that picks the right one from the file extension. All
-of them expose a uniform interface for iterating over `MsnSpectrum` objects regardless of the
-underlying file format.
+spxtacular provides five format-specific reader classes — `MzmlReader`, `DReader`, `ThermoReader`,
+`MgfReader`, and `Ms2Reader` — plus a format-agnostic `Reader` that picks the right one from the
+file extension. All of them expose a uniform interface for iterating over `MsnSpectrum` objects
+regardless of the underlying file format.
 
 Every reader yields `MsnSpectrum` instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (`.filter()`, `.denoise()`, `.deconvolute()`, etc.) are immediately available on each yielded object.
 
-`MzmlReader` and `DReader` need an optional extra (`mzmlpy` / `tdfpy`); `MgfReader` and `Ms2Reader`
-are pure standard library and always available, as are the matching writers `write_mgf` and
-`write_ms2`.
+`MzmlReader`, `DReader`, and `ThermoReader` need an optional extra (`mzmlpy` / `tdfpy` /
+`fisher-py`); `MgfReader` and `Ms2Reader` are pure standard library and always available, as are
+the matching writers `write_mgf` and `write_ms2`.
 
 ## Lookup objects
 
@@ -20,6 +20,7 @@ are pure standard library and always available, as are the matching writers `wri
 |---|---|---|
 | `MzmlReader` | `MzmlSpectraLookup` | `MzmlSpectraLookup` |
 | `DReader` | `DReaderMs1Lookup` | `DReaderMs2Lookup` |
+| `ThermoReader` | `ThermoScanLookup` | `ThermoScanLookup` |
 | `MgfReader` / `Ms2Reader` | `PeakListLookup` (always empty) | `PeakListLookup` |
 | `Reader` | whichever the detected backend provides | whichever the detected backend provides |
 
@@ -38,9 +39,10 @@ Index semantics differ per backend:
 | `MzmlReader[key]` | Same as above, straight off the reader (`reader[0]`, `reader["scan=19"]`) |
 | `DReader.ms1[frame_id]` | MS1 spectrum by tdfpy `frame_id` |
 | `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); iterate instead |
+| `ThermoReader.ms1[scan]` / `.ms2[scan]` | Spectrum by native **1-based scan number**; `KeyError` if the scan does not exist or is not of that MS level. `ThermoReader[scan]` fetches any level |
 | `MgfReader[key]` / `Ms2Reader[key]` | Spectrum by 0-based position in the file, or by `native_id` string. Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
-`DReader` lookups raise `RuntimeError` if the reader has not been opened.
+`DReader` and `ThermoReader` lookups raise `RuntimeError` if the reader has not been opened.
 
 `polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — they also accept the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
 
@@ -49,10 +51,10 @@ Index semantics differ per backend:
 ## Reader
 
 `Reader` is the format-agnostic entry point: it inspects the path suffix and delegates to `DReader`
-(`.d`), `MzmlReader` (`.mzml`), `MgfReader` (`.mgf`), or `Ms2Reader` (`.ms2`) — case-insensitive,
-and a trailing `.gz` is stripped before matching so `.mzML.gz`, `.mgf.gz`, and `.ms2.gz` all
-dispatch correctly. Anything else raises `ValueError`. Usage is identical regardless of the
-underlying format.
+(`.d`), `MzmlReader` (`.mzml`), `ThermoReader` (`.raw`), `MgfReader` (`.mgf`), or `Ms2Reader`
+(`.ms2`) — case-insensitive, and a trailing `.gz` is stripped before matching so `.mzML.gz`,
+`.mgf.gz`, and `.ms2.gz` all dispatch correctly. Anything else raises `ValueError`. Usage is
+identical regardless of the underlying format.
 
 ```python
 class Reader:
@@ -407,6 +409,103 @@ with DReader("/data/sample_dia.d") as reader:
             f"CE={spec.collision_energy}"
         )
         break
+```
+
+---
+
+## ThermoReader
+
+Reads Thermo `.raw` files using [`fisher-py`](https://github.com/ethz-institute-of-microbiology/fisher_py),
+which wraps Thermo's official RawFileReader .NET assemblies. **Must be opened before use** — either
+with `open()` / `close()` or (preferred) as a context manager; touching `.ms1` / `.ms2` before
+`open()` raises `RuntimeError`.
+
+```bash
+pip install spxtacular[thermo]
+```
+
+Beyond the Python extra, `.raw` reading needs a **.NET runtime** (8 or later) on the machine —
+install it from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) and make
+sure `dotnet` is on `PATH` (or `DOTNET_ROOT` points at it). Without one, constructing a
+`ThermoReader` raises an `ImportError` explaining exactly that; `import spxtacular` itself never
+touches the runtime. A `.raw` **directory** is the Waters format, not Thermo's, and is rejected
+with a `ValueError` suggesting mzML conversion.
+
+```python
+class ThermoReader:
+    def __init__(
+        self,
+        raw_path: str | Path,
+        prefer_vendor_centroid: bool = True,
+    ): ...
+
+    def open(self) -> None: ...
+    def close(self) -> None: ...
+    def __enter__(self) -> ThermoReader: ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None: ...
+
+    @property
+    def ms1(self) -> ThermoScanLookup: ...
+
+    @property
+    def ms2(self) -> ThermoScanLookup: ...
+
+    def __getitem__(self, scan_number: int) -> MsnSpectrum: ...
+```
+
+### Vendor centroids vs. profile
+
+Thermo FTMS scans acquired in profile mode also carry the instrument's own centroid ("label")
+stream, complete with per-peak charge annotations. By default (`prefer_vendor_centroid=True`)
+`ThermoReader` yields those centroids as a `CENTROID` spectrum with a `charge` array — Thermo's
+"charge unknown" (0) is remapped to spxtacular's unassigned marker (-1), since 0 is reserved for
+decharged spectra. Pass `prefer_vendor_centroid=False` to get scans exactly as acquired: the full
+`PROFILE` trace for profile-mode scans (centroid it yourself with `.centroid()` or deconvolute the
+vendor centroids instead). Scans acquired in centroid mode — typical for ion-trap detectors — are
+unaffected by the flag and always come back as `CENTROID` without charges.
+
+### Metadata populated from .raw
+
+| Field | Source |
+|---|---|
+| `scan_number` | Native 1-based scan number |
+| `native_id` | `"controllerType=0 controllerNumber=1 scan=<n>"` (mzML-compatible) |
+| `ms_level` | Scan filter MS order |
+| `rt` | Scan start time, converted from RawFileReader's minutes to **seconds** |
+| `mz_range` | Scan window from the scan header |
+| `polarity` | Scan filter polarity |
+| `analyzer` | Scan filter mass analyzer; `FTMS` resolves to `orbitrap` (or `ft_icr` on LTQ FT instruments), `ITMS` to `ion_trap`, etc. |
+| `injection_time` | Trailer `Ion Injection Time (ms)` |
+| `resolution` | Trailer `Orbitrap Resolution` / `FT Resolution` |
+| `total_ion_current` | Scan header TIC |
+| `charge` (array) | Vendor centroid stream charge annotations (default mode only); 0 → -1 |
+| `precursors` | MS2+: isolation target m/z (trailer `Monoisotopic M/Z` when set, flagged `is_monoisotopic`), trailer `Charge State`; intensity is the summed product-ion intensity, since the scan records no precursor intensity |
+| `isolation_mz_range` | Reaction isolation width (+ offset) around the target m/z |
+| `collision_energy` | Reaction collision energy |
+| `activation_type` | Reaction activation, mapped to `ActivationType` (`CID`, `HCD`, `ETD`, …); ETD plus a supplemental-activation reaction becomes `EThcD` / `ETciD`; unrecognised vendor modes pass through as raw strings |
+
+### Examples
+
+```python
+from spxtacular import ThermoReader
+
+with ThermoReader("run.raw") as reader:
+    for spec in reader.ms2:
+        prec = spec.precursors[0]
+        print(
+            f"Scan {spec.scan_number} | {spec.activation_type} "
+            f"{spec.collision_energy} eV | precursor {prec.mz:.4f} z={prec.charge}"
+        )
+
+    scan_42 = reader[42]           # any MS level, by native scan number
+    ms1_scan = reader.ms1[41]      # KeyError if scan 41 is not MS1
+```
+
+```python
+# The data exactly as acquired — profile scans stay profile:
+with ThermoReader("run.raw", prefer_vendor_centroid=False) as reader:
+    profile = reader.ms2[2]        # SpectrumType.PROFILE
+    centroided = profile.centroid()
 ```
 
 ---

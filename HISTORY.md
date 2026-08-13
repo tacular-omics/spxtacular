@@ -27,6 +27,35 @@
   *not* comparable to published spectral angles. Requires the `Sequence[Fragment]` form of
   `fragments`; the dict form raises `TypeError` because predictions cannot be paired to ions.
 
+### New — MGF / MS2 peak lists
+
+* `MgfReader`, `Ms2Reader`, `write_mgf`, and `write_ms2` (`spxtacular.peaklist`) read *and*
+  write the two classic peak-list formats — pure standard library, no optional extra, gzip
+  handled transparently (magic bytes on read, `.gz` suffix on write). `mz`/`intensity`
+  round-trip bit-exactly; `Reader` auto-detects `.mgf` / `.ms2` (also gzipped).
+
+### New — Thermo .raw reading
+
+* `ThermoReader` reads Thermo `.raw` files through `fisher-py` (Thermo's official
+  RawFileReader). Install with `pip install spxtacular[thermo]`; a .NET runtime must be
+  present on the machine (fisher-py drives the RawFileReader .NET assemblies via
+  pythonnet). `import spxtacular` never touches the runtime — only constructing a
+  `ThermoReader` does, and a missing backend raises an `ImportError` that says what to
+  install.
+* Profile-mode FTMS scans yield Thermo's own centroid ("label") stream by default,
+  including the vendor's per-peak charge annotations (unknown charge arrives as `-1`,
+  spxtacular's unassigned marker); `prefer_vendor_centroid=False` returns the full
+  `PROFILE` trace instead. Precursor m/z / charge / isolation window / collision energy,
+  activation type (including combined EThcD / ETciD schemes), injection time, resolution,
+  and analyzer are populated from the scan headers and trailer extras; `rt` is converted
+  to seconds. `Reader` auto-detects `.raw`.
+
+### New — windowed top-N filtering
+
+* `Spectrum.filter(top_n_per_window=(n, width))` keeps the `n` most intense peaks per
+  fixed-width m/z window (bins anchored at 0), the standard preprocessing step for
+  search-engine-style peak cleaning; mutually exclusive with the global `top_n`.
+
 ### Fixes — peak query
 
 * `has_peak()` / `get_peak()` / `get_peaks()` **raise** when given `target_charge` or

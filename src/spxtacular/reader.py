@@ -13,6 +13,7 @@ import numpy as np
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
 from .peaklist import MgfReader, Ms2Reader, PeakListLookup
+from .thermo import ThermoReader, ThermoScanLookup
 
 # The optional backends load native libraries, so a broken install can raise
 # OSError rather than ImportError. Either way the backend is simply unavailable —
@@ -47,8 +48,9 @@ except (ImportError, OSError):
 """
 
 Unified reader API for different mass-spectrometry file formats.
-Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML, plus the
-MGF and MS2 peak-list formats (see peaklist.py).
+Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML, Thermo
+.raw files (see thermo.py), plus the MGF and MS2 peak-list formats (see
+peaklist.py).
 """
 
 
@@ -865,9 +867,10 @@ class Reader:
     Parameters
     ----------
     path:
-        Path to a Bruker ``.d`` directory, an ``.mzML`` file, or an ``.mgf`` /
-        ``.ms2`` peak list. Every file format may be gzipped (``.mzML.gz``,
-        ``.mgf.gz``, ``.ms2.gz``). Extension matching is case-insensitive.
+        Path to a Bruker ``.d`` directory, an ``.mzML`` file, a Thermo
+        ``.raw`` file, or an ``.mgf`` / ``.ms2`` peak list. Every text format
+        may be gzipped (``.mzML.gz``, ``.mgf.gz``, ``.ms2.gz``). Extension
+        matching is case-insensitive.
 
     Raises
     ------
@@ -887,26 +890,30 @@ class Reader:
             suffixes = suffixes[:-1]
         suffix = suffixes[-1] if suffixes else ""
         if suffix == ".d":
-            self._reader: DReader | MzmlReader | MgfReader | Ms2Reader = DReader(p, centroid_config=centroid_config)
+            self._reader: DReader | MzmlReader | ThermoReader | MgfReader | Ms2Reader = DReader(
+                p, centroid_config=centroid_config
+            )
         elif suffix == ".mzml":
             self._reader = MzmlReader(p)
+        elif suffix == ".raw":
+            self._reader = ThermoReader(p)
         elif suffix == ".mgf":
             self._reader = MgfReader(p)
         elif suffix == ".ms2":
             self._reader = Ms2Reader(p)
         else:
             raise ValueError(
-                f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', '.mgf', or '.ms2' "
-                "(the file formats optionally gzipped)."
+                f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', '.raw', '.mgf', or '.ms2' "
+                "(the text formats optionally gzipped)."
             )
 
     @property
-    def ms1(self) -> DReaderMs1Lookup | MzmlSpectraLookup | PeakListLookup:
+    def ms1(self) -> DReaderMs1Lookup | MzmlSpectraLookup | ThermoScanLookup | PeakListLookup:
         """MS1 spectra — supports iteration and index-based access."""
         return self._reader.ms1
 
     @property
-    def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup | PeakListLookup:
+    def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup | ThermoScanLookup | PeakListLookup:
         """MS2 spectra — supports iteration and index-based access."""
         return self._reader.ms2
 

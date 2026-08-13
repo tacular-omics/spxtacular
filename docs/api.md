@@ -14,7 +14,7 @@ from spxtacular import (
     IMType, IMTypeLike,
     Analyzer, AnalyzerLike,
     # Readers and peak-list writers
-    Reader, DReader, MzmlReader, CentroidConfig,
+    Reader, DReader, MzmlReader, ThermoReader, CentroidConfig,
     MgfReader, Ms2Reader, write_mgf, write_ms2,
     # Matching and scoring
     match_fragments, score,
@@ -242,9 +242,9 @@ iterators. `next(reader.ms2)` raises `TypeError` — use `next(iter(reader.ms2))
 
 ### `Reader`
 
-Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.mgf`, or `.ms2` from the path
-suffix — a trailing `.gz` is stripped first — and delegates to `DReader` / `MzmlReader` /
-`MgfReader` / `Ms2Reader`; any other suffix raises `ValueError`.
+Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (Thermo), `.mgf`, or
+`.ms2` from the path suffix — a trailing `.gz` is stripped first — and delegates to `DReader` /
+`MzmlReader` / `ThermoReader` / `MgfReader` / `Ms2Reader`; any other suffix raises `ValueError`.
 
 ```python
 Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
@@ -252,8 +252,8 @@ Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
 
 | Property / Method | Type | Description |
 |---|---|---|
-| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| PeakListLookup` | MS1 spectra — iterate or index (empty for `.mgf` / `.ms2`) |
-| `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| PeakListLookup` | MS2 spectra — iterate or index |
+| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS1 spectra — iterate or index (empty for `.mgf` / `.ms2`) |
+| `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS2 spectra — iterate or index |
 | `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
 
 ```python
@@ -307,6 +307,31 @@ DReader(analysis_dir: str | Path, centroid_config: CentroidConfig | None = None)
 | `.open()` / `.close()` | `None` | Open / close the underlying `tdfpy` reader |
 
 Full documentation: [Readers — DReader](readers.md#dreader)
+
+---
+
+### `ThermoReader`
+
+Reads Thermo `.raw` files via `fisher-py` (Thermo's RawFileReader .NET assemblies — a .NET runtime
+must be installed on the machine). **Must be opened before use** — via `open()`/`close()` or,
+preferably, as a context manager.
+
+```python
+ThermoReader(raw_path: str | Path, prefer_vendor_centroid: bool = True)
+```
+
+| Property / Method | Type | Description |
+|---|---|---|
+| `.ms1` | `ThermoScanLookup` | MS1 spectra — iterate, or index by native 1-based scan number |
+| `.ms2` | `ThermoScanLookup` | MS2 spectra — iterate, or index by native 1-based scan number |
+| `reader[scan]` | `MsnSpectrum` | Spectrum of any MS level by native scan number |
+| `.open()` / `.close()` | `None` | Open / release the RawFileReader handle |
+
+With `prefer_vendor_centroid=True` (default), profile-mode FTMS scans yield Thermo's own centroid
+stream (`CENTROID`, with per-peak charge annotations — unknown charge arrives as `-1`); with
+`False`, they yield the full `PROFILE` trace.
+
+Full documentation: [Readers — ThermoReader](readers.md#thermoreader)
 
 ---
 
