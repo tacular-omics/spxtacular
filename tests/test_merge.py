@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import numpy as np
 
 from spxtacular.core import Spectrum
@@ -148,6 +150,46 @@ def test_merge_im_tolerance_absolute():
     ims = np.sort(merged.im)
     expected_ims = np.sort([(100 * 1.0 + 50 * 1.04) / 150, 1.1])
     assert np.allclose(ims, expected_ims)
+
+
+def test_merge_keeps_a_peak_whose_im_fails_its_own_window():
+    """Regression: a NaN ion mobility made the seed fail its own IM window
+    (``abs(nan - nan) <= delta`` is False), and the peak was dropped instead of
+    merged — a merge must never lose intensity."""
+    mz = np.array([100.0, 100.005])
+    intensity = np.array([10.0, 20.0])
+    im = np.array([np.nan, 0.9])
+
+    spec = Spectrum(mz=mz, intensity=intensity, im=im)
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
+
+    assert len(merged) == 2
+    assert merged.intensity.sum() == 30.0
+
+
+def test_merge_accepts_capitalised_tolerance_type():
+    """Regression: 'Da' raised while every other API entry point accepts it."""
+    mz = np.array([100.0, 100.01, 200.0])
+    intensity = np.array([100.0, 100.0, 50.0])
+
+    spec = Spectrum(mz=mz, intensity=intensity)
+    # The Literal type spells the canonical lowercase values; the case-insensitive
+    # spellings are a runtime affordance, so the cast is the point of the test.
+    capitalised: Any = cast(Any, "Da")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type=capitalised)
+
+    assert len(merged) == 2
+    assert np.isclose(merged.mz[0], 100.005)
+
+
+def test_merge_clears_the_normalized_flag():
+    """Regression: merge sums intensities, so leaving the flag set made the next
+    normalize() warn and silently return unnormalised data."""
+    spec = Spectrum(mz=np.array([100.0, 100.01, 200.0]), intensity=np.array([100.0, 100.0, 50.0]))
+    renormalized = spec.normalize().merge(mz_tolerance=0.02, mz_tolerance_type="da").normalize()
+
+    assert renormalized.normalized == "max"
+    assert renormalized.intensity.max() == 1.0
 
 
 def test_merge_zero_intensity():

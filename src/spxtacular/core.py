@@ -548,8 +548,10 @@ class Spectrum:
             norm_factor = self.intensity.max()
         elif method == "tic":
             norm_factor = self.intensity.sum()
-        else:  # median
+        elif method == "median":
             norm_factor = np.median(self.intensity)
+        else:
+            raise ValueError(f"Unknown normalization method: {method!r}")
 
         if norm_factor == 0:
             warnings.warn(
@@ -650,14 +652,15 @@ class Spectrum:
         new_charge_list = []
         new_score_list = []
 
-        if mz_tolerance_type not in ("ppm", "da"):
-            raise ValueError("mz_tolerance_type must be 'ppm' or 'da'")
+        try:
+            is_ppm = _is_ppm(mz_tolerance_type)
+        except ValueError as exc:
+            raise ValueError(f"mz_tolerance_type must be 'ppm' or 'da'; got {mz_tolerance_type!r}") from exc
 
         im_tol_type = im_tolerance_type.lower()
         if im_tol_type not in ("relative", "absolute"):
             raise ValueError("im_tolerance_type must be 'relative' or 'absolute'")
 
-        is_ppm = mz_tolerance_type == "ppm"
         if not is_ppm:
             # Constant tolerance
             mz_tol_abs = mz_tolerance
@@ -687,20 +690,17 @@ class Spectrum:
             window_indices = np.arange(left_idx, right_idx)
 
             # Filter out already used
-            # Note: idx is guaranteed to be in window_indices and unused
-            valid_indices = window_indices[~used_mask[window_indices]]
+            keep = ~used_mask[window_indices]
 
             # Additional Charge filtering if charges are present
             if charge is not None and current_charge is not None:
                 # We can only merge if charges match the charge of the primary peak
                 # (which is current_charge)
-                charge_match_mask = charge[valid_indices] == current_charge
-                valid_indices = valid_indices[charge_match_mask]
+                keep &= charge[window_indices] == current_charge
 
             # Additional Ion Mobility filtering if IMs are present
             if im is not None:
                 current_im = im[idx]
-                candidate_ims = im[valid_indices]
 
                 if im_tol_type == "relative":
                     im_delta = current_im * im_tolerance
@@ -708,13 +708,19 @@ class Spectrum:
                     # absolute
                     im_delta = im_tolerance
 
-                im_mask = np.abs(candidate_ims - current_im) <= im_delta
-                valid_indices = valid_indices[im_mask]
+                keep &= np.abs(im[window_indices] - current_im) <= im_delta
 
-            if len(valid_indices) == 0:
-                continue
+            # The seed always belongs to its own cluster, whatever the windows
+            # say: im=NaN compares False even against itself, and without this
+            # the seed would be dropped rather than merged — a merge must never
+            # lose a peak. A NaN m/z sorts outside every window including its
+            # own, so it is emitted on its own.
+            if left_idx <= idx < right_idx:
+                keep[idx - left_idx] = True
+                valid_indices = window_indices[keep]
+            else:
+                valid_indices = np.array([idx])
 
-            # Check if valid_indices contains any peaks
             window_mz = mz[valid_indices]
             window_int = intensity[valid_indices]
 
@@ -768,12 +774,16 @@ class Spectrum:
         if new_score is not None:
             new_score = new_score[final_sort]
 
+        # Merging sums intensities, so any prior normalisation no longer holds;
+        # clearing the flag lets normalize() run again instead of warning and
+        # silently returning unnormalised data.
         if inplace:
             self.mz = new_mz
             self.intensity = new_intensity
             self.im = new_im
             self.charge = new_charge
             self.iso_score = new_score
+            self.normalized = None
             return self
 
         return replace(
@@ -783,6 +793,7 @@ class Spectrum:
             im=new_im,
             charge=new_charge,
             iso_score=new_score,
+            normalized=None,
         )
 
     def centroid(
@@ -826,6 +837,9 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
+        if self.spectrum_type == SpectrumType.DECONVOLUTED:
+            raise ValueError("centroid() requires profile data; a deconvoluted spectrum has no profile to fit")
+
         if min_intensity == "noise":
             floor = estimate_noise_level(self.intensity, method="mad") if len(self.intensity) else None
         elif min_intensity is None:
@@ -844,6 +858,9 @@ class Spectrum:
             # Centroiding changes the peak count, so any per-peak scores from a
             # previous deconvolution no longer line up and must be dropped.
             iso_score=None,
+            # Fitted apex intensities are not the profile intensities that were
+            # normalised, so the flag must not keep blocking normalize().
+            normalized=None,
             inplace=inplace,
         )
 
@@ -1016,14 +1033,16 @@ class Spectrum:
         documented as "returning a new Spectrum" hand back views, and writing
         into the result silently mutates the original.
 
-        The inplace path re-validates afterwards, so a partial update that
-        leaves arrays at mismatched lengths raises instead of leaving the
-        object quietly inconsistent.
+        The inplace path re-runs ``__post_init__`` afterwards, so it coerces
+        dtypes exactly as construction does (a list assigned to ``mz`` would
+        otherwise break the next array operation) and a partial update that
+        leaves arrays at mismatched lengths raises instead of leaving the object
+        quietly inconsistent.
         """
         if inplace:
             for k, v in kwargs.items():
                 setattr(self, k, v)
-            self._validate()
+            self.__post_init__()
             return self
 
         for name in ("mz", "intensity", "charge", "im", "iso_score"):
@@ -1210,6 +1229,10 @@ class Spectrum:
                 stacklevel=2,
             )
             return self if inplace else self.copy()
+        if self.spectrum_type == SpectrumType.PROFILE:
+            # Every profile sample is a "peak" to the cluster finder, so the
+            # isotope spacings it reports are shoulders of one ion, not ions.
+            raise ValueError("deconvolute() requires centroid data; call .centroid() first")
 
         is_ppm = _is_ppm(tolerance_type)
         if min_intensity == "min":
@@ -1249,6 +1272,10 @@ class Spectrum:
             im=new_im,
             iso_score=new_score,
             spectrum_type=SpectrumType.DECONVOLUTED,
+            # Cluster intensities are sums (or base peaks) of the input peaks,
+            # so a prior normalisation no longer holds; clearing the flag lets
+            # normalize() run again instead of warning and returning as-is.
+            normalized=None,
             inplace=inplace,
         )
 
@@ -1452,7 +1479,10 @@ class Spectrum:
         arrays: dict = {
             "mz": self.mz,
             "intensity": self.intensity,
-            "meta": np.array(json.dumps(self._meta_dict(), default=_json_default), dtype=object),
+            # A plain unicode array, not dtype=object: an object array can only
+            # be read back with allow_pickle=True, which makes loading someone
+            # else's .npz arbitrary code execution.
+            "meta": np.array(json.dumps(self._meta_dict(), default=_json_default)),
         }
         if self.charge is not None:
             arrays["charge"] = self.charge
@@ -1467,8 +1497,18 @@ class Spectrum:
         """Load a spectrum from a ``.npz`` file written by :meth:`save`."""
         import json
 
-        data = np.load(path, allow_pickle=True)
-        meta = json.loads(str(data["meta"]))
+        # allow_pickle=False: unpickling a file someone else wrote executes
+        # whatever it contains. Metadata is a plain JSON string, so nothing here
+        # needs pickle.
+        data = np.load(path, allow_pickle=False)
+        try:
+            meta_raw = data["meta"]
+        except ValueError as exc:
+            raise ValueError(
+                f"{path} stores its metadata as a pickled object array (written by spxtacular < 0.5.0). "
+                "Re-save it with a current version; it cannot be loaded without allow_pickle."
+            ) from exc
+        meta = json.loads(str(meta_raw))
         # Back-compat: pre-unified Spectrum.save() used the key "score".
         if "iso_score" in data:
             iso_score = data["iso_score"]
@@ -1672,9 +1712,10 @@ class Spectrum:
                         charge_targets.append(None)  # no charge filter for centroid
 
         # -- build removal mask -----------------------------------------------
+        is_ppm = _is_ppm(tolerance_type)
         mask = np.ones(len(self.mz), dtype=bool)
         for target, target_charge in zip(targets, charge_targets, strict=True):
-            if tolerance_type == "ppm":
+            if is_ppm:
                 tol_da = target * tolerance / 1e6
             else:
                 tol_da = tolerance

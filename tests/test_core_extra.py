@@ -461,6 +461,17 @@ def test_normalize_median_sets_median_to_one() -> None:
     assert float(np.median(normed.intensity)) == pytest.approx(1.0)
 
 
+def test_normalize_unknown_method_raises() -> None:
+    """Regression: an unrecognised method fell through to median normalisation
+    while recording the caller's spelling, so ``method="Max"`` lied."""
+    from typing import cast
+
+    spec = _spec()
+    bad: Any = cast(Any, "Max")
+    with pytest.raises(ValueError, match="Unknown normalization method"):
+        spec.normalize(method=bad)
+
+
 def test_normalize_already_normalized_emits_warning() -> None:
     spec = _spec()
     normed = spec.normalize(method="max")
@@ -497,6 +508,30 @@ def test_centroid_converts_profile_to_centroid_type() -> None:
     spec = Spectrum(mz=x, intensity=y, spectrum_type=SpectrumType.PROFILE)
     result = spec.centroid()
     assert result.spectrum_type == SpectrumType.CENTROID
+
+
+def test_centroid_deconvoluted_raises() -> None:
+    """A deconvoluted spectrum has no profile left to fit."""
+    spec = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0, 400.0], dtype=np.float64),
+        intensity=np.array([10.0, 50.0, 20.0, 15.0], dtype=np.float64),
+        charge=np.array([1, 2, 1, 2], dtype=np.int32),
+        spectrum_type=SpectrumType.DECONVOLUTED,
+    )
+    with pytest.raises(ValueError, match="requires profile data"):
+        spec.centroid()
+
+
+def test_centroid_clears_the_normalized_flag() -> None:
+    """Regression: fitted apex intensities are not the normalised profile
+    intensities, so the stale flag blocked re-normalisation."""
+    x = np.linspace(490.0, 510.0, 80, dtype=np.float64)
+    y = np.exp(-0.5 * ((x - 500.0) / 1.0) ** 2) * 1000.0
+    spec = Spectrum(mz=x, intensity=y, spectrum_type=SpectrumType.PROFILE)
+    renormalized = spec.normalize().centroid().normalize()
+
+    assert renormalized.normalized == "max"
+    assert float(renormalized.intensity.max()) == pytest.approx(1.0)
 
 
 def test_centroid_already_centroided_emits_warning() -> None:
@@ -648,6 +683,20 @@ def test_update_inplace_modifies_spectrum() -> None:
     assert all(result.intensity == 1.0)
 
 
+def test_update_inplace_coerces_dtypes_like_construction() -> None:
+    """Regression: the inplace path skipped ``__post_init__``, so a list stayed a
+    list (breaking the next array operation) and a float charge array stayed
+    float64 instead of int32."""
+    spec = _spec()
+    spec.update(mz=[400.0, 300.0, 200.0, 100.0], charge=np.array([1.0, 2.0, 1.0, 2.0]), inplace=True)
+
+    assert isinstance(spec.mz, np.ndarray)
+    assert spec.mz.dtype == np.float64
+    assert spec.charge is not None
+    assert spec.charge.dtype == np.int32
+    assert _mzs(spec.filter(min_mz=250.0)) == [400.0, 300.0]
+
+
 # ---------------------------------------------------------------------------
 # merge — ValueError for invalid tolerance types
 # ---------------------------------------------------------------------------
@@ -759,3 +808,59 @@ class TestCentroidFlatApex:
         mz = np.array([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
         rising = Spectrum(mz=mz, intensity=np.array([1.0, 2.0, 3.0, 3.0, 3.0, 3.0]))
         assert len(rising.centroid()) == 0
+
+
+# ---------------------------------------------------------------------------
+# deconvolute — profile guard, normalized flag
+# ---------------------------------------------------------------------------
+
+
+def _gaussian_profile() -> Spectrum:
+    """One ion, drawn as a profile trace."""
+    x = np.linspace(499.0, 501.0, 200, dtype=np.float64)
+    y = np.exp(-0.5 * ((x - 500.0) / 0.05) ** 2) * 1e4
+    return Spectrum(mz=x, intensity=y, spectrum_type=SpectrumType.PROFILE)
+
+
+def test_deconvolute_profile_raises() -> None:
+    """Regression: profile input was processed happily, and every sample of a
+    single peak became a candidate — one Gaussian yielded 32 'peaks'."""
+    with pytest.raises(ValueError, match="requires centroid data"):
+        _gaussian_profile().deconvolute(charge_range=(1, 2))
+
+
+def test_deconvolute_clears_the_normalized_flag() -> None:
+    """Regression: cluster intensities are sums of the input peaks, so the stale
+    flag made the following normalize() warn and return unnormalised data."""
+    spec = Spectrum(
+        mz=np.array([500.0, 500.501, 501.002, 300.0], dtype=np.float64),
+        intensity=np.array([100000.0, 70000.0, 30000.0, 1000.0], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+    renormalized = spec.normalize().deconvolute(charge_range=(1, 3)).normalize()
+
+    assert renormalized.normalized == "max"
+    assert float(renormalized.intensity.max()) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# remove_precursor_peak — tolerance type is case-insensitive
+# ---------------------------------------------------------------------------
+
+
+def test_remove_precursor_peak_uppercase_ppm_is_still_ppm() -> None:
+    """Regression: ``tolerance_type="PPM"`` failed a case-sensitive comparison
+    and was treated as Da, so 20 ppm became a 20 Da window."""
+    from typing import cast
+
+    spec = Spectrum(
+        mz=np.array([500.0, 510.0], dtype=np.float64),
+        intensity=np.array([1000.0, 2000.0], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+    # The Literal type spells the canonical lowercase values; the case-insensitive
+    # spellings are a runtime affordance, so the cast is the point of the test.
+    upper: Any = cast(Any, "PPM")
+    kept = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=20, tolerance_type=upper, isotopes=0)
+
+    assert _mzs(kept) == [510.0]

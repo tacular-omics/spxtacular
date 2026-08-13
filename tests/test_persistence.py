@@ -151,7 +151,7 @@ def test_spectrum_load_legacy_score_key(tmp_path):
         mz=np.array([100.0, 200.0], dtype=np.float64),
         intensity=np.array([1000.0, 2000.0], dtype=np.float64),
         score=np.array([0.9, 0.5], dtype=np.float64),
-        meta=np.array(json.dumps({"spectrum_type": "centroid", "denoised": None, "normalized": None}), dtype=object),
+        meta=np.array(json.dumps({"spectrum_type": "centroid", "denoised": None, "normalized": None})),
     )
     restored = Spectrum.load(out)
     assert restored.iso_score is not None
@@ -164,3 +164,40 @@ def test_spectrum_load_without_iso_score(tmp_path):
     spec.save(tmp_path / "spec")
     restored = Spectrum.load(tmp_path / "spec.npz")
     assert restored.iso_score is None
+
+
+# ---------------------------------------------------------------------------
+# No pickle
+# ---------------------------------------------------------------------------
+
+
+def test_save_writes_no_object_arrays(tmp_path):
+    """Loading a shared .npz must never unpickle: an object array in the file
+    would make ``Spectrum.load`` an arbitrary-code-execution vector."""
+    _basic_spectrum().save(tmp_path / "spec")
+    with np.load(tmp_path / "spec.npz", allow_pickle=False) as data:
+        assert all(data[key].dtype != object for key in data.files)
+
+
+def test_msn_save_writes_no_object_arrays(tmp_path):
+    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
+    _basic_msn(precursors=[precursor]).save(tmp_path / "msn")
+    with np.load(tmp_path / "msn.npz", allow_pickle=False) as data:
+        assert all(data[key].dtype != object for key in data.files)
+
+
+def test_load_rejects_pickled_metadata_with_a_clear_error(tmp_path):
+    """Files from before the unicode-metadata change cannot be read without
+    pickle; the failure must name the cause rather than surface numpy's
+    'Object arrays cannot be loaded'."""
+    import json
+
+    out = tmp_path / "pickled.npz"
+    np.savez(
+        out,
+        mz=np.array([100.0], dtype=np.float64),
+        intensity=np.array([1000.0], dtype=np.float64),
+        meta=np.array(json.dumps({"spectrum_type": "centroid", "denoised": None, "normalized": None}), dtype=object),
+    )
+    with pytest.raises(ValueError, match="pickled object array"):
+        Spectrum.load(out)
