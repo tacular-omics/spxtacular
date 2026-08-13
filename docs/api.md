@@ -76,7 +76,7 @@ positional mix-ups.
 | `.has_peak(target_mz, ...)` | `bool` | Check for a peak near target m/z |
 | `.get_peak(target_mz, ...)` | `Peak \| None` | Single best-matching peak |
 | `.get_peaks(target_mz, ...)` | `list[Peak]` | All peaks matching criteria |
-| `.filter(...)` | `Spectrum` | Remove peaks outside bounds |
+| `.filter(...)` | `Spectrum` | Remove peaks outside bounds; `top_n` / `top_n_per_window=(n, width)` keep the most intense peaks globally or per fixed-width m/z window |
 | `.normalize(method)` | `Spectrum` | Scale intensities (max / tic / median) |
 | `.scale_intensity(method, ...)` | `Spectrum` | Non-linear scaling: `"root"`, `"log"`, `"rank"` |
 | `.denoise(method)` | `Spectrum` | Remove peaks below noise threshold |
