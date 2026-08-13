@@ -654,3 +654,173 @@ class TestProfileCentroidOverlay:
         flat = Spectrum(mz=np.linspace(400.0, 410.0, 200), intensity=np.zeros(200))
         fig = profile_centroid_plot(flat)
         assert fig.data  # the profile trace is still drawn
+
+
+# ---------------------------------------------------------------------------
+# Ion-mobility colouring
+# ---------------------------------------------------------------------------
+
+
+def _profile_with_im(n: int = 400) -> Spectrum:
+    """A profile spectrum that also carries ion mobility, as a timsTOF frame does."""
+    from spxtacular.core import SpectrumType
+
+    base = _profile(n)
+    return Spectrum(
+        mz=base.mz,
+        intensity=base.intensity,
+        im=np.linspace(0.8, 1.4, len(base)),
+        spectrum_type=SpectrumType.PROFILE,
+    )
+
+
+class TestImColouring:
+    def test_profile_is_not_drawn_as_sticks_by_the_im_path(self) -> None:
+        """The im path only knows sticks, so it must refuse profile data outright.
+
+        It used to route on ``color=`` before looking at the spectrum type, so a
+        profile frame with IM came out as one bar per sample -- the peak shape,
+        the only reason profile data exists, thrown away.
+        """
+        with pytest.raises(ValueError, match="profile"):
+            plot_spectrum(_profile_with_im(), color="im")
+
+    def test_the_refusal_names_a_way_forward(self) -> None:
+        with pytest.raises(ValueError, match="centroid"):
+            plot_spectrum(_profile_with_im(), color="im")
+
+    def test_an_explicit_stick_render_is_still_honoured(self) -> None:
+        # The guard is about the *default*; asking for sticks outright is allowed,
+        # exactly as plot_from_table allows overriding render either way.
+        fig = plot_spectrum(_profile_with_im(120), color="im", render="sticks")
+        assert any(tr.mode == "lines" for tr in fig.data)
+
+    def test_centroid_data_with_im_still_plots(self) -> None:
+        spec = Spectrum(
+            mz=np.array([100.0, 200.0, 300.0]),
+            intensity=np.array([1e4, 5e4, 2e4]),
+            im=np.array([0.8, 1.0, 1.2]),
+        )
+        fig = plot_spectrum(spec, color="im")
+        assert any(tr.mode == "lines" for tr in fig.data)
+
+    def test_im_path_uses_relative_intensity_like_every_other_colour_mode(self) -> None:
+        """Switching ``color=`` must not silently switch the y-axis semantics."""
+        spec = Spectrum(
+            mz=np.array([100.0, 200.0]),
+            intensity=np.array([4e4, 1e5]),
+            im=np.array([0.9, 1.1]),
+        )
+        im_fig = plot_spectrum(spec, color="im")
+        charge_fig = plot_spectrum(spec, color=None)
+        assert im_fig.layout.yaxis.title.text == charge_fig.layout.yaxis.title.text == "Relative intensity (%)"
+
+        drawn = [v for tr in im_fig.data if tr.mode == "lines" for v in tr.y if v == v]
+        assert max(drawn) == pytest.approx(100.0)
+
+    def test_im_path_honours_an_explicit_absolute_scale(self) -> None:
+        spec = Spectrum(
+            mz=np.array([100.0, 200.0]),
+            intensity=np.array([4e4, 1e5]),
+            im=np.array([0.9, 1.1]),
+        )
+        fig = plot_spectrum(spec, color="im", intensity_scale="absolute")
+        assert fig.layout.yaxis.title.text == "Intensity"
+        drawn = [v for tr in fig.data if tr.mode == "lines" for v in tr.y if v == v]
+        assert max(drawn) == pytest.approx(1e5)
+
+    def test_im_path_still_reports_the_true_intensity_on_hover(self) -> None:
+        spec = Spectrum(
+            mz=np.array([100.0, 200.0]),
+            intensity=np.array([4e4, 1e5]),
+            im=np.array([0.9, 1.1]),
+        )
+        fig = plot_spectrum(spec, color="im")
+        tips = [t for tr in fig.data if tr.customdata is not None for t in tr.customdata]
+        assert any("1.00e+05" in str(t) for t in tips)
+
+    def test_im_path_draws_the_precursor_marker(self) -> None:
+        from spxtacular.core import MsnSpectrum, Precursor
+
+        spec = MsnSpectrum(
+            mz=np.array([100.0, 200.0, 300.0]),
+            intensity=np.array([1e4, 5e4, 2e4]),
+            im=np.array([0.8, 1.0, 1.2]),
+            ms_level=2,
+            precursors=[Precursor(mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+            isolation_mz_range=(248.0, 252.0),
+        )
+        fig = plot_spectrum(spec, color="im")
+        assert any("precursor" in str(a.text) for a in fig.layout.annotations)
+        assert not any(
+            "precursor" in str(a.text) for a in plot_spectrum(spec, color="im", show_precursor=False).layout.annotations
+        )
+
+
+# ---------------------------------------------------------------------------
+# Mass error plot
+# ---------------------------------------------------------------------------
+
+
+class TestMassErrorPlot:
+    def _many_matches(self, n_peptides: int = 12):
+        """A match set big enough that labelling every bubble is a smear."""
+        import peptacular as pt
+
+        frags = []
+        for pep in ("PEPTIDEKPEPTIDEK", "SAMPLERSAMPLERAK", "ELVISLIVESKELVIS")[: max(1, n_peptides // 6)]:
+            frags += pt.fragment(pep, ion_types="by", charges=[1, 2])
+        mz = np.sort(np.array([f.mz for f in frags]))
+        spec = Spectrum(mz=mz, intensity=np.linspace(1e3, 1e5, len(mz)))
+        return spec, frags
+
+    def test_labels_are_capped_not_one_per_bubble(self) -> None:
+        spec, frags = self._many_matches()
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=5)
+        drawn = [t for t in fig.data[0].text if t]
+        assert len(drawn) <= 5, f"expected at most 5 labels, got {len(drawn)}"
+        # The bubbles themselves are all still there -- only the text is thinned.
+        assert len(fig.data[0].x) > len(drawn)
+
+    def test_labels_do_not_collide(self) -> None:
+        spec, frags = self._many_matches()
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=None)
+        labelled = np.array([x for x, t in zip(fig.data[0].x, fig.data[0].text, strict=True) if t])
+        span = float(spec.mz.max() - spec.mz.min())
+        if len(labelled) > 1:
+            assert (np.diff(np.sort(labelled)) >= span * 0.008).all()
+
+    def test_a_dropped_label_is_still_reachable_on_hover(self) -> None:
+        """Capping thins the plot, it must not make a bubble's identity unreachable."""
+        spec, frags = self._many_matches()
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=3)
+        drawn = {t for t in fig.data[0].text if t}
+        hovered = {str(row[1]) for row in fig.data[0].customdata}
+        assert len(hovered) > len(drawn)
+        assert drawn <= hovered
+        assert "%{customdata[1]}" in fig.data[0].hovertemplate
+
+    def test_bubble_outline_comes_from_the_theme_not_a_literal(self) -> None:
+        spec, frags = self._many_matches()
+        for mode in ("light", "dark"):
+            fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", theme_mode=mode)  # type: ignore[arg-type]
+            outline = fig.data[0].marker.line.color
+            assert outline != "#333", "hardcoded hex is invisible on the dark surface"
+            assert outline == theme.marker_outline(mode)  # type: ignore[arg-type]
+        assert theme.marker_outline("light") != theme.marker_outline("dark")
+
+    def test_the_empty_figure_still_carries_the_theme(self) -> None:
+        """A dark-mode caller with no matches got a default white plotly figure."""
+        spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
+        _, frags = self._many_matches()
+        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", theme_mode="dark")
+        assert not fig.data
+        assert fig.layout.template.layout.paper_bgcolor == theme.surface("dark")
+        assert fig.layout.xaxis.title.text == "m/z"
+        assert fig.layout.yaxis.title.text == "Error (ppm)"
+
+    def test_the_empty_figure_keeps_the_error_unit(self) -> None:
+        spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
+        _, frags = self._many_matches()
+        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", unit="da")
+        assert fig.layout.yaxis.title.text == "Error (da)"
