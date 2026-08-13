@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from spxtacular.core import Spectrum
+from spxtacular.enums import PeakSelectionLike, ToleranceLike
 from spxtacular.scoring import _binom_log10_survival, _count_unique_ions, score
 
 # ---------------------------------------------------------------------------
@@ -287,6 +288,95 @@ def test_probability_score_ppm_tolerance_path() -> None:
     frag = _make_frag(200.0)
     result = score(spec, [frag], tolerance=10.0, tolerance_type="ppm")
     assert result["probability_score"] >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# _probability_score must not assume sorted m/z
+# ---------------------------------------------------------------------------
+
+
+class TestProbabilityScoreIgnoresPeakOrder:
+    """The m/z range is a span, not ``mz[-1] - mz[0]``.
+
+    Unsorted input is ordinary: a timsTOF frame is ordered by ion-mobility scan,
+    which is why ``match_fragments`` sorts a working copy. Taking the endpoints
+    made the same peaks and matches score differently for a reordering.
+    """
+
+    def _frags(self) -> list[MagicMock]:
+        return [_make_frag(float(pos * 100), ion_type="b", position=pos) for pos in (1, 2, 3)]
+
+    @pytest.mark.parametrize("tolerance_type", ["da", "ppm"])
+    def test_shuffled_spectrum_scores_the_same(self, tolerance_type: ToleranceLike) -> None:
+        mz = np.array([100.0, 200.0, 300.0, 400.0], dtype=np.float64)
+        intensity = np.array([10.0, 50.0, 20.0, 15.0], dtype=np.float64)
+        order = np.array([2, 0, 3, 1])  # ion-mobility-style ordering
+
+        tolerance = 0.02 if tolerance_type == "da" else 50.0
+        sorted_result = score(
+            Spectrum(mz=mz.copy(), intensity=intensity.copy()),
+            self._frags(),
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+        )
+        shuffled_result = score(
+            Spectrum(mz=mz[order], intensity=intensity[order]),
+            self._frags(),
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+        )
+        assert sorted_result["probability_score"] > 0.0
+        assert shuffled_result["probability_score"] == pytest.approx(sorted_result["probability_score"])
+
+    def test_descending_spectrum_still_scores(self) -> None:
+        """Ending below the start gave a negative range, silently scored as 0.0."""
+        descending = Spectrum(
+            mz=np.array([400.0, 300.0, 200.0, 100.0], dtype=np.float64),
+            intensity=np.array([15.0, 20.0, 50.0, 10.0], dtype=np.float64),
+        )
+        result = score(descending, self._frags(), tolerance=0.02, tolerance_type="da")
+        assert result["probability_score"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# matched_fraction stays a fraction under peak_selection="all"
+# ---------------------------------------------------------------------------
+
+
+class TestMatchedFractionCountsIons:
+    """Numerator and denominator both count ions.
+
+    With ``peak_selection="all"`` one theoretical ion claims every peak within
+    tolerance, so counting matched *peaks* pushed the "fraction" above 1.0 —
+    the same failure mode ``_spectral_angle`` guards against by trimming its
+    observed vector back to ``n_unique``.
+    """
+
+    def _crowded(self) -> Spectrum:
+        """Three peaks inside one tolerance window, plus an unrelated peak."""
+        return Spectrum(
+            mz=np.array([199.99, 200.0, 200.01, 400.0], dtype=np.float64),
+            intensity=np.array([10.0, 50.0, 20.0, 15.0], dtype=np.float64),
+        )
+
+    def test_one_ion_on_three_peaks_is_a_full_match_not_three(self) -> None:
+        frag = _make_frag(200.0, ion_type="b", position=1)
+        result = score(self._crowded(), [frag], tolerance=0.05, tolerance_type="da", peak_selection="all")
+        assert result["matched_fraction"] == pytest.approx(1.0)
+
+    def test_half_the_ions_matched_is_a_half(self) -> None:
+        frags = [
+            _make_frag(200.0, ion_type="b", position=1),  # claims all three peaks
+            _make_frag(999.0, ion_type="b", position=2),  # matches nothing
+        ]
+        result = score(self._crowded(), frags, tolerance=0.05, tolerance_type="da", peak_selection="all")
+        assert result["matched_fraction"] == pytest.approx(0.5)
+
+    @pytest.mark.parametrize("peak_selection", ["closest", "largest", "all"])
+    def test_never_exceeds_one_for_any_peak_selection(self, peak_selection: PeakSelectionLike) -> None:
+        frags = [_make_frag(200.0, ion_type="b", position=p) for p in (1, 2)]
+        result = score(self._crowded(), frags, tolerance=0.05, tolerance_type="da", peak_selection=peak_selection)
+        assert 0.0 < result["matched_fraction"] <= 1.0
 
 
 # ---------------------------------------------------------------------------

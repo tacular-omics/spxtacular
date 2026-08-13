@@ -34,6 +34,10 @@ except ImportError:
 
         return _wrap
 
+
+#: Accepted ``intensity_mode`` values for :func:`deconvolve_spectrum`.
+_INTENSITY_MODES: tuple[str, ...] = ("total", "base")
+
 # ---------------------------------------------------------------------------
 # Isotope template table (built once, looked up by neutral mass)
 # ---------------------------------------------------------------------------
@@ -207,7 +211,23 @@ def deconvolve_spectrum(
     -------
     Tuple of (mz, charges, intensity, scores) arrays sorted by m/z.
     Singletons have charge == -1 and score == 0.0.
+
+    Raises
+    ------
+    ValueError
+        If ``intensity_mode`` is neither ``"total"`` nor ``"base"``.
     """
+    # Normalise the mode once, up front, the way match_fragments normalises its
+    # string-ish inputs: the selection below is a plain ``== "base"`` test, so
+    # every other spelling used to fall through to "total" silently -- "Base"
+    # returned cluster sums under the name of monoisotopic intensities, and a
+    # typo like "mono" did the same. Kept in plain python, outside the numba-JIT'd
+    # cluster loops, and ahead of the empty-input shortcut so the check does not
+    # depend on how many peaks came in.
+    mode = str(intensity_mode).lower()
+    if mode not in _INTENSITY_MODES:
+        raise ValueError(f"intensity_mode must be one of {_INTENSITY_MODES}, got {intensity_mode!r}")
+
     if len(mz) == 0:
         empty = np.empty(0, dtype=np.float64)
         return empty, np.empty(0, dtype=np.int32), empty, empty
@@ -335,7 +355,7 @@ def deconvolve_spectrum(
         empty = np.empty(0, dtype=np.float64)
         return empty, np.empty(0, dtype=np.int32), empty, empty
 
-    out_int = out_base_int[:n_out] if intensity_mode == "base" else out_total_int[:n_out]
+    out_int = out_base_int[:n_out] if mode == "base" else out_total_int[:n_out]
     order = np.argsort(out_mz[:n_out])
     return (
         out_mz[:n_out][order],
