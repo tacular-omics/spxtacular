@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, Self
+from typing import Any, Literal, NamedTuple, Self
 
 import numpy as np
 
@@ -64,6 +64,14 @@ _MSMS_TYPE_ACQUISITION: dict[int, AcquisitionType] = {
     10: AcquisitionType.PRM,
 }
 
+# MsMsType values that name a real acquisition scheme tdfpy has no reader for.
+# Falling through to AcquisitionType.UNKNOWN would open these with the DDA
+# backend, which has no precursor table to walk: it either raises from inside
+# tdfpy or yields nothing at all.
+_MSMS_TYPE_UNSUPPORTED: dict[int, str] = {
+    2: "classic (non-PASEF) MS/MS",
+}
+
 
 def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     """Determine a Bruker ``.d`` folder's acquisition scheme from ``analysis.tdf``.
@@ -72,6 +80,14 @@ def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     so it is closed deterministically — ``sqlite3``'s context manager only ends
     the transaction, it does not close the handle, so the tdfpy helper leaks one
     connection per :class:`DReader`.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the folder holds no ``analysis.tdf``.
+    ValueError
+        If the run's only MS/MS frames are of a scheme spxtacular cannot read
+        (see ``_MSMS_TYPE_UNSUPPORTED``).
     """
     import sqlite3
     from contextlib import closing
@@ -86,6 +102,16 @@ def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     for msms_type, acquisition_type in _MSMS_TYPE_ACQUISITION.items():
         if msms_type in msms_types:
             return acquisition_type
+
+    unsupported = sorted(t for t in msms_types if t in _MSMS_TYPE_UNSUPPORTED)
+    if unsupported:
+        described = ", ".join(f"{t} ({_MSMS_TYPE_UNSUPPORTED[t]})" for t in unsupported)
+        raise ValueError(
+            f"Unsupported acquisition type in {Path(analysis_dir)}: the run's MS/MS frames are "
+            f"MsMsType {described}. DReader supports PASEF DDA (8), DIA (9) and PRM (10). "
+            "Convert the run to mzML (e.g. with msconvert) and open it with MzmlReader instead."
+        )
+
     return AcquisitionType.UNKNOWN
 
 
@@ -500,26 +526,31 @@ class MzmlSpectraLookup:
     def __iter__(self) -> Iterator[MsnSpectrum]:
         handle = self._reader._mzml_handle
         if handle is not None:
+            # Resolved once per walk: it is a property of the file, not the scan.
+            decon = _deconvolution_refs(handle)
             for spec in handle.spectra:
                 if self._ms_level is not None and spec.ms_level != self._ms_level:
                     continue
-                yield MzmlReader._parse_spectrum(spec)
+                yield MzmlReader._parse_spectrum(spec, decon)
         else:
             with mzp.Mzml(self._reader.mzml_path) as r:
+                decon = _deconvolution_refs(r)
                 for spec in r.spectra:
                     if self._ms_level is not None and spec.ms_level != self._ms_level:
                         continue
-                    yield MzmlReader._parse_spectrum(spec)
+                    yield MzmlReader._parse_spectrum(spec, decon)
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
         """Fetch a single spectrum by 0-based index or native ID string."""
         handle = self._reader._mzml_handle
         if handle is not None:
             spec = handle.spectra[key]
+            decon = _deconvolution_refs(handle)
         else:
             with mzp.Mzml(self._reader.mzml_path) as r:
                 spec = r.spectra[key]
-        return MzmlReader._parse_spectrum(spec)
+                decon = _deconvolution_refs(r)
+        return MzmlReader._parse_spectrum(spec, decon)
 
 
 # ---------------------------------------------------------------------------
@@ -529,8 +560,52 @@ class MzmlSpectraLookup:
 
 # mzML has no per-spectrum "these are neutral masses" flag; the closest standard
 # signal that a spectrum's charges were resolved is the charge-deconvolution
-# data-transformation term.
+# data-transformation term. In practice it lives under
+# <dataProcessing><processingMethod>, which a spectrum points at through its
+# dataProcessingRef — so both places are checked (see _deconvolution_refs).
 _DECONVOLUTION_ACCESSIONS: frozenset[str] = frozenset({"MS:1000034"})  # charge deconvolution
+
+
+class _DeconvolutionRefs(NamedTuple):
+    """Which ``dataProcessing`` entries of a file declare charge deconvolution.
+
+    Attributes
+    ----------
+    ids:
+        ``dataProcessing`` ids whose processing methods carry a deconvolution
+        term. A spectrum whose ``dataProcessingRef`` is one of these had its
+        charges resolved.
+    unreferenced:
+        Whether a spectrum that names no ``dataProcessingRef`` inherits one.
+    """
+
+    ids: frozenset[str] = frozenset()
+    unreferenced: bool = False
+
+
+_NO_DECONVOLUTION = _DeconvolutionRefs()
+"""A file that declares no charge deconvolution anywhere."""
+
+
+def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
+    """Find the file-level ``dataProcessing`` entries that declare deconvolution.
+
+    A spectrum without an explicit ``dataProcessingRef`` inherits
+    ``spectrumList/@defaultDataProcessingRef``, which mzmlpy does not expose. It
+    can still be resolved when the file declares exactly one ``dataProcessing``,
+    since that entry is then necessarily the default; with several, the
+    unreferenced spectra are left alone rather than guessed at.
+    """
+    processes = getattr(handle, "data_processes", None)
+    if not processes:
+        return _NO_DECONVOLUTION
+
+    ids = frozenset(
+        dp_id
+        for dp_id, dp in processes.items()
+        if any(_DECONVOLUTION_ACCESSIONS & method.accessions for method in dp.processing_methods)
+    )
+    return _DeconvolutionRefs(ids=ids, unreferenced=len(processes) == 1 and bool(ids))
 
 
 class MzmlReader:
@@ -544,8 +619,13 @@ class MzmlReader:
         self._mzml_handle = None
 
     @staticmethod
-    def _parse_spectrum(spec: mzp.Spectrum) -> MsnSpectrum:
-        """Convert a raw mzmlpy Spectrum into an MsnSpectrum."""
+    def _parse_spectrum(spec: mzp.Spectrum, decon: _DeconvolutionRefs = _NO_DECONVOLUTION) -> MsnSpectrum:
+        """Convert a raw mzmlpy Spectrum into an MsnSpectrum.
+
+        ``decon`` carries the file's deconvolution ``dataProcessing`` ids (see
+        :func:`_deconvolution_refs`); the default treats the file as declaring
+        none, so a spectrum is only deconvoluted if it says so itself.
+        """
         mz_array = spec.mz
         if mz_array is None:
             raise ValueError(f"Spectrum {spec} has no m/z array")
@@ -607,9 +687,15 @@ class MzmlReader:
         # charge arrays are usually per-peak charge *annotations* on ordinary
         # centroid data, and mzML's 0 ("unknown charge") collides with
         # spxtacular's 0 ("already decharged"). Require an explicit
-        # deconvolution CV term before overriding centroid/profile.
-        if charge_array is not None and any(acc in spec.accessions for acc in _DECONVOLUTION_ACCESSIONS):
-            spectrum_type = SpectrumType.DECONVOLUTED
+        # deconvolution CV term before overriding centroid/profile. The term is
+        # rarely written on the spectrum itself — it standardly sits on the
+        # <processingMethod> the spectrum's dataProcessingRef points at — so the
+        # referenced processing is consulted too.
+        if charge_array is not None:
+            processing_ref = spec.data_processing_ref
+            declared_by_processing = processing_ref in decon.ids if processing_ref is not None else decon.unreferenced
+            if bool(_DECONVOLUTION_ACCESSIONS & spec.accessions) or declared_by_processing:
+                spectrum_type = SpectrumType.DECONVOLUTED
 
         mz_range = None
         if spec.lower_mz is not None and spec.upper_mz is not None:

@@ -26,6 +26,7 @@ targets cheap.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -174,7 +175,10 @@ def extract_xic(
     im_window:
         Optional ``(low, high)`` ion-mobility window. On timsTOF data this is
         what makes a trace selective -- two co-eluting species at the same m/z
-        usually separate in mobility.
+        usually separate in mobility. Spectra carrying no ion mobility cannot be
+        gated, so they pass through ungated and a :class:`UserWarning` is
+        raised; ``meta["im_window_applied"]`` then says whether the gate ever
+        ran and ``meta["im_window_skipped"]`` how many spectra escaped it.
     aggregate:
         ``"sum"`` of the peaks in the window (the quantification convention), or
         ``"max"``.
@@ -201,15 +205,24 @@ def extract_xic(
 
     rts: list[float] = []
     rows: list[NDArray[np.float64]] = []
+    # An IM-less spectrum cannot be gated. Dropping it would silently shorten a
+    # trace, so it passes through ungated -- but the caller has to be told, or a
+    # window that was never applied looks like one that found nothing.
+    im_gated = 0
+    im_ungated = 0
 
     for i, spec in enumerate(spectra):
         mz = np.asarray(spec.mz, dtype=np.float64)
         intensity = np.asarray(spec.intensity, dtype=np.float64)
         im = None if spec.im is None else np.asarray(spec.im, dtype=np.float64)
 
-        if im_window is not None and im is not None:
-            keep = (im >= im_window[0]) & (im <= im_window[1])
-            mz, intensity = mz[keep], intensity[keep]
+        if im_window is not None:
+            if im is None:
+                im_ungated += 1
+            else:
+                keep = (im >= im_window[0]) & (im <= im_window[1])
+                mz, intensity = mz[keep], intensity[keep]
+                im_gated += 1
 
         mz, (intensity,) = _sorted_view(mz, intensity)  # type: ignore[assignment]
 
@@ -228,6 +241,20 @@ def extract_xic(
         rows.append(row)
         rts.append(_rt_of(spec, i))
 
+    if im_ungated:
+        if im_gated:
+            warnings.warn(
+                f"im_window={im_window} was not applied to {im_ungated} of {im_ungated + im_gated} spectra: "
+                "they carry no ion mobility, so their peaks were counted ungated.",
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                f"im_window={im_window} was requested but no spectrum carries ion mobility; "
+                "the window was not applied.",
+                stacklevel=2,
+            )
+
     rt = np.asarray(rts, dtype=np.float64)
     order = np.argsort(rt, kind="stable")
     matrix = np.vstack(rows)[order] if rows else np.zeros((0, target_arr.size))
@@ -241,7 +268,12 @@ def extract_xic(
             mz=float(target_arr[k]),
             tolerance=float(tolerance),
             tolerance_type=unit,
-            meta={"im_window": im_window, "aggregate": aggregate},
+            meta={
+                "im_window": im_window,
+                "im_window_applied": im_gated > 0,
+                "im_window_skipped": im_ungated,
+                "aggregate": aggregate,
+            },
         )
         for k in range(target_arr.size)
     ]

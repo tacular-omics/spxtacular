@@ -1,5 +1,6 @@
 import pathlib
 import re
+import sqlite3
 
 import numpy as np
 import pytest
@@ -8,7 +9,7 @@ tdfpy = pytest.importorskip("tdfpy")
 
 from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
 from spxtacular.enums import ActivationType, Analyzer  # noqa: E402
-from spxtacular.reader import AcquisitionType, DReader  # noqa: E402
+from spxtacular.reader import AcquisitionType, DReader, _detect_acquisition_type  # noqa: E402
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
 HELA_D = DATA_DIR / "example_dda.d"
@@ -33,6 +34,46 @@ def ms2_spectrum():
 
 def test_dreader_detects_dda():
     assert DReader(str(HELA_D)).acquisition_type == AcquisitionType.DDA
+
+
+def _fake_d_folder(tmp_path, msms_types):
+    """A .d folder whose analysis.tdf declares only the given MsMsType values."""
+    d_dir = tmp_path / "fake.d"
+    d_dir.mkdir()
+    with sqlite3.connect(str(d_dir / "analysis.tdf")) as conn:
+        conn.execute("CREATE TABLE Frames (Id INTEGER PRIMARY KEY, MsMsType INTEGER)")
+        conn.executemany(
+            "INSERT INTO Frames (Id, MsMsType) VALUES (?, ?)",
+            [(i + 1, t) for i, t in enumerate(msms_types)],
+        )
+    conn.close()
+    return d_dir
+
+
+def test_classic_msms_raises_instead_of_opening_as_dda(tmp_path):
+    """MsMsType 2 has no tdfpy backend; DDA would crash or yield nothing."""
+    d_dir = _fake_d_folder(tmp_path, [0, 2, 0, 2])
+    with pytest.raises(ValueError, match="Unsupported acquisition type"):
+        _detect_acquisition_type(d_dir)
+    with pytest.raises(ValueError, match="MsMsType 2 "):
+        DReader(str(d_dir))
+
+
+def test_classic_msms_error_points_at_the_alternative(tmp_path):
+    d_dir = _fake_d_folder(tmp_path, [0, 2])
+    with pytest.raises(ValueError, match="MzmlReader"):
+        _detect_acquisition_type(d_dir)
+
+
+def test_pasef_frames_win_over_classic_msms_frames(tmp_path):
+    """A run that also holds PASEF frames is still readable as DDA."""
+    d_dir = _fake_d_folder(tmp_path, [0, 2, 8])
+    assert _detect_acquisition_type(d_dir) == AcquisitionType.DDA
+
+
+def test_ms1_only_run_is_still_unknown(tmp_path):
+    d_dir = _fake_d_folder(tmp_path, [0, 0])
+    assert _detect_acquisition_type(d_dir) == AcquisitionType.UNKNOWN
 
 
 # --- MS1 ---

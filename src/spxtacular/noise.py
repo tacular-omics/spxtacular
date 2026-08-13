@@ -105,7 +105,18 @@ def estimate_noise_level(
     is a level rather than a threshold and is therefore substantially lower.
 
     An empty intensity array returns ``0.0`` for every method.
+
+    A ``bool`` is rejected with ``ValueError`` rather than taken for the numeric
+    threshold ``bool``'s ``int`` ancestry would otherwise make it.
     """
+    # ``bool`` is a subclass of ``int``, so it would otherwise be taken for a
+    # numeric threshold: ``estimate_noise_level(arr, True)`` is a mistake, not a
+    # threshold of 1.0. Rejected before the empty-array shortcut so the answer
+    # does not depend on the input length.
+    if isinstance(method, bool):
+        msg = f"Unknown method: {method}. A bool is not a noise threshold."
+        raise ValueError(msg)
+
     # If a numeric value is provided, use it directly as the noise level.
     if isinstance(method, (int, float)):
         return float(method)

@@ -19,7 +19,14 @@ def da_to_ppm(delta_mz: float, mz: float) -> float:
     -------
     float
         Mass difference in ppm.
+
+    Raises
+    ------
+    ValueError
+        If ``mz`` is zero -- a relative error has no meaning without a reference.
     """
+    if mz == 0.0:
+        raise ValueError("mz must be non-zero to express a mass difference in ppm")
     return delta_mz / mz * 1e6
 
 

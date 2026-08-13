@@ -7,6 +7,7 @@ from aggregated repositories (PRIDE, MassIVE, PeptideAtlas, jPOST).
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -160,6 +161,27 @@ def _as_int(value: Any, accession: str, usi: str) -> int:
         raise ValueError(f"PROXI attribute {accession} has non-integer value {value!r} for USI: {usi}") from None
 
 
+def _peak_arrays(entry: Any) -> tuple[Any, Any] | None:
+    """The ``(m/z, intensity)`` pair of a PROXI entry, or ``None`` if it has neither.
+
+    Explicit ``None`` checks: an empty-but-valid spectrum has ``"mzs": []``,
+    which is falsy but is *not* missing data.
+    """
+    if not isinstance(entry, dict):
+        return None
+
+    mzs = entry.get("mzs")
+    if mzs is None:
+        mzs = entry.get("m/z array")
+    intensities = entry.get("intensities")
+    if intensities is None:
+        intensities = entry.get("intensity array")
+
+    if mzs is None or intensities is None:
+        return None
+    return mzs, intensities
+
+
 def _parse_proxi_response(
     data: Any,
     usi: str,
@@ -177,23 +199,26 @@ def _parse_proxi_response(
     if not data:
         raise ValueError(f"Empty PROXI response for USI: {usi}")
 
-    spectrum = data[0]
-    if not isinstance(spectrum, dict):
-        raise ValueError(
-            f"Unexpected PROXI response for USI: {usi}. Expected a spectrum object, got {type(spectrum).__name__}"
-        )
+    # Not necessarily ``data[0]``: an aggregator that queries several repositories
+    # can lead with a stub or error entry for the ones that missed and carry the
+    # real spectrum further down the list. Take the first entry that actually has
+    # peak arrays, and only complain if none of them does.
+    found: tuple[dict[str, Any], Any, Any] | None = None
+    for entry in data:
+        arrays = _peak_arrays(entry)
+        if arrays is not None:
+            found = (entry, arrays[0], arrays[1])
+            break
 
-    # Explicit None checks: an empty-but-valid spectrum has ``"mzs": []``, which
-    # is falsy but is *not* missing data.
-    mzs = spectrum.get("mzs")
-    if mzs is None:
-        mzs = spectrum.get("m/z array")
-    intensities = spectrum.get("intensities")
-    if intensities is None:
-        intensities = spectrum.get("intensity array")
-
-    if mzs is None or intensities is None:
+    if found is None:
+        first = data[0]
+        if not isinstance(first, dict):
+            raise ValueError(
+                f"Unexpected PROXI response for USI: {usi}. Expected a spectrum object, got {type(first).__name__}"
+            )
         raise ValueError(f"PROXI response missing m/z or intensity data for USI: {usi}")
+
+    spectrum, mzs, intensities = found
     if len(mzs) != len(intensities):
         raise ValueError(
             f"PROXI response has {len(mzs)} m/z values but {len(intensities)} intensity values for USI: {usi}"
@@ -282,7 +307,10 @@ def fetch_usi(
         raise ValueError(f"Unknown backend: {backend!r}. Available: {', '.join(_PROXI_BACKENDS)}")
 
     encoded_usi = urllib.parse.quote_plus(usi)
-    url = f"{base_url}?resultType=full&usi={encoded_usi}"
+    # A custom backend URL may already carry a query string (an API key, say), in
+    # which case the parameters have to be appended rather than started.
+    separator = "&" if "?" in base_url else "?"
+    url = f"{base_url}{separator}resultType=full&usi={encoded_usi}"
 
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -293,8 +321,17 @@ def fetch_usi(
         raise ValueError(f"HTTP {e.code} error fetching USI: {usi}. {e.reason}") from e
     except urllib.error.URLError as e:
         raise ValueError(f"Network error fetching USI: {usi}. {e.reason}") from e
-    except (TimeoutError, OSError) as e:
+    except TimeoutError as e:
+        # socket.timeout has been an alias of TimeoutError since 3.10, and a read
+        # that overruns ``timeout`` raises it directly rather than via URLError.
         raise ValueError(f"Timeout fetching USI: {usi}. {e}") from e
+    except http.client.HTTPException as e:
+        # IncompleteRead and friends come out of response.read() and are not
+        # OSErrors, so without this they would escape the documented ValueError.
+        raise ValueError(f"Malformed HTTP response for USI: {usi}. {e}") from e
+    except OSError as e:
+        # A connection reset or a DNS failure is not a timeout; say what it was.
+        raise ValueError(f"Network error fetching USI: {usi}. {e}") from e
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON response for USI: {usi}. {e}") from e
 
