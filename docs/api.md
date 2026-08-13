@@ -13,8 +13,9 @@ from spxtacular import (
     ActivationType, ActivationTypeLike,
     IMType, IMTypeLike,
     Analyzer, AnalyzerLike,
-    # Readers
+    # Readers and peak-list writers
     Reader, DReader, MzmlReader, CentroidConfig,
+    MgfReader, Ms2Reader, write_mgf, write_ms2,
     # Matching and scoring
     match_fragments, score,
     # Visualization
@@ -35,8 +36,8 @@ from spxtacular import (
 ```
 
 `SpectrumType`, `AcquisitionType`, `MatchedFragment`, `estimate_noise_level`, and the reader lookup
-classes are **not** exported from the package root; import them from their defining modules as shown
-in the relevant sections below.
+classes (including `PeakListLookup`) are **not** exported from the package root; import them from
+their defining modules as shown in the relevant sections below.
 
 ---
 
@@ -241,8 +242,9 @@ iterators. `next(reader.ms2)` raises `TypeError` — use `next(iter(reader.ms2))
 
 ### `Reader`
 
-Format-agnostic entry point. Detects `.d` (Bruker timsTOF) or `.mzML` from the path suffix and
-delegates to `DReader` / `MzmlReader`; any other suffix raises `ValueError`.
+Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.mgf`, or `.ms2` from the path
+suffix — a trailing `.gz` is stripped first — and delegates to `DReader` / `MzmlReader` /
+`MgfReader` / `Ms2Reader`; any other suffix raises `ValueError`.
 
 ```python
 Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
@@ -250,8 +252,8 @@ Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
 
 | Property / Method | Type | Description |
 |---|---|---|
-| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup` | MS1 spectra — iterate or index |
-| `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup` | MS2 spectra — iterate or index |
+| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| PeakListLookup` | MS1 spectra — iterate or index (empty for `.mgf` / `.ms2`) |
+| `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| PeakListLookup` | MS2 spectra — iterate or index |
 | `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
 
 ```python
@@ -305,6 +307,54 @@ DReader(analysis_dir: str | Path, centroid_config: CentroidConfig | None = None)
 | `.open()` / `.close()` | `None` | Open / close the underlying `tdfpy` reader |
 
 Full documentation: [Readers — DReader](readers.md#dreader)
+
+---
+
+### `MgfReader` / `Ms2Reader`
+
+Read the MGF and MS2 peak-list formats. Pure standard library — no optional extra, always available.
+Both formats hold fragmentation spectra only: every spectrum comes back with `ms_level=2` and
+`spectrum_type=SpectrumType.CENTROID`. Gzip is detected by magic bytes, so `.mgf.gz` / `.ms2.gz`
+just work.
+
+```python
+MgfReader(path: str | Path)
+Ms2Reader(path: str | Path)
+```
+
+| Property / Method | Type | Description |
+|---|---|---|
+| `iter(reader)` | `Iterator[MsnSpectrum]` | Every spectrum, in file order |
+| `len(reader)` | `int` | Spectra in the file — one counting pass, then cached |
+| `reader[key]` | `MsnSpectrum` | Spectrum by 0-based position (`reader[0]`) or `native_id` (`reader["scan=19"]`); O(n) |
+| `.ms1` | `PeakListLookup` | Always empty — peak lists carry no survey scans |
+| `.ms2` | `PeakListLookup` | Every spectrum — iterate or index |
+| `.open()` / `.close()` | `None` | `open()` checks the file exists; `close()` is a no-op (each walk streams its own handle) |
+
+Malformed input raises `ValueError` naming the file and line number. Unknown headers, multi-charge
+values, comment lines, and peak-less blocks are tolerated.
+
+Full documentation: [Readers — MGF / MS2](readers.md#mgf-ms2)
+
+---
+
+### `write_mgf` / `write_ms2`
+
+Write spectra to a peak-list file, returning the path. A `.gz` suffix gzips the output.
+
+```python
+write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+```
+
+| Behaviour | Detail |
+|---|---|
+| Peak values | `mz` / `intensity` at repr precision — a write → read round trip is exact |
+| `SpectrumType.PROFILE` | Raises `ValueError`; peak lists are centroid data |
+| Polarity | Carried by the sign of the written charge (`CHARGE=2-`, `Z -2`) |
+| Missing metadata | Omitted, except MS2's mandatory `S` fields (scan number → 1-based position, precursor m/z → `0.0`) |
+
+Full documentation: [Readers — Writing](readers.md#writing)
 
 ---
 

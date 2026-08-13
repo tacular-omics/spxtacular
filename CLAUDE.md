@@ -18,6 +18,7 @@ src/spxtacular/
 ├── core.py          # Spectrum, MsnSpectrum, Peak, SpectrumType — all processing lives here
 ├── enums.py         # StrEnums: ToleranceType, PeakSelection, Polarity, ActivationType, IMType, Analyzer
 ├── reader.py        # Reader (auto-detect), DReader (Bruker timsTOF via tdfpy), MzmlReader, CentroidConfig
+├── peaklist.py      # MGF / MS2 read + write (MgfReader, Ms2Reader, write_mgf, write_ms2) — pure stdlib
 ├── usi.py           # fetch_usi — USI / PROXI spectrum fetching
 ├── utils.py         # da_to_ppm / ppm_to_da
 ├── decon/
@@ -103,6 +104,10 @@ neutral = filtered.decharge()
 whether their backends are installed; only instantiation raises `ImportError`
 when the corresponding optional dep is missing. This lets downstream libraries
 (e.g. `pydiode`) depend on `spxtacular` without pulling in the raw-file readers.
+
+`peaklist.py` (MGF / MS2, read and write) has **no** optional dependency — it is
+pure standard library plus numpy, so those formats are always available. Keep it
+that way: do not reach for a parsing library there.
 
 ## Plot colour
 

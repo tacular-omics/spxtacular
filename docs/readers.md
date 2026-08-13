@@ -1,10 +1,15 @@
 # Readers
 
-spxtacular provides two format-specific reader classes — `MzmlReader` and `DReader` — plus a
-format-agnostic `Reader` that picks the right one from the file extension. All three expose a
-uniform interface for iterating over `MsnSpectrum` objects regardless of the underlying file format.
+spxtacular provides four format-specific reader classes — `MzmlReader`, `DReader`, `MgfReader`, and
+`Ms2Reader` — plus a format-agnostic `Reader` that picks the right one from the file extension. All
+of them expose a uniform interface for iterating over `MsnSpectrum` objects regardless of the
+underlying file format.
 
-Both readers yield `MsnSpectrum` instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (`.filter()`, `.denoise()`, `.deconvolute()`, etc.) are immediately available on each yielded object.
+Every reader yields `MsnSpectrum` instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (`.filter()`, `.denoise()`, `.deconvolute()`, etc.) are immediately available on each yielded object.
+
+`MzmlReader` and `DReader` need an optional extra (`mzmlpy` / `tdfpy`); `MgfReader` and `Ms2Reader`
+are pure standard library and always available, as are the matching writers `write_mgf` and
+`write_ms2`.
 
 ## Lookup objects
 
@@ -15,6 +20,7 @@ Both readers yield `MsnSpectrum` instances populated with as much instrument met
 |---|---|---|
 | `MzmlReader` | `MzmlSpectraLookup` | `MzmlSpectraLookup` |
 | `DReader` | `DReaderMs1Lookup` | `DReaderMs2Lookup` |
+| `MgfReader` / `Ms2Reader` | `PeakListLookup` (always empty) | `PeakListLookup` |
 | `Reader` | whichever the detected backend provides | whichever the detected backend provides |
 
 Because they are iterables and not iterators, `next(reader.ms2)` raises `TypeError` — use
@@ -32,6 +38,7 @@ Index semantics differ per backend:
 | `MzmlReader[key]` | Same as above, straight off the reader (`reader[0]`, `reader["scan=19"]`) |
 | `DReader.ms1[frame_id]` | MS1 spectrum by tdfpy `frame_id` |
 | `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); iterate instead |
+| `MgfReader[key]` / `Ms2Reader[key]` | Spectrum by 0-based position in the file, or by `native_id` string. Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
 `DReader` lookups raise `RuntimeError` if the reader has not been opened.
 
@@ -42,8 +49,10 @@ Index semantics differ per backend:
 ## Reader
 
 `Reader` is the format-agnostic entry point: it inspects the path suffix and delegates to `DReader`
-(`.d`) or `MzmlReader` (`.mzml`, case-insensitive). Anything else raises `ValueError`. Usage is
-identical regardless of the underlying format.
+(`.d`), `MzmlReader` (`.mzml`), `MgfReader` (`.mgf`), or `Ms2Reader` (`.ms2`) — case-insensitive,
+and a trailing `.gz` is stripped before matching so `.mzML.gz`, `.mgf.gz`, and `.ms2.gz` all
+dispatch correctly. Anything else raises `ValueError`. Usage is identical regardless of the
+underlying format.
 
 ```python
 class Reader:
@@ -76,7 +85,7 @@ with Reader("/data/sample.d") as r:
     ms2 = r.ms2[42]                # DDA precursor_id
 ```
 
-`centroid_config` is only meaningful for `.d` inputs; it is ignored for mzML. `Reader` exposes
+`centroid_config` is only meaningful for `.d` inputs; it is ignored for mzML and peak lists. `Reader` exposes
 `ms1`, `ms2`, `open`, and `close` only — backend-specific members (`MzmlReader.__getitem__`,
 `DReader.acquisition_type`) are not proxied.
 
@@ -399,6 +408,145 @@ with DReader("/data/sample_dia.d") as reader:
         )
         break
 ```
+
+---
+
+## MGF / MS2
+
+MGF (Mascot Generic Format) and MS2 are plain-text peak lists. Both are handled by
+`spxtacular.peaklist`, which is **pure standard library** — no optional extra, nothing to install,
+always importable. Both formats hold fragmentation spectra only, so every spectrum read back is an
+`MsnSpectrum` with `ms_level=2` and `spectrum_type=SpectrumType.CENTROID`, and `reader.ms1` is a
+valid but always empty walk.
+
+```python
+class MgfReader:            # and Ms2Reader — identical interface
+    def __init__(self, path: str | Path): ...
+
+    def open(self) -> None: ...
+    def close(self) -> None: ...
+    def __enter__(self) -> Self: ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None: ...
+
+    def __iter__(self) -> Iterator[MsnSpectrum]: ...
+    def __len__(self) -> int: ...
+    def __getitem__(self, key: int | str) -> MsnSpectrum: ...
+
+    @property
+    def ms1(self) -> PeakListLookup: ...   # always empty
+
+    @property
+    def ms2(self) -> PeakListLookup: ...
+```
+
+```python
+from spxtacular import MgfReader, Ms2Reader, write_mgf, write_ms2
+
+with MgfReader("run.mgf") as reader:        # run.mgf.gz works too
+    print(len(reader))                      # spectra in the file
+    for spec in reader:                     # or: for spec in reader.ms2
+        prec = spec.precursors[0]
+        print(f"{spec.scan_number}: {prec.mz:.4f} z={prec.charge} rt={spec.rt}")
+
+write_ms2(MgfReader("run.mgf"), "run.ms2")  # readers are iterables of spectra
+```
+
+Gzip is handled transparently on read — detected by magic bytes, so a compressed file works under
+any name — and on write, where a `.gz` suffix compresses the output.
+
+### File handles
+
+Unlike `MzmlReader`, these readers hold **no** handle between walks: every iteration streams a fresh
+one, so iterations are independent and may be nested. `open()` only checks the file exists (raising
+`FileNotFoundError` early) and `close()` is a no-op; the context manager is supported for symmetry
+with the other readers, not because anything needs releasing.
+
+`len(reader)` makes one pass that counts record-start lines without parsing peaks, then caches the
+result.
+
+### Metadata populated from MGF
+
+| Field | Source |
+|---|---|
+| `mz` / `intensity` | Ion lines inside `BEGIN IONS` … `END IONS` |
+| `charge` (array) | Optional third column on the ion lines — kept only when **every** peak has one |
+| `scan_number` | `SCANS` (a range such as `1024-1030` collapses to its first scan) |
+| `ms_level` | Always `2` |
+| `native_id` | `TITLE`, verbatim |
+| `rt` | `RTINSECONDS`, or the non-standard `RTINMINUTES` × 60 when that is all the file has |
+| `polarity` | Implied by the sign of `CHARGE` (`2+` → positive, `2-` → negative) |
+| `precursors` | One `Precursor` from `PEPMASS` (m/z, optional intensity) and `CHARGE` |
+| `spectrum_type` | Always `CENTROID` |
+
+### Metadata populated from MS2
+
+| Field | Source |
+|---|---|
+| `mz` / `intensity` | Ion lines following an `S` record |
+| `scan_number` | First scan field of the `S` line |
+| `ms_level` | Always `2` |
+| `native_id` | Synthesised as `"scan=<scan_number>"` |
+| `rt` | `I RTime` / `I RetTime` × 60 — those values are **minutes** in the wild, `rt` is seconds |
+| `injection_time` | `I IonInjectionTime` |
+| `total_ion_current` | `I TIC` |
+| `activation_type` | `I ActivationType` |
+| `polarity` | Implied by the sign of the `Z` charge |
+| `precursors` | One `Precursor`: m/z from the `S` line, charge from the first `Z` line, intensity from `I PrecursorInt` |
+| `spectrum_type` | Always `CENTROID` |
+
+`H` header lines and `D` analysis lines are read and skipped. Unmapped `I` keys are skipped too.
+
+### Leniency, and where it stops
+
+Real peak lists are written by a long tail of tools, so parsing is deliberately forgiving:
+
+| Input | Behaviour |
+|---|---|
+| Unknown `KEY=VALUE` MGF headers | Ignored |
+| Headers outside any `BEGIN IONS` block | Ignored (global MGF headers such as `SEARCH=MIS`) |
+| Blank lines, and comments opening with `#`, `;`, `!`, or `/` | Skipped anywhere in the file |
+| `CHARGE=2+ and 3+`, `CHARGE=2+,3+` | **First state only** — `Precursor.charge` is a single value |
+| Repeated MS2 `Z` lines | All parsed, first used — same reason |
+| `SCANS=1024-1030`, `RTINSECONDS=120-130` | First number used |
+| Comma-separated MGF ion lines | Accepted alongside whitespace |
+| A block with no ion lines | Yields an empty spectrum (length-0 arrays), not an error |
+| Undecodable bytes | Replaced, so one mangled `TITLE` cannot make a file unreadable |
+
+Structural damage is *not* tolerated, and every such error names the file and the line:
+
+```python
+ValueError: run.mgf:412: 'END IONS' without a matching 'BEGIN IONS'
+ValueError: run.mgf:87: expected 'mz intensity' on an ion line, got '843.4102'
+ValueError: run.ms2:1: '100.0 5.0' appears before any 'S' scan line
+```
+
+Unterminated blocks, nested `BEGIN IONS`, short `S`/`Z` lines, and unparsable numbers all raise
+`ValueError` the same way.
+
+### Writing
+
+```python
+write_mgf(spectra, path) -> Path
+write_ms2(spectra, path) -> Path
+```
+
+Both take an iterable of `Spectrum`/`MsnSpectrum` (a lone spectrum is accepted too) and return the
+path written. `mz` and `intensity` go out at repr precision, so a write → read round trip reproduces
+them **exactly**; the mapped metadata in the tables above round-trips with them.
+
+| Rule | Detail |
+|---|---|
+| Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
+| Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
+| Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent scan number becomes the 1-based position in the input and an absent precursor m/z becomes `0.0` |
+| MGF `TITLE` | `native_id`, falling back to `scan=<scan_number>` |
+| MS2 `Z` mass | Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read |
+| `rt` in MS2 | Written as minutes (`I RTime`), so it returns to within floating-point noise rather than bit-exact. MGF's `RTINSECONDS` is exact |
+
+Things that do **not** survive a round trip, by design: `im`, `iso_score`, `mz_range`,
+`isolation_mz_range`, `collision_energy`, `resolution`, `analyzer`, and `MsnSpectrum.ms_level` for
+anything other than MS2 — no peak-list format has a field for them. A `DECONVOLUTED` spectrum
+written to MGF comes back as `CENTROID` with a per-peak charge array.
 
 ---
 

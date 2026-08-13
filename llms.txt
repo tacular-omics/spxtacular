@@ -14,6 +14,7 @@
 pip install spxtacular
 pip install spxtacular[bruker]   # DReader — Bruker timsTOF .d files (needs tdfpy)
 pip install spxtacular[mzml]     # MzmlReader — .mzML files (needs mzmlpy)
+                                 # MGF/MS2 need NO extra — MgfReader/Ms2Reader are pure stdlib
 pip install spxtacular[spectrl]  # to_spectrl_token/url — compact shareable spectrum tokens
 pip install spxtacular[numba]    # JIT-compiles deconvolution (~3-4x speedup)
 pip install spxtacular[all]      # everything above
@@ -131,9 +132,9 @@ on the `Spectrum` methods (`match_fragments`/`score`) and on the module-level
 ## Reading files
 
 ```python
-from spxtacular import Reader, DReader, MzmlReader  # Reader auto-detects .d vs .mzML
+from spxtacular import Reader, DReader, MzmlReader  # Reader auto-detects .d/.mzML/.mgf/.ms2
 
-with Reader("run.d") as r:          # or Reader("run.mzML")
+with Reader("run.d") as r:          # or Reader("run.mzML"), Reader("run.mgf"), Reader("run.ms2")
     for ms1 in r.ms1: ...           # yields MsnSpectrum
     for ms2 in r.ms2: ...
     spec = r.ms2[42]                # by tdfpy precursor_id (DDA only; DIA/PRM raise NotImplementedError)
@@ -156,6 +157,32 @@ raises `TypeError`; write `next(iter(r.ms2))`. For mzML, index access is *not* M
 
 `Reader` proxies only `ms1`, `ms2`, `open`, and `close` — `acquisition_type` and `reader[key]` live
 on the concrete `DReader`/`MzmlReader`.
+
+### MGF / MS2 peak lists (read AND write, pure stdlib — no extra to install)
+
+```python
+from spxtacular import MgfReader, Ms2Reader, write_mgf, write_ms2
+
+with MgfReader("run.mgf") as r:      # .mgf.gz / .ms2.gz handled transparently (magic bytes)
+    n = len(r)                        # one counting pass, cached
+    spec = r[0]                       # or r["<TITLE>"] / r["scan=19"] — O(n), streams from the start
+    for spec in r: ...                # == iter(r.ms2); r.ms1 is valid but ALWAYS EMPTY
+
+write_mgf(spectra, "out.mgf")         # -> Path; ".gz" suffix gzips
+write_ms2(spectra, "out.ms2.gz")      # accepts any iterable of Spectrum, or one Spectrum
+```
+
+Every spectrum read is `ms_level=2`, `spectrum_type=CENTROID` — both formats are MS2-only.
+Mapped metadata: MGF `PEPMASS`/`CHARGE`/`TITLE`(→`native_id`)/`SCANS`/`RTINSECONDS` (plus the
+non-standard `RTINMINUTES`, ×60); MS2 `S`(scan + precursor m/z)/`Z`(charge)/`I RTime`(**minutes**,
+×60)/`IonInjectionTime`/`TIC`/`ActivationType`/`PrecursorInt`, `native_id="scan=N"`.
+Neither format stores polarity — it rides on the **sign of the charge** (`CHARGE=2-`, `Z -2` →
+`charge=-2`, `polarity=negative`). Multi-charge values (`CHARGE=2+ and 3+`, repeated `Z` lines) keep
+only the **first**. `mz`/`intensity` are written at repr precision, so write→read is exact; MS2 `rt`
+is minutes on disk so it returns approximately. Writing a `PROFILE` spectrum raises `ValueError`
+(centroid it first). Malformed input raises `ValueError` naming `file:line`; unknown headers,
+comments (`#;!/`), and peak-less blocks are tolerated. `im`, `iso_score`, and window/energy metadata
+do not survive — the formats have no field for them.
 
 `Spectrum.from_usi(usi)` fetches a spectrum from PRIDE/MassIVE/PeptideAtlas/jPOST by Universal
 Spectrum Identifier via the PROXI protocol.
