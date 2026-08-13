@@ -5,6 +5,15 @@ import pytest
 
 spectrl = pytest.importorskip("spectrl")
 
+from spectrl.model import (  # noqa: E402
+    SpectrlCvParam,
+    SpectrlPrecursor,
+    SpectrlScan,
+    SpectrlScanWindow,
+    SpectrlSelectedIon,
+    SpectrlUserParam,
+)
+
 from spxtacular.core import MsnSpectrum, Precursor, Spectrum, SpectrumType  # noqa: E402
 from spxtacular.spectrl_bridge import (  # noqa: E402
     from_decoded_spectrum,
@@ -14,6 +23,18 @@ from spxtacular.spectrl_bridge import (  # noqa: E402
     to_spectrl_token,
     to_spectrl_url,
 )
+
+# Accessions / user-param names the foreign-token tests below build by hand,
+# spelled out rather than imported so the tests pin the wire format itself.
+_SCAN_START_TIME = "MS:1000016"
+_UNIT_SECOND = "UO:0000010"
+_UNIT_MINUTE = "UO:0000031"
+# Per the PSI-MS ontology MS:1000501 is the scan window *lower* limit and
+# MS:1000500 the *upper* limit (the term names read counter-intuitively).
+_SCAN_WINDOW_LOWER = "MS:1000501"
+_SCAN_WINDOW_UPPER = "MS:1000500"
+_SELECTED_ION_MZ = "MS:1000744"
+_UP_PREC_MONOISOTOPIC = "spxtacular:precursor_is_monoisotopic"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -324,6 +345,123 @@ def test_scan_number_alone_forces_msn_spectrum() -> None:
     restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
     assert isinstance(restored, MsnSpectrum)
     assert restored.scan_number == 7
+
+
+# ---------------------------------------------------------------------------
+# Foreign tokens — shapes spxtacular's own encoder never produces
+# ---------------------------------------------------------------------------
+
+
+def _foreign_decoded(**kwargs) -> spectrl.DecodedSpectrum:
+    """A minimal DecodedSpectrum, as if handed to us by a non-spxtacular producer."""
+    return spectrl.DecodedSpectrum(
+        default_array_length=2,
+        mz=np.array([100.0, 200.0], dtype=np.float64),
+        intensity=np.array([1.0, 2.0], dtype=np.float64),
+        **kwargs,
+    )
+
+
+def _selected_ion(mz: float | None) -> SpectrlSelectedIon:
+    params = [] if mz is None else [SpectrlCvParam(accession=_SELECTED_ION_MZ, value=mz)]
+    return SpectrlSelectedIon(params=params)
+
+
+def test_monoisotopic_flag_keyed_by_precursor_not_selected_ion_count() -> None:
+    """A precursor carrying several selected ions must not shift the
+    is_monoisotopic flag onto the following precursor."""
+    decoded = _foreign_decoded(
+        precursors=[
+            SpectrlPrecursor(selected_ions=[_selected_ion(500.0), _selected_ion(501.0)]),
+            SpectrlPrecursor(selected_ions=[_selected_ion(700.0)]),
+        ],
+        user_params=[
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0, type="xsd:boolean"),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1, type="xsd:boolean"),
+        ],
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.precursors is not None
+    # both ions of precursor 0 take precursor 0's flag; precursor 1 keeps its own
+    assert [p.mz for p in restored.precursors] == [500.0, 501.0, 700.0]
+    assert [p.is_monoisotopic for p in restored.precursors] == [False, False, True]
+
+
+def test_monoisotopic_flag_survives_skipped_selected_ion() -> None:
+    """A selected ion dropped for a missing m/z must not shift the
+    is_monoisotopic flag of the precursors that follow it."""
+    decoded = _foreign_decoded(
+        precursors=[
+            SpectrlPrecursor(selected_ions=[_selected_ion(None)]),  # no m/z — skipped
+            SpectrlPrecursor(selected_ions=[_selected_ion(700.0)]),
+        ],
+        user_params=[
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0, type="xsd:boolean"),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1, type="xsd:boolean"),
+        ],
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.precursors is not None and len(restored.precursors) == 1
+    assert restored.precursors[0].mz == pytest.approx(700.0)
+    assert restored.precursors[0].is_monoisotopic is True
+
+
+def test_monoisotopic_flag_roundtrips_for_own_tokens() -> None:
+    """The precursor-index keying must leave spxtacular's own round-trip intact."""
+    spec = _basic_msn()
+    spec.precursors = [
+        Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True),
+        Precursor(mz=700.5, intensity=4000.0, charge=3, is_monoisotopic=False),
+    ]
+    restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.precursors is not None
+    assert [p.is_monoisotopic for p in restored.precursors] == [True, False]
+
+
+def test_scan_start_time_in_minutes_converted_to_seconds() -> None:
+    """MS:1000016 with a minutes unit (the common mzML convention) must be
+    converted — MsnSpectrum.rt is always seconds."""
+    decoded = _foreign_decoded(
+        scans=[SpectrlScan(params=[SpectrlCvParam(accession=_SCAN_START_TIME, value=2.5, unit_accession=_UNIT_MINUTE)])]
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.rt == pytest.approx(150.0)
+
+
+@pytest.mark.parametrize("unit", [_UNIT_SECOND, None])
+def test_scan_start_time_in_seconds_untouched(unit: str | None) -> None:
+    """An explicit seconds unit — and an absent one — are both taken as seconds."""
+    decoded = _foreign_decoded(
+        scans=[SpectrlScan(params=[SpectrlCvParam(accession=_SCAN_START_TIME, value=2.5, unit_accession=unit)])]
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.rt == pytest.approx(2.5)
+
+
+def test_scan_window_without_values_decodes_without_mz_range() -> None:
+    """A degenerate scan window (terms present, values absent) must not raise."""
+    decoded = _foreign_decoded(
+        scans=[
+            SpectrlScan(
+                windows=[
+                    SpectrlScanWindow(
+                        params=[
+                            SpectrlCvParam(accession=_SCAN_WINDOW_LOWER),
+                            SpectrlCvParam(accession=_SCAN_WINDOW_UPPER),
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+    restored = from_decoded_spectrum(decoded)
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.mz_range is None
 
 
 # ---------------------------------------------------------------------------

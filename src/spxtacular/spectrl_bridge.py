@@ -13,8 +13,10 @@ This module provides the four-way conversion::
     Spectrum / MsnSpectrum  →  spectrl.InlineSpectrum   →  token (str)
     Spectrum / MsnSpectrum  ←  spectrl.DecodedSpectrum  ←  token (str)
 
-Install ``spxtacular[spectrl]`` to enable. Without the extra, importing this
-module raises :class:`ImportError`.
+Install ``spxtacular[spectrl]`` to enable. The module always imports — the
+missing extra is reported at call time instead, so ``spxtacular`` stays
+importable without it; every public function here raises
+:class:`ImportError` when invoked and ``spectrl`` is not installed.
 
 Per-peak ``iso_score`` is carried through spectrl's ``extra_arrays`` slot
 under the key ``"iso_score"`` (encoded as a non-standard mzML binary array,
@@ -67,6 +69,9 @@ _TIC = "MS:1000285"
 _SCAN_START_TIME = "MS:1000016"
 _UNIT_SECOND = "UO:0000010"
 _UNIT_MILLISECOND = "UO:0000028"
+# spxtacular always writes scan start time in seconds, but minutes is the more
+# common convention in mzML-derived tokens, so decode has to honour the unit.
+_UNIT_MINUTE = "UO:0000031"
 _INJECTION_TIME = "MS:1000927"  # ion injection time
 # Per the official PSI-MS ontology MS:1000500 is the scan window *upper* limit
 # and MS:1000501 the *lower* limit (the names read counter-intuitively).
@@ -630,14 +635,17 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         scan = decoded.scans[0]
         rt_p = _find_param(scan.params, _SCAN_START_TIME)
         if rt_p is not None and rt_p.value is not None:
-            rt = float(rt_p.value)
+            # MsnSpectrum.rt is seconds. Our own encode tags the param with
+            # _UNIT_SECOND, but a foreign token may carry minutes instead.
+            rt = float(rt_p.value) * (60.0 if rt_p.unit_accession == _UNIT_MINUTE else 1.0)
         it_p = _find_param(scan.params, _INJECTION_TIME)
         if it_p is not None and it_p.value is not None:
             injection_time = float(it_p.value)
         for window in scan.windows:
             lo_p = _find_param(window.params, _SCAN_WINDOW_LOWER)
             hi_p = _find_param(window.params, _SCAN_WINDOW_UPPER)
-            if lo_p is not None and hi_p is not None:
+            # A foreign token may carry the term with no value at all.
+            if lo_p is not None and lo_p.value is not None and hi_p is not None and hi_p.value is not None:
                 mz_range = (float(lo_p.value), float(hi_p.value))
                 break
 
@@ -649,7 +657,13 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     activation_type: str | None = str(activation_type_v) if activation_type_v is not None else None
     if decoded.precursors:
         precursors = []
-        for sp in decoded.precursors:
+        for prec_index, sp in enumerate(decoded.precursors):
+            # Keyed by precursor index, mirroring the encode side. Keying by the
+            # number of Precursors built so far would drift on a foreign token
+            # whose precursor carries several selected ions, or one whose
+            # selected ion is skipped below for a missing m/z.
+            mono_v = up.get(_up_prec_monoisotopic(prec_index))
+            is_monoisotopic = bool(int(mono_v)) if mono_v is not None else None
             for ion in sp.selected_ions:
                 mz_p = _find_param(ion.params, _SELECTED_ION_MZ)
                 if mz_p is None or mz_p.value is None:
@@ -665,14 +679,13 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
                     if p.accession in _PRECURSOR_IM_ACCESSIONS and p.value is not None:
                         prec_im = float(p.value)
                         break
-                mono_v = up.get(_up_prec_monoisotopic(len(precursors)))
                 precursors.append(
                     Precursor(
                         mz=float(mz_p.value),
                         intensity=prec_intensity,
                         charge=prec_charge,
                         im=prec_im,
-                        is_monoisotopic=bool(int(mono_v)) if mono_v is not None else None,
+                        is_monoisotopic=is_monoisotopic,
                     )
                 )
             if sp.isolation_window is not None and isolation_mz_range is None:
