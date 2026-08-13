@@ -864,3 +864,171 @@ def test_remove_precursor_peak_uppercase_ppm_is_still_ppm() -> None:
     kept = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=20, tolerance_type=upper, isotopes=0)
 
     assert _mzs(kept) == [510.0]
+
+
+# ---------------------------------------------------------------------------
+# filter(top_n_per_window=...) — windowed top-N peak selection
+# ---------------------------------------------------------------------------
+
+
+def _two_region_spec() -> Spectrum:
+    """Three loud peaks below 100 Th, three quiet ones above it.
+
+    Every peak in the 0-100 window out-shouts every peak in the 100-200 window,
+    which is exactly the shape a global ``top_n`` mishandles.
+    """
+    return Spectrum(
+        mz=np.array([10.0, 30.0, 50.0, 110.0, 130.0, 150.0], dtype=np.float64),
+        intensity=np.array([900.0, 800.0, 700.0, 9.0, 8.0, 7.0], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+
+
+def test_top_n_per_window_keeps_a_region_that_global_top_n_erases() -> None:
+    """The whole point of the windowed variant: a quiet m/z region survives.
+
+    A global ``top_n=2`` spends both slots on the loud region and returns
+    nothing above 100 Th; the windowed cut gives each 100 Th window its own two
+    slots, so both regions are represented.
+    """
+    spec = _two_region_spec()
+
+    assert _mzs(spec.filter(top_n=2)) == [10.0, 30.0]
+    assert _mzs(spec.filter(top_n_per_window=(2, 100.0))) == [10.0, 30.0, 110.0, 130.0]
+
+
+def test_top_n_per_window_is_unsorted_safe_and_keeps_arrays_aligned() -> None:
+    """m/z arrives descending (a timsTOF frame interleaves both directions).
+
+    Peaks must be binned by their own m/z rather than by position, the survivors
+    must keep their original storage order, and charge/im must travel with them.
+    """
+    spec = Spectrum(
+        mz=np.array([150.0, 30.0, 130.0, 10.0, 110.0, 50.0], dtype=np.float64),
+        intensity=np.array([7.0, 800.0, 8.0, 900.0, 9.0, 700.0], dtype=np.float64),
+        charge=np.array([1, 2, 3, 4, 5, 6], dtype=np.int32),
+        im=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+
+    kept = spec.filter(top_n_per_window=(2, 100.0))
+
+    # Same four peaks as the sorted case, still in the array order they arrived in.
+    assert _mzs(kept) == [30.0, 130.0, 10.0, 110.0]
+    assert kept.charge is not None and kept.im is not None
+    assert [int(z) for z in kept.charge] == [2, 3, 4, 5]
+    assert [float(v) for v in kept.im] == [0.2, 0.3, 0.4, 0.5]
+
+
+def test_top_n_per_window_boundary_peak_opens_the_upper_window() -> None:
+    """Windows are half-open ``[k * width, (k + 1) * width)`` bins anchored at 0.
+
+    The peak at exactly 100.0 belongs to the 100-200 window, so it competes with
+    the 150.0 peak and not with the loud peaks below it.
+    """
+    spec = Spectrum(
+        mz=np.array([10.0, 50.0, 100.0, 150.0], dtype=np.float64),
+        intensity=np.array([900.0, 800.0, 5.0, 6.0], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+
+    kept = spec.filter(top_n_per_window=(1, 100.0))
+
+    # 100.0 lost its window to 150.0; had it fallen in the lower window it would
+    # have lost to 900.0 instead and 150.0 would have survived.
+    assert _mzs(kept) == [10.0, 150.0]
+
+
+def test_top_n_per_window_keeps_every_peak_when_n_exceeds_the_window() -> None:
+    """A window holding fewer than ``n`` peaks keeps all of them, and empty
+    windows contribute nothing rather than erroring."""
+    spec = _two_region_spec()
+
+    kept = spec.filter(top_n_per_window=(10, 100.0))
+
+    assert _mzs(kept) == _mzs(spec)
+
+
+def test_top_n_per_window_breaks_ties_by_array_position() -> None:
+    """Equal intensities inside a window resolve deterministically: the peak
+    stored first wins, whatever its m/z."""
+    spec = Spectrum(
+        mz=np.array([80.0, 20.0, 40.0], dtype=np.float64),
+        intensity=np.array([100.0, 100.0, 100.0], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+
+    assert _mzs(spec.filter(top_n_per_window=(1, 100.0))) == [80.0]
+    assert _mzs(spec.filter(top_n_per_window=(2, 100.0))) == [80.0, 20.0]
+
+
+def test_top_n_per_window_applies_after_the_other_criteria() -> None:
+    """The windowed cut ranks what the m/z and intensity bounds left behind, not
+    the original spectrum — otherwise a peak removed by ``min_mz`` could still
+    consume a window slot."""
+    spec = _two_region_spec()
+
+    kept = spec.filter(min_mz=30.0, top_n_per_window=(1, 100.0))
+
+    assert _mzs(kept) == [30.0, 110.0]
+
+
+def test_top_n_per_window_rejects_being_combined_with_top_n() -> None:
+    """Composing a global and a windowed cut is order-dependent, so it is
+    refused rather than silently resolved."""
+    spec = _two_region_spec()
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        spec.filter(top_n=2, top_n_per_window=(2, 100.0))
+
+
+@pytest.mark.parametrize(
+    ("bad", "message"),
+    [
+        ((0, 100.0), "peak count must be >= 1"),
+        ((-1, 100.0), "peak count must be >= 1"),
+        ((2, 0.0), "window width must be > 0"),
+        ((2, -100.0), "window width must be > 0"),
+    ],
+)
+def test_top_n_per_window_rejects_degenerate_arguments(bad: tuple[int, float], message: str) -> None:
+    """A zero peak count or a non-positive width has no sensible reading, so
+    each raises instead of quietly emptying the spectrum or dividing by zero."""
+    spec = _two_region_spec()
+
+    with pytest.raises(ValueError, match=message):
+        spec.filter(top_n_per_window=bad)
+
+
+def test_top_n_per_window_passes_an_empty_spectrum_through() -> None:
+    """Like every other filter path, no peaks in means no peaks out."""
+    spec = Spectrum(
+        mz=np.array([], dtype=np.float64),
+        intensity=np.array([], dtype=np.float64),
+        spectrum_type=SpectrumType.CENTROID,
+    )
+
+    kept = spec.filter(top_n_per_window=(2, 100.0))
+
+    assert len(kept.mz) == 0
+    assert len(kept.intensity) == 0
+
+
+def test_top_n_per_window_inplace_mutates_and_returns_self() -> None:
+    """``inplace=True`` follows the same contract as the other filters."""
+    spec = _two_region_spec()
+
+    returned = spec.filter(top_n_per_window=(1, 100.0), inplace=True)
+
+    assert returned is spec
+    assert _mzs(spec) == [10.0, 110.0]
+
+
+def test_top_n_per_window_not_inplace_leaves_the_original_alone() -> None:
+    spec = _two_region_spec()
+
+    kept = spec.filter(top_n_per_window=(1, 100.0))
+
+    assert kept is not spec
+    assert _mzs(spec) == [10.0, 30.0, 50.0, 110.0, 130.0, 150.0]
+    assert _mzs(kept) == [10.0, 110.0]
