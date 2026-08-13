@@ -282,8 +282,10 @@ def build_plot_table(
         Source spectrum.
     show_charges:
         When ``True`` (default) and charge data is present, each charge state
-        gets its own colour; the ``series`` column is set to ``"z=N"`` or
-        ``"singleton"``.  When ``False``, all peaks use ``"steelblue"``.
+        gets its own colour from the ordinal charge ramp; the ``series`` column
+        is set to ``"z=N"`` or ``"singleton"``.  When ``False``, every peak
+        takes the ramp's 1+ step (:func:`spxtacular.theme.charge_color` at
+        ``charge=1``) and the ``series`` column is ``"peaks"``.
     show_scores:
         When ``True`` (default) and score data is present, peaks with
         ``score > 0`` are labelled with their score value.

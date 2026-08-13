@@ -59,6 +59,15 @@ _UNMATCHED: dict[ThemeMode, str] = {"light": "#c9c8c3", "dark": "#4a4a46"}
 #: Deconvolution singletons (charge == -1) and any "other" category.
 _NEUTRAL: dict[ThemeMode, str] = {"light": "#9a9993", "dark": "#6e6d67"}
 
+#: Hairline around a filled mark (mass-error bubbles, and any future scatter).
+#:
+#: An outline separates two overlapping translucent bubbles that would otherwise
+#: read as one blob, so it has to sit *against the surface*, not against the fill
+#: -- which is why it flips between modes rather than being a fixed dark grey.
+#: Light: 6.9:1 on #fcfcfb. Dark: 9.7:1 on #1a1a19. Both clear the 3:1 minimum
+#: for a non-text graphical object with room to spare.
+_MARKER_OUTLINE: dict[ThemeMode, str] = {"light": "#52514e", "dark": "#c3c2b7"}
+
 
 # ---------------------------------------------------------------------------
 # Categorical palette — fragment ion series
@@ -249,6 +258,15 @@ def unmatched_color(theme: ThemeMode | None = None) -> str:
 def neutral_color(theme: ThemeMode | None = None) -> str:
     """Colour for singletons and any category past the eighth slot."""
     return _NEUTRAL[resolve_mode(theme)]
+
+
+def marker_outline(theme: ThemeMode | None = None) -> str:
+    """Hairline colour for a filled mark, e.g. a mass-error bubble.
+
+    Flips with the mode: a fixed dark grey vanishes into a dark surface, taking
+    the separation between overlapping bubbles with it.
+    """
+    return _MARKER_OUTLINE[resolve_mode(theme)]
 
 
 def text_color(level: Literal["primary", "secondary", "muted"] = "secondary", theme: ThemeMode | None = None) -> str:

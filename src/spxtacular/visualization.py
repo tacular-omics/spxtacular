@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 
 from . import theme
 from .chromatogram import Chromatogram
-from .core import Spectrum
+from .core import Spectrum, SpectrumType
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
     DEFAULT_FRAGMENT_TOLERANCE_TYPE,
@@ -37,6 +37,7 @@ from .plot_table import (
     _decimate_profile,
     _fragment_label,
     _rgba,
+    _scaled_intensity,
     _sticks,
     build_annot_plot_table,
     build_plot_table,
@@ -154,18 +155,27 @@ def _plot_spectrum_im(
     show_scores: bool = True,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
+    intensity_scale: Literal["absolute", "relative"] = "relative",
+    intensity_transform: Literal["sqrt", "log"] | None = None,
     **layout_kwargs,
 ) -> go.Figure:
     """Stick plot with sticks coloured by ion mobility.
 
     The ramp is quantised into 20 bins of a single-hue sequential scale, so each
     stick takes one flat colour; the colourbar carries the mapping.
+
+    Intensity is scaled the same way the plot-table path scales it, so switching
+    ``color=`` does not silently switch the y-axis between relative and absolute.
+    As there, the tooltip always reports the unscaled value.
     """
     import plotly.colors as pc
     import plotly.graph_objects as go
 
     mz = spectrum.mz
     intensity = spectrum.intensity
+    # Scaled values are what gets drawn; `intensity` stays the number the hover
+    # reports, so rescaling only ever moves the axis.
+    plotted, intensity_label = _scaled_intensity(intensity, intensity_scale, intensity_transform)
     im = spectrum.im
     assert im is not None
 
@@ -197,8 +207,9 @@ def _plot_spectrum_im(
             continue
         mz_b = mz[mask]
         int_b = intensity[mask]
+        plot_b = plotted[mask]
         im_b = im_arr[mask]
-        xs, ys = _sticks(mz_b, int_b)
+        xs, ys = _sticks(mz_b, plot_b)
         hover_data: list[str] = []
         for i in range(len(mz_b)):
             tip = f"m/z: {float(mz_b[i]):.4f}<br>intensity: {float(int_b[i]):.2e}<br>{im_label}: {float(im_b[i]):.4f}"
@@ -253,7 +264,7 @@ def _plot_spectrum_im(
                 annotations.append(
                     dict(
                         x=float(mz[i]),
-                        y=float(intensity[i]),
+                        y=float(plotted[i]),
                         text=text,
                         showarrow=False,
                         yshift=6,
@@ -269,7 +280,7 @@ def _plot_spectrum_im(
         template=theme.template(theme_mode),
         title=title or str(spectrum.spectrum_type or "Spectrum"),
         xaxis_title="m/z",
-        yaxis_title="Intensity",
+        yaxis_title=intensity_label,
         annotations=annotations,
         **layout_kwargs,
     )
@@ -308,6 +319,10 @@ def plot_spectrum(
         colours sticks by ion mobility, quantised into 20 bins of a single-hue
         sequential scale, when IM data is present; falls back to ``"charge"``
         when no IM array is available.  ``None`` renders every stick in one colour.
+
+        ``"im"`` is a stick encoding, so it is rejected for profile data --
+        centroid first, or pass ``render="sticks"`` if you really mean to draw
+        every sample as a bar.
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
@@ -320,12 +335,15 @@ def plot_spectrum(
     max_points:
         Cap on samples drawn for a profile trace (default 4000). Thinning keeps
         the minimum and maximum of each bucket, so no peak apex is lost;
-        ``None`` draws every sample.
+        ``None`` draws every sample. Applies to profile renders only; a stick
+        render draws every peak.
     max_labels:
-        Cap on directly-drawn labels, highest-intensity peaks first
-        (default 25). ``None`` labels every scored peak, which on a large
-        spectrum produces an unreadable pile-up along the baseline -- the
-        remaining values stay available on hover.
+        Cap on directly-drawn labels, highest-intensity peaks first (default
+        ``_MAX_LABELS_DEFAULT``, currently 60). Labels are also thinned by
+        collision, so a dense region keeps fewer than the cap. ``None`` labels
+        every scored peak, which on a large spectrum produces an unreadable
+        pile-up along the baseline -- the remaining values stay available on
+        hover.
     theme_mode:
         ``"light"`` or ``"dark"``. Defaults to the global mode set by
         :func:`~spxtacular.theme.set_plot_theme`.
@@ -341,14 +359,34 @@ def plot_spectrum(
         color = "charge" if show_charges else None
 
     if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
-        return _plot_spectrum_im(
+        # The type check has to come *first*. The im path only knows how to draw
+        # sticks, so routing to it before asking what kind of spectrum this is
+        # drew profile data as one bar per sample -- the peak shape thrown away,
+        # and the very thing profile data exists to carry.
+        resolved = (
+            render
+            if render is not None
+            else ("profile" if spectrum.spectrum_type == SpectrumType.PROFILE else "sticks")
+        )
+        if resolved == "profile":
+            raise ValueError(
+                "color='im' draws sticks, which discards the peak shape of a profile spectrum. "
+                "Centroid it first (spectrum.centroid()), or pass render='sticks' to draw every "
+                "sample as a stick anyway."
+            )
+        fig = _plot_spectrum_im(
             spectrum,
             title=title,
             show_scores=show_scores,
             max_labels=max_labels,
             theme_mode=theme_mode,
+            intensity_scale=intensity_scale,
+            intensity_transform=intensity_transform,
             **layout_kwargs,
         )
+        if show_precursor:
+            _add_precursor_marker(fig, spectrum, theme_mode)
+        return fig
     table = build_plot_table(
         spectrum,
         show_charges=color == "charge",
@@ -979,6 +1017,7 @@ def mass_error_plot(
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     unit: str = "ppm",
     title: str | None = None,
+    max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
     **layout_kwargs,
 ) -> go.Figure:
@@ -1004,6 +1043,12 @@ def mass_error_plot(
         Error unit: ``"ppm"`` or ``"da"``.
     title:
         Plot title.
+    max_labels:
+        Cap on directly-drawn mzPAF labels, highest-intensity first (default
+        ``_MAX_LABELS_DEFAULT``, currently 60), with the same collision
+        avoidance the spectrum plots use. ``None`` labels every bubble, which
+        for a few hundred matches is an unreadable smear -- the labels stay on
+        hover regardless.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
@@ -1014,8 +1059,18 @@ def mass_error_plot(
     matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
 
     if not matches:
+        # The empty case is still a figure someone looks at: without the template
+        # a dark-mode caller got a white plotly default, and without axis titles
+        # an unlabelled empty box.
         fig = go.Figure()
-        fig.update_layout(title=title or "Mass Errors (no matches)", **layout_kwargs)
+        fig.update_layout(
+            template=theme.template(theme_mode),
+            title=title or "Mass Errors (no matches)",
+            xaxis_title="m/z",
+            yaxis_title=f"Error ({unit})",
+            showlegend=False,
+            **layout_kwargs,
+        )
         return fig
 
     mzs = [m.peak_mz for m in matches]
@@ -1035,21 +1090,40 @@ def mass_error_plot(
     colors = [theme.ion_color(it, theme_mode) for it in ion_types]
 
     # mzPAF labels, so a 2+ and a 1+ of the same ion don't both render as "b3".
-    labels = [_fragment_label(m.fragment, False) for m in matches]
+    # Thinned exactly as the spectrum plots thin theirs: a label on every bubble
+    # is the same unreadable smear here as it is along a baseline.
+    all_labels = [_fragment_label(m.fragment, False) for m in matches]
+    labels = _cap_labels(
+        list(all_labels),
+        np.asarray(intensities, dtype=np.float64),
+        max_labels,
+        np.asarray(mzs, dtype=np.float64),
+    )
+    # Thinning drops labels off the plot, so the hover has to carry the full set
+    # -- otherwise capping would make a bubble's identity unreachable.
+    hover_data = [[float(i), lab] for i, lab in zip(intensities, all_labels, strict=True)]
 
     fig = go.Figure(
         go.Scatter(
             x=mzs,
             y=errors,
             mode="markers+text",
-            marker={"size": sizes, "color": colors, "opacity": 0.7, "line": {"width": 1, "color": "#333"}},
+            marker={
+                "size": sizes,
+                "color": colors,
+                "opacity": 0.7,
+                # Separates two overlapping bubbles. Theme-aware: a fixed dark
+                # grey disappeared into the dark surface.
+                "line": {"width": 1, "color": theme.marker_outline(theme_mode)},
+            },
             text=labels,
             textposition="top center",
             textfont={"size": 9},
             hovertemplate=(
-                f"m/z: %{{x:.4f}}<br>error ({unit}): %{{y:.4f}}<br>intensity: %{{customdata:.2e}}<extra></extra>"
+                f"m/z: %{{x:.4f}}<br>error ({unit}): %{{y:.4f}}<br>"
+                "intensity: %{customdata[0]:.2e}<br>%{customdata[1]}<extra></extra>"
             ),
-            customdata=intensities,
+            customdata=hover_data,
         )
     )
 
