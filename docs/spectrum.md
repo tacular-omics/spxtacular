@@ -780,6 +780,24 @@ combined = Spectrum.combine([spec1, spec2, spec3])
 
 The return type is always the base `Spectrum` — MSn metadata cannot be sensibly combined across scans.
 
+#### Recipe: consensus spectrum from replicates
+
+`combine` and `merge` together build a consensus spectrum from repeat measurements of the same
+analyte: normalize each replicate so no single acquisition dominates, concatenate, then collapse
+peaks that agree within tolerance into intensity-weighted centroids.
+
+```python
+replicates = [spec1, spec2, spec3]          # e.g. the same precursor across runs
+
+consensus = Spectrum.combine(
+    [s.normalize(method="tic") for s in replicates]
+).merge(mz_tolerance=10, mz_tolerance_type="ppm")
+```
+
+Peaks seen in every replicate accumulate intensity across the merge window while one-off noise
+peaks stay small, so a follow-up `filter(min_intensity=...)` — thresholded at, say, a fraction of
+`1 / len(replicates)` of the summed TIC — keeps only reproducible signal.
+
 ---
 
 ## MsnSpectrum
