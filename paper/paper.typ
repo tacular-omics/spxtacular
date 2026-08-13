@@ -101,39 +101,38 @@ neutral = (spec.denoise(method="mad")
 A `SpectrumType` tag records whether the object holds profile, centroid or
 deconvoluted data, and guards the operations that make sense in only one of
 those states. Calling `decharge()` on a spectrum that was never deconvoluted
-raises, rather than silently returning wrong masses. The library exports #s(
-  "lib.public_symbols",
-) public names and depends only on NumPy @harris2020numpy, pandas, Plotly, and
-two companion packages for peptide chemistry and fragment notation.
+raises an error instead of silently returning wrong masses. The library depends
+only on NumPy @harris2020numpy, pandas, Plotly, and two companion packages for
+peptide chemistry and fragment notation.
 
 = Statement of need
 
 Existing Python tooling for proteomics divides along a line that leaves a gap in
-the middle. File format libraries such as pyteomics @goloborodko2013pyteomics
-and pyOpenMS @rost2014pyopenms read spectra and hand back arrays, and the
-processing is the user's problem. Search engines and deconvolution tools such as
-MS-Deconv @liu2010msdeconv and FLASHDeconv @jeong2020flashdeconv are complete
-programs rather than libraries: they are excellent at the one job they do and
-are difficult to call in the middle of an interactive analysis. Between the two
-sits the work of actually looking at a spectrum, which is where method
-development happens and where most bespoke scripts are written.
+the middle. File format libraries such as pyteomics @levitsky2019pyteomics and
+pyOpenMS @rost2014pyopenms read spectra and hand back arrays, and the processing
+is the user's problem. Search engines and deconvolution tools such as MS-Deconv
+@liu2010msdeconv and FLASHDeconv @jeong2020flashdeconv are complete programs,
+not libraries: they are excellent at the one job they do and are difficult to
+call in the middle of an interactive analysis. Between the two sits the work of
+actually looking at a spectrum, which is where method development happens and
+where most bespoke scripts are written.
 
 spxtacular targets that middle. Deconvolution is a method call that returns a
 spectrum, not a subprocess that returns a file, so its output can be filtered,
 plotted, matched against fragments and fed back into another deconvolution
 inside one session. Charge and isotope score travel with the peaks, so the
-quality of an assignment stays inspectable. A weakly scoring cluster is
-distinguishable from a convincing one in a filter and in a plot, rather than
-flattened into an accept or reject decision taken upstream.
+quality of an assignment stays inspectable. A weakly scoring cluster stays
+distinguishable from a convincing one in a filter and in a plot; nothing
+upstream has flattened the two into one accept or reject decision.
 
-The library also treats visualization as part of the analysis rather than a
-reporting step bolted on afterwards. Every spectrum plots itself, and all
-figures share one theme whose palettes were validated for protanopia and
-deuteranopia against both light and dark backgrounds. Charge state is encoded as
-an ordinal ramp rather than a categorical cycle, which is what stops a ten-color
-palette from drawing the first and the eleventh state identically. Intensities
-are shown relative to the base peak by default. A `table_view()` helper renders
-the same peak data as an HTML table for screen reader users.
+The library also treats visualization as part of the analysis, not a reporting
+step bolted on afterwards. Every spectrum plots itself, and all figures share
+one theme whose palettes were validated for protanopia and deuteranopia against
+both light and dark backgrounds. Charge state is encoded as an ordinal ramp,
+because a cycling categorical palette of ten colors draws the first and the
+eleventh state identically. Intensities are shown relative to the base peak by
+default. A `table_view()` helper renders the same peak data as an HTML table for
+screen reader users.
 
 = Deconvolution
 
@@ -147,18 +146,20 @@ missing from the envelope are penalized, and the best scoring state wins.
 Clusters falling below `min_score` are recorded as singletons rather than
 discarded, and their peaks stay available to later seeds.
 
-The score survives into the result as `iso_score`, which is what makes the
-threshold a filter the user controls rather than a constant compiled into the
-algorithm. @fig:pipeline shows the effect on one real spectrum: tandem mass
-spectrometry (MS2) scan #s("demo.scan") of the Bruker timsTOF example
-acquisition shipped with the library, deconvoluted over charges one to #s(
-  "demo.max_charge_searched",
-) at #s("demo.tolerance_ppm") ppm tolerance. Of #s("demo.raw_peaks") centroid
-peaks, #s("demo.clusters") resolved into charge-assigned clusters carrying #s(
+The score survives into the result as `iso_score`, so the threshold is a filter
+the user controls, not a constant compiled into the algorithm. @fig:pipeline
+shows the effect on one real spectrum: tandem mass spectrometry (MS2) scan #s(
+  "demo.scan",
+) of the Bruker timsTOF example acquisition shipped with the library,
+deconvoluted over charges one to #s("demo.max_charge_searched") at #s(
+  "demo.tolerance_ppm",
+) ppm tolerance. Of #s("demo.raw_peaks") centroid peaks, #s(
+  "demo.cluster_peaks",
+) resolved into #s("demo.clusters") charge-assigned clusters carrying #s(
   "demo.tic_share",
 ) of the total ion current at a mean isotope score of #s("demo.mean_score").
 States as high as #s("demo.max_charge_found") were assigned, and `decharge()`
-returned #s("demo.neutral_masses") neutral masses reaching #s(
+returned #s("demo.neutral_masses") neutral masses up to #s(
   "demo.max_neutral_mass",
 ) Da.
 
@@ -196,14 +197,14 @@ attaching a file.
 
 matchms @huber2020matchms addresses a neighboring problem, spectrum to spectrum
 similarity for metabolomics, and shares the goal of a processing pipeline
-expressed as composable steps. spectrum_utils @bittremieux2020spectrumutils
+expressed as composable steps. spectrum_utils @bittremieux2023spectrumutils
 covers annotation and plotting of identified spectra with a similar emphasis on
 visualization quality. spxtacular differs from both in making charge state
 deconvolution a first class operation whose per-peak evidence is retained, and
-in reading vendor formats directly rather than starting from an already
-converted peak list. It complements rather than replaces them, and interoperates
-through the same community standards, mzML, ProForma, mzPAF and the Universal
-Spectrum Identifier @deutsch2021usi.
+in reading vendor formats directly instead of starting from an already converted
+peak list. It complements both packages and interoperates with them through the
+same community standards, mzML, ProForma, mzPAF and the Universal Spectrum
+Identifier @deutsch2021usi.
 
 // <<< BODY END
 

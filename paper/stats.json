@@ -2,13 +2,27 @@
   "_about": "Numbers the manuscript states in prose, read as #s(\"<id>\"). Scripts own each entry's value; fmt, unit, desc and expect are the author's to edit here. Entries with origin.by = \"hand\" are entirely yours.",
   "sources": {
     "analysis/scripts/gen_stats.py": {
-      "analysis/scripts/gen_stats.py": "sha256:a6124a7fd591996f7024db47cc2c6ee70af91017fce5afd406dfe21edc3b12bb",
+      "analysis/scripts/gen_stats.py": "sha256:016c3a6dc4eef528bc282ac2d220d6a3f1f42b4259efe4f8782e6966c151d8b1",
       "analysis/scripts/_demo.py": "sha256:8ba95987302545c836a5727d7595d268d0bf0f8bef5cc9b06d933a93d9c8ff17",
       "../tests/data/example_dda.d/analysis.tdf": "sha256:417878100007967f1eb15e82f2a272f66734dc4308253aa8de87f0d1963480b1",
       "../tests/data/example_dda.d/analysis.tdf_bin": "sha256:12ef8459c7bd3ce3bab02928b061ce878213c0b7ff23691739168b536cabb439"
     }
   },
   "values": {
+    "demo.cluster_peaks": {
+      "value": 81,
+      "fmt": ",",
+      "unit": "",
+      "desc": "Centroid peaks the charge-assigned clusters were built from",
+      "expect": {
+        "sign": "+"
+      },
+      "checksum": "v2:5316ca1c5ddca8e6",
+      "origin": {
+        "by": "analysis/scripts/gen_stats.py",
+        "at": "2026-08-13T18:36:33Z"
+      }
+    },
     "demo.clusters": {
       "value": 38,
       "fmt": ",",
@@ -180,20 +194,6 @@
         "max": 100
       },
       "checksum": "v2:c72ae9676454d7cc",
-      "origin": {
-        "by": "analysis/scripts/gen_stats.py",
-        "at": "2026-08-13T06:01:17Z"
-      }
-    },
-    "lib.public_symbols": {
-      "value": 58,
-      "fmt": ",",
-      "unit": "",
-      "desc": "Names exported from the top-level spxtacular namespace",
-      "expect": {
-        "sign": "+"
-      },
-      "checksum": "v2:6208ef0f7750c111",
       "origin": {
         "by": "analysis/scripts/gen_stats.py",
         "at": "2026-08-13T06:01:17Z"

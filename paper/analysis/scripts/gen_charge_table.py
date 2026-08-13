@@ -35,12 +35,25 @@ def main() -> int:
             f"{100 * float(decon.intensity[sel].sum()) / tic:.1f}",
         ))
 
+    # The total row is computed from the UNROUNDED sum, so it renders the same
+    # number the prose states as demo.tic_share; the per-charge rows above are
+    # rounded one at a time and need not sum to it. The caption says both.
+    assigned = decon.charge > 0
+    rows.append((
+        "all assigned",
+        str(int(assigned.sum())),
+        f"{float(np.mean(decon.iso_score[assigned])):.3f}",
+        f"{100 * float(decon.intensity[assigned].sum()) / tic:.1f}",
+    ))
+
     # The unassigned peaks belong in the table too. A charge-state breakdown that
     # silently omits them reads as though the deconvolution explained everything.
+    # A singleton is an individual PEAK left unmerged, not a cluster, so the
+    # cell says "peaks" rather than borrowing the Clusters column's unit.
     sing = decon.charge < 0
     rows.append((
         "unassigned",
-        str(int(sing.sum())),
+        f"{int(sing.sum())} peaks",
         "--",
         f"{100 * float(decon.intensity[sing].sum()) / tic:.1f}",
     ))

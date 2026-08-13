@@ -80,3 +80,9 @@ repeat-in-sentence = 3    # times a distinctive word may repeat in one sentence
 #
 # [vocabulary.abbreviations]
 # add = ["PASEF.", "approx."]  # periods that do not end a sentence
+
+# The agentic review of the first draft found "which is what" used three times
+# as a connector in four pages. It is always replaceable with "so" or
+# "because"; gate it so the tic cannot creep back.
+[vocabulary.verbose-phrase]
+add = { "which is what" = "so / because" }

@@ -27,25 +27,28 @@ every number and the figure in this paper.
 @tbl:si-charge is the per-charge view of the run described in the main text: MS2
 scan #s("demo.scan") of the example Bruker timsTOF acquisition, deconvoluted
 over charges one to #s("demo.max_charge_searched") at #s("demo.tolerance_ppm")
-ppm. Clusters scoring below #s("demo.min_score") are recorded as singletons
-rather than kept. The precursor was selected at charge #s(
-  "demo.precursor_charge",
-), and singly charged fragments dominate the assigned clusters, which is what a
-collision induced dissociation spectrum of a tryptic peptide should look like.
+ppm. Clusters scoring below #s("demo.min_score") are recorded as unassigned
+singletons, and their peaks stay in the spectrum. The precursor was selected at
+charge #s("demo.precursor_charge"), and singly charged fragments dominate the
+assigned clusters, as expected for a collision induced dissociation spectrum of
+a tryptic peptide.
 
 Most peaks stay unassigned, and most of the total ion current stays with them.
-That is the honest result for a single MS2 scan rather than a defect: an
-unpaired peak is one for which no second isotope was detected above the noise,
-so no charge can be inferred from spacing alone. Those peaks keep a charge of
-minus one and a score of zero, and remain available to fragment matching, which
-does not require a charge assignment.
+That is the honest result for a single MS2 scan, not a defect: an unpaired peak
+is one for which no second isotope was detected above the noise, so no charge
+can be inferred from spacing alone. Those peaks keep a charge of minus one and a
+score of zero, and remain available to fragment matching, which does not require
+a charge assignment.
 
 #figure(
   tbl("tbl.charge"),
   caption: [
     Clusters, mean isotope profile score and share of the total ion current for
-    each assigned charge state in the demo spectrum, with the unassigned
-    singletons shown on the last row. Written by
+    each assigned charge state in the demo spectrum, followed by the assigned
+    total and the unassigned singletons. Per-charge shares are rounded
+    individually and need not sum exactly to the total row, which is computed
+    before rounding and matches the main text. The unassigned row counts
+    individual peaks; a singleton is a peak, not a cluster. Written by
     `analysis/scripts/gen_charge_table.py`.
   ],
 ) <tbl:si-charge>
@@ -60,8 +63,8 @@ reader cannot open.
 The input is `tests/data/example_dda.d`, the Bruker timsTOF DDA acquisition the
 library uses as a test fixture. The analysis that reads it lives in
 `paper/analysis/` inside the same repository. Its dependency set is locked, and
-it takes spxtacular from the working tree rather than from PyPI, so the paper
-describes the code beside it rather than a release that may have moved on.
+it takes spxtacular from the working tree, so the paper describes the code
+beside it, not a release on PyPI that may have moved on.
 
 ```bash
 git clone https://github.com/tacular-omics/spxtacular
