@@ -17,6 +17,7 @@ from .enums import (
     ToleranceType,
 )
 from .matching import match_fragments
+from .peaklist import MgfReader, Ms2Reader, write_mgf, write_ms2
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
@@ -78,6 +79,10 @@ __all__ = [
     "CentroidConfig",
     "DReader",
     "MzmlReader",
+    "MgfReader",
+    "Ms2Reader",
+    "write_mgf",
+    "write_ms2",
     "Reader",
     "plot_spectrum",
     "mirror_plot",

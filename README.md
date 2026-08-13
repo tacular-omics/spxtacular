@@ -110,6 +110,7 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d")
 | **Interactive visualization** | Stick, mirror, faceted, mass-error, and annotated fragment plots (Plotly), plus a sequence coverage ladder |
 | **Accessible by design** | Colour-vision-safe palette validated in light *and* dark modes (`spxtacular.theme`), relative-intensity y-axis by default, capped/collision-avoided labels, and `table_view()` for a screen-reader-friendly peak table |
 | **File reading** | Bruker timsTOF `.d` files (`DReader`) and mzML (`MzmlReader`), or `Reader` to auto-detect the format from the path |
+| **Peak lists** | Read *and* write MGF and MS2 (`MgfReader`, `Ms2Reader`, `write_mgf`, `write_ms2`) — pure standard library, gzip-aware, no extra to install |
 | **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 
 ## Deconvolution pipeline
