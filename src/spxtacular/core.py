@@ -474,6 +474,7 @@ class Spectrum:
         min_score: float | None = None,
         max_score: float | None = None,
         top_n: int | None = None,
+        top_n_per_window: tuple[int, float] | None = None,
         inplace: bool = False,
     ) -> Self:
         """Filter spectrum by various criteria.
@@ -481,6 +482,28 @@ class Spectrum:
         Raises ``ValueError`` if a criterion is given for a dimension this
         spectrum does not carry — silently ignoring it would return every peak
         and read as "nothing was filtered out".
+
+        ``top_n`` keeps the ``n`` most intense peaks in the whole spectrum, so a
+        quiet high-m/z region loses every peak it has to a loud low-m/z one.
+
+        ``top_n_per_window`` is the search-engine preprocessing step that avoids
+        that: given ``(n, width)`` it keeps the ``n`` most intense peaks of each
+        fixed-width m/z window, so each region survives on its own merits. The
+        windows are anchored at 0 — peak ``i`` falls in window
+        ``floor(mz[i] / width)``, a half-open ``[k * width, (k + 1) * width)``
+        bin, which is the convention the major engines use. A peak sitting
+        exactly on a boundary therefore opens the upper window rather than
+        closing the lower one. Windows holding fewer than ``n`` peaks keep all of
+        them; empty windows are simply absent. Intensity ties inside a window are
+        broken by array position, so the earlier peak is the one kept.
+
+        ``top_n`` and ``top_n_per_window`` are mutually exclusive: composing them
+        is ambiguous — global-then-windowed and windowed-then-global select
+        different peaks — so asking for both raises ``ValueError``.
+
+        Both are applied after every other criterion, and neither assumes sorted
+        m/z: selection runs through index masks, so surviving peaks keep their
+        original order and all parallel arrays stay aligned.
         """
         for name, value, array in (
             ("charge", min_charge, self.charge),
@@ -516,6 +539,13 @@ class Spectrum:
         if max_score is not None and self.iso_score is not None:
             mask &= self.iso_score <= max_score
 
+        if top_n is not None and top_n_per_window is not None:
+            raise ValueError(
+                "top_n and top_n_per_window are mutually exclusive; applying a global cut "
+                "and a per-window cut together is ambiguous (the two orders select "
+                "different peaks). Pass exactly one."
+            )
+
         # Apply top_n after other filters
         if top_n is not None:
             valid_indices = np.where(mask)[0]
@@ -526,6 +556,31 @@ class Spectrum:
             top_indices = valid_indices[order]
             mask = np.zeros(len(self.mz), dtype=bool)
             mask[top_indices] = True
+
+        elif top_n_per_window is not None:
+            window_n, window_width = top_n_per_window
+            if window_n < 1:
+                raise ValueError(f"top_n_per_window peak count must be >= 1; got {window_n!r}")
+            if not window_width > 0:
+                raise ValueError(f"top_n_per_window window width must be > 0; got {window_width!r}")
+
+            valid_indices = np.where(mask)[0]
+            # Fixed bins anchored at 0, so a peak belongs to [k * width, (k + 1) * width).
+            # Left as float: an integer cast would be undefined for a NaN m/z, whereas a
+            # NaN bin simply sorts into its own trailing group.
+            bins = np.floor(self.mz[valid_indices] / window_width)
+            # lexsort keys run least- to most-significant: group by window, then order by
+            # descending intensity, then by position among the surviving peaks so ties keep
+            # the earlier peak. valid_indices ascends, so position is the original order.
+            position = np.arange(len(valid_indices))
+            order = np.lexsort((position, -self.intensity[valid_indices], bins))
+            grouped_bins = bins[order]
+            # position doubles as the row index into the grouped arrays, so subtracting the
+            # first row of each window gives that peak's intensity rank within its window.
+            group_start = np.searchsorted(grouped_bins, grouped_bins, side="left")
+            keep = order[(position - group_start) < window_n]
+            mask = np.zeros(len(self.mz), dtype=bool)
+            mask[valid_indices[keep]] = True
 
         return self._apply_mask(mask, inplace=inplace)
 
