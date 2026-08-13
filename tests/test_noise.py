@@ -136,3 +136,23 @@ def test_unknown_method_raises_value_error() -> None:
     bad: Any = cast(Any, "bogus")
     with pytest.raises(ValueError, match="Unknown method"):
         estimate_noise_level(arr, method=bad)
+
+
+# ---------------------------------------------------------------------------
+# bool is not a threshold
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("flag", [True, False])
+def test_bool_method_raises_instead_of_becoming_a_threshold(flag: bool) -> None:
+    """``bool`` subclasses ``int``; ``True`` must not slip through as 1.0."""
+    arr = _rng_intensities()
+    bad: Any = cast(Any, flag)
+    with pytest.raises(ValueError, match="Unknown method"):
+        estimate_noise_level(arr, method=bad)
+
+
+def test_bool_method_raises_on_an_empty_array_too() -> None:
+    bad: Any = cast(Any, True)
+    with pytest.raises(ValueError, match="Unknown method"):
+        estimate_noise_level(np.zeros(0), method=bad)

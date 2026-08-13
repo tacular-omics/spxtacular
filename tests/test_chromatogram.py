@@ -10,6 +10,7 @@ scan, so it is not globally sorted.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -172,6 +173,35 @@ class TestExtractXic:
         assert full.total > 0
         assert excluded.total == 0.0
         assert included.total == pytest.approx(full.total)
+
+    def test_ion_mobility_window_is_recorded_as_applied(self) -> None:
+        chrom = extract_xic(_run(with_im=True), [500.0], tolerance=20, im_window=(0.95, 1.05))[0]
+        assert chrom.meta["im_window"] == (0.95, 1.05)
+        assert chrom.meta["im_window_applied"] is True
+        assert chrom.meta["im_window_skipped"] == 0
+
+    def test_ion_mobility_window_without_im_warns_and_says_so(self) -> None:
+        """An IM-less run cannot be gated; the metadata must not claim it was."""
+        run = _run(with_im=False)
+        with pytest.warns(UserWarning, match="no spectrum carries ion mobility"):
+            chrom = extract_xic(run, [500.0], tolerance=20, im_window=(0.0, 0.1))[0]
+        # The window excludes everything, yet the trace is the ungated one.
+        assert chrom.total == pytest.approx(extract_xic(run, [500.0], tolerance=20)[0].total)
+        assert chrom.meta["im_window"] == (0.0, 0.1)
+        assert chrom.meta["im_window_applied"] is False
+        assert chrom.meta["im_window_skipped"] == len(run)
+
+    def test_ion_mobility_window_warns_about_the_scans_it_could_not_gate(self) -> None:
+        mixed = [*_run(n_scans=3, with_im=True), *_run(n_scans=2, with_im=False)]
+        with pytest.warns(UserWarning, match="not applied to 2 of 5 spectra"):
+            chrom = extract_xic(mixed, [500.0], tolerance=20, im_window=(1.15, 1.30))[0]
+        assert chrom.meta["im_window_applied"] is True
+        assert chrom.meta["im_window_skipped"] == 2
+
+    def test_no_ion_mobility_window_means_no_warning(self) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            extract_xic(_run(with_im=False), TARGETS, tolerance=20)
 
     def test_no_targets_returns_nothing(self) -> None:
         assert extract_xic(_run(), []) == []

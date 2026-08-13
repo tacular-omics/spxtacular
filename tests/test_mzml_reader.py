@@ -1,3 +1,4 @@
+import base64
 import pathlib
 
 import numpy as np
@@ -243,3 +244,107 @@ def test_gz_getitem_by_index():
     r = MzmlReader(str(EXAMPLE_MZML_GZ))
     spec = r[0]
     assert isinstance(spec, MsnSpectrum)
+
+
+# ---------------------------------------------------------------------------
+# Deconvoluted spectra
+#
+# "charge deconvolution" (MS:1000034) is written on a <processingMethod>, not on
+# the spectrum, so a spectrum only reveals it through its dataProcessingRef.
+# example.mzML already declares such a processing entry, so these fixtures only
+# have to add the charge array and the reference.
+# ---------------------------------------------------------------------------
+
+DECONVOLUTION_DP = "CompassXtract_x0020_processing"  # declares MS:1000034
+CONVERSION_DP = "pwiz_processing"  # declares only "Conversion to mzML"
+
+
+def _charge_binary_array(n_values: int) -> str:
+    charges = np.full(n_values, 2.0, dtype=np.float64)
+    encoded = base64.b64encode(charges.tobytes()).decode()
+    return (
+        f'<binaryDataArray encodedLength="{len(encoded)}">\n'
+        '<cvParam cvRef="MS" accession="MS:1000523" name="64-bit float" value=""/>\n'
+        '<cvParam cvRef="MS" accession="MS:1000576" name="no compression" value=""/>\n'
+        '<cvParam cvRef="MS" accession="MS:1000516" name="charge array" value=""/>\n'
+        f"<binary>{encoded}</binary>\n"
+        "</binaryDataArray>\n"
+    )
+
+
+def _mzml_with_charge_array(tmp_path, processing_ref=None, sole_processing=None):
+    """A copy of example.mzML whose first spectrum carries a charge array.
+
+    ``processing_ref`` is written onto the spectrum element; ``sole_processing``
+    reduces the file to that one dataProcessing entry, which is the case where an
+    unreferenced spectrum can still be resolved.
+    """
+    source = EXAMPLE_MZML.read_text(encoding="ISO-8859-1")
+    # Drop the indexedmzML wrapper: editing the body invalidates its offsets, and
+    # mzmlpy rebuilds the index for a plain mzML.
+    body = source[source.index("<mzML ") : source.index("</mzML>") + len("</mzML>")]
+
+    spectrum_tag = '<spectrum index="0" id="scan=19" defaultArrayLength="15">'
+    if processing_ref is not None:
+        body = body.replace(spectrum_tag, spectrum_tag[:-1] + f' dataProcessingRef="{processing_ref}">', 1)
+
+    start = body.index('<binaryDataArrayList count="2">')
+    end = body.index("</binaryDataArrayList>", start)
+    body = body[:start] + body[start:end].replace('count="2"', 'count="3"') + _charge_binary_array(15) + body[end:]
+
+    if sole_processing is not None:
+        dropped = CONVERSION_DP if sole_processing == DECONVOLUTION_DP else DECONVOLUTION_DP
+        block_start = body.index(f'<dataProcessing id="{dropped}">')
+        block_end = body.index("</dataProcessing>", block_start) + len("</dataProcessing>")
+        body = body[:block_start] + body[block_end:]
+        body = body.replace('<dataProcessingList count="2">', '<dataProcessingList count="1">', 1)
+        body = body.replace(f'defaultDataProcessingRef="{dropped}"', f'defaultDataProcessingRef="{sole_processing}"')
+
+    path = tmp_path / "deconvoluted.mzML"
+    path.write_text('<?xml version="1.0" encoding="ISO-8859-1"?>\n' + body, encoding="ISO-8859-1")
+    return path
+
+
+def test_charge_array_referencing_deconvolution_processing_is_deconvoluted(tmp_path):
+    path = _mzml_with_charge_array(tmp_path, processing_ref=DECONVOLUTION_DP)
+    with MzmlReader(str(path)) as r:
+        spec = r[0]
+    assert spec.charge is not None
+    assert spec.spectrum_type == SpectrumType.DECONVOLUTED
+
+
+def test_deconvolution_is_detected_when_iterating_too(tmp_path):
+    path = _mzml_with_charge_array(tmp_path, processing_ref=DECONVOLUTION_DP)
+    with MzmlReader(str(path)) as r:
+        spec = next(iter(r.ms1))
+    assert spec.spectrum_type == SpectrumType.DECONVOLUTED
+
+
+def test_charge_array_referencing_plain_conversion_stays_centroid(tmp_path):
+    """A charge array is usually just a per-peak annotation."""
+    path = _mzml_with_charge_array(tmp_path, processing_ref=CONVERSION_DP)
+    with MzmlReader(str(path)) as r:
+        spec = r[0]
+    assert spec.charge is not None
+    assert spec.spectrum_type == SpectrumType.CENTROID
+
+
+def test_unreferenced_spectrum_is_ambiguous_when_several_processings_exist(tmp_path):
+    """mzmlpy does not expose defaultDataProcessingRef, so this stays centroid."""
+    path = _mzml_with_charge_array(tmp_path)
+    with MzmlReader(str(path)) as r:
+        spec = r[0]
+    assert spec.spectrum_type == SpectrumType.CENTROID
+
+
+def test_unreferenced_spectrum_resolves_against_a_sole_processing_entry(tmp_path):
+    path = _mzml_with_charge_array(tmp_path, sole_processing=DECONVOLUTION_DP)
+    with MzmlReader(str(path)) as r:
+        spec = r[0]
+    assert spec.spectrum_type == SpectrumType.DECONVOLUTED
+
+
+def test_a_file_without_deconvolution_processing_is_unaffected():
+    """The stock fixture has no charge arrays; nothing may be promoted."""
+    with MzmlReader(str(EXAMPLE_MZML)) as r:
+        assert all(s.spectrum_type != SpectrumType.DECONVOLUTED for s in r.ms1)
