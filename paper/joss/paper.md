@@ -35,6 +35,10 @@ neutral = (spec.denoise(method="mad")
                .decharge())
 ```
 
+\autoref{fig:abstract} shows that chain applied to one real MS2 scan, each stage drawn by the library itself.
+
+![The pipeline on one real MS2 scan, every panel drawn by the library: the spectrum as read (left), its isotope clusters coloured by assigned charge (middle), and the neutral masses `decharge()` returns (right).](figures/graphical_abstract.png){ #fig:abstract }
+
 A `SpectrumType` tag records whether the object holds profile, centroid or deconvoluted data, and guards the operations that make sense in only one of those states. Calling `decharge()` on a spectrum that was never deconvoluted raises an error instead of silently returning wrong masses. The library depends only on NumPy [@harris2020numpy], pandas, Plotly, and two companion packages for peptide chemistry and fragment notation.
 
 # Statement of need
@@ -49,9 +53,7 @@ The library also treats visualization as part of the analysis, not a reporting s
 
 Isotope cluster detection follows the greedy strategy that MS-Deconv and THRASH [@horn2000thrash] established, with scoring made explicit and per-peak. The algorithm seeds on the most intense unused peak. For each state in the requested range it extends a candidate cluster forward in steps of one neutron mass divided by that state, then scores the candidate against a theoretical isotope distribution using the Bhattacharyya coefficient. Detectable peaks that are missing from the envelope are penalized, and the best scoring state wins. Clusters falling below `min_score` are recorded as singletons rather than discarded, and their peaks stay available to later seeds.
 
-The score survives into the result as `iso_score`, so the threshold is a filter the user controls, not a constant compiled into the algorithm. \autoref{fig:pipeline} shows the effect on one real spectrum: tandem mass spectrometry (MS2) scan 2 of the Bruker timsTOF example acquisition shipped with the library, deconvoluted over charges one to 4 at 15 ppm tolerance. Of 500 centroid peaks, 81 resolved into 38 charge-assigned clusters carrying 22.5% of the total ion current at a mean isotope score of 0.86. States as high as 4 were assigned, and `decharge()` returned 38 neutral masses up to 2,282 Da.
-
-![One MS2 spectrum before and after deconvolution, drawn by the library's own `mirror_plot`. Above the axis, the deconvoluted spectrum colored by assigned charge on the ordinal ramp; unassigned singletons stay neutral gray. Below it, the vendor centroid peaks the clusters were built from, mirrored so a cluster can be traced back to the peaks that produced it.](figures/pipeline.png){ #fig:pipeline }
+The score survives into the result as `iso_score`, so the threshold is a filter the user controls, not a constant compiled into the algorithm. The spectrum in \autoref{fig:abstract} makes the effect concrete: tandem mass spectrometry (MS2) scan 2 of the Bruker timsTOF example acquisition shipped with the library, deconvoluted over charges one to 4 at 15 ppm tolerance. Of 500 centroid peaks, 81 resolved into 38 charge-assigned clusters carrying 22.5% of the total ion current at a mean isotope score of 0.86. States as high as 4 were assigned, and `decharge()` returned 38 neutral masses up to 2,282 Da.
 
 # Reading files and interoperating
 

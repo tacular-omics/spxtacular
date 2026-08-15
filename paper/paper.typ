@@ -98,6 +98,18 @@ neutral = (spec.denoise(method="mad")
                .decharge())
 ```
 
+@fig:abstract shows that chain applied to one real MS2 scan, each stage drawn by
+the library itself.
+
+#figure(
+  fig("fig.abstract", width: 100%),
+  caption: [
+    The pipeline on one real MS2 scan, every panel drawn by the library: the
+    spectrum as read (left), its isotope clusters coloured by assigned charge
+    (middle), and the neutral masses `decharge()` returns (right).
+  ],
+) <fig:abstract>
+
 A `SpectrumType` tag records whether the object holds profile, centroid or
 deconvoluted data, and guards the operations that make sense in only one of
 those states. Calling `decharge()` on a spectrum that was never deconvoluted
@@ -147,8 +159,8 @@ Clusters falling below `min_score` are recorded as singletons rather than
 discarded, and their peaks stay available to later seeds.
 
 The score survives into the result as `iso_score`, so the threshold is a filter
-the user controls, not a constant compiled into the algorithm. @fig:pipeline
-shows the effect on one real spectrum: tandem mass spectrometry (MS2) scan #s(
+the user controls, not a constant compiled into the algorithm. The spectrum in
+@fig:abstract makes the effect concrete: tandem mass spectrometry (MS2) scan #s(
   "demo.scan",
 ) of the Bruker timsTOF example acquisition shipped with the library,
 deconvoluted over charges one to #s("demo.max_charge_searched") at #s(
@@ -162,17 +174,6 @@ States as high as #s("demo.max_charge_found") were assigned, and `decharge()`
 returned #s("demo.neutral_masses") neutral masses up to #s(
   "demo.max_neutral_mass",
 ) Da.
-
-#figure(
-  fig("fig.pipeline", width: 100%),
-  caption: [
-    One MS2 spectrum before and after deconvolution, drawn by the library's own
-    `mirror_plot`. Above the axis, the deconvoluted spectrum colored by assigned
-    charge on the ordinal ramp; unassigned singletons stay neutral gray. Below
-    it, the vendor centroid peaks the clusters were built from, mirrored so a
-    cluster can be traced back to the peaks that produced it.
-  ],
-) <fig:pipeline>
 
 = Reading files and interoperating
 

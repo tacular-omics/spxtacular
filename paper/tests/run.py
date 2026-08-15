@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import difflib
+import os
 import re
 import shutil
 import subprocess
@@ -1377,8 +1378,15 @@ def adoption_cases() -> bool:
                     if f.level == "error"]:
                 print("  adopt: an adopted entry with no note passed")
                 ok = False
-            # A changed file is an error until re-adoption accepts it.
-            (root / "figures" / "legacy_plot.png").write_bytes(b"new-bytes")
+            # A changed file is an error until re-adoption accepts it. The
+            # rewrite is same-size, so back-to-back writes can land inside one
+            # mtime tick -- the single blind spot hashcache's stat key accepts
+            # by design, and one no real edit hits. Bump the mtime so this
+            # simulated edit looks like an actual one.
+            changed = root / "figures" / "legacy_plot.png"
+            changed.write_bytes(b"new-bytes")
+            st = changed.stat()
+            os.utime(changed, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
             if not [f for f in ca._entry("fig.legacy-plot", e) if f.level == "error"]:
                 print("  adopt: a changed adopted file passed the hash check")
                 ok = False

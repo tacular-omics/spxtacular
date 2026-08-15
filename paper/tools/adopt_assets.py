@@ -102,20 +102,22 @@ def adopt(root: Path, note: str) -> tuple[list[str], int]:
                 "path": rel,
                 "kind": "figure" if rel.startswith("figures/") else "table",
                 "desc": "",
-                "hash": hashcache.sha(f),
+                "hash": hashcache.sha_now(f),
                 "origin": {"by": "adopted", "note": note.strip()},
                 "inputs": {},
             }
             lines.append(f"  adopted   {rel} as {id}")
 
     # Refresh adopted entries whose file changed: re-running this tool IS the
-    # deliberate acceptance, the same contract as `just pin`.
+    # deliberate acceptance, the same contract as `just pin`. sha_now, not sha:
+    # this hash becomes recorded truth, so it must come from the bytes -- the
+    # stat-keyed cache can miss a same-size rewrite inside one mtime tick.
     for id, rec in sorted(values.items()):
         if rec.get("origin", {}).get("by") != "adopted":
             continue
         p = root / rec.get("path", "")
-        if p.is_file() and hashcache.sha(p) != rec.get("hash"):
-            rec["hash"] = hashcache.sha(p)
+        if p.is_file() and (fresh := hashcache.sha_now(p)) != rec.get("hash"):
+            rec["hash"] = fresh
             lines.append(f"  refreshed {rec['path']}: hash re-recorded, "
                          f"accepting the change")
 

@@ -57,6 +57,14 @@ def _save() -> None:
             pass                      # a read-only tree still gets its answer
 
 
+def _digest(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return "sha256:" + h.hexdigest()
+
+
 def sha(p: Path) -> str:
     """sha256 of the file, cached on (size, mtime_ns)."""
     global _dirty
@@ -66,11 +74,25 @@ def sha(p: Path) -> str:
     hit = cache.get(key)
     if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns:
         return hit[2]
-    h = hashlib.sha256()
-    with p.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    digest = "sha256:" + h.hexdigest()
+    digest = _digest(p)
     cache[key] = [st.st_size, st.st_mtime_ns, digest]
+    _dirty = True
+    return digest
+
+
+def sha_now(p: Path) -> str:
+    """sha256 computed from the bytes right now, refreshing the cache entry.
+
+    For RECORDING paths. A hash that is about to become recorded truth must be
+    computed from the content, never looked up through the stat-keyed shortcut
+    above: a same-size rewrite landing inside one mtime tick would otherwise be
+    recorded stale. The fresh answer still lands in the cache, so the next
+    check reuses it.
+    """
+    global _dirty
+    cache = _load()
+    digest = _digest(p)
+    st = p.stat()
+    cache[str(p.resolve())] = [st.st_size, st.st_mtime_ns, digest]
     _dirty = True
     return digest
