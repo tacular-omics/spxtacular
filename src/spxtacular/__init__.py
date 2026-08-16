@@ -16,6 +16,7 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .interop import from_matchms, from_spectrum_utils, to_matchms, to_spectrum_utils
 from .matching import match_fragments
 from .peaklist import MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
@@ -94,6 +95,10 @@ __all__ = [
     "mass_error_plot",
     "facet_plot",
     "match_fragments",
+    "to_matchms",
+    "from_matchms",
+    "to_spectrum_utils",
+    "from_spectrum_utils",
     "score",
     "build_plot_table",
     "build_annot_plot_table",

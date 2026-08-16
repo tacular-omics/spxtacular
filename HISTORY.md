@@ -1,5 +1,18 @@
 # History
 
+## Unreleased
+
+### New — matchms and spectrum_utils interoperability
+
+* `to_matchms` / `from_matchms` convert spectra to and from the matchms ecosystem. Standard
+  matchms metadata fields remain directly usable by its filters and similarity tools, while a
+  namespaced JSON payload preserves spxtacular's richer MSn metadata and per-peak charge, ion
+  mobility, and isotope scores. Extension arrays are realigned when matchms filters remove peaks.
+* `to_spectrum_utils` / `from_spectrum_utils` bridge centroided MS/MS spectra for ProForma
+  annotation and plotting. The adapter validates the required single precursor and explicitly
+  warns about fields that spectrum_utils cannot represent.
+* Install either backend with `[matchms]` / `[spectrum-utils]`, or both with `[interop]`.
+
 ## 0.5.0 (2026-08-03)
 
 ### Breaking changes — scoring maths

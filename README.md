@@ -154,6 +154,29 @@ html = spx.table_view(spx.build_annot_plot_table(spec, frags))
 spx.save_figure(fig, "spectrum.html")   # .png/.svg/.pdf also work — those need kaleido
 ```
 
+## matchms and spectrum_utils
+
+Install `spxtacular[matchms]`, `spxtacular[spectrum-utils]`, or `spxtacular[interop]` for both.
+The integrations are lazy optional adapters, so the base package does not import either stack.
+
+```python
+import spxtacular as spx
+
+# matchms pipelines, similarities, Spec2Vec, MS2DeepScore, etc.
+matchms_spec = spx.to_matchms(spec, extra_metadata={"smiles": "CCO"})
+restored = spx.from_matchms(matchms_spec)
+
+# spectrum_utils ProForma annotation and Matplotlib / Altair plots
+su_spec = spx.to_spectrum_utils(ms2_spec)
+su_spec.annotate_proforma("PEPTIDE/2", 10, "ppm")
+```
+
+The matchms bridge stable-sorts peaks and includes conventional metadata plus a namespaced payload
+that preserves spxtacular's richer fields on return conversion. The spectrum_utils bridge is
+necessarily lossy: its model holds one precursor and no per-peak charge, ion mobility, isotope
+score, or acquisition metadata. It warns when populated fields are dropped, and its upstream model
+stores intensities as `float32`.
+
 ## Sharing spectra
 
 With the optional `[spectrl]` extra, encode a complete spectrum (peaks, charges,

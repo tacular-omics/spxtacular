@@ -32,12 +32,81 @@ from spxtacular import (
     to_inline_spectrum,
     to_spectrl_token, from_spectrl_token,
     to_spectrl_url, from_spectrl_url,
+    # Ecosystem interoperability
+    to_matchms, from_matchms,
+    to_spectrum_utils, from_spectrum_utils,
 )
 ```
 
 `SpectrumType`, `AcquisitionType`, `MatchedFragment`, `estimate_noise_level`, and the reader lookup
 classes (including `PeakListLookup`) are **not** exported from the package root; import them from
 their defining modules as shown in the relevant sections below.
+
+---
+
+## Ecosystem interoperability
+
+The adapters import their optional dependency only when called. Install `spxtacular[matchms]`,
+`spxtacular[spectrum-utils]`, or `spxtacular[interop]` for both.
+
+### `to_matchms` / `from_matchms`
+
+```python
+to_matchms(
+    spectrum: Spectrum,
+    *,
+    extra_metadata: Mapping[str, object] | None = None,
+    include_spxtacular_metadata: bool = True,
+) -> matchms.Spectrum
+
+from_matchms(
+    spectrum: matchms.Spectrum,
+    *,
+    prefer_spxtacular_metadata: bool = True,
+) -> Spectrum
+```
+
+`to_matchms` stable-sorts peaks by m/z and populates matchms fields including `id`,
+`precursor_mz`, `charge`, `retention_time`, `ionmode`, `scan_number`, and `collision_energy`.
+`extra_metadata` adds values outside spxtacular's model, such as `smiles` or `inchikey`;
+spxtacular-derived values win on a key collision.
+
+By default, `spxtacular_metadata` contains a namespaced JSON payload with all spxtacular metadata
+and the per-peak `charge`, `im`, and `iso_score` arrays. A matchms operation that removes peaks is
+supported: return conversion aligns surviving m/z values with those arrays. If an operation changes
+m/z values and alignment is no longer possible, the extension arrays are dropped with a warning
+rather than attached to the wrong peaks. Set `include_spxtacular_metadata=False` for a conventional,
+intentionally lossy matchms object; set `prefer_spxtacular_metadata=False` to ignore an existing
+payload while importing.
+
+### `to_spectrum_utils` / `from_spectrum_utils`
+
+```python
+to_spectrum_utils(
+    spectrum: MsnSpectrum,
+    *,
+    precursor_index: int = 0,
+    identifier: str | None = None,
+    warn_on_loss: bool = True,
+) -> spectrum_utils.spectrum.MsmsSpectrum
+
+from_spectrum_utils(
+    spectrum: spectrum_utils.spectrum.MsmsSpectrum,
+    *,
+    warn_on_loss: bool = True,
+) -> MsnSpectrum
+```
+
+The target model requires centroided peaks, one precursor m/z and charge, and an identifier.
+`identifier` falls back to `native_id`, then `scan=<scan_number>`; absent required information
+raises instead of being invented. Use `precursor_index` when an `MsnSpectrum` has multiple
+precursors.
+
+This conversion is explicitly lossy. spectrum_utils has no fields for per-peak charge, ion
+mobility, isotope score, multiple precursors, or most acquisition metadata, and internally stores
+intensities as `float32`. Populated unsupported fields produce a `UserWarning`. ProForma
+annotations applied by spectrum_utils are likewise warned about and dropped by
+`from_spectrum_utils`, because `MsnSpectrum` has no persistent annotation field.
 
 ---
 

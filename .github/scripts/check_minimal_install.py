@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import sys
 
-OPTIONAL_BACKENDS = ("tdfpy", "mzmlpy", "numba", "spectrl")
+OPTIONAL_BACKENDS = ("tdfpy", "mzmlpy", "numba", "spectrl", "matchms", "spectrum_utils")
 
 
 def main() -> int:
+    import numpy as np
+
     import spxtacular
-    from spxtacular import DReader, MzmlReader
+    from spxtacular import DReader, MsnSpectrum, MzmlReader, Precursor, Spectrum, to_matchms, to_spectrum_utils
 
     failures: list[str] = []
 
@@ -34,6 +36,33 @@ def main() -> int:
         name = cls.__name__
         try:
             cls("nonexistent.path")
+        except ImportError as exc:
+            print(f"ok: {name}(...) raised ImportError: {exc}")
+        except Exception as exc:
+            failures.append(f"{name} raised {type(exc).__name__} instead of ImportError: {exc}")
+        else:
+            failures.append(f"{name} should raise ImportError without its backend")
+
+    optional_calls = (
+        (
+            "to_matchms",
+            lambda: to_matchms(Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))),
+        ),
+        (
+            "to_spectrum_utils",
+            lambda: to_spectrum_utils(
+                MsnSpectrum(
+                    mz=np.array([100.0]),
+                    intensity=np.array([1.0]),
+                    native_id="scan=1",
+                    precursors=[Precursor(mz=500.0, intensity=0.0, charge=2, is_monoisotopic=None)],
+                )
+            ),
+        ),
+    )
+    for name, call in optional_calls:
+        try:
+            call()
         except ImportError as exc:
             print(f"ok: {name}(...) raised ImportError: {exc}")
         except Exception as exc:

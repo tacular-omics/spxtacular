@@ -20,7 +20,8 @@ pip install spxtacular[mzml]     # mzML via mzmlpy
 pip install spxtacular[thermo]   # Thermo .raw via fisher-py (also needs a .NET runtime)
 pip install spxtacular[readers]  # all three
 pip install spxtacular[spectrl]  # share spectra as URL-safe tokens (spectrl)
-pip install spxtacular[all]      # readers + numba JIT + spectrl
+pip install spxtacular[interop]  # matchms + spectrum_utils adapters
+pip install spxtacular[all]      # readers + numba JIT + spectrl + interop
 ```
 
 `DReader`, `MzmlReader`, and `ThermoReader` remain importable from `spxtacular` regardless of which
@@ -138,6 +139,24 @@ restored = Spectrum.from_spectrl_token(token)
 url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable link)
 restored = Spectrum.from_spectrl_url(url)
 ```
+
+### Use matchms or spectrum_utils
+
+Requires `[matchms]`, `[spectrum-utils]`, or the combined `[interop]` extra.
+
+```python
+import spxtacular as spx
+
+matchms_spec = spx.to_matchms(ms2_spec, extra_metadata={"smiles": "CCO"})
+restored = spx.from_matchms(matchms_spec)
+
+su_spec = spx.to_spectrum_utils(ms2_spec)
+su_spec.annotate_proforma("PEPTIDE/2", 10, "ppm")
+```
+
+The matchms conversion uses conventional metadata fields and carries a namespaced payload for a
+faithful return conversion. The spectrum_utils model is narrower and the adapter warns when it
+drops populated fields; see [API reference — Ecosystem interoperability](api.md#ecosystem-interoperability).
 
 ## Key concepts
 

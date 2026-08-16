@@ -29,6 +29,7 @@ src/spxtacular/
 ├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
 ├── similarity.py    # spectrum-to-spectrum similarity (cosine, modified_cosine, entropy)
 ├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
+├── interop.py       # matchms + spectrum_utils conversion adapters (optional extras)
 ├── chromatogram.py  # run-level extraction (extract_chromatogram, extract_xic)
 ├── noise.py         # noise estimation (MAD, fixed threshold)
 ├── theme.py         # plot palettes + plotly template (single source of truth for colour)
@@ -101,6 +102,7 @@ neutral = filtered.decharge()
 - **fisher-py** *(optional)* — Thermo `.raw` reading; required only for `ThermoReader`. Install with `pip install spxtacular[thermo]`. Needs a .NET runtime on the machine; `import fisher_py` boots it and raises `RuntimeError` without one, so `thermo.py` imports it lazily (never at `import spxtacular` time) — keep it that way
 - **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
 - **spectrl** *(optional)* — token / URL spectrum serialisation used by `spectrl_bridge.py`; required only for `to_spectrl_token`/`to_spectrl_url` and their inverses. Install with `pip install spxtacular[spectrl]`
+- **matchms / spectrum_utils** *(optional)* — ecosystem conversion adapters in `interop.py`; both imports stay lazy. Install individually with `[matchms]` / `[spectrum-utils]`, or together with `[interop]`.
 
 `DReader`, `MzmlReader`, and `ThermoReader` remain importable from `spxtacular`
 regardless of whether their backends are installed; only instantiation raises

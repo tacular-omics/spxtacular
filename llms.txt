@@ -16,6 +16,7 @@ pip install spxtacular[bruker]   # DReader — Bruker timsTOF .d files (needs td
 pip install spxtacular[mzml]     # MzmlReader — .mzML files (needs mzmlpy)
                                  # MGF/MS2 need NO extra — MgfReader/Ms2Reader are pure stdlib
 pip install spxtacular[spectrl]  # to_spectrl_token/url — compact shareable spectrum tokens
+pip install spxtacular[interop]  # matchms + spectrum_utils conversion adapters
 pip install spxtacular[numba]    # JIT-compiles deconvolution (~3-4x speedup)
 pip install spxtacular[all]      # everything above
 ```
@@ -46,6 +47,17 @@ result = (
 
 Methods return a **new** `Spectrum` by default; pass `inplace=True` to mutate and return `self`.
 Methods are chainable because every mutator returns `Self`.
+
+## Ecosystem interoperability
+
+`to_matchms(spec)` stable-sorts peaks, writes standard matchms metadata, and embeds a
+`spxtacular_metadata` JSON payload so `from_matchms(...)` can restore rich MSn metadata and
+per-peak charge / ion mobility / isotope-score arrays. matchms-filtered peak subsets are realigned
+by m/z; m/z-changing operations drop unalignable extension arrays with a warning.
+
+`to_spectrum_utils(ms2)` requires a centroided `MsnSpectrum`, one selected precursor with charge,
+and an identifier (`identifier`, `native_id`, or `scan_number`). That bridge is intentionally
+lossy and warns about unsupported fields; spectrum_utils converts intensity to float32.
 
 ## Spectrum fields
 
