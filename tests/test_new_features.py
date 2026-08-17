@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from spxtacular.core import MsnSpectrum, Precursor, Spectrum, SpectrumType
+from spxtacular.isotopes import PEPTIDE_ISOTOPE_MODEL
 from spxtacular.utils import da_to_ppm, ppm_to_da
 
 # ---------------------------------------------------------------------------
@@ -136,15 +137,11 @@ class TestRemovePrecursorPeak:
         prec_mz = 500.0
         prec_z = 2
         neutral = (prec_mz * prec_z) - (prec_z * PROTON)
-        # Get expected isotope count
-        dist = pt.estimate_isotopic_distribution(
-            neutral,
-            min_abundance_threshold=0.01,
-            use_neutron_count=True,
-        )
-        n_isotopes = len(dist)
+        # Get the offsets selected by the default peptide model.
+        dist = PEPTIDE_ISOTOPE_MODEL.distribution(neutral)
+        isotope_offsets = np.flatnonzero(dist / dist.max() >= 0.01)
         # Build peaks: precursor + all expected isotopes at z=2
-        mz_list = [prec_mz + i * NEUTRON / prec_z for i in range(n_isotopes)]
+        mz_list = [prec_mz + i * NEUTRON / prec_z for i in isotope_offsets]
         mz_list.append(250.0)  # fragment
         mz = np.array(mz_list, dtype=np.float64)
         spec = Spectrum(mz=mz, intensity=np.ones(len(mz_list), dtype=np.float64))

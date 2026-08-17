@@ -25,9 +25,16 @@
 
 # spxtacular
 
-**spxtacular** is a Python library for mass spectrometry spectrum processing. It provides a chainable `Spectrum` API covering the full centroid-to-neutral-mass pipeline: denoising, isotope deconvolution, neutral mass conversion, fragment matching, and PSM scoring — with interactive Plotly visualizations throughout.
+**spxtacular** is a Python library for general mass-spectrum processing across proteomics,
+metabolomics, lipidomics, glycomics, and oligonucleotide analysis. Its chainable `Spectrum` API
+covers denoising, isotope deconvolution, charge assignment, neutral-mass conversion, matching,
+scoring, interoperability, and interactive visualization.
 
 > Part of the [tacular-omics](https://github.com/tacular-omics) ecosystem alongside [peptacular](https://github.com/tacular-omics/peptacular), [paftacular](https://github.com/tacular-omics/paftacular), and [mzmlpy](https://github.com/tacular-omics/mzmlpy).
+
+<p align="center">
+  <img src="paper/figures/graphical_abstract.png" alt="Graphical abstract showing the spxtacular mass spectrometry processing workflow" width="100%"/>
+</p>
 
 ## Install
 
@@ -103,7 +110,7 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx
 
 | Feature | Description |
 |---|---|
-| **Isotope deconvolution** | Bhattacharyya-scored greedy algorithm; optional Numba JIT acceleration |
+| **Isotope deconvolution** | Adaptive BRAIN envelopes, apex-first missing-mono recovery, biological/custom models, and optional Numba acceleration |
 | **Quality filtering** | `min_score`, m/z, intensity, charge, and ion mobility filters |
 | **Neutral mass conversion** | `decharge()` converts charged clusters to neutral masses |
 | **Fragment matching** | `match_fragments()` with ppm/Da tolerance |
@@ -129,6 +136,16 @@ filtered = decon.filter(min_score=0.5)
 
 # 3. Convert to neutral masses (drops singletons)
 neutral = filtered.decharge()
+```
+
+Choose an average-composition model for the analyte class, or supply a custom
+`IsotopeModel`. Peptides remain the default for backward compatibility:
+
+```python
+lipid_neutral = spec.deconvolute(
+    isotope_model="lipid",
+    ionization_model="[M+Na]+",
+).decharge()
 ```
 
 Polarity and adducts are explicit while charge arrays remain positive
@@ -219,6 +236,15 @@ Full documentation with API reference, guides, and interactive plots is availabl
 - [Matching & Scoring](https://tacular-omics.github.io/spxtacular/scoring/)
 - [Visualization](https://tacular-omics.github.io/spxtacular/visualization/)
 - [API Reference](https://tacular-omics.github.io/spxtacular/api/)
+
+## Citing and contributing
+
+Citation metadata is available in
+[`CITATION.cff`](https://github.com/tacular-omics/spxtacular/blob/main/CITATION.cff). A
+version-specific Zenodo DOI will be added after the release is archived. Bug reports, support
+questions, and contributions are welcome; see
+[`CONTRIBUTING.md`](https://github.com/tacular-omics/spxtacular/blob/main/CONTRIBUTING.md) for the
+development workflow and community guidelines.
 
 ## License
 

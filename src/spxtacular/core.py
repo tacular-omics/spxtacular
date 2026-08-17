@@ -1,7 +1,4 @@
-"""
-Spectacular: A peptacular companion for mass spectrometry data
-Core data structures for spectra
-"""
+"""Chainable mass-spectrum processing and metadata-preserving data models."""
 
 import warnings
 from dataclasses import dataclass, fields, replace
@@ -19,7 +16,7 @@ import numpy as np
 import peptacular as pt
 from numpy.typing import NDArray
 
-from .decon.scored import deconvolve_spectrum as _deconvolve
+from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
     DEFAULT_FRAGMENT_TOLERANCE_TYPE,
@@ -40,6 +37,7 @@ from .ionization import (
     IonizationModelLike,
     resolve_ionization_model,
 )
+from .isotopes import IsotopeModelLike, resolve_isotope_model
 from .noise import estimate_noise_level
 
 # ============================================================================
@@ -1288,6 +1286,13 @@ class Spectrum:
         inplace: bool = False,
         min_intensity: float | Literal["min"] = "min",
         min_score: float = 0.0,
+        isotope_model: IsotopeModelLike = "peptide",
+        min_isotope_abundance: float = 0.01,
+        max_isotope_fold_error: float = 2.0,
+        max_isotope_gaps: int = 0,
+        max_isotopes: int | None = None,
+        im_tolerance: float = 0.05,
+        im_tolerance_type: Literal["relative", "absolute"] = "relative",
         ionization_model: IonizationModelLike | None = None,
     ) -> Self:
         min_charge, max_charge = charge_range
@@ -1313,9 +1318,10 @@ class Spectrum:
         else:
             resolved_min_intensity = float(min_intensity)
 
+        resolved_isotope = resolve_isotope_model(isotope_model)
         resolved_ionization = self._resolve_ionization_model(ionization_model)
 
-        new_mz, new_charge, new_intensity, new_score = _deconvolve(
+        new_mz, new_charge, new_intensity, new_score, source_indices = _deconvolve(
             mz=self.mz,
             intensity=self.intensity,
             charge_range=charge_range,
@@ -1325,19 +1331,21 @@ class Spectrum:
             intensity_mode=intensity,
             min_intensity=resolved_min_intensity,
             min_score=min_score,
+            isotope_model=resolved_isotope,
+            min_isotope_abundance=min_isotope_abundance,
+            max_isotope_fold_error=max_isotope_fold_error,
+            max_isotope_gaps=max_isotope_gaps,
+            max_isotopes=max_isotopes,
+            ion_mobility=self.im,
+            im_tolerance=im_tolerance,
+            im_tolerance_type=im_tolerance_type,
             carrier_mass=resolved_ionization.carrier_mass,
         )
 
-        # Carry ion mobility through. Every output m/z is an exact copy of the
-        # m/z of the peak the cluster was anchored on, so the anchor's IM can be
-        # recovered by exact lookup. Dropping it would destroy the IM dimension
-        # for timsTOF data, which is the main reason DReader exists.
-        new_im = None
-        if self.im is not None and len(new_mz) > 0:
-            order = np.argsort(self.mz)
-            pos = np.searchsorted(self.mz[order], new_mz)
-            pos = np.clip(pos, 0, len(order) - 1)
-            new_im = self.im[order[pos]]
+        # Inferred monoisotopic m/z values may not occur in the input. Carry IM
+        # from the observed apex that seeded each winning cluster instead of
+        # trying to recover it by matching the inferred output m/z.
+        new_im = self.im[source_indices] if self.im is not None else None
 
         return self.update(
             mz=new_mz,
@@ -1347,7 +1355,8 @@ class Spectrum:
             iso_score=new_score,
             spectrum_type=SpectrumType.DECONVOLUTED,
             deconvolution=DeconvolutionProvenance(
-                isotope_model="peptide",
+                isotope_model=resolved_isotope.name,
+                isotope_model_definition=resolved_isotope,
                 ionization_model=resolved_ionization,
                 charge_range=charge_range,
                 tolerance=float(tolerance),
@@ -1355,6 +1364,12 @@ class Spectrum:
                 intensity_mode=str(intensity).lower(),
                 min_intensity=resolved_min_intensity,
                 min_score=float(min_score),
+                min_isotope_abundance=float(min_isotope_abundance),
+                max_isotope_fold_error=float(max_isotope_fold_error),
+                max_isotope_gaps=max_isotope_gaps,
+                max_isotopes=max_isotopes,
+                im_tolerance=float(im_tolerance),
+                im_tolerance_type=str(im_tolerance_type).lower(),
             ),
             # Cluster intensities are sums (or base peaks) of the input peaks,
             # so a prior normalisation no longer holds; clearing the flag lets
@@ -1375,9 +1390,9 @@ class Spectrum:
             resolved = resolve_ionization_model(model)
 
         spectrum_polarity = getattr(self, "polarity", None)
-        if explicit and spectrum_polarity is not None and str(spectrum_polarity).lower() != resolved.polarity.value:
+        if explicit and spectrum_polarity is not None and str(spectrum_polarity).lower() != str(resolved.polarity):
             raise ValueError(
-                f"ionization model {resolved.name!r} has {resolved.polarity.value} polarity, "
+                f"ionization model {resolved.name!r} has {resolved.polarity} polarity, "
                 f"but the spectrum polarity is {spectrum_polarity!r}"
             )
         return resolved
@@ -1694,6 +1709,7 @@ class Spectrum:
         isotope_threshold: float = 0.01,
         remove_charge_states: bool = True,
         inplace: bool = False,
+        isotope_model: IsotopeModelLike = "peptide",
         ionization_model: IonizationModelLike | None = None,
     ) -> Self:
         """Remove precursor peak(s), their isotope envelope, and charge states.
@@ -1727,10 +1743,9 @@ class Spectrum:
         tolerance_type:
             ``"Da"`` or ``"ppm"``.
         isotopes:
-            Number of isotope peaks to remove.  ``"auto"`` (default) uses
-            :func:`peptacular.estimate_isotopic_distribution` to determine
-            the number of significant isotopes.  Pass an ``int`` to override
-            (0 = monoisotopic only).
+            Number of isotope peaks to remove. ``"auto"`` (default) uses the
+            selected average-composition model to determine the significant
+            isotopes. Pass an ``int`` to override (0 = monoisotopic only).
         isotope_threshold:
             Minimum relative abundance for an isotope to be considered
             significant when ``isotopes="auto"``.  Default 0.01 (1 %).
@@ -1739,10 +1754,13 @@ class Spectrum:
             peaks at **all** charge states from 1 to ``precursor_charge``.
         inplace:
             Whether to modify the spectrum in place.
+        isotope_model:
+            Average-composition model used when ``isotopes="auto"``. Pass a
+            built-in model name or a custom :class:`~spxtacular.IsotopeModel`.
         ionization_model:
             Charge carrier used for neutral-mass and alternate-charge targets.
-            Defaults to recorded deconvolution provenance, then scan polarity,
-            then historical positive protonation.
+            Defaults to recorded provenance, then scan polarity, then positive
+            protonation.
 
         Returns
         -------
@@ -1756,6 +1774,7 @@ class Spectrum:
             and no precursor information is available.
         """
         NEUTRON: float = pt.C13_NEUTRON_MASS
+        resolved_isotope_model = resolve_isotope_model(isotope_model)
         resolved_ionization = self._resolve_ionization_model(ionization_model)
 
         # -- guard: profile spectra -------------------------------------------
@@ -1801,12 +1820,12 @@ class Spectrum:
                 # Determine isotope offsets
                 if isotopes == "auto":
                     if z is not None:
-                        dist = pt.estimate_isotopic_distribution(
+                        dist = resolved_isotope_model.adaptive_distribution(
                             neutral,
-                            min_abundance_threshold=isotope_threshold,
-                            use_neutron_count=True,
+                            min_relative_abundance=isotope_threshold,
                         )
-                        offsets = [iso.neutron_count for iso in dist]
+                        relative = dist / float(dist.max())
+                        offsets = np.flatnonzero(relative >= isotope_threshold).tolist()
                     else:
                         # No charge → can't compute neutral mass reliably
                         offsets = [0]

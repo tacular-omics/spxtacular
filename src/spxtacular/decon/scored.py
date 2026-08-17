@@ -19,10 +19,10 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-import peptacular as pt
 from numpy.typing import NDArray
 
-from .greedy import PROTON_MASS, _find_anchor_candidates, _find_isotope_cluster
+from ..isotopes import IsotopeModelLike, resolve_isotope_model
+from .greedy import NEUTRON_MASS, PROTON_MASS, _has_isotope_neighbor, _match_apex_cluster
 
 try:
     from numba import njit as _njit
@@ -38,63 +38,12 @@ except ImportError:
 #: Accepted ``intensity_mode`` values for :func:`deconvolve_spectrum`.
 _INTENSITY_MODES: tuple[str, ...] = ("total", "base")
 
-# ---------------------------------------------------------------------------
-# Isotope template table (built once, looked up by neutral mass)
-# ---------------------------------------------------------------------------
-
-_MAX_ISO: int = 10
-_MASS_STEP: int = 50
-_MAX_MASS: int = 20000
-
-#: How many neutron steps to search *below* the seed for the monoisotopic peak.
-#: The seed is the most intense peak, which drifts to A+1 above ~1900 Da and to
-#: A+2 above ~3500 Da; 4 covers analytes well beyond the template ceiling.
-_MAX_BACK: int = 4
-
-_TEMPLATE_MASSES: NDArray[np.float64] | None = None
-_TEMPLATE_DISTS: NDArray[np.float64] | None = None  # shape (T, _MAX_ISO)
-
-
-def _build_templates() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    masses = np.arange(_MASS_STEP, _MAX_MASS + _MASS_STEP, _MASS_STEP, dtype=np.float64)
-    T = len(masses)
-    dists = np.zeros((T, _MAX_ISO), dtype=np.float64)
-    for i, mass in enumerate(masses):
-        pattern = pt.estimate_isotopic_distribution(
-            float(mass),
-            max_isotopes=_MAX_ISO,
-            min_abundance_threshold=0.0,
-            use_neutron_count=True,
-        )
-        abundances = np.array([iso.abundance for iso in pattern[:_MAX_ISO]], dtype=np.float64)
-        s = abundances.sum()
-        if s > 0.0:
-            dists[i, : len(abundances)] = abundances / s
-    return masses, dists
-
-
-def _get_templates() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    global _TEMPLATE_MASSES, _TEMPLATE_DISTS
-    if _TEMPLATE_MASSES is None:
-        _TEMPLATE_MASSES, _TEMPLATE_DISTS = _build_templates()
-    assert _TEMPLATE_MASSES is not None and _TEMPLATE_DISTS is not None
-    return _TEMPLATE_MASSES, _TEMPLATE_DISTS
-
-
-def _lookup_template(neutral_mass: float) -> NDArray[np.float64]:
-    """Return the normalised isotope distribution closest to neutral_mass.
-
-    The template masses are the regular grid ``_MASS_STEP, 2*_MASS_STEP, ...``, so
-    the nearest one is arithmetic rather than a search. This is called once per
-    (seed, charge, anchor) combination -- tens of thousands of times for a single
-    spectrum -- so the searchsorted it replaces was measurable.
-    """
-    _, dists = _get_templates()
-    # +0.5 then truncate is round-half-up, matching the tie-break of the
-    # searchsorted form this replaced (numpy's round() is half-to-even).
-    idx = int(neutral_mass / _MASS_STEP + 0.5) - 1
-    return dists[min(max(idx, 0), dists.shape[0] - 1)]
-
+# At high neutral masses, several adjacent isotope peaks can have nearly the
+# same predicted abundance. Small measurement fluctuations may therefore move
+# the observed maximum away from the model's strict argmax. Treat contiguous
+# positions this close to the predicted maximum as plausible seed alignments,
+# then let the complete-envelope score choose between them.
+_MIN_SEED_ALIGNMENT_ABUNDANCE: float = 0.9
 
 # ---------------------------------------------------------------------------
 # Scoring
@@ -106,21 +55,22 @@ def _score_cluster(
     obs: NDArray[np.float64],
     template: NDArray[np.float64],
     min_intensity: float,
+    min_relative_abundance: float,
 ) -> float:
     """Isotopic pattern score: bhattacharyya × (1 − missed_penalty).
 
     Parameters
     ----------
     obs:
-        Observed cluster intensities, shape (k,).
+        Observed intensities aligned to theoretical isotope indices. Missing
+        or rejected peaks are zero.
     template:
-        Normalised isotope distribution, shape (_MAX_ISO,).
+        Normalised isotope distribution, same shape as ``obs``.
     min_intensity:
         Absolute intensity floor.  Theoretical peaks scaled below this value
         are treated as undetectable and not penalised when absent.
     """
-    k = len(obs)
-    if k < 2:
+    if np.count_nonzero(obs) < 2:
         # A single peak is not evidence of a charge state.  Scoring it against
         # a one-element template would give a perfect 1.0 (the vector is
         # trivially identical to itself after normalisation), which would beat
@@ -136,14 +86,11 @@ def _score_cluster(
     # Scale template to observed maximum
     scaled_theo = template * (max_obs / max_theo)
 
-    # Pad observed to full template length (zeros beyond what we collected)
-    obs_padded = np.zeros(_MAX_ISO, dtype=np.float64)
-    obs_padded[:k] = obs
+    relative = template / max_theo
+    detectable = (scaled_theo >= min_intensity) & (relative >= min_relative_abundance)
+    include = detectable | (obs > 0.0)
 
-    detectable = scaled_theo >= min_intensity
-    include = detectable | (obs_padded > 0.0)
-
-    obs_f = obs_padded * include
+    obs_f = obs * include
     theo_f = scaled_theo * include
 
     sum_obs = float(obs_f.sum())
@@ -156,7 +103,7 @@ def _score_cluster(
 
     bhatt = float(np.sqrt(obs_n * theo_n).sum())
 
-    missed = float(theo_f[detectable & (obs_padded == 0.0)].sum())
+    missed = float(theo_f[detectable & (obs == 0.0)].sum())
     total_det = float(theo_f[detectable].sum())
     missed_penalty = missed / total_det if total_det > 0.0 else 0.0
 
@@ -168,7 +115,7 @@ def _score_cluster(
 # ---------------------------------------------------------------------------
 
 
-def deconvolve_spectrum(
+def _deconvolve_spectrum(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
     charge_range: tuple[int, int],
@@ -178,8 +125,22 @@ def deconvolve_spectrum(
     intensity_mode: str = "total",
     min_intensity: float = 0.0,
     min_score: float = 0.0,
+    isotope_model: IsotopeModelLike = "peptide",
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    ion_mobility: NDArray[np.float64] | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_type: str = "relative",
     carrier_mass: float = PROTON_MASS,
-) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.int32],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.intp],
+]:
     """Greedy isotope deconvolution with isotopic profile scoring.
 
     Parameters
@@ -197,7 +158,8 @@ def deconvolve_spectrum(
     max_dpeaks:
         Maximum number of output peaks.
     intensity_mode:
-        ``"total"`` (sum of cluster) or ``"base"`` (monoisotopic peak only).
+        ``"total"`` (sum of matched peaks) or ``"base"`` (observed A+0,
+        or zero when the monoisotopic peak is absent).
     min_intensity:
         Absolute intensity threshold for detectability.  Theoretical isotope
         peaks scaled below this value are not penalised when absent.
@@ -207,10 +169,33 @@ def deconvolve_spectrum(
         charge state.  Clusters whose best score falls below this threshold
         are recorded as singletons (charge == -1).  Set to ``0.0`` (default)
         to accept all clusters.
+    isotope_model:
+        Average-composition model used to score isotope envelopes. Pass a
+        preset name, :class:`~spxtacular.isotopes.IsotopeModelType`, or a
+        custom :class:`~spxtacular.isotopes.IsotopeModel`.
+    min_isotope_abundance:
+        Minimum theoretical abundance relative to the envelope apex. Expansion
+        stops when the next isotope falls below this value.
+    max_isotope_fold_error:
+        Maximum allowed ratio between observed and expected intensity. A peak
+        outside ``[1 / value, value]`` stops expansion in that direction.
+    max_isotope_gaps:
+        Missing expected peaks allowed before stopping one direction. Defaults
+        to zero for contiguous centroid envelopes.
+    max_isotopes:
+        Optional hard envelope-length limit. ``None`` chooses the length
+        adaptively from the predicted distribution.
+    ion_mobility:
+        Optional per-peak ion-mobility values. When supplied, candidate peaks
+        are gated and scored against the seed peak's mobility.
+    im_tolerance:
+        Maximum candidate-to-seed mobility difference.
+    im_tolerance_type:
+        ``"relative"`` scales ``im_tolerance`` by the seed mobility;
+        ``"absolute"`` uses it directly.
     carrier_mass:
-        Signed ion-mass delta per unit charge. Positive proton mass preserves
-        the historical ``[M+H]+`` behavior; negative proton mass represents
-        ``[M-H]-``. Used for neutral-mass isotope-template selection.
+        Signed ion-mass delta per unit charge, used to estimate neutral mass
+        for isotope-model selection.
 
     Returns
     -------
@@ -233,13 +218,31 @@ def deconvolve_spectrum(
     if mode not in _INTENSITY_MODES:
         raise ValueError(f"intensity_mode must be one of {_INTENSITY_MODES}, got {intensity_mode!r}")
 
-    if len(mz) == 0:
-        empty = np.empty(0, dtype=np.float64)
-        return empty, np.empty(0, dtype=np.int32), empty, empty
-
+    resolved_model = resolve_isotope_model(isotope_model)
     carrier_mass = float(carrier_mass)
     if not np.isfinite(carrier_mass):
         raise ValueError(f"carrier_mass must be finite, got {carrier_mass!r}")
+    if not np.isfinite(min_isotope_abundance) or not 0.0 < min_isotope_abundance <= 1.0:
+        raise ValueError(f"min_isotope_abundance must be in (0, 1], got {min_isotope_abundance!r}")
+    if not np.isfinite(max_isotope_fold_error) or max_isotope_fold_error < 1.0:
+        raise ValueError(f"max_isotope_fold_error must be finite and at least 1, got {max_isotope_fold_error!r}")
+    if isinstance(max_isotope_gaps, bool) or not isinstance(max_isotope_gaps, int) or max_isotope_gaps < 0:
+        raise ValueError(f"max_isotope_gaps must be a non-negative integer, got {max_isotope_gaps!r}")
+    if max_isotopes is not None and (
+        isinstance(max_isotopes, bool) or not isinstance(max_isotopes, int) or max_isotopes < 1
+    ):
+        raise ValueError(f"max_isotopes must be a positive integer or None, got {max_isotopes!r}")
+    if not np.isfinite(im_tolerance) or im_tolerance < 0.0:
+        raise ValueError(f"im_tolerance must be finite and non-negative, got {im_tolerance!r}")
+    resolved_im_tolerance_type = str(im_tolerance_type).lower()
+    if resolved_im_tolerance_type not in ("relative", "absolute"):
+        raise ValueError(f"im_tolerance_type must be 'relative' or 'absolute', got {im_tolerance_type!r}")
+    if ion_mobility is not None and len(ion_mobility) != len(mz):
+        raise ValueError(f"ion_mobility must have the same length as mz, got {len(ion_mobility)} and {len(mz)}")
+
+    if len(mz) == 0:
+        empty = np.empty(0, dtype=np.float64)
+        return empty, np.empty(0, dtype=np.int32), empty, empty, np.empty(0, dtype=np.intp)
 
     min_charge, max_charge = charge_range
     if min_charge < 1 or max_charge < 1:
@@ -249,6 +252,19 @@ def deconvolve_spectrum(
 
     mz64 = np.ascontiguousarray(mz, dtype=np.float64)
     int64 = np.ascontiguousarray(intensity, dtype=np.float64)
+    use_im = ion_mobility is not None
+    im64 = (
+        np.ascontiguousarray(ion_mobility, dtype=np.float64)
+        if ion_mobility is not None
+        else np.full(len(mz64), np.nan, dtype=np.float64)
+    )
+    source_index_map = np.arange(len(mz64), dtype=np.intp)
+    if len(mz64) > 1 and np.any(mz64[1:] < mz64[:-1]):
+        mz_order = np.argsort(mz64, kind="stable")
+        mz64 = np.ascontiguousarray(mz64[mz_order])
+        int64 = np.ascontiguousarray(int64[mz_order])
+        im64 = np.ascontiguousarray(im64[mz_order])
+        source_index_map = source_index_map[mz_order]
 
     n = len(mz)
     used = np.zeros(n, dtype=np.bool_)
@@ -258,6 +274,7 @@ def deconvolve_spectrum(
     out_total_int = np.zeros(max_dpeaks, dtype=np.float64)
     out_base_int = np.zeros(max_dpeaks, dtype=np.float64)
     out_scores = np.zeros(max_dpeaks, dtype=np.float64)
+    out_source_indices = np.zeros(max_dpeaks, dtype=np.intp)
     n_out = 0
 
     # Seeds are taken most-intense-first. Scanning for the maximum on each pass
@@ -267,9 +284,6 @@ def deconvolve_spectrum(
     # first-index tie-break exactly.
     seed_order = np.argsort(-int64, kind="stable")
     cursor = 0
-    # Reused across seeds rather than reallocated: np.full on a ten-element array
-    # is dominated by call overhead, and this runs once per output peak.
-    best_indices = np.full(10, -1, dtype=np.intp)
 
     while n_out < max_dpeaks:
         while cursor < n and used[seed_order[cursor]]:
@@ -280,67 +294,114 @@ def deconvolve_spectrum(
 
         best_score = -np.inf
         best_charge = min_charge
-        best_indices.fill(-1)
+        best_indices: NDArray[np.intp] | None = None
         best_n = 1
-        best_anchor = seed_idx
+        best_mono_mz = float(mz64[seed_idx])
         best_total = float(int64[seed_idx])
         best_base = float(int64[seed_idx])
 
         for charge in range(min_charge, max_charge + 1):
-            # The seed is the most intense peak, which is only the monoisotopic
-            # peak for smaller analytes.  Try anchoring the cluster at the seed
-            # and at each peak reachable by stepping backwards, then let the
-            # isotope template decide which alignment is real.
-            anchors, n_anchors = _find_anchor_candidates(mz64, used, seed_idx, charge, tolerance, is_ppm, _MAX_BACK)
-            for ai in range(n_anchors):
-                anchor = int(anchors[ai])
-                n_peaks, total_intensity, base_intensity, indices = _find_isotope_cluster(
-                    mz64, int64, used, anchor, charge, tolerance, is_ppm
+            if not _has_isotope_neighbor(
+                mz64,
+                used,
+                seed_idx,
+                charge,
+                tolerance,
+                is_ppm,
+                max_isotope_gaps + 1,
+            ):
+                continue
+            # First estimate treats the seed as A+0. Aligning the predicted
+            # apex with the seed then removes its neutron offset. Repeating this
+            # once or twice resolves the small circular dependency between
+            # neutral mass and the envelope apex.
+            seed_mass = float(mz64[seed_idx]) * charge - carrier_mass * charge
+            if seed_mass <= 0.0:
+                continue
+            template = resolved_model.adaptive_distribution(
+                seed_mass,
+                min_relative_abundance=min_isotope_abundance,
+                max_isotopes=max_isotopes,
+            )
+            apex = int(np.argmax(template))
+            for _ in range(2):
+                neutral_mass = max(0.0, seed_mass - apex * NEUTRON_MASS)
+                updated_template = resolved_model.adaptive_distribution(
+                    neutral_mass,
+                    min_relative_abundance=min_isotope_abundance,
+                    max_isotopes=max_isotopes,
                 )
-                cluster_idx = indices[:n_peaks]
-                # A cluster that does not reach back to the seed describes a
-                # different feature.  Accepting it would leave the seed unused
-                # and re-seed on it forever, so skip it.
-                #
-                # Checked with a Python loop rather than np.any(...): the cluster
-                # holds at most ten entries, and at that size numpy's per-call
-                # overhead costs more than the comparison it performs. The loop
-                # runs once per (seed, charge, anchor) combination, so it is hot.
-                found = False
-                for ci in range(n_peaks):
-                    if indices[ci] == seed_idx:
-                        found = True
-                        break
-                if not found:
-                    continue
-                obs = int64[cluster_idx]
-                neutral_mass = float(mz64[anchor]) * charge - carrier_mass * charge
-                if neutral_mass < 0.0:
-                    continue
-                template = _lookup_template(neutral_mass)
-                score = _score_cluster(obs, template, min_intensity)
+                updated_apex = int(np.argmax(updated_template))
+                template = updated_template
+                if updated_apex == apex:
+                    break
+                apex = updated_apex
+            peak_abundance = float(template[apex])
+            near_apex = template >= peak_abundance * _MIN_SEED_ALIGNMENT_ABUNDANCE
+            left_apex = apex
+            while left_apex > 0 and near_apex[left_apex - 1]:
+                left_apex -= 1
+            right_apex = apex
+            while right_apex + 1 < len(template) and near_apex[right_apex + 1]:
+                right_apex += 1
+
+            # Restrict custom or unusual distributions to the contiguous
+            # near-maximum region containing the strict apex so a distant,
+            # similarly intense mode is not treated as a nearby alignment.
+            candidate_indices = range(left_apex, right_apex + 1)
+
+            for seed_isotope_index in candidate_indices:
+                seed_isotope_index = int(seed_isotope_index)
+                relative = np.ascontiguousarray(
+                    template / float(template[seed_isotope_index]),
+                    dtype=np.float64,
+                )
+                n_peaks, total_intensity, base_intensity, indices = _match_apex_cluster(
+                    mz64,
+                    int64,
+                    im64,
+                    used,
+                    seed_idx,
+                    charge,
+                    tolerance,
+                    is_ppm,
+                    relative,
+                    seed_isotope_index,
+                    min_isotope_abundance,
+                    max_isotope_fold_error,
+                    max_isotope_gaps,
+                    use_im,
+                    im_tolerance,
+                    resolved_im_tolerance_type == "relative",
+                )
+                obs = np.zeros(len(template), dtype=np.float64)
+                matched = indices >= 0
+                obs[matched] = int64[indices[matched]]
+                score = _score_cluster(obs, template, min_intensity, min_isotope_abundance)
                 if score > best_score or (score == best_score and n_peaks > best_n):
                     best_score = score
                     best_charge = charge
-                    best_indices[:] = indices
+                    best_indices = indices
                     best_n = n_peaks
-                    best_anchor = anchor
+                    best_mono_mz = float(mz64[seed_idx]) - seed_isotope_index * NEUTRON_MASS / charge
                     best_total = total_intensity
                     best_base = base_intensity
 
-        accepted = best_n > 1 and best_score >= min_score
+        accepted = best_indices is not None and best_n > 1 and best_score >= min_score
 
-        if accepted:
-            for ki in range(best_n):
-                used[best_indices[ki]] = True
+        if accepted and best_indices is not None:
+            for matched_idx in best_indices:
+                if matched_idx >= 0:
+                    used[matched_idx] = True
         # Always consume the seed: on rejection the rest of the tried cluster
         # stays free and is re-seeded later, and on acceptance this guarantees
         # forward progress even if the seed somehow fell outside the cluster.
         used[seed_idx] = True
 
-        out_mz[n_out] = float(mz64[best_anchor]) if accepted else float(mz64[seed_idx])
+        out_mz[n_out] = best_mono_mz if accepted else float(mz64[seed_idx])
         out_charges[n_out] = best_charge if accepted else -1
         out_scores[n_out] = best_score if accepted else 0.0
+        out_source_indices[n_out] = source_index_map[seed_idx]
         if accepted:
             out_total_int[n_out] = best_total
             out_base_int[n_out] = best_base
@@ -364,7 +425,7 @@ def deconvolve_spectrum(
 
     if n_out == 0:
         empty = np.empty(0, dtype=np.float64)
-        return empty, np.empty(0, dtype=np.int32), empty, empty
+        return empty, np.empty(0, dtype=np.int32), empty, empty, np.empty(0, dtype=np.intp)
 
     out_int = out_base_int[:n_out] if mode == "base" else out_total_int[:n_out]
     order = np.argsort(out_mz[:n_out])
@@ -373,4 +434,102 @@ def deconvolve_spectrum(
         out_charges[:n_out][order],
         out_int[order],
         out_scores[:n_out][order],
+        out_source_indices[:n_out][order],
+    )
+
+
+def deconvolve_spectrum(
+    mz: NDArray[np.float64],
+    intensity: NDArray[np.float64],
+    charge_range: tuple[int, int],
+    tolerance: float,
+    is_ppm: bool,
+    max_dpeaks: int = 2000,
+    intensity_mode: str = "total",
+    min_intensity: float = 0.0,
+    min_score: float = 0.0,
+    isotope_model: IsotopeModelLike = "peptide",
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    ion_mobility: NDArray[np.float64] | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_type: str = "relative",
+    carrier_mass: float = PROTON_MASS,
+) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.float64], NDArray[np.float64]]:
+    """Greedy apex-first isotope deconvolution.
+
+    Every charge is evaluated before the winning candidate consumes peaks.
+    See :meth:`spxtacular.Spectrum.deconvolute` for parameter details.
+    """
+    result = _deconvolve_spectrum(
+        mz=mz,
+        intensity=intensity,
+        charge_range=charge_range,
+        tolerance=tolerance,
+        is_ppm=is_ppm,
+        max_dpeaks=max_dpeaks,
+        intensity_mode=intensity_mode,
+        min_intensity=min_intensity,
+        min_score=min_score,
+        isotope_model=isotope_model,
+        min_isotope_abundance=min_isotope_abundance,
+        max_isotope_fold_error=max_isotope_fold_error,
+        max_isotope_gaps=max_isotope_gaps,
+        max_isotopes=max_isotopes,
+        ion_mobility=ion_mobility,
+        im_tolerance=im_tolerance,
+        im_tolerance_type=im_tolerance_type,
+        carrier_mass=carrier_mass,
+    )
+    return result[0], result[1], result[2], result[3]
+
+
+def _deconvolve_spectrum_with_sources(
+    mz: NDArray[np.float64],
+    intensity: NDArray[np.float64],
+    charge_range: tuple[int, int],
+    tolerance: float,
+    is_ppm: bool,
+    max_dpeaks: int = 2000,
+    intensity_mode: str = "total",
+    min_intensity: float = 0.0,
+    min_score: float = 0.0,
+    isotope_model: IsotopeModelLike = "peptide",
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    ion_mobility: NDArray[np.float64] | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_type: str = "relative",
+    carrier_mass: float = PROTON_MASS,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.int32],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.intp],
+]:
+    """Internal variant that also returns each output cluster's apex source index."""
+    return _deconvolve_spectrum(
+        mz=mz,
+        intensity=intensity,
+        charge_range=charge_range,
+        tolerance=tolerance,
+        is_ppm=is_ppm,
+        max_dpeaks=max_dpeaks,
+        intensity_mode=intensity_mode,
+        min_intensity=min_intensity,
+        min_score=min_score,
+        isotope_model=isotope_model,
+        min_isotope_abundance=min_isotope_abundance,
+        max_isotope_fold_error=max_isotope_fold_error,
+        max_isotope_gaps=max_isotope_gaps,
+        max_isotopes=max_isotopes,
+        ion_mobility=ion_mobility,
+        im_tolerance=im_tolerance,
+        im_tolerance_type=im_tolerance_type,
+        carrier_mass=carrier_mass,
     )

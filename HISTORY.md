@@ -1,6 +1,31 @@
 # History
 
-## Unreleased
+## 0.5.0 (2026-08-16)
+
+### New — biological isotope models
+
+* Deconvolution now calculates aggregated isotope envelopes with a BRAIN-style recurrence and
+  caches them at one-Dalton resolution. This replaces the peptide-only Peptacular template table
+  sampled every 50 Da.
+* `IsotopeModel` supports custom atoms-per-Dalton compositions, optional fixed atoms, and custom
+  isotope abundances. Built-in presets cover peptides, glycans, lipids, DNA, and RNA and can be
+  selected by string or `IsotopeModelType`.
+* Greedy deconvolution now tests the largest unused peak against each charge candidate's predicted
+  apex and contiguous near-apex isotope positions, then expands in both directions. Complete-
+  envelope scoring prevents small intensity fluctuations across broad high-mass apexes from
+  introducing one-isotope mass errors. The algorithm can infer monoisotopic m/z when A+0 is absent,
+  stops at missing or fold-disagreeing peaks, and consumes peaks only after selecting the best
+  charge and alignment.
+* Isotope-envelope length is adaptive by default, with an optional user limit. This removes the
+  previous fixed 32-peak ceiling for intact molecules.
+* Peak selection within each isotope window now scores normalised m/z error and abundance error,
+  plus ion-mobility agreement when available. Hard abundance and mobility gates prevent nearby
+  interference from winning solely because its m/z is slightly closer.
+* `remove_precursor_peak(isotopes="auto")` uses the same selected model as deconvolution.
+* Deconvolution provenance now records the complete isotope model and envelope, abundance, gap,
+  and ion-mobility parameters. Schema-v1 records remain readable.
+* Automatic precursor removal now uses an adaptive envelope, so significant high-mass isotope
+  peaks beyond the former 32-position window are removed.
 
 ### New — matchms and spectrum_utils interoperability
 
@@ -12,8 +37,6 @@
   annotation and plotting. The adapter validates the required single precursor and explicitly
   warns about fields that spectrum_utils cannot represent.
 * Install either backend with `[matchms]` / `[spectrum-utils]`, or both with `[interop]`.
-
-## 0.5.0 (2026-08-03)
 
 ### Breaking changes — scoring maths
 

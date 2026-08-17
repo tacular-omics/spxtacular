@@ -97,13 +97,13 @@ def test_blocking_numba_does_not_leak_into_later_tests() -> None:
 
     import spxtacular.decon.scored as scored_mod
 
-    before = type(scored_mod._find_isotope_cluster).__name__
+    before = type(scored_mod._match_apex_cluster).__name__
     with numba_blocked():
         pass
-    after = type(scored_mod._find_isotope_cluster).__name__
+    after = type(scored_mod._match_apex_cluster).__name__
 
     assert after == before, f"backend leaked: {before!r} -> {after!r}"
-    assert isinstance(scored_mod._find_isotope_cluster, numba.core.registry.CPUDispatcher)
+    assert isinstance(scored_mod._match_apex_cluster, numba.core.registry.CPUDispatcher)
 
 
 # ---------------------------------------------------------------------------

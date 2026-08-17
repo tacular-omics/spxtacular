@@ -812,7 +812,7 @@ def to_spectrl_url(
     - ``"fragment"`` (default): ``base#spectrl2.…`` — the token rides in the URL
       fragment, which is never sent to the server (no length limits, no logs).
     - ``"query"``: ``base?<param>=spectrl2.…`` — token as a query parameter.
-    - ``"data"``: a ``data:application/vnd.spectrl;v=1,…`` URI (``base`` ignored).
+    - ``"data"``: a ``data:application/vnd.spectrl;v=2,…`` URI (``base`` ignored).
 
     ``base`` is required for ``"fragment"`` and ``"query"``. See
     :func:`spectrl.encode_spectrum` for ``lossless`` / ``max_len``.

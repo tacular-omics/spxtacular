@@ -2,7 +2,9 @@
 
 > spxtacular is a mass spectrometry spectrum processing library for Python (3.12+). It centers on
 > a `Spectrum`/`MsnSpectrum` dataclass with chainable processing methods (filter, deconvolute,
-> decharge, match fragments, plot). This file is written for AI coding assistants: it is a compact,
+> decharge, match targets, compare spectra, and plot). It supports proteomics, metabolomics,
+> lipidomics, glycomics, and oligonucleotide analysis. This file is written for AI coding
+> assistants: it is a compact,
 > accurate reference for generating correct spxtacular code. Everything below matches the public
 > API as of version 0.5.0. Companion library: [peptacular](https://github.com/tacular-omics/peptacular)
 > (peptide/fragment math). `numpy`, `pandas`, `plotly`, `peptacular`, and `paftacular` are required;
@@ -107,6 +109,22 @@ decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm"
 # decon.iso_score:   0.0 for singletons, Bhattacharyya score (0-1) for clusters
 neutral = decon.decharge()   # drops charge == -1 peaks; charge becomes all zeros (neutral mass)
 ```
+
+`deconvolute(isotope_model=...)` and `remove_precursor_peak(isotope_model=...)` accept the built-in
+names `"peptide"` (default), `"glycan"`, `"lipid"`, `"dna"`, and `"rna"`, the corresponding
+`IsotopeModelType`, or a custom `IsotopeModel(atoms_per_da=..., fixed_composition=...)`. Envelopes
+use a BRAIN-style recurrence and are cached at one-Dalton resolution.
+
+Deconvolution treats the largest unused peak as the observed envelope apex, tests every requested
+charge and contiguous near-apex isotope alignment, and expands left and right. Expansion stops by
+default at the first missing peak, below 1% expected abundance, or outside a twofold
+observed-to-expected intensity range. `max_isotopes=None` selects the envelope length adaptively.
+If A+0 is absent, its m/z is inferred; `intensity="base"` is then zero, while
+`intensity="total"` still sums the matched observed peaks.
+
+When multiple peaks occur in an isotope m/z window, deconvolution ranks them by normalised m/z
+error and log-abundance error. If the spectrum carries ion mobility, candidate-to-seed mobility
+error also participates and `im_tolerance` provides a hard relative or absolute gate.
 
 `decharge()` raises `ValueError` if called on a non-`DECONVOLUTED` spectrum — call
 `deconvolute()` first so the charge states are known. Calling `decharge()` twice is safe: it

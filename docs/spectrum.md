@@ -358,6 +358,13 @@ def deconvolute(
     inplace: bool = False,
     min_intensity: float | Literal["min"] = "min",
     min_score: float = 0.0,
+    isotope_model: IsotopeModel | IsotopeModelType | str = "peptide",
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_type: Literal["relative", "absolute"] = "relative",
 ) -> Self
 ```
 
@@ -368,10 +375,17 @@ Assigns each peak to an isotope cluster and records the charge state. Returns a 
 | `tolerance` | Peak matching tolerance (default 50 ppm) |
 | `tolerance_type` | `"ppm"` (default) or `"da"` |
 | `charge_range` | `(min_charge, max_charge)` inclusive; default `(1, 3)` |
-| `intensity` | `"total"` (default) sums the whole cluster; `"base"` uses only the monoisotopic peak |
+| `intensity` | `"total"` sums matched peaks; `"base"` uses observed A+0 or zero when it is absent |
 | `max_dpeaks` | Maximum output peaks (default 2000) |
 | `min_intensity` | `float \| "min"` — Absolute intensity floor for isotope detectability. The sentinel `"min"` (default) uses the spectrum's own minimum intensity as the S/N floor. |
 | `min_score` | `float` — Clusters whose best isotopic profile score falls below this threshold are recorded as singletons. Default `0.0` accepts all clusters. |
+| `isotope_model` | Built-in name or custom `IsotopeModel`. Available presets are `"peptide"`, `"glycan"`, `"lipid"`, `"dna"`, and `"rna"`. |
+| `min_isotope_abundance` | Relative theoretical abundance at which directional expansion stops. Default `0.01`. |
+| `max_isotope_fold_error` | Hard observed-to-expected intensity gate. Default `2.0` accepts 0.5x to 2x expected. |
+| `max_isotope_gaps` | Missing positions allowed before stopping one direction. Default `0`. |
+| `max_isotopes` | Optional hard envelope-length limit. Default `None` is adaptive. |
+| `im_tolerance` | Candidate-to-seed mobility tolerance when ion mobility is available. Default `0.05`. |
+| `im_tolerance_type` | `"relative"` (default) or `"absolute"`. |
 
 After deconvolution the `charge` array follows the [charge conventions](#charge-conventions) table: `> 0` for assigned clusters, `-1` for singletons.
 
@@ -716,6 +730,7 @@ def remove_precursor_peak(
     isotope_threshold: float = 0.01,
     remove_charge_states: bool = True,
     inplace: bool = False,
+    isotope_model: IsotopeModel | IsotopeModelType | str = "peptide",
 ) -> Self
 ```
 
@@ -728,7 +743,7 @@ Remove the precursor peak, its isotope envelope, and (optionally) all lower char
 | **Decharged** | Targets the precursor neutral mass directly |
 | **Profile** | Raises `ValueError` (call `.centroid()` first) |
 
-When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method auto-detects from `MsnSpectrum.precursors` and removes peaks for **all** precursors. With `isotopes="auto"`, uses `peptacular.estimate_isotopic_distribution` to determine the number of significant isotopes.
+When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method auto-detects from `MsnSpectrum.precursors` and removes peaks for **all** precursors. With `isotopes="auto"`, it uses the selected isotope model to determine the significant isotopes.
 
 ```python
 # Auto from MsnSpectrum.precursors

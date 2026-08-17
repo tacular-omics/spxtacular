@@ -4,7 +4,9 @@
 
 # spxtacular
 
-Mass spectrometry spectrum processing library. Companion to [peptacular](https://github.com/tacular-omics/peptacular).
+General mass-spectrum processing for proteomics, metabolomics, lipidomics, glycomics, and
+oligonucleotide analysis. [peptacular](https://github.com/tacular-omics/peptacular) supplies
+peptide and fragment-generation workflows within the broader tacular-omics ecosystem.
 
 ## Install
 

@@ -13,6 +13,7 @@ from spxtacular import (
     SODIATED,
     DeconvolutionProvenance,
     IonizationModel,
+    IsotopeModel,
     MsnSpectrum,
     Spectrum,
     from_matchms,
@@ -51,7 +52,7 @@ def test_custom_carrier_mass() -> None:
 
 def test_numeric_custom_negative_carrier() -> None:
     model = resolve_ionization_model(-2.5)
-    assert model.polarity.value == "negative"
+    assert str(model.polarity) == "negative"
     assert model.neutral_mass(model.ion_mz(500.0, 2), 2) == pytest.approx(500.0)
 
 
@@ -134,12 +135,26 @@ def test_deconvolution_records_models_and_parameters() -> None:
     result = Spectrum(mz=mz, intensity=intensity).deconvolute(
         charge_range=(2, 2),
         tolerance=10.0,
+        min_isotope_abundance=0.02,
+        max_isotope_fold_error=3.0,
+        max_isotope_gaps=1,
+        max_isotopes=12,
+        im_tolerance=0.03,
+        im_tolerance_type="absolute",
         ionization_model="[M+Na]+",
     )
     assert result.deconvolution is not None
     assert result.deconvolution.isotope_model == "peptide"
+    assert result.deconvolution.isotope_model_definition is not None
+    assert result.deconvolution.isotope_model_definition.name == "peptide"
     assert result.deconvolution.ionization_model is SODIATED
     assert result.deconvolution.charge_range == (2, 2)
+    assert result.deconvolution.min_isotope_abundance == 0.02
+    assert result.deconvolution.max_isotope_fold_error == 3.0
+    assert result.deconvolution.max_isotope_gaps == 1
+    assert result.deconvolution.max_isotopes == 12
+    assert result.deconvolution.im_tolerance == 0.03
+    assert result.deconvolution.im_tolerance_type == "absolute"
 
 
 def test_provenance_roundtrips_native_persistence(tmp_path) -> None:
@@ -154,6 +169,44 @@ def test_provenance_roundtrips_native_persistence(tmp_path) -> None:
     spec.save(path)
     restored = Spectrum.load(path)
     assert restored.deconvolution == spec.deconvolution
+
+
+def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
+    model = IsotopeModel(
+        name="carbon-rich",
+        atoms_per_da={"C": 0.05, "O": 0.02},
+        isotope_abundances={"C": {0: 0.8, 1: 0.2}},
+    )
+    raw = Spectrum(
+        mz=np.array([500.0, 500.0 + pt.C13_NEUTRON_MASS]),
+        intensity=np.array([1000.0, 400.0]),
+    )
+    result = raw.deconvolute(charge_range=(1, 1), isotope_model=model)
+    path = tmp_path / "custom-isotope-model.npz"
+
+    result.save(path)
+    restored_spectra = [
+        Spectrum.load(path),
+        from_matchms(to_matchms(result)),
+        from_spectrl_token(to_spectrl_token(result, lossless=True)),
+    ]
+
+    for restored in restored_spectra:
+        assert restored.deconvolution is not None
+        assert restored.deconvolution.isotope_model_definition == model
+        assert restored.deconvolution == result.deconvolution
+
+
+def test_schema_one_provenance_remains_readable() -> None:
+    value = _provenance(PROTONATED).to_dict()
+    value["schema_version"] = 1
+    value["isotope_model"] = "peptide"
+    value.pop("isotope_model_definition")
+
+    restored = DeconvolutionProvenance.from_dict(value)
+
+    assert restored.isotope_model == "peptide"
+    assert restored.isotope_model_definition is None
 
 
 def _sodiated_spectrum() -> Spectrum:

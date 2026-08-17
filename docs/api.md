@@ -18,6 +18,12 @@ from spxtacular import (
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
     # Matching and scoring
     match_fragments, score,
+    # Isotope envelopes and average-composition models
+    IsotopeModel, IsotopeModelType, IsotopeModelLike,
+    ISOTOPE_MODELS,
+    PEPTIDE_ISOTOPE_MODEL, GLYCAN_ISOTOPE_MODEL, LIPID_ISOTOPE_MODEL,
+    DNA_ISOTOPE_MODEL, RNA_ISOTOPE_MODEL,
+    brain_isotopic_distribution, resolve_isotope_model,
     # Visualization
     plot_spectrum, mirror_plot, annotate_spectrum, mass_error_plot, facet_plot,
     sequence_coverage_plot, save_figure,

@@ -11,6 +11,7 @@ import peptacular as pt
 from numpy.typing import ArrayLike, NDArray
 
 from .enums import Polarity
+from .isotopes import IsotopeModel
 
 # Monoisotopic ion masses. Sodium is the neutral atom less one electron;
 # ammonium is 14N + 4(1H) less one electron.
@@ -74,7 +75,7 @@ class IonizationModel:
         """Return a JSON-serializable value description."""
         return {
             "name": self.name,
-            "polarity": self.polarity.value,
+            "polarity": str(self.polarity),
             "carrier_mass": self.carrier_mass,
             "carrier": self.carrier,
         }
@@ -164,11 +165,21 @@ class DeconvolutionProvenance:
     intensity_mode: str
     min_intensity: float
     min_score: float
+    isotope_model_definition: IsotopeModel | None = None
+    min_isotope_abundance: float = 0.01
+    max_isotope_fold_error: float = 2.0
+    max_isotope_gaps: int = 0
+    max_isotopes: int | None = None
+    im_tolerance: float = 0.05
+    im_tolerance_type: str = "relative"
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "isotope_model": self.isotope_model,
+            "isotope_model_definition": (
+                self.isotope_model_definition.to_dict() if self.isotope_model_definition is not None else None
+            ),
             "ionization_model": self.ionization_model.to_dict(),
             "charge_range": list(self.charge_range),
             "tolerance": self.tolerance,
@@ -176,15 +187,26 @@ class DeconvolutionProvenance:
             "intensity_mode": self.intensity_mode,
             "min_intensity": self.min_intensity,
             "min_score": self.min_score,
+            "min_isotope_abundance": self.min_isotope_abundance,
+            "max_isotope_fold_error": self.max_isotope_fold_error,
+            "max_isotope_gaps": self.max_isotope_gaps,
+            "max_isotopes": self.max_isotopes,
+            "im_tolerance": self.im_tolerance,
+            "im_tolerance_type": self.im_tolerance_type,
         }
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> DeconvolutionProvenance:
-        if value.get("schema_version", 1) != 1:
+        schema_version = value.get("schema_version", 1)
+        if schema_version not in (1, 2):
             raise ValueError(f"unsupported deconvolution provenance schema: {value.get('schema_version')!r}")
         charge_range = value["charge_range"]
+        model_definition = value.get("isotope_model_definition") if schema_version == 2 else None
         return cls(
             isotope_model=str(value["isotope_model"]),
+            isotope_model_definition=(
+                IsotopeModel.from_dict(model_definition) if model_definition is not None else None
+            ),
             ionization_model=IonizationModel.from_dict(value["ionization_model"]),
             charge_range=(int(charge_range[0]), int(charge_range[1])),
             tolerance=float(value["tolerance"]),
@@ -192,6 +214,12 @@ class DeconvolutionProvenance:
             intensity_mode=str(value["intensity_mode"]),
             min_intensity=float(value["min_intensity"]),
             min_score=float(value["min_score"]),
+            min_isotope_abundance=float(value.get("min_isotope_abundance", 0.01)),
+            max_isotope_fold_error=float(value.get("max_isotope_fold_error", 2.0)),
+            max_isotope_gaps=int(value.get("max_isotope_gaps", 0)),
+            max_isotopes=(int(value["max_isotopes"]) if value.get("max_isotopes") is not None else None),
+            im_tolerance=float(value.get("im_tolerance", 0.05)),
+            im_tolerance_type=str(value.get("im_tolerance_type", "relative")),
         )
 
 
