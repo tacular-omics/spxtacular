@@ -34,6 +34,7 @@ round-trip of the peak arrays.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING
 
@@ -41,6 +42,7 @@ import numpy as np
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
+from .ionization import DeconvolutionProvenance
 
 if TYPE_CHECKING:
     from spectrl import DecodedSpectrum, InlineSpectrum
@@ -212,6 +214,7 @@ _POLARITY_FROM_ACCESSION: dict[str, Polarity] = {
 _UP_PREFIX = "spxtacular:"
 _UP_DENOISED = _UP_PREFIX + "denoised"
 _UP_NORMALIZED = _UP_PREFIX + "normalized"
+_UP_DECONVOLUTION = _UP_PREFIX + "deconvolution"
 _UP_SCAN_NUMBER = _UP_PREFIX + "scan_number"
 _UP_RESOLUTION = _UP_PREFIX + "resolution"
 _UP_ANALYZER = _UP_PREFIX + "analyzer"
@@ -445,6 +448,9 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         user_params.append(_up(_UP_DENOISED, spec.denoised, "xsd:string"))
     if spec.normalized is not None:
         user_params.append(_up(_UP_NORMALIZED, spec.normalized, "xsd:string"))
+    if spec.deconvolution is not None:
+        provenance_json = json.dumps(spec.deconvolution.to_dict(), separators=(",", ":"))
+        user_params.append(_up(_UP_DECONVOLUTION, provenance_json, "xsd:string"))
     if msn_spec is not None:
         if msn_spec.scan_number is not None:
             user_params.append(_up(_UP_SCAN_NUMBER, int(msn_spec.scan_number), "xsd:int"))
@@ -495,7 +501,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
 
 
 def to_spectrl_token(spec: Spectrum, *, lossless: bool = False, max_len: int | None = None) -> str:
-    """Encode a spxtacular spectrum directly to a ``spectrl1.…`` token.
+    """Encode a spxtacular spectrum directly to a ``spectrl2.…`` token.
 
     Convenience wrapper over :func:`to_inline_spectrum` +
     :func:`spectrl.encode_spectrum`. See :func:`spectrl.encode_spectrum` for
@@ -589,6 +595,16 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     denoised = str(denoised_v) if denoised_v is not None else None
     normalized_v = up.get(_UP_NORMALIZED)
     normalized = str(normalized_v) if normalized_v is not None else None
+    deconvolution_v = up.get(_UP_DECONVOLUTION)
+    deconvolution = None
+    if deconvolution_v is not None:
+        try:
+            deconvolution_data = json.loads(str(deconvolution_v))
+            if not isinstance(deconvolution_data, dict):
+                raise TypeError("expected a JSON object")
+            deconvolution = DeconvolutionProvenance.from_dict(deconvolution_data)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid spxtacular deconvolution provenance in spectrl token") from exc
 
     # Detect whether any MSn metadata is present
     ms_level_p = _find_param(decoded.params, _MS_LEVEL)
@@ -613,6 +629,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
             spectrum_type=spectrum_type,
             denoised=denoised,
             normalized=normalized,
+            deconvolution=deconvolution,
         )
 
     # MSn metadata
@@ -752,6 +769,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         im_type=im_type,
         denoised=denoised,
         normalized=normalized,
+        deconvolution=deconvolution,
         scan_number=scan_number,
         resolution=resolution,
         analyzer=analyzer,
@@ -762,7 +780,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
 
 
 def from_spectrl_token(token: str) -> Spectrum:
-    """Decode a ``spectrl1.…`` token into a spxtacular
+    """Decode a ``spectrl2.…`` token into a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
     when MSn metadata is present).
     """
@@ -791,9 +809,9 @@ def to_spectrl_url(
     Convenience wrapper over :func:`to_spectrl_token` + spectrl's URL binding
     helpers. ``mode`` selects the binding:
 
-    - ``"fragment"`` (default): ``base#spectrl1.…`` — the token rides in the URL
+    - ``"fragment"`` (default): ``base#spectrl2.…`` — the token rides in the URL
       fragment, which is never sent to the server (no length limits, no logs).
-    - ``"query"``: ``base?<param>=spectrl1.…`` — token as a query parameter.
+    - ``"query"``: ``base?<param>=spectrl2.…`` — token as a query parameter.
     - ``"data"``: a ``data:application/vnd.spectrl;v=1,…`` URI (``base`` ignored).
 
     ``base`` is required for ``"fragment"`` and ``"query"``. See
@@ -825,7 +843,7 @@ def to_spectrl_url(
 
 
 def from_spectrl_url(url: str) -> Spectrum:
-    """Extract a ``spectrl1.…`` token from a URL fragment, query string, or
+    """Extract a ``spectrl2.…`` token from a URL fragment, query string, or
     ``data:`` URI and decode it into a spxtacular
     :class:`~spxtacular.core.Spectrum` / :class:`~spxtacular.core.MsnSpectrum`.
     """

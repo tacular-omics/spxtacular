@@ -178,6 +178,7 @@ def deconvolve_spectrum(
     intensity_mode: str = "total",
     min_intensity: float = 0.0,
     min_score: float = 0.0,
+    carrier_mass: float = PROTON_MASS,
 ) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.float64], NDArray[np.float64]]:
     """Greedy isotope deconvolution with isotopic profile scoring.
 
@@ -206,6 +207,10 @@ def deconvolve_spectrum(
         charge state.  Clusters whose best score falls below this threshold
         are recorded as singletons (charge == -1).  Set to ``0.0`` (default)
         to accept all clusters.
+    carrier_mass:
+        Signed ion-mass delta per unit charge. Positive proton mass preserves
+        the historical ``[M+H]+`` behavior; negative proton mass represents
+        ``[M-H]-``. Used for neutral-mass isotope-template selection.
 
     Returns
     -------
@@ -231,6 +236,10 @@ def deconvolve_spectrum(
     if len(mz) == 0:
         empty = np.empty(0, dtype=np.float64)
         return empty, np.empty(0, dtype=np.int32), empty, empty
+
+    carrier_mass = float(carrier_mass)
+    if not np.isfinite(carrier_mass):
+        raise ValueError(f"carrier_mass must be finite, got {carrier_mass!r}")
 
     min_charge, max_charge = charge_range
     if min_charge < 1 or max_charge < 1:
@@ -305,7 +314,9 @@ def deconvolve_spectrum(
                 if not found:
                     continue
                 obs = int64[cluster_idx]
-                neutral_mass = (float(mz64[anchor]) - PROTON_MASS) * charge
+                neutral_mass = float(mz64[anchor]) * charge - carrier_mass * charge
+                if neutral_mass < 0.0:
+                    continue
                 template = _lookup_template(neutral_mass)
                 score = _score_cluster(obs, template, min_intensity)
                 if score > best_score or (score == best_score and n_peaks > best_n):

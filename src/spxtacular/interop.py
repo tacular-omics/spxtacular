@@ -396,7 +396,7 @@ def _warn_spectrum_utils_loss(spectrum: MsnSpectrum, precursor_index: int, ident
     dropped: list[str] = []
     if spectrum.spectrum_type not in (None, SpectrumType.CENTROID, "centroid"):
         dropped.append("spectrum_type")
-    for field in ("charge", "im", "iso_score", "denoised", "normalized"):
+    for field in ("charge", "im", "iso_score", "denoised", "normalized", "deconvolution"):
         if getattr(spectrum, field) is not None:
             dropped.append(field)
     for field in (

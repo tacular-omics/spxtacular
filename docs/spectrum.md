@@ -445,7 +445,7 @@ def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None
 def from_spectrl_token(cls, token: str) -> Spectrum
 ```
 
-Encode the spectrum as a [spectrl](https://github.com/tacular-omics/spectrl) `spectrl1.…` URL-safe token, or decode one back to a `Spectrum`/`MsnSpectrum`. The token mirrors mzML semantics (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and is suitable for sharing in URLs, QR codes, notebooks, and papers.
+Encode the spectrum as a [spectrl](https://github.com/tacular-omics/spectrl) `spectrl2.…` URL-safe token, or decode one back to a `Spectrum`/`MsnSpectrum`. The token mirrors mzML semantics (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and is suitable for sharing in URLs, QR codes, notebooks, and papers.
 
 Requires the optional `[spectrl]` extra.
 
@@ -477,7 +477,7 @@ def from_spectrl_url(cls, url: str) -> Spectrum
 Bind a token into a shareable URL (or `data:` URI), or extract and decode one. `mode="fragment"` (default) puts the token after `#` so it never reaches the server; `mode="query"` uses `base?<param>=…`; `mode="data"` emits a `data:application/vnd.spectrl;v=1,…` URI (`base` ignored). `base` is required for `"fragment"` and `"query"`.
 
 ```python
-url = spec.to_spectrl_url("https://example.com/view")             # …#spectrl1.…
+url = spec.to_spectrl_url("https://example.com/view")             # …#spectrl2.…
 uri = spec.to_spectrl_url(mode="data")                            # data: URI
 restored = Spectrum.from_spectrl_url(url)
 ```

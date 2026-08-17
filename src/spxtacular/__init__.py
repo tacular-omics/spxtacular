@@ -17,6 +17,17 @@ from .enums import (
     ToleranceType,
 )
 from .interop import from_matchms, from_spectrum_utils, to_matchms, to_spectrum_utils
+from .ionization import (
+    AMMONIATED,
+    DEPROTONATED,
+    IONIZATION_MODELS,
+    PROTONATED,
+    SODIATED,
+    DeconvolutionProvenance,
+    IonizationModel,
+    IonizationModelLike,
+    resolve_ionization_model,
+)
 from .matching import match_fragments
 from .peaklist import MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
@@ -71,6 +82,15 @@ __all__ = [
     "PeakSelectionLike",
     "Polarity",
     "PolarityLike",
+    "IonizationModel",
+    "IonizationModelLike",
+    "DeconvolutionProvenance",
+    "PROTONATED",
+    "DEPROTONATED",
+    "SODIATED",
+    "AMMONIATED",
+    "IONIZATION_MODELS",
+    "resolve_ionization_model",
     "ActivationType",
     "ActivationTypeLike",
     "IMType",

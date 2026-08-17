@@ -131,6 +131,23 @@ filtered = decon.filter(min_score=0.5)
 neutral = filtered.decharge()
 ```
 
+Polarity and adducts are explicit while charge arrays remain positive
+magnitudes. Deconvolution records the selected carrier so `decharge()` reuses
+the same mass equation:
+
+```python
+negative = spec.deconvolute(ionization_model="[M-H]-").decharge()
+sodiated = spec.deconvolute(ionization_model="[M+Na]+").decharge()
+
+custom = spx.IonizationModel(
+    name="potassiated",
+    polarity="positive",
+    carrier_mass=38.963158,
+    carrier="K",
+)
+potassiated = spec.deconvolute(ionization_model=custom).decharge()
+```
+
 ## Visualization
 
 Every plot is drawn from one theme module — a palette checked with a colour-vision-deficiency
@@ -184,10 +201,10 @@ ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
 ready-to-share link — with no backend required.
 
 ```python
-token = spec.to_spectrl_token()                       # spectrl1.… token
+token = spec.to_spectrl_token()                       # spectrl2.… token
 restored = spx.Spectrum.from_spectrl_token(token)
 
-url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable)
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl2.… (shareable)
 restored = spx.Spectrum.from_spectrl_url(url)
 ```
 

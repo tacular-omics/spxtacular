@@ -169,7 +169,7 @@ def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
 def test_token_roundtrip_plain_spectrum() -> None:
     spec = _basic_spectrum()
     token = to_spectrl_token(spec, lossless=True)
-    assert token.startswith("spectrl1.")
+    assert token.startswith("spectrl2.")
 
     restored = from_spectrl_token(token)
     np.testing.assert_allclose(restored.mz, spec.mz)
@@ -497,7 +497,7 @@ def test_isolation_window_without_values_decodes_without_range() -> None:
 def test_url_fragment_roundtrip() -> None:
     spec = _basic_msn()
     url = to_spectrl_url(spec, "https://example.com/view", lossless=True)
-    assert url.startswith("https://example.com/view#spectrl1.")
+    assert url.startswith("https://example.com/view#spectrl2.")
     restored = from_spectrl_url(url)
     assert isinstance(restored, MsnSpectrum)
     assert restored.scan_number == 42
@@ -506,7 +506,7 @@ def test_url_fragment_roundtrip() -> None:
 def test_url_query_roundtrip() -> None:
     spec = _basic_spectrum()
     url = to_spectrl_url(spec, "https://example.com/view", mode="query", param="s", lossless=True)
-    assert "s=spectrl1." in url
+    assert "s=spectrl2." in url
     restored = from_spectrl_url(url)
     np.testing.assert_allclose(restored.mz, spec.mz)
 

@@ -32,6 +32,14 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .ionization import (
+    DEPROTONATED,
+    PROTONATED,
+    DeconvolutionProvenance,
+    IonizationModel,
+    IonizationModelLike,
+    resolve_ionization_model,
+)
 from .noise import estimate_noise_level
 
 # ============================================================================
@@ -200,6 +208,7 @@ class Spectrum:
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
+    deconvolution: DeconvolutionProvenance | None = None
 
     def __post_init__(self):
         """Coerce array dtypes and validate shapes."""
@@ -211,6 +220,8 @@ class Spectrum:
             self.im = np.asarray(self.im, dtype=np.float64)
         if self.iso_score is not None:
             self.iso_score = np.asarray(self.iso_score, dtype=np.float64)
+        if isinstance(self.deconvolution, dict):
+            self.deconvolution = DeconvolutionProvenance.from_dict(self.deconvolution)
         self._validate()
         # A charge array on its own implies deconvolution only when the caller
         # did not say otherwise — an explicit spectrum_type is always honoured,
@@ -983,7 +994,7 @@ class Spectrum:
         Peaks are sorted by m/z ascending. Optional per-peak arrays (charge,
         im, score) are included only if **all** spectra carry that array;
         otherwise the field is dropped (set to None). Scalar metadata
-        (spectrum_type, normalized, denoised) is preserved when all spectra
+        (spectrum_type, normalized, denoised, deconvolution) is preserved when all spectra
         share the same value, otherwise set to None.
 
         MsnSpectrum instances are accepted as input but the return type is
@@ -1048,6 +1059,9 @@ class Spectrum:
         denoised_vals = {s.denoised for s in spectra}
         denoised: str | None = denoised_vals.pop() if len(denoised_vals) == 1 else None
 
+        deconvolution_vals = {s.deconvolution for s in spectra}
+        deconvolution = deconvolution_vals.pop() if len(deconvolution_vals) == 1 else None
+
         return Spectrum(
             mz=combined_mz,
             intensity=combined_intensity,
@@ -1057,6 +1071,7 @@ class Spectrum:
             spectrum_type=spectrum_type,
             normalized=normalized,
             denoised=denoised,
+            deconvolution=deconvolution,
         )
 
     def _apply_index(self, idx: NDArray[np.intp], inplace: bool = False) -> Self:
@@ -1273,6 +1288,7 @@ class Spectrum:
         inplace: bool = False,
         min_intensity: float | Literal["min"] = "min",
         min_score: float = 0.0,
+        ionization_model: IonizationModelLike | None = None,
     ) -> Self:
         min_charge, max_charge = charge_range
         if min_charge < 1 or max_charge < min_charge:
@@ -1297,6 +1313,8 @@ class Spectrum:
         else:
             resolved_min_intensity = float(min_intensity)
 
+        resolved_ionization = self._resolve_ionization_model(ionization_model)
+
         new_mz, new_charge, new_intensity, new_score = _deconvolve(
             mz=self.mz,
             intensity=self.intensity,
@@ -1307,6 +1325,7 @@ class Spectrum:
             intensity_mode=intensity,
             min_intensity=resolved_min_intensity,
             min_score=min_score,
+            carrier_mass=resolved_ionization.carrier_mass,
         )
 
         # Carry ion mobility through. Every output m/z is an exact copy of the
@@ -1327,6 +1346,16 @@ class Spectrum:
             im=new_im,
             iso_score=new_score,
             spectrum_type=SpectrumType.DECONVOLUTED,
+            deconvolution=DeconvolutionProvenance(
+                isotope_model="peptide",
+                ionization_model=resolved_ionization,
+                charge_range=charge_range,
+                tolerance=float(tolerance),
+                tolerance_type="ppm" if is_ppm else "da",
+                intensity_mode=str(intensity).lower(),
+                min_intensity=resolved_min_intensity,
+                min_score=float(min_score),
+            ),
             # Cluster intensities are sums (or base peaks) of the input peaks,
             # so a prior normalisation no longer holds; clearing the flag lets
             # normalize() run again instead of warning and returning as-is.
@@ -1334,7 +1363,26 @@ class Spectrum:
             inplace=inplace,
         )
 
-    def decharge(self, inplace: bool = False) -> Self:
+    def _resolve_ionization_model(self, model: IonizationModelLike | None) -> IonizationModel:
+        """Resolve an explicit, recorded, or polarity-derived ionization model."""
+        explicit = model is not None
+        if model is None and self.deconvolution is not None:
+            resolved = self.deconvolution.ionization_model
+        elif model is None:
+            polarity = getattr(self, "polarity", None)
+            resolved = DEPROTONATED if str(polarity).lower() == "negative" else PROTONATED
+        else:
+            resolved = resolve_ionization_model(model)
+
+        spectrum_polarity = getattr(self, "polarity", None)
+        if explicit and spectrum_polarity is not None and str(spectrum_polarity).lower() != resolved.polarity.value:
+            raise ValueError(
+                f"ionization model {resolved.name!r} has {resolved.polarity.value} polarity, "
+                f"but the spectrum polarity is {spectrum_polarity!r}"
+            )
+        return resolved
+
+    def decharge(self, inplace: bool = False, *, ionization_model: IonizationModelLike | None = None) -> Self:
         """
         Decharge spectrum by converting m/z to neutral mass using charge information.
 
@@ -1359,7 +1407,7 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
-        proton = pt.PROTON_MASS
+        resolved_ionization = self._resolve_ionization_model(ionization_model)
 
         # charge > 0, not != -1: a charge of 0 means "already decharged", and
         # multiplying by it would collapse the peak to a neutral mass of 0.0.
@@ -1370,7 +1418,7 @@ class Spectrum:
         known_im = self.im[known] if self.im is not None else None
         known_score = self.iso_score[known] if self.iso_score is not None else None
 
-        neutral_mz = (known_mz * known_charge) - (known_charge * proton)
+        neutral_mz = np.asarray(resolved_ionization.neutral_mass(known_mz, known_charge), dtype=np.float64)
 
         order = np.argsort(neutral_mz)
 
@@ -1397,7 +1445,7 @@ class Spectrum:
     # -------------------------------------------------------------------------
 
     def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str:
-        """Encode this spectrum as a ``spectrl1.…`` URL-safe token (requires
+        """Encode this spectrum as a ``spectrl2.…`` URL-safe token (requires
         ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.to_spectrl_token`.
@@ -1408,7 +1456,7 @@ class Spectrum:
 
     @classmethod
     def from_spectrl_token(cls, token: str) -> "Spectrum":
-        """Decode a ``spectrl1.…`` token into a :class:`Spectrum` /
+        """Decode a ``spectrl2.…`` token into a :class:`Spectrum` /
         :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_token`.
@@ -1438,7 +1486,7 @@ class Spectrum:
     @classmethod
     def from_spectrl_url(cls, url: str) -> "Spectrum":
         """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
-        carrying a ``spectrl1.…`` token (requires ``spxtacular[spectrl]``).
+        carrying a ``spectrl2.…`` token (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_url`.
         """
@@ -1493,6 +1541,7 @@ class Spectrum:
             "spectrum_type": st if isinstance(st, str) else (st.value if st is not None else None),
             "denoised": self.denoised,
             "normalized": self.normalized,
+            "deconvolution": self.deconvolution.to_dict() if self.deconvolution is not None else None,
         }
 
     @classmethod
@@ -1505,6 +1554,11 @@ class Spectrum:
             "spectrum_type": meta.get("spectrum_type"),
             "denoised": meta.get("denoised"),
             "normalized": meta.get("normalized"),
+            "deconvolution": (
+                DeconvolutionProvenance.from_dict(meta["deconvolution"])
+                if meta.get("deconvolution") is not None
+                else None
+            ),
         }
 
     def save(self, path: str | Path) -> None:
@@ -1640,6 +1694,7 @@ class Spectrum:
         isotope_threshold: float = 0.01,
         remove_charge_states: bool = True,
         inplace: bool = False,
+        ionization_model: IonizationModelLike | None = None,
     ) -> Self:
         """Remove precursor peak(s), their isotope envelope, and charge states.
 
@@ -1684,6 +1739,10 @@ class Spectrum:
             peaks at **all** charge states from 1 to ``precursor_charge``.
         inplace:
             Whether to modify the spectrum in place.
+        ionization_model:
+            Charge carrier used for neutral-mass and alternate-charge targets.
+            Defaults to recorded deconvolution provenance, then scan polarity,
+            then historical positive protonation.
 
         Returns
         -------
@@ -1696,8 +1755,8 @@ class Spectrum:
             If the spectrum is profile mode, or if ``precursor_mz`` is ``None``
             and no precursor information is available.
         """
-        PROTON: float = pt.PROTON_MASS
         NEUTRON: float = pt.C13_NEUTRON_MASS
+        resolved_ionization = self._resolve_ionization_model(ionization_model)
 
         # -- guard: profile spectra -------------------------------------------
         if self.spectrum_type == SpectrumType.PROFILE:
@@ -1725,7 +1784,7 @@ class Spectrum:
             if is_decharged:
                 # m/z values are neutral masses; compute precursor neutral mass
                 z = prec_z if prec_z is not None and prec_z > 0 else 1
-                neutral = (prec_mz * z) - (z * PROTON)
+                neutral = float(resolved_ionization.neutral_mass(prec_mz, z))
                 targets.append(neutral)
                 charge_targets.append(None)
 
@@ -1737,7 +1796,7 @@ class Spectrum:
             else:
                 # Centroid: remove all charge states and isotope envelopes
                 z = prec_z if prec_z is not None and prec_z > 0 else None
-                neutral = (prec_mz * (z or 1)) - ((z or 1) * PROTON)
+                neutral = float(resolved_ionization.neutral_mass(prec_mz, z or 1))
 
                 # Determine isotope offsets
                 if isotopes == "auto":
@@ -1761,7 +1820,7 @@ class Spectrum:
                     charges = [z or 1]
 
                 for cz in charges:
-                    mz_at_cz = (neutral + cz * PROTON) / cz
+                    mz_at_cz = float(resolved_ionization.ion_mz(neutral, cz))
                     for offset in offsets:
                         targets.append(mz_at_cz + offset * NEUTRON / cz)
                         charge_targets.append(None)  # no charge filter for centroid

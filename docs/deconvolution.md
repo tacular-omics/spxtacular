@@ -21,6 +21,7 @@ decon = spec.deconvolute(
     charge_range=(1, 5),
     tolerance=15,
     tolerance_type="ppm",
+    ionization_model="[M+H]+",
 )
 
 print(decon.mz)         # monoisotopic m/z, one entry per cluster (or singleton)
@@ -105,6 +106,7 @@ def deconvolute(
     inplace: bool = False,
     min_intensity: float | Literal["min"] = "min",
     min_score: float = 0.0,
+    ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
 
@@ -121,6 +123,7 @@ latter two by keyword.
 | `inplace` | `False` | Mutate in place instead of returning a new `Spectrum` |
 | `min_intensity` | `"min"` | Intensity floor for detectability scoring. `"min"` uses the spectrum minimum |
 | `min_score` | `0.0` | Minimum profile score to accept a cluster; `0.0` accepts everything |
+| `ionization_model` | `None` | Adduct preset/alias, custom model, or signed carrier mass. `None` uses negative deprotonation for a negative-polarity `MsnSpectrum`, otherwise positive protonation |
 
 Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum emits a `UserWarning` and returns it
 unchanged.
@@ -158,6 +161,44 @@ The `iso_score` array is propagated through `.decharge()`, so neutral-mass peaks
 | `> 0` | Assigned isotope cluster with this charge state |
 | `-1` | Singleton — no isotope neighbours found at any tested charge |
 | `0` | After `.decharge()` — neutral mass, charge state no longer tracked |
+
+Charge values are magnitudes, not polarity: a doubly deprotonated ion has
+`charge=2`, while its negative polarity and carrier mass live in the ionization
+model recorded on `spectrum.deconvolution`.
+
+## Polarity and adducts
+
+```python
+from spxtacular import IonizationModel
+
+negative = spec.deconvolute(ionization_model="[M-H]-")
+sodium = spec.deconvolute(ionization_model="[M+Na]+")
+ammonium = spec.deconvolute(ionization_model="[M+NH4]+")
+
+potassium = IonizationModel(
+    name="potassiated",
+    polarity="positive",
+    carrier_mass=38.963158,
+    carrier="K",
+)
+custom = spec.deconvolute(ionization_model=potassium)
+```
+
+The built-ins are also exported as `PROTONATED`, `DEPROTONATED`, `SODIATED`,
+and `AMMONIATED`. A bare number is interpreted as a signed carrier mass per
+unit charge.
+
+Deconvolution records the resolved ionization model and the peptide isotope
+model in structured provenance. A subsequent `.decharge()` reuses that model:
+
+```python
+neutral = sodium.decharge()  # subtracts sodium carrier mass, not proton mass
+```
+
+For legacy deconvoluted spectra without provenance, `.decharge()` derives
+deprotonation from known negative scan polarity and otherwise retains the
+historical positive-protonation default. An explicit model that conflicts with
+known scan polarity raises `ValueError`.
 
 ---
 

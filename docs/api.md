@@ -128,6 +128,7 @@ Spectrum(
     spectrum_type: SpectrumType | str | None = None,
     denoised: str | None = None,
     normalized: str | None = None,
+    deconvolution: DeconvolutionProvenance | None = None,
 )
 ```
 
@@ -152,16 +153,16 @@ positional mix-ups.
 | `.centroid()` | `Spectrum` | Convert profile to centroid via Gaussian fit |
 | `.merge(mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type)` | `Spectrum` | Merge nearby peaks by weighted average |
 | `.round_mz(decimals, combine)` | `Spectrum` | Round m/z, then sum / max-reduce duplicates |
-| `.deconvolute(...)` | `Spectrum` | Assign isotope clusters and charge states |
-| `.decharge()` | `Spectrum` | Convert charged m/z to neutral masses |
+| `.deconvolute(..., ionization_model=...)` | `Spectrum` | Assign isotope clusters and charge magnitudes using a selected adduct/carrier model |
+| `.decharge(..., ionization_model=...)` | `Spectrum` | Convert charged m/z to neutral masses, reusing recorded ionization provenance by default |
 | `.remove_precursor_peak(...)` | `Spectrum` | Strip precursor + isotopes + charge states |
 | `.sort(by, reverse)` | `Spectrum` | Reorder peaks by attribute |
 | `.copy()` | `Spectrum` | Deep copy with all arrays duplicated |
 | `Spectrum.combine(spectra)` | `Spectrum` | Classmethod: concatenate multiple spectra |
 | `.match_fragments(fragments, ...)` | `list[MatchedFragment]` | Fragment-to-peak matching |
 | `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
-| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl1.…` URL-safe token (requires `[spectrl]` extra) |
-| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl1.…` token (classmethod) |
+| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl2.…` URL-safe token (requires `[spectrl]` extra) |
+| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl2.…` token (classmethod) |
 | `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_url(url)` | `Spectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
@@ -566,8 +567,8 @@ spec = from_spectrl_url(url)                                       # extract + d
 
 | `mode` | Result | `base` |
 |---|---|---|
-| `"fragment"` (default) | `base#spectrl1.…` — token in the URL fragment (never sent to the server) | required |
-| `"query"` | `base?<param>=spectrl1.…` — token as a query parameter | required |
+| `"fragment"` (default) | `base#spectrl2.…` — token in the URL fragment (never sent to the server) | required |
+| `"query"` | `base?<param>=spectrl2.…` — token as a query parameter | required |
 | `"data"` | `data:application/vnd.spectrl;v=1,…` URI | ignored |
 
 `lossless` and `max_len` are forwarded to the token encoder.

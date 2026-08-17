@@ -133,10 +133,10 @@ tooltip reports the true intensity regardless of scaling. See
 Requires the `[spectrl]` extra. The whole spectrum lives in the token — no backend needed.
 
 ```python
-token = spec.to_spectrl_token()                        # spectrl1.… token
+token = spec.to_spectrl_token()                        # spectrl2.… token
 restored = Spectrum.from_spectrl_token(token)
 
-url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl1.… (shareable link)
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl2.… (shareable link)
 restored = Spectrum.from_spectrl_url(url)
 ```
 
