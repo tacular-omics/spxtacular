@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use spxtacular in your research, please cite the archived software release."
+type: software
+title: "spxtacular: Mass spectrometry spectrum processing in Python"
+abstract: >-
+  spxtacular is a Python library for general mass-spectrum processing
+  through chainable Spectrum and MsnSpectrum objects. Processing operations
+  include denoising, peak filtering, isotope deconvolution, charge assignment,
+  neutral-mass conversion, fragment matching, and peptide-spectrum match
+  scoring. Deconvolution uses isotope-profile similarity scores and can use
+  optional Numba compilation. Matching accepts mass tolerances in parts per
+  million or daltons, and scoring includes hyperscore, spectral angle, and
+  matched-peak measures. Reader adapters cover Bruker timsTOF directories, mzML
+  files, and Thermo RAW files. Separate readers and writers support MGF, MS2,
+  and MSP peak lists and spectral libraries. Plotly-based views include stick,
+  mirror, faceted, mass-error, annotated-fragment, and sequence-coverage plots,
+  together with tabular output for screen readers. Optional adapters exchange
+  spectra with matchms and spectrum_utils, while spectrl integration converts
+  spectra to and from URL-safe tokens. spxtacular is intended for interactive
+  analysis, pipeline construction, spectral-library work, and method
+  development across centroided and mobility-aware proteomics, metabolomics,
+  lipidomics, glycomics, and oligonucleotide data.
+authors:
+  - given-names: Patrick T.
+    family-names: Garrett
+    orcid: https://orcid.org/0000-0002-8434-9693
+    affiliation: Scripps Research Institute
+  - given-names: John R.
+    family-names: Yates
+    name-suffix: III
+    orcid: https://orcid.org/0000-0001-5267-1672
+    affiliation: Scripps Research Institute
+repository-code: "https://github.com/tacular-omics/spxtacular"
+url: "https://tacular-omics.github.io/spxtacular/"
+license: MIT
+version: "0.5.0"
+keywords:
+  - Python
+  - Proteomics
+  - Metabolomics
+  - Lipidomics
+  - Glycomics
+  - Mass Spectrometry
+  - Spectrum Processing
+  - Deconvolution
+  - Bioinformatics
