@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import pandas as pd
     import plotly.graph_objects as go
 
@@ -39,6 +41,7 @@ from .ionization import (
 )
 from .isotopes import IsotopeModelLike, resolve_isotope_model
 from .noise import estimate_noise_level
+from .utils import precursor_charge_magnitude
 
 # ============================================================================
 # Core Data Structures
@@ -230,6 +233,16 @@ class Spectrum:
 
     def _validate(self) -> None:
         """Check that every optional array matches the m/z length."""
+        for name, array in (
+            ("mz", self.mz),
+            ("intensity", self.intensity),
+            ("charge", self.charge),
+            ("im", self.im),
+            ("iso_score", self.iso_score),
+        ):
+            if array is not None and array.ndim != 1:
+                raise ValueError(f"{name} array must be one-dimensional; got shape {array.shape}")
+
         n = len(self.mz)
         if len(self.intensity) != n:
             raise ValueError("mz and intensity must have same length")
@@ -1101,16 +1114,15 @@ class Spectrum:
         documented as "returning a new Spectrum" hand back views, and writing
         into the result silently mutates the original.
 
-        The inplace path re-runs ``__post_init__`` afterwards, so it coerces
-        dtypes exactly as construction does (a list assigned to ``mz`` would
-        otherwise break the next array operation) and a partial update that
-        leaves arrays at mismatched lengths raises instead of leaving the object
-        quietly inconsistent.
+        The inplace path validates a candidate replacement before committing
+        any fields, so it coerces dtypes exactly as construction does (a list
+        assigned to ``mz`` would otherwise break the next array operation) and
+        a failed update leaves the original object unchanged.
         """
         if inplace:
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-            self.__post_init__()
+            candidate = replace(self, **kwargs)
+            for field in fields(candidate):
+                setattr(self, field.name, getattr(candidate, field.name))
             return self
 
         for name in ("mz", "intensity", "charge", "im", "iso_score"):
@@ -1471,7 +1483,7 @@ class Spectrum:
     # -------------------------------------------------------------------------
 
     def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str:
-        """Encode this spectrum as a ``spectrl2.…`` URL-safe token (requires
+        """Encode this spectrum as a ``spectrl.v1.…`` URL-safe token (requires
         ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.to_spectrl_token`.
@@ -1482,7 +1494,7 @@ class Spectrum:
 
     @classmethod
     def from_spectrl_token(cls, token: str) -> "Spectrum":
-        """Decode a ``spectrl2.…`` token into a :class:`Spectrum` /
+        """Decode a ``spectrl.v1.…`` token into a :class:`Spectrum` /
         :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_token`.
@@ -1512,7 +1524,7 @@ class Spectrum:
     @classmethod
     def from_spectrl_url(cls, url: str) -> "Spectrum":
         """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
-        carrying a ``spectrl2.…`` token (requires ``spxtacular[spectrl]``).
+        carrying a ``spectrl.v1.…`` token (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_url`.
         """
@@ -1635,27 +1647,32 @@ class Spectrum:
         # allow_pickle=False: unpickling a file someone else wrote executes
         # whatever it contains. Metadata is a plain JSON string, so nothing here
         # needs pickle.
-        data = np.load(path, allow_pickle=False)
-        try:
-            meta_raw = data["meta"]
-        except ValueError as exc:
-            raise ValueError(
-                f"{path} stores its metadata as a pickled object array (written by spxtacular < 0.5.0). "
-                "Re-save it with a current version; it cannot be loaded without allow_pickle."
-            ) from exc
-        meta = json.loads(str(meta_raw))
-        # Back-compat: pre-unified Spectrum.save() used the key "score".
-        if "iso_score" in data:
-            iso_score = data["iso_score"]
-        elif "score" in data:
-            iso_score = data["score"]
-        else:
-            iso_score = None
+        with np.load(path, allow_pickle=False) as data:
+            try:
+                meta_raw = data["meta"]
+            except ValueError as exc:
+                raise ValueError(
+                    f"{path} stores its metadata as a pickled object array (written by spxtacular < 0.5.0). "
+                    "Re-save it with a current version; it cannot be loaded without allow_pickle."
+                ) from exc
+            meta = json.loads(str(meta_raw))
+            # Back-compat: pre-unified Spectrum.save() used the key "score".
+            if "iso_score" in data:
+                iso_score = np.array(data["iso_score"], copy=True)
+            elif "score" in data:
+                iso_score = np.array(data["score"], copy=True)
+            else:
+                iso_score = None
+            mz = np.array(data["mz"], copy=True)
+            intensity = np.array(data["intensity"], copy=True)
+            charge = np.array(data["charge"], copy=True) if "charge" in data else None
+            im = np.array(data["im"], copy=True) if "im" in data else None
+
         return cls(
-            mz=data["mz"],
-            intensity=data["intensity"],
-            charge=data["charge"] if "charge" in data else None,
-            im=data["im"] if "im" in data else None,
+            mz=mz,
+            intensity=intensity,
+            charge=charge,
+            im=im,
             iso_score=iso_score,
             **cls._meta_kwargs(meta),
         )
@@ -1695,6 +1712,7 @@ class Spectrum:
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+        predicted_intensities: "Sequence[float] | None" = None,
     ) -> "dict[str, float]":
         """Match fragments and return all PSM scores.
 
@@ -1703,7 +1721,12 @@ class Spectrum:
         from .scoring import score as _score
 
         return _score(
-            self, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            predicted_intensities=predicted_intensities,
         )
 
     # -------------------------------------------------------------------------
@@ -1811,21 +1834,24 @@ class Spectrum:
         charge_targets: list[int | None] = []
 
         for prec_mz, prec_z in precursors:
+            # Precursor formats encode negative polarity in the charge sign,
+            # while per-peak charge arrays store positive magnitudes. Mass
+            # conversion and charge matching use the magnitude in both modes.
+            z = precursor_charge_magnitude(prec_z)
+
             if is_decharged:
                 # m/z values are neutral masses; compute precursor neutral mass
-                z = prec_z if prec_z is not None and prec_z > 0 else 1
-                neutral = float(resolved_ionization.neutral_mass(prec_mz, z))
+                neutral = float(resolved_ionization.neutral_mass(prec_mz, z or 1))
                 targets.append(neutral)
                 charge_targets.append(None)
 
             elif self.spectrum_type == SpectrumType.DECONVOLUTED:
                 # Monoisotopic peaks only; match at precursor charge
                 targets.append(prec_mz)
-                charge_targets.append(prec_z)
+                charge_targets.append(z)
 
             else:
                 # Centroid: remove all charge states and isotope envelopes
-                z = prec_z if prec_z is not None and prec_z > 0 else None
                 neutral = float(resolved_ionization.neutral_mass(prec_mz, z or 1))
 
                 # Determine isotope offsets
@@ -1909,10 +1935,12 @@ class Spectrum:
             Spectrum with scaled intensities.
         """
         if method == "root":
-            if degree == 0:
-                raise ValueError("degree must be non-zero for the 'root' scaling method")
+            if degree <= 0:
+                raise ValueError("degree must be positive for the 'root' scaling method")
             scaled = np.power(self.intensity, 1.0 / degree)
         elif method == "log":
+            if not np.isfinite(base) or base <= 0.0 or base == 1.0:
+                raise ValueError("base must be finite, positive, and not equal to 1 for the 'log' scaling method")
             scaled = np.log1p(self.intensity) / np.log(base)
         elif method == "rank":
             # argsort of argsort gives ranks (0-based); add 1 for 1-based

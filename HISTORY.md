@@ -1,631 +1,148 @@
 # History
 
-## 0.5.0 (2026-08-16)
+User-visible changes only; implementation details belong in commits and pull requests.
 
-### New — biological isotope models
+## 0.5.0 (2026-08-17)
 
-* Deconvolution now calculates aggregated isotope envelopes with a BRAIN-style recurrence and
-  caches them at one-Dalton resolution. This replaces the peptide-only Peptacular template table
-  sampled every 50 Da.
-* `IsotopeModel` supports custom atoms-per-Dalton compositions, optional fixed atoms, and custom
-  isotope abundances. Built-in presets cover peptides, glycans, lipids, DNA, and RNA and can be
-  selected by string or `IsotopeModelType`.
-* Greedy deconvolution now tests the largest unused peak against each charge candidate's predicted
-  apex and contiguous near-apex isotope positions, then expands in both directions. Complete-
-  envelope scoring prevents small intensity fluctuations across broad high-mass apexes from
-  introducing one-isotope mass errors. The algorithm can infer monoisotopic m/z when A+0 is absent,
-  stops at missing or fold-disagreeing peaks, and consumes peaks only after selecting the best
-  charge and alignment.
-* Isotope-envelope length is adaptive by default, with an optional user limit. This removes the
-  previous fixed 32-peak ceiling for intact molecules.
-* Peak selection within each isotope window now scores normalised m/z error and abundance error,
-  plus ion-mobility agreement when available. Hard abundance and mobility gates prevent nearby
-  interference from winning solely because its m/z is slightly closer.
-* `remove_precursor_peak(isotopes="auto")` uses the same selected model as deconvolution.
-* Deconvolution provenance now records the complete isotope model and envelope, abundance, gap,
-  and ion-mobility parameters. Schema-v1 records remain readable.
-* Automatic precursor removal now uses an adaptive envelope, so significant high-mass isotope
-  peaks beyond the former 32-position window are removed.
+### Added
 
-### New — matchms and spectrum_utils interoperability
+- Added cached BRAIN-style isotope envelopes and configurable `IsotopeModel` presets for peptides, glycans, lipids, DNA, and RNA.
+- Made isotope-envelope length adaptive and shared the selected model with automatic precursor removal.
+- Added apex-aware, bidirectional deconvolution that can infer a missing monoisotopic peak and reject abundance or mobility mismatches.
+- Added isotope-model and envelope parameters to deconvolution provenance while retaining schema-v1 compatibility.
+- Added `to_matchms`/`from_matchms` with namespaced metadata preservation and filtered-peak array realignment.
+- Added `to_spectrum_utils`/`from_spectrum_utils` for centroided MS/MS annotation and plotting workflows.
+- Added `[matchms]`, `[spectrum-utils]`, and combined `[interop]` optional extras.
+- Added MGF, MS2, and MSP readers and writers with gzip support and `Reader` auto-detection.
+- Added `ThermoReader` through the optional `[thermo]` extra with lazy .NET initialization.
+- Added `Spectrum.filter(top_n_per_window=(n, width))` for fixed-width window filtering.
+- Added spectrum similarity metrics: `cosine`, `modified_cosine`, and `entropy_similarity`.
+- Added run-level TIC/BPC/XIC extraction and plotting, including ion-mobility windows and one-pass multi-target extraction.
+- Added profile-spectrum rendering, min/max profile decimation, and `profile_centroid_plot()`.
+- Added `spectrum_from_proxi_response()` for clients that fetch PROXI JSON themselves.
+- Added relative-intensity and sqrt/log plot scaling, precursor markers, hover hit areas, and responsive sizing.
+- Added `sequence_coverage_plot()`, `table_view()`, texture encoding, `save_figure()`, and palette customization.
+- Added a centralized light/dark plotting theme with conventional ion-series colors and ordinal charge ramps.
+- Added vertical, collision-aware fragment labels with configurable `label_angle`.
 
-* `to_matchms` / `from_matchms` convert spectra to and from the matchms ecosystem. Standard
-  matchms metadata fields remain directly usable by its filters and similarity tools, while a
-  namespaced JSON payload preserves spxtacular's richer MSn metadata and per-peak charge, ion
-  mobility, and isotope scores. Extension arrays are realigned when matchms filters remove peaks.
-* `to_spectrum_utils` / `from_spectrum_utils` bridge centroided MS/MS spectra for ProForma
-  annotation and plotting. The adapter validates the required single precursor and explicitly
-  warns about fields that spectrum_utils cannot represent.
-* Install either backend with `[matchms]` / `[spectrum-utils]`, or both with `[interop]`.
+### Changed
 
-### Breaking changes — scoring maths
+- The `[spectrl]` integration now requires Spectrl 1.0, emits the frozen `spectrl.v1` token format, and preserves ion mobility through accession-keyed auxiliary arrays.
+- `hyperscore` now implements the X!Tandem product-of-series-sums formula; stored thresholds must be retuned.
+- `spectral_angle` now implements the literature metric when `predicted_intensities` are supplied and otherwise retains the documented flat-reference fallback.
+- Deconvolution now uses complete-envelope scoring, float64 arithmetic, expected-position stepping, and isotope templates through 20,000 Da.
+- Matching and scoring now accept unsorted m/z arrays by sorting a working copy and mapping indices back.
+- `plot_spectrum()` now chooses sticks or a continuous trace from `spectrum_type`, with `render=` available as an override.
+- Plot tables now distinguish plotted `intensity` from true `intensity_abs` and preserve rows with missing grouping values.
+- Ion colors follow the proteomics convention: b blue, y red, a green, c teal, x purple, and z orange.
+- `facet_plot()` groups peaks into traces instead of creating one trace per peak.
+- Direct labels are capped and collision-avoided; complete values remain in hover text and table output.
+- Generated plot HTML is no longer tracked and is rebuilt by the documentation hook.
+- Deconvolution, merging, and plotting were optimized without changing results.
 
-* **`hyperscore` is now the real X!Tandem hyperscore.** It previously *summed* matched
-  intensities across all peaks; X!Tandem takes the **product of the per-series sums**.
-  It is now `log10(∏ₛ ΣIₛ) + Σₛ log10(nₛ!)` over the ion series that were searched —
-  numerically identical to X!Tandem for a b/y search (verified to ~1e-15), so values are
-  comparable with X!Tandem, Comet and MSFragger. Unlike them it is not hardcoded to b/y:
-  an ETD c/z search is scored the same way.
+### Fixed
 
-  The product is what discriminates. A searched series with no signal collapses the score
-  to zero, so a PSM supported only by b ions cannot look as good as one corroborated from
-  both directions. Measured on a target-decoy trial: separation improved from Cohen's
-  *d* 4.6 to 5.8, and 17% of decoys that previously scored above zero are now correctly
-  rejected. For PSMs with both series present the two forms rank near-identically
-  (Spearman ρ = 0.9996), so ranking within a normal search is largely unchanged —
-  but absolute values differ, and any stored hyperscore thresholds need re-tuning.
+- Peak queries now reject unavailable charge/ion-mobility filters, validate `collision=`, and use stable top-N tie-breaking.
+- Centroiding now accepts an intensity threshold and detects flat apexes.
+- Deconvolution now recovers monoisotopic masses when the observed apex is A+1/A+2 and scores one-peak clusters as zero.
+- Deconvolution now preserves ion mobility, validates `charge_range`, and warns when `max_dpeaks` truncates work.
+- Rejected total-intensity clusters no longer double-count their remaining peaks.
+- Spectrum equality now compares arrays element-wise.
+- Non-inplace transformations no longer share numpy buffers or alias `self` on no-op paths.
+- Explicit `spectrum_type` is no longer overwritten merely because a charge array exists.
+- Tolerance and peak-selection enums are validated consistently instead of silently falling through.
+- `filter()` now rejects criteria for dimensions absent from the spectrum.
+- `merge()` preserves maximum `iso_score`, and `round_mz()` resets incompatible processing state.
+- `centroid()` clears stale isotope scores, and inplace updates revalidate array shapes.
+- `get_peak()`/`get_peaks()` preserve isotope scores and return Python scalars.
+- `decharge()` uses `peptacular.PROTON_MASS`, treats nonpositive charges as unknown, rejects non-deconvoluted input, and no longer erases spectra when every charge is unknown.
+- Normalization, scaling, denoising, serialization, and list-backed construction now handle invalid or degenerate inputs safely.
+- Fragment matching now skips charge-incompatible neighbors correctly and validates fragment charges.
+- Negative-mode fragments now match deconvoluted peaks by charge magnitude.
+- Negative-mode fragment annotations now render without mzPAF charge errors.
+- Scoring now handles NaNs, zero tolerances, dict fragments, and internal-ion runs correctly.
+- Histogram noise estimation now focuses on the low-intensity bulk, and all estimators return zero for empty input.
+- Corrected swapped mzML scan-window accessions and several activation/ion-mobility CV mappings.
+- Spectrl round-trips now preserve precursor mobility, injection time, monoisotopic flags, enums, and unknown metadata strings.
+- Readers now emit canonical enums and avoid incorrectly classifying centroid spectra as deconvoluted.
+- `fetch_usi()` now validates before network access, uses deterministic precursor precedence, and preserves identifiers, spectrum representation, and scan polarity.
+- Reader handles are closed reliably; uppercase `.D`, `.mzML.gz`, and broken optional native backends are handled correctly.
+- Plotting now handles zero/NaN intensities, mzPAF labels, missing labels, mirror hover values, and required-column validation.
+- Corrected documentation examples, signatures, parameter names, reader iteration examples, and dependency descriptions.
 
-* **`spectral_angle` can now be the real thing.** Pass `predicted_intensities` to `score()`
-  — one value per fragment, in the same order — and you get the spectral angle of the
-  literature (Toprak et al.; what Prosit and Spectronaut report), scale-invariant and
-  1.0 for a perfect match. Without a prediction there is nothing to compare against, so
-  the value still falls back to the flat-reference coverage/evenness measure, which is
-  *not* comparable to published spectral angles. Requires the `Sequence[Fragment]` form of
-  `fragments`; the dict form raises `TypeError` because predictions cannot be paired to ions.
+### Packaging and tests
 
-### New — MGF / MS2 / MSP peak lists
-
-* `MgfReader`, `Ms2Reader`, `write_mgf`, and `write_ms2` (`spxtacular.peaklist`) read *and*
-  write the two classic peak-list formats — pure standard library, no optional extra, gzip
-  handled transparently (magic bytes on read, `.gz` suffix on write). `mz`/`intensity`
-  round-trip bit-exactly; `Reader` auto-detects `.mgf` / `.ms2` (also gzipped).
-* `MspReader` and `write_msp` add the NIST spectral-library format on the same terms.
-  Both wild dialects are handled — NIST/SpectraST peptide libraries (charge on the
-  `Name`, metadata in `Comment:` `key=value` pairs) and metabolomics exports from
-  MoNA / GNPS / MS-DIAL — with case-insensitive header matching. Parsing is
-  count-driven off `Num Peaks`, so count mismatches are structural errors, not
-  guesses; retention times are kept verbatim (MSP has no unit convention).
-  `Reader` auto-detects `.msp` / `.msp.gz`.
-
-### New — Thermo .raw reading
-
-* `ThermoReader` reads Thermo `.raw` files through `fisher-py` (Thermo's official
-  RawFileReader). Install with `pip install spxtacular[thermo]`; a .NET runtime must be
-  present on the machine (fisher-py drives the RawFileReader .NET assemblies via
-  pythonnet). `import spxtacular` never touches the runtime — only constructing a
-  `ThermoReader` does, and a missing backend raises an `ImportError` that says what to
-  install.
-* Profile-mode FTMS scans yield Thermo's own centroid ("label") stream by default,
-  including the vendor's per-peak charge annotations (unknown charge arrives as `-1`,
-  spxtacular's unassigned marker); `prefer_vendor_centroid=False` returns the full
-  `PROFILE` trace instead. Precursor m/z / charge / isolation window / collision energy,
-  activation type (including combined EThcD / ETciD schemes), injection time, resolution,
-  and analyzer are populated from the scan headers and trailer extras; `rt` is converted
-  to seconds. `Reader` auto-detects `.raw`.
-
-### New — windowed top-N filtering
-
-* `Spectrum.filter(top_n_per_window=(n, width))` keeps the `n` most intense peaks per
-  fixed-width m/z window (bins anchored at 0), the standard preprocessing step for
-  search-engine-style peak cleaning; mutually exclusive with the global `top_n`.
-
-### Fixes — peak query
-
-* `has_peak()` / `get_peak()` / `get_peaks()` **raise** when given `target_charge` or
-  `target_im` for a spectrum with no such array, instead of silently skipping the filter
-  and returning every m/z match — which read as "these are the charge-3 peaks". This
-  matches the rule `filter()` already follows.
-* `get_peak(collision=...)` validates its argument. Anything that was not exactly
-  `"largest"` — including `"LARGEST"` or a typo — previously fell through to `"closest"`
-  and silently returned a different peak. It is now coerced case-insensitively and raises
-  on an unknown value.
-* `filter(top_n=...)` uses a stable sort, so intensity ties at the cut resolve by m/z order
-  rather than arbitrarily.
-
-### Tests
-
-* `hyperscore` was previously asserted only to be `> 0.0`, so its formula was never pinned;
-  the change above would not have been caught. It is now checked against the published
-  X!Tandem expression, against the series-collapse property, against ETD generalisation, and
-  for its documented scale dependence.
-* Strengthened the weakest tests found in the audit: the `sort()` tests compared a result to
-  itself re-sorted (a `sort()` that permuted only the key would have passed), and the
-  `filter()` tests asserted predicates that are vacuously true on an empty array (a `filter()`
-  returning nothing would have passed). Both now pin exact surviving sets and co-permutation.
-* New `tests/test_peak_query.py` covers `has_peak` / `get_peak` / `get_peaks`, roughly 40
-  statements of public API that had no tests at all.
-
-### Documentation
-
-* `docs/visualization.md` gained a "How these plots are built" preamble (relative intensity, label
-  thinning, the hover layer, colour-by-job), sections for `sequence_coverage_plot`, `table_view`,
-  `save_figure` and the theme (light/dark, brand palettes, texture), and updated parameter tables
-  for every plotting function.
-* `docs/api.md` gained a full `Theme` section, the three new functions, a rewritten plot-table
-  schema (including `intensity_abs` vs `intensity`), and explicit notes that `mirror_plot`,
-  `facet_plot` and `mass_error_plot` do *not* take `intensity_scale` / `intensity_transform` /
-  `texture`.
-* `llms.txt` documents the new surface plus the pitfalls an assistant would otherwise get wrong.
-* `README.md` and `docs/index.md` cover the theme, the coverage ladder, and the accessible table.
-* `CLAUDE.md` gained `theme.py` in the architecture tree, a "Plot colour" section recording the
-  colour-by-job rules, and new entries under "What NOT to do".
-* `plot_example.py` now also generates the sequence coverage ladder, a dark-mode spectrum, and a
-  log-intensity spectrum, so the docs show them.
-* Enabled the `admonition` and `pymdownx.details` mkdocs extensions — `!!! warning` blocks were
-  previously rendering as literal text.
-
-### Performance
-
-Profiled against a real timsTOF MS1 frame. Deconvolution output is **bit-identical** to before
-across four parameter combinations — these are implementation changes, not algorithm changes.
-
-| Operation | Before | After | |
-|---|---|---|---|
-| `deconvolute()` (1,483 peaks) | 68.1 ms | 38.2 ms | 1.8× |
-| `merge()` (1,483 peaks) | 22.4 ms | 13.0 ms | 1.7× |
-| `plot()` (1,483 peaks) | 21.4 ms | 11.6 ms | 1.8× |
-
-* **Deconvolution picked each seed with an `argmax` over the whole array**, making seed selection
-  O(n) per peak and O(n²) overall. Peaks only ever become used, never un-used, so one descending
-  sort plus a cursor gives the identical sequence in O(n log n). A stable sort on the negated
-  intensity reproduces `argmax`'s first-index tie-break exactly.
-* The remaining cost was numpy call overhead on ten-element arrays, not the numba kernels (the
-  profile showed only 2,606 kernel calls for that frame). The per-seed scratch array is now
-  allocated once and reused, the seed-membership test is a Python loop over ≤10 entries rather than
-  `np.any`, and the isotope-template lookup is arithmetic on a regular grid rather than a
-  `searchsorted` — it runs once per (seed, charge, anchor) combination.
-* **`merge()` spent ~44% of its time inside `np.average`**, a Python wrapper that validates and
-  reshapes on every call. Replaced with an explicit `np.dot` weighted mean.
-* **`_sticks` returned Python lists**, and plotly validates a list element by element — around
-  2,000 calls per figure. Returning numpy arrays takes plotly's fast path; NaN reads as a line
-  break exactly as `None` did.
-
-### New — spectrum-to-spectrum similarity
-
-* **`spxtacular.similarity`** answers "how alike are these two spectra", which
-  `scoring` (peptide vs spectrum) never did — the basis of spectral library search, replicate
-  comparison and clustering, and the number that belonged next to `mirror_plot`'s picture.
-  * `cosine` — the standard spectral dot product: sqrt-transformed intensities, unit-normalised,
-    peaks matched **one-to-one**. Matching every pair within tolerance instead would let one
-    intense peak match several neighbours and push the score past 1.
-  * `modified_cosine` — also matches peaks displaced by the precursor mass difference, the GNPS
-    molecular-networking metric. On a peptide pair differing by one +79.966 modification, a plain
-    cosine scores 0.53 while this recovers 1.00. Reduces exactly to `cosine` when the precursors
-    match.
-  * `entropy_similarity` — entropy similarity (Li et al. 2021), which discriminates more sharply
-    and has largely displaced cosine for library search.
-
-  All three are symmetric, scale-invariant and bounded in `[0, 1]`, and accept unsorted m/z.
-
-### Fixes — centroiding
-
-* **`centroid()` takes an intensity threshold.** Without one every local maximum is a peak, so a
-  test spectrum with 6 real peaks and a modest noise floor produced **769** centroids;
-  `min_intensity=2000` gives exactly 6, and `min_intensity="noise"` uses the MAD estimate. The
-  default stays `None` so existing callers are unaffected, but on real data you want a floor.
-* **A flat apex is no longer discarded.** Detection required a strict `prev < curr > next`, which
-  silently dropped any peak whose maximum spans two or more equal samples — routine in quantised or
-  saturated data. Runs of equal intensity are now collapsed before the comparison, so a plateau is
-  compared against its neighbouring *values*; a rising plateau that never descends is still
-  correctly not a peak.
-
-### New — run-level extraction
-
-* **`spxtacular.chromatogram`**, the first module that works on a *run* rather than a spectrum.
-  `extract_chromatogram(spectra, mode="tic"|"bpc")` and `extract_xic(spectra, targets, …)` consume
-  any iterable of spectra — typically `reader.ms1` — and return `Chromatogram` objects carrying
-  `rt`, `intensity`, `apex_rt` and `total`.
-* **`plot_chromatogram()`** accepts a chromatogram, a list of them, or raw spectra (extracting a TIC
-  for you). **`plot_xic()`** extracts and plots in one call.
-* **Every target extracts in one pass.** A reader is expensive to walk and `reader.ms1` may be a
-  generator that cannot be replayed, so `extract_xic` takes a *list* of targets: twenty traces cost
-  one walk rather than twenty. Pinned by a test that counts iterations.
-* **`im_window`** restricts a trace by ion mobility, which is what makes it selective on timsTOF
-  data; `aggregate` chooses sum (the quantification convention) or max.
-* Extraction is exact — verified against a brute-force reference on the real 65-frame timsTOF run,
-  not just synthetic data. Summing the window slice directly rather than differencing a cumulative
-  sum avoids the cancellation error a cumsum accumulates across tens of thousands of peaks.
-
-### Fixes — unsorted spectra
-
-* **`match_fragments` and `score` raised on real Bruker data.** The sorted-input guard added
-  earlier in this release was right that `np.searchsorted` gives silently wrong answers on
-  unsorted m/z, but rejecting the input hard-failed on the library's main data source: a timsTOF
-  frame is ordered by ion-mobility scan and only sorted by m/z *within* each scan, so roughly half
-  the steps in a `DReader` MS1 frame descend. Matching now sorts a working copy and maps the
-  reported `peak_index` back, so any m/z order is accepted and the index still refers to the array
-  you passed in. Verified against a real 65-frame timsTOF run.
-
-### Visualisation — profile spectra
-
-* **Profile spectra were rendered wrong.** Plotting never consulted `spectrum_type`, so a profile
-  spectrum was drawn as one stick from the baseline per *sample* — discarding the peak shape, which
-  is the only reason profile data exists. `MzmlReader` genuinely emits `SpectrumType.PROFILE`, so
-  this was reachable with real data. `plot_spectrum()` now draws profile data as a continuous trace
-  with a light fill, and sticks for everything else. `render="sticks"` / `"profile"` overrides it.
-* **Thinning that does not lose peaks.** Real profile scans run to hundreds of thousands of samples
-  (a 100k-sample scan produced a 14.7 MB figure of the wrong picture). Above `max_points`
-  (default 4000) the trace is thinned by keeping the minimum and maximum of each bucket. The
-  obvious alternative — every *N*th sample — steps over narrow peaks: on a 200k-sample test with 40
-  narrow peaks, stride sampling preserved **0 of 40** apexes while min/max preserved **39 of 40**
-  and the global maximum exactly, in 5 ms.
-* **New `profile_centroid_plot()`** overlays centroided peaks on the profile trace — the view for
-  confirming that centroiding put each centre on an apex, and for spotting peaks it dropped.
-* Per-sample labels are suppressed on profile spectra; there is no "peak" at a sample, only a point
-  on a curve.
-
-Two `centroid()` limitations this made visible, documented but not changed: it applies **no
-intensity threshold**, so every local maximum becomes a peak (769 centroids from 6 real peaks on a
-noisy test spectrum — `filter(min_intensity=…)` brought it back to 6), and it requires a strict
-maximum, so a peak whose apex is a two-sample plateau is dropped silently.
-
-### Visualisation — vertical fragment labels
-
-* **Direct labels are now vertical**, reading bottom-to-top, which is what every spectrum viewer
-  does. A horizontal label occupies its full text width (~50 px for `b13^2`), so neighbours collide
-  almost immediately and most have to be dropped; rotated, each occupies about one line-height
-  (~14 px). The knock-on effect is the point: the collision threshold drops from 2.2% of the m/z
-  span to 0.9% and the default cap rises from 25 to 60, so roughly a third more peaks carry a label
-  on the same spectrum, with none overlapping.
-* New `label_angle` column on the plot table (default `-90`). Set it to `0` for horizontal labels,
-  or any angle in between. Tables built without the column still render, treated as horizontal.
-* The y-axis gains headroom for the rotated text, measured from the tallest *labelled* peak rather
-  than the overall maximum — padding from the maximum wastes the top of the plot whenever the
-  tallest peak carries no label.
-
-### Visualisation — ion colours follow the proteomics convention
-
-* **b is blue and y is red again.** The theme rewrite assigned ion series by slot order, which put
-  y on orange and broke the convention every spectrum viewer uses (Skyline, MetaDraw, IPSA,
-  `spectrum_utils`). Ion series are now mapped by hue family — **b** blue, **y** red, **a** green,
-  **c** teal, **x** purple, **z** orange — so a spxtacular spectrum reads the way anyone in the
-  field expects.
-
-  The hues remain this palette's own validated steps, picked from each conventional family rather
-  than copied, so the convention costs nothing in colour-vision safety. In fact b/y improved:
-  CVD ΔE 21.6 light / 19.2 dark, against 9.1 for the blue/orange pairing it replaces. The one pair
-  to know about is a-vs-y (green vs red) at ΔE 7.2 in light mode, inside the band that requires a
-  second channel — annotated spectra always carry direct ion labels, and `texture=True` adds dash
-  patterns. Dark mode clears the target outright at 8.6.
-
-  A test pins the convention by hue family, so the palette can be re-stepped without silently
-  swapping what b and y mean.
-
-### Documentation — example figures
-
-* **`mass_error_plot` and `facet_plot` had no embedded figure** on the visualisation page. Both are
-  now generated and shown, along with a rendered `table_view` sample.
-* **The annotation figures were built on a peptide that does not match the example spectrum.**
-  At a realistic 10–20 ppm tolerance it matches *nothing*; annotating it at all required a 5 Da
-  window (~10,000 ppm at m/z 500), so all 57 "matches" were coincidental. That made the new
-  mass-error figure meaningless — it just drew the tolerance window, with errors spanning
-  ±6000 ppm. The annotation, mass-error, coverage and facet figures now use a simulated MS2 (the
-  peptide's own fragments displaced by a few ppm over a noise floor) searched at 20 ppm, so the
-  annotations and errors shown are genuine. The raw, deconvolution and mirror figures still use the
-  real spectrum, where no peptide is involved, and the page states which is which.
-* `facet_plot`'s mirror panel was labelled `Intensity` while showing relative-scaled values — the
-  same mislabel already fixed for its first panel.
-* `docs/plots/` is no longer tracked in git. It is regenerated by the mkdocs hook on every build
-  (including the Pages deploy), so the 38 MB of committed HTML was duplicating generated output —
-  and inconsistently, since `.gitignore`'s `plots/` pattern already excluded newly added files.
-
-### Visualisation — new capabilities
-
-* **Hover layer.** Sticks are ~1.6px wide, so the pointer previously had to land on
-  a hairline to get a tooltip. Each figure now carries a transparent hit layer sized
-  well beyond the mark, plus an m/z crosshair, so being *near* a peak is enough.
-* **Relative intensity is the default axis** (`intensity_scale="relative"`), matching
-  the convention every MS viewer uses: base peak = 100%. Raw counts remain available
-  with `intensity_scale="absolute"`, and the true value is what every tooltip reports
-  regardless — rescaling changes the axis, never the reported number. A new
-  `intensity_transform` (`"sqrt"` / `"log"`) compresses dynamic range so
-  low-abundance matched ions stay visible next to a dominant base peak.
-* **`sequence_coverage_plot`** — the standard proteomics ladder: residues left to
-  right, N-terminal (a/b/c) ticks above, C-terminal (x/y/z) below, with the fraction
-  of backbone bonds covered in the title. It answers *where along the peptide* the
-  evidence sits, which an annotated spectrum alone does not show.
-* **Precursor marker.** `plot_spectrum` and `annotate_spectrum` now draw the
-  precursor m/z and its isolation window as recessive reference chrome on any
-  `MsnSpectrum` that carries them (`show_precursor=False` to suppress).
-* **`table_view`** renders a plot table as an accessible HTML table. Labels are
-  deliberately thinned from the figure, and a hover is unusable for keyboard and
-  screen-reader users, so the values need a home that isn't the tooltip. Label text
-  is HTML-escaped.
-* **Texture channel** — `texture=True` gives each ion series its own dash pattern, so
-  identity survives print, forced-colours, and readers who cannot separate two hues.
-* **`theme.set_palette`** allows brand colours to replace any of the three palettes,
-  with a docstring that is explicit that substituted hues are not validated for you.
-* **`save_figure`** picks the writer from the file extension and reports a missing
-  `kaleido` with the install command rather than an exception from inside plotly.
-* Figures set `autosize`, so they fill their container in docs pages and notebooks
-  instead of a fixed default box.
-
-### Visualisation — new theme
-
-* **New `spxtacular.theme` module** — the single source of truth for plot colour,
-  replacing the palettes that were duplicated across `plot_table.py` and
-  `visualization.py` and "kept in sync" by comment. Every palette is validated for
-  colour-vision deficiency (protanopia/deuteranopia) in both light and dark modes.
-* **Charge state is now an ordinal ramp, not a categorical cycle.** Charge has a
-  natural order, so it takes one hue running light to dark and the reader sees
-  1+ < 2+ < 3+ in the colour. This also fixes a real bug: the old ten-colour cycle
-  made `z=1` and `z=11` identical, and colours depended on which charge states
-  happened to be present rather than on the charge itself.
-* **Dark mode** — `theme.set_plot_theme("dark")` globally, or `theme_mode="dark"`
-  per call. The dark palette is its own validated set of steps for the dark
-  surface, not an automatic inversion.
-* Ion series take a fixed eight-slot categorical order (b and y first, the pair
-  that co-occurs most often). Internal fragments and anything past the eighth slot
-  fold to a neutral colour rather than inventing an indistinguishable ninth hue.
-* Ion mobility uses a single-hue sequential ramp instead of Viridis; a multi-hue
-  ramp bands a magnitude that has no bands.
-* Chrome is recessive: no panel fill, solid hairline horizontal gridlines, no
-  vertical grid, generous margins, consistent sans typography, and unmatched peaks
-  drawn thinner and dimmer so the annotated peaks lead.
-
-### Visualisation — fixes
-
-* **`facet_plot` built one plotly trace per peak.** A 3000-peak spectrum produced
-  3000 traces in 1.37s where the identical picture takes 1 trace and 0.05s; at
-  5000 peaks the figure was effectively unusable in a browser. It now groups like
-  `plot_from_table` does. It also silently dropped the ion labels that are the
-  whole point of the annotated panel.
-* **Direct labels are thinned instead of flooding the plot.** Every annotated peak
-  used to get a layout annotation, so a deconvoluted spectrum rendered thousands of
-  overlapping labels as an unreadable smear along the baseline. Labels are now
-  capped (`max_labels`, default 25) *and* collision-avoided along the m/z axis,
-  strongest peak wins. Dropped values remain in the hover text and the plot table.
-* **`plot_from_table` silently deleted peaks** whose `series` or `color` was NA —
-  `groupby` drops NA keys by default, and NA is exactly what a `merge`/`reindex`
-  on a user-edited table produces. A 4-peak table rendered 3 peaks with no error.
-* **`mirror_plot` hover reported normalised values** under an "intensity" label,
-  so a peak of 50 000 showed as `5.00e-01`. It now reports the true intensity.
-* `mirror_plot` produced an all-NaN, silently blank panel when either half had zero
-  maximum intensity, and its charge colours did not match `plot_spectrum`'s, so the
-  same spectrum changed colour between the two figures.
-* `mass_error_plot` and `facet_plot` raised `ZeroDivisionError` on an all-zero
-  intensity match set (real for thresholded or background-subtracted data) — the
-  existing guard only caught an empty list. `mass_error_plot` also labelled `b3^1`
-  and `b3^2` identically as `b3`; it now uses mzPAF labels.
-* An NA label rendered the literal text `"nan"` onto the figure.
-* `plot_from_table` now validates its required columns up front, instead of failing
-  part-way through rendering or only on data that happens to carry labels.
-* The zero-error reference line in `mass_error_plot` is a solid hairline rather than
-  dashed — dashing reads as a threshold when it is just a reference.
-
-### Tests
-
-* New `tests/test_theme_and_viz.py` (24 tests) pins the properties that make these
-  plots correct: trace counts, label thinning and collision separation, the sign of
-  the mirrored half, hover values, colour assignment, and degenerate inputs. The
-  existing plotting tests asserted only that a `Figure` came back, so none of the
-  defects above would have been caught.
-
-### Fixes — deconvolution (scientific correctness)
-* **Monoisotopic peak recovery.** Cluster finding seeded on the most intense peak and extended
-  *forward only*. Above ~1900 Da the A+1 peak is more intense than A (and above ~3500 Da it is
-  A+2), so the reported monoisotopic mass was systematically one or two neutrons too high, and the
-  charge state was sometimes wrong as well. The isotope score did not catch it — misaligned
-  envelopes still scored 0.79–0.83. Deconvolution now searches backwards from the seed for
-  candidate anchors and picks the alignment that best fits the isotope template. Verified exact
-  recovery from 1000–4000 Da at charges 1–3.
-* **Single-peak clusters no longer score 1.0.** A one-peak candidate scored a perfect 1.0 (a vector
-  is trivially identical to itself after normalisation), beating and destroying genuine multi-peak
-  clusters. This fired whenever `min_intensity` exceeded the seed intensity — i.e. exactly when
-  feeding `estimate_noise_level()` in, as the docs recommend. Such clusters now score `0.0`.
-* Cluster extension measures each step from the *expected* position rather than the previously
-  matched peak, so a chain of peaks each just inside tolerance can no longer ratchet a cluster off
-  target.
-* Deconvolution now runs in float64 throughout; output m/z is no longer truncated through float32
-  (~0.02 ppm). This also removes a float32-accumulator divergence between the numba and pure-Python
-  backends, which now produce bit-identical results.
-* `deconvolute()` preserves ion mobility instead of discarding it — previously the entire IM
-  dimension was destroyed with no warning, defeating the main purpose of `DReader`.
-* Isotope templates extend to 20000 Da (was 5000, silently clamped).
-* `deconvolve_spectrum` validates `charge_range`; a reversed range silently returned every peak as
-  a singleton. Hitting `max_dpeaks` now warns instead of truncating silently.
-
-### Fixes — core Spectrum API
-* `Spectrum == Spectrum` raised `ValueError` ("truth value of an array is ambiguous"), which also
-  broke `in`, `list.remove`, and `assert spec == expected`. Equality is now element-wise.
-* Methods documented as returning a new `Spectrum` returned objects **sharing numpy buffers** with
-  the original, so writing into the result silently mutated the source. `update()` now copies any
-  array field the caller did not replace.
-* A `charge` array no longer forces `spectrum_type = DECONVOLUTED` over an explicit value. This had
-  defeated the `SpectrumType` guard, allowing `decharge()` on never-deconvoluted centroid data.
-* `tolerance_type` is coerced through `ToleranceType` and raises on unknown values. `"PPM"` used to
-  fall through to Da — a window a million times too wide, silently. Applies across `core`,
-  `matching` and `scoring`.
-* `filter()` raises when given a criterion for a dimension the spectrum lacks, instead of silently
-  ignoring it and returning every peak.
-* `merge()` now carries `iso_score` through (max over the merged group) rather than dropping it.
-* `round_mz()` resets `spectrum_type` when it drops the charge array, instead of leaving the
-  spectrum wedged — claiming to be deconvoluted, refusing `decharge()`, and no-oping `deconvolute()`.
-* `centroid()` resets `iso_score`; previously the inplace path left arrays at mismatched lengths and
-  reported fabricated per-peak scores. `update(inplace=True)` now re-validates shapes.
-* `get_peak()` / `get_peaks()` populate `iso_score` (previously dropped) and return Python scalars.
-* `decharge()` uses `pt.PROTON_MASS` rather than a hardcoded constant, and treats `charge <= 0` as
-  unknown instead of collapsing charge-0 peaks to a neutral mass of 0.0.
-* `normalize()` guards non-finite normalisation factors; `scale_intensity()` clears the `normalized`
-  flag so re-normalisation after a transform is not silently skipped, and rejects `degree=0`.
-* `save()` no longer fails with `TypeError` on numpy scalars in reader-produced metadata.
-* `denoise()` on an empty spectrum no longer emits numpy RuntimeWarnings.
-* `__post_init__` coerces array dtypes, so Python lists no longer construct successfully and fail
-  later inside `filter()`.
-
-### Fixes — scoring, matching, noise
-* `spectral_angle` no longer reports a **perfect 1.0 for NaN input**, and builds its observed vector
-  at fixed length so the cosine cannot exceed 1. Its docstring now states plainly that it is not the
-  literature spectral angle (there is no predicted-intensity vector).
-* `probability_score` returns a finite value when `tolerance=0` (was `+inf`).
-* `match_fragments` with `peak_selection="closest"` walks outward past charge-incompatible
-  neighbours instead of missing charge-compatible peaks well inside tolerance.
-* `peak_selection` and negative/zero fragment charges are validated rather than silently corrupting
-  results; unsorted input m/z raises instead of silently returning no matches.
-* `n_theoretical` agrees between dict and `Sequence[Fragment]` input; `longest_run` handles
-  internal-ion (tuple) positions; `_binom_log10_survival` vectorised (~5x faster, bit-identical).
-* `hyperscore` documented as X!Tandem-*style* and intensity-scale-dependent (math unchanged).
-* Histogram noise estimation now bins the low-intensity bulk; binning the full dynamic range put
-  every noise peak in bin 0 and overestimated the level by roughly two orders of magnitude. All
-  estimators return `0.0` on an empty array instead of NaN or `IndexError`.
-
-### Fixes — mzML / spectrl interoperability
-* **Swapped scan-window accessions.** `MS:1000500` is "scan window *upper* limit" and `MS:1000501`
-  is the lower limit; these were reversed. Round-trips were symmetric so tests passed, but emitted
-  tokens told external mzML consumers the window was inverted.
-* Precursor ion mobility uses the scalar ion-selection terms `MS:1002815` / `MS:1002476` rather than
-  a binary-data-array accession (legacy accessions still decode).
-* `MS:1002481` decodes to `HCD` rather than `PASEF`; `MS:1003007` no longer claims to mean CCS.
-* `injection_time` and `Precursor.is_monoisotopic` now survive the round-trip; isolation window and
-  activation attach only to the first precursor.
-* Readers emit the canonical enums, so `spec.activation_type == ActivationType.CID` is now true for
-  reader-produced spectra.
-* `MzmlReader` no longer marks ordinary centroid data as `DECONVOLUTED` merely because it carries a
-  charge array.
-* `fetch_usi` validates the USI locally before any network call, resolves precursor m/z by fixed
-  accession precedence rather than server ordering, and retains `scan_number` / `native_id`.
-* `MzmlReader.open()` no longer orphans an existing handle; `DReader` no longer leaks a sqlite
-  connection per instance; `Reader` accepts uppercase `.D` and `.mzML.gz`.
-* Optional backends that fail with `OSError` (broken native library) no longer break
-  `import spxtacular`.
-
-### Packaging
-* **The sdist is 74 KB, down from 91 MB.** It had swept in 74 MB of Bruker test fixtures and both
-  generated plot directories, leaving releases one fixture away from PyPI's 100 MB limit. Tests are
-  no longer shipped.
-* Publishing uses PyPI trusted publishing (OIDC) instead of a long-lived API token.
-* CI gained a `pull_request` trigger (packaging changes previously got no check at all), a 3.12/3.13
-  matrix, and a job that installs **without** extras to test that the readers stay importable —
-  the load-bearing promise in `CLAUDE.md`, previously untested.
-* `[tool.uv] dev-dependencies` moved to PEP 735 `[dependency-groups]`; `Typing :: Typed` classifier
-  added; PEP 639 license metadata; pytest/coverage config added with `filterwarnings = ["error"]`.
-* Removed the committed `junit.xml`, the stray `try.py`, the redundant `plots/` directory, the
-  vestigial `MANIFEST.in`, and the dead `draft-pdf.yml` workflow.
-
-### Tests
-* `test_numba_fallback.py` restored modules by rewriting `sys.modules`, which does nothing after
-  `importlib.reload` mutates the module dict in place — so **every test collected after it ran the
-  pure-Python path**, and the JIT path was silently uncovered. Fixed, with a new test asserting the
-  two backends produce identical results and a guard against the leak recurring.
-
-### Docs
-* The README and docs landing-page quick starts produced an **empty spectrum** (the `.denoise()`
-  threshold exceeded every peak in the sample data). Replaced with realistic data and real output.
-* The deconvolution basic-usage and worked examples showed output that did not match what the code
-  produces; both are now generated from actual runs, and the algorithm description covers the new
-  anchor search.
-* Fixed API references that raised on copy-paste: `reader.aquisition_type` (misspelled),
-  `mirror_plot(raw, decon=...)` (the parameter is `deconvoluted`), `next(reader.ms2)` (the lookup
-  objects are iterable but not iterators), `facet_plot(spectra)` in `llms.txt`, and a `decharge()`
-  call on non-deconvoluted data that violated the docs' own guidance.
-* `Spectrum` constructor signature now lists `iso_score`; plotly and pandas correctly documented as
-  required rather than optional; `docs/scoring.md` added to the nav; dead anchors repointed.
+- Reduced the source distribution from 91 MB to about 140 KB by excluding fixtures and generated plots.
+- Switched publishing to PyPI trusted publishing and expanded CI to pull requests, Python 3.12/3.13, and minimal installs.
+- Moved dev dependencies to PEP 735 groups and added typed-package, license, pytest, and coverage metadata.
+- Removed stale generated files, scripts, manifests, and workflows.
+- Strengthened deconvolution, filtering, sorting, plotting, query, and numba/Python parity tests.
 
 ## 0.4.0 (2026-07-09)
 
 ### Breaking changes
-* **Removed `spxtacular.compress` and `spxtacular.urlparams`.** The in-house hex-delta + gzip wire format and the URL query-param encoder have been deleted in favour of the [spectrl](https://github.com/tacular-omics/spectrl) token format. Removed APIs:
-  * `Spectrum.compress()` / `Spectrum.from_compressed()`
-  * `Spectrum.to_url_params()` / `Spectrum.from_url_params()`
-  * `spxtacular.spectrum_to_query_params` / `spectrum_to_query_string` / `spectrum_from_query_params`
-  * The `compress_spectra` / `decompress_spectra` functions
-* `.npz` persistence (`Spectrum.save` / `Spectrum.load`) is unchanged.
 
-### Migration
-* Replace `spec.compress()` and `spec.to_url_params()` calls with `spec.to_spectrl_token()`.
-* Replace `Spectrum.from_compressed(s)` and `Spectrum.from_url_params(p)` with `Spectrum.from_spectrl_token(t)`.
-* The spectrl token format is mzML-faithful (PSI-MS CV params, a single CBOR document, MS-Numpress compression, SHA-256 integrity hash) and well-suited for embedding in URLs, QR codes, notebooks, and papers.
+- Removed `spxtacular.compress`, `spxtacular.urlparams`, and their `Spectrum` methods in favor of spectrl tokens and URLs; `.npz` persistence is unchanged.
+- Replace `spec.compress()`/`spec.to_url_params()` with `spec.to_spectrl_token()` and use `Spectrum.from_spectrl_token()` to decode.
 
-### New features
-* **`spxtacular.spectrl_bridge`** — encode/decode `Spectrum` / `MsnSpectrum` to/from spectrl tokens.
-  * `Spectrum.to_spectrl_token(*, lossless=False, max_len=None)` — encode to a `spectrl1.…` token.
-  * `Spectrum.from_spectrl_token(token)` — classmethod decode.
-  * Standalone helpers: `to_inline_spectrum`, `to_spectrl_token`, `from_spectrl_token`, and `spxtacular.spectrl_bridge.from_decoded_spectrum`.
-* **URL sharing helpers** — `Spectrum.to_spectrl_url(base, *, mode="fragment"|"query"|"data", param="d", …)` and `Spectrum.from_spectrl_url(url)` (plus standalone `to_spectrl_url` / `from_spectrl_url`) build and parse a shareable URL or `data:` URI in one call, replacing the removed `urlparams` convenience.
-* **`iso_score` is preserved** through the round-trip via spectrl's `extra_arrays` slot (encoded as a non-standard mzML binary array, `MS:1000786`). Other tools that don't recognise the array name ignore it cleanly.
-* **Lossless scalar-metadata round-trip** — spxtacular fields without an mzML CV counterpart (`denoised`, `normalized`, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range`) are carried as namespaced (`spxtacular:`) free-text `user_params`, so the round-trip is faithful.
-* **Typed metadata enums** — new `StrEnum`s `Polarity`, `ActivationType`, `IMType`, and `Analyzer` (exported from `spxtacular`) give autocomplete and typo-safety when hand-authoring an `MsnSpectrum` (`activation_type=ActivationType.HCD`). The fields stay open vocabularies (`ActivationType | str`, etc.), so raw PSI-MS accessions from `DReader` (`"MS:1002481"`) and unknown vendor strings still flow through untouched. `ActivationType`/`Analyzer` are the single source of truth for `spectrl_bridge`'s `_ACTIVATION_ACCESSIONS` / new `_ANALYZER_ACCESSIONS` PSI-MS accession maps (keyed by enum member), so the acronym list and its accessions can no longer drift apart.
-* spectrl is gated behind the `[spectrl]` optional extra, sourced from PyPI (`spectrl>=0.2.1`). The token is a single CBOR document; 0.2.1 fixes a native abort when lossy-encoding charge arrays that contain singleton sentinels (`charge=-1`).
+### Added
 
-### Fixes
-* `Spectrum.match_fragments()` / `Spectrum.score()` default `tolerance_type` reverted to `DA` (it had drifted to `PPM` while keeping `tolerance=0.02`, making the default call match almost nothing).
-* `plot_spectrum()` / `Spectrum.plot()`: `color`, `show_scores`, and `show_charges` are now keyword-only, closing off a silent-positional-argument hazard introduced when `color` was inserted ahead of the old `show_charges` slot.
-* `match_fragments()` no longer raises `ZeroDivisionError` when a fragment's target mass is exactly `0.0` under `tolerance_type="ppm"`; the dict-fragment branch also builds `Fragment` objects lazily again (only for confirmed matches), restoring the pre-rewrite performance on this per-PSM hot path.
-* New `Spectrum.is_decharged` property replaces three separate inline re-derivations of the same check (`core.py`, `matching.py`).
-* `Spectrum.decharge()` now warns instead of silently zeroing every m/z value when called on an already-decharged spectrum (see the aliasing fix below for what it returns).
-* `Spectrum.top_peaks(0)` / `Spectrum.filter(top_n=0)` now correctly return zero peaks instead of all of them (a `arr[-0:]` negative-zero slicing bug).
-* `Spectrum.merge(im_tolerance_type=...)` validation was case-insensitive but the comparison wasn't, so e.g. `"RELATIVE"` silently used absolute-tolerance semantics.
-* `MzmlReader` spectra with multiple ion-mobility arrays now use the first length-matching array (previously the loop kept overwriting its result and could end up using the last array, or none, contradicting its own warning).
-* `DReader.close()` now clears its internal reader handle so the "must be opened" guard can't be bypassed by using a closed reader; `DReader.open()` now closes a previously-open reader instead of leaking its handle on re-open.
-* `_plot_spectrum_im` (the `color="im"` plot path) no longer corrupts the whole color scale when a single peak's `im` is `NaN`, and no longer crashes on an empty spectrum.
-* `spectrl_bridge`: unrecognised `im_type` strings now round-trip losslessly via a namespaced `spxtacular:im_type` user_param instead of being silently coerced to a default accession; unrecognised `activation_type` strings now round-trip losslessly via a new `spxtacular:activation_type` user_param instead of raising an `IndexError` (they were previously passed to spectrl as a raw, non-`MS:NNNNN` CV accession, which crashed encode); `Precursor.im` is now carried through encode/decode; an `MsnSpectrum` whose only MSn-specific data is `im`/`im_type`/`activation_type` no longer downgrades to a plain `Spectrum` on decode. `_ACTIVATION_ACCESSIONS` (`Spectrum.activation_type` → PSI-MS CV accession) expanded from 5 to 15 entries — added `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI` — and its `"PASEF"` entry's comment now clarifies it maps to the "higher energy beam-type CID" accession (`MS:1002481`), since PASEF is a Bruker acquisition scheme with no PSI-MS term of its own, not a mislabelled CV term.
-* `uv run ty check` no longer errors under `tdfpy>=2.0.0` (which ships a `py.typed` marker): the `MergePeaksCentroider` import-fallback assignment was missing a `ty: ignore[invalid-assignment]` alongside its existing `type: ignore`, so `ty` now flagged it as a real type error once it could resolve the import. Verified against the currently-released `tdfpy==2.0.0`/`mzmlpy==0.4.0` and, ahead of their releases, the local `tdfpy` (`release/v2.1.0`) and `mzmlpy` (`release/v0.5.0`) branches — full test suite passes against both.
-* `Spectrum.decharge(inplace=False)`, `.normalize(inplace=False)`, `.denoise(inplace=False)`, `.centroid(inplace=False)`, and `.deconvolute(inplace=False)` called on a spectrum already in the target state now return a distinct object instead of aliasing `self`; previously the caller's original spectrum could be silently mutated through the "new" object.
-* `spxtacular.score()`, `match_fragments()`, `annotate_spectrum()`, `Spectrum.mass_error_plot()`/`facet_plot()`, and their standalone `visualization` counterparts now default `tolerance_type` to `DA`, matching `Spectrum.score()`/`Spectrum.match_fragments()` — these had drifted to `PPM` in some entry points but not others, so calling different parts of the API with default arguments on the same inputs silently produced very different match counts.
-* Removed a stale, now-unused `ty: ignore[unresolved-import]` comment in `reader.py` flagged by `ty check`.
-* `Spectrum.decharge()` now raises `ValueError` when called on a non-deconvoluted spectrum, matching its documented contract, instead of silently calling `deconvolute()` with hidden default parameters. Call `deconvolute()` explicitly first.
-* `spectrl_bridge`: an `activation_type` that is already a valid PSI-MS accession (e.g. `"MS:1002481"` / `"MS:1000133"`, as both `DReader` and `MzmlReader` produce) is once again emitted as a standard dissociation-method CV param on the encoded precursor, not just carried in the `spxtacular:activation_type` user_param; only genuinely free-text vendor strings fall through to the user_param. Restores mzML CV fidelity for reader-produced MS2 spectra while keeping the encode crash-safe.
-* Scored deconvolution (`deconvolute(min_score=…, intensity="total")`): a rejected multi-peak cluster no longer records the *whole cluster's* summed intensity on its seed singleton — it records the seed's own intensity, so the remaining cluster peaks (which stay available and are re-seeded later) are no longer double-counted in the output. Only affected `min_score > 0` in the default `"total"` intensity mode; `"base"` mode and the default `min_score=0.0` were already correct.
-* `Spectrum.deconvolute()` now validates `charge_range` (must be `(min, max)` with `1 <= min <= max`) with a clear `ValueError` instead of a downstream divide-by-zero, and returns an empty deconvoluted spectrum for an empty input instead of raising on the `min()` of an empty intensity array.
-* `Spectrum.normalize()` on an all-zero-intensity spectrum now warns and returns the spectrum unchanged instead of dividing by zero and silently producing `NaN`s; on an empty spectrum it is a no-op instead of raising.
+- Added `spxtacular.spectrl_bridge`, `Spectrum.to_spectrl_token()`, `Spectrum.from_spectrl_token()`, and standalone conversion helpers.
+- Added spectrl URL/data-URI helpers with fragment, query, and data modes.
+- Preserved `iso_score` and spxtacular-only scalar metadata in spectrl round-trips.
+- Added open-vocabulary `Polarity`, `ActivationType`, `IMType`, and `Analyzer` string enums.
+- Added the optional `[spectrl]` extra.
 
-### Dependencies
-* Added an explicit `numpy>=1.26` floor (the first numpy supporting Python 3.12, the project's minimum) — previously `numpy` was unbounded.
-* Raised dependency floors to the versions 0.4.0 is tested against: `peptacular>=3.1.2`, `paftacular>=1.1.0`, and the optional reader extras `tdfpy>=2.0.0` (was `>=1.2.0` — now requires the tdfpy 2.x API) and `mzmlpy>=0.5.0` (was `>=0.4.0`). `spectrl>=0.2.1` unchanged. Verified: full suite passes against `peptacular==3.1.2`, `paftacular==1.1.0`, `tdfpy==2.2.0`, `mzmlpy==0.5.0`.
+### Fixed
+
+- Restored a consistent default fragment tolerance of `0.02 Da` across matching, scoring, and visualization APIs.
+- Made plot color options keyword-only to prevent positional argument misbinding.
+- Added `Spectrum.is_decharged` and safe repeated-decharge behavior.
+- Fixed zero-mass matching, `top_n=0`, case-insensitive merge mobility modes, and multiple mzML mobility arrays.
+- Fixed DReader lifecycle handling and ion-mobility plotting for empty/NaN data.
+- Preserved unknown spectrl metadata, precursor mobility, MSn classification, and standard PSI-MS activation accessions.
+- Non-inplace processing methods now always return independent objects.
+- Deconvolution now handles rejected clusters, invalid charge ranges, empty spectra, and all-zero normalization safely.
+- Updated dependency floors to tested Python 3.12-compatible versions.
 
 ## 0.3.1 (2026-05-14)
 
-### New features
-* **Optional reader backends** — `tdfpy` and `mzmlpy` moved to optional extras (`bruker`, `mzml`, `readers`, `all`). `DReader` and `MzmlReader` remain importable from `spxtacular` regardless of whether their backends are installed; only instantiation raises `ImportError` pointing to the correct extra. Lets downstream consumers (e.g. `pydiode`) depend on `spxtacular` for the core processing API without pulling in native reader deps.
-* **Ion-mobility plotting** — `plot_spectrum()` and `Spectrum.plot()` gained a `color` parameter (`"im" | "charge" | None`). New internal `_plot_spectrum_im` renders sticks with a quantized Viridis scale and IM colorbar; respects `Spectrum.im_type` (e.g. `ook0` → `1/K0`).
-* **URL query-param encoding** — new `spxtacular.urlparams` module (`spectrum_to_query_params`, `spectrum_to_query_string`, `spectrum_from_query_params`, plus `Spectrum.to_url_params` / `Spectrum.from_url_params`) for round-tripping `Spectrum`/`MsnSpectrum` through URL query strings. Peak arrays are routed through the binary compressor with `url_safe=True`; MSn scalar metadata is emitted as plain, human-readable params. Wire format is versioned (`version=1`).
-* **Compressor carries per-peak `iso_score`** — `Spectrum.compress()` / `compress_spectra()` gained an `iso_score_precision` kwarg and now encode `score` as an optional 5th length-prefixed chunk. Payloads without `iso_score` stay byte-identical to the previous format, so old payloads remain decodable and pre-0.3.1 decoders can still read new payloads (they stop after the 4th chunk).
+### Added
 
-### API changes
-* `Spectrum.match_fragments()` default `tolerance_type` changed from `DA` to `PPM`. New `is_monoisotopic: bool = True` parameter forwarded to the underlying `match_fragments` function.
+- Moved `tdfpy` and `mzmlpy` to optional reader extras while keeping their reader classes importable.
+- Added ion-mobility coloring to spectrum plots.
+- Added URL query-parameter serialization and `iso_score` support to the legacy compressor.
 
-### Dependencies
-* `tdfpy>=1.2.0` (was `>=1.1.0`) — now under the `bruker` extra.
-* `paftacular` extra dropped: now `paftacular>=1.0.0` (was `paftacular[peptacular]>=1.0.0`) for micropip/Pyodide compatibility. Core `paftacular` is sufficient — only `pft.to_mzpaf` is used.
+### Changed
 
-### Fixes
-* `Spectrum.compress()` no longer crashes on deconvoluted spectra containing singletons (`charge=-1`). The wire format now reserves hex `'f'` for the singleton sentinel; charge state 15 is no longer supported (charge states above 14 are vanishingly rare).
-* `plot_spectrum(show_charges=...)` now warns and forwards to the new `color=` argument instead of failing inside plotly. Tests and call-sites should migrate to `color="charge"` / `color=None`.
-* `MsnSpectrum.__str__` no longer raises `TypeError` when `rt` is `None`.
-* `match_fragments()` (and therefore `Spectrum.annotate()` / `annotate_spectrum()`) now adapts to the spectrum's processing state. Singletons (`charge == -1`, unknown charge) act as a wildcard and match by m/z. Decharged spectra (every peak's `charge == 0`, m/z values are neutral masses) match fragments against `Fragment.neutral_mass` instead of `Fragment.mz`, so any `charge_state` fragment can match the same neutral peak. Previously these states silently produced zero matches.
+- Temporarily changed `Spectrum.match_fragments()` tolerance units to PPM; version 0.4.0 restored Da consistently.
+- Updated reader and `paftacular` dependency packaging.
 
-### Internal
-* `Spectrum.save`/`load` and `MsnSpectrum.save`/`load` unified onto base-class implementations with `_meta_dict()` / `_meta_kwargs()` hooks. The persisted `iso_score` array is now stored under the `iso_score` key in `.npz` files (was `score` on the base `Spectrum`); the loader transparently falls back to the old `score` key for backward compatibility.
-* `DReader` now works against both the current `tdfpy` 1.2.0 release and the post-1.2.0 smoothing branch, which reshaped `Frame.centroid()` / `DiaWindow.centroid()` / `PrmTransition.centroid()` to take `centroid=MergePeaksCentroider(…)` and `noise=…` instead of the older flat keyword args. The adapter is transparent: `CentroidConfig` is unchanged.
+### Fixed
+
+- Supported singleton charges in compressed spectra.
+- Deprecated `show_charges` in favor of `color=` without breaking calls.
+- Fixed missing retention times in `MsnSpectrum.__str__`.
+- Made fragment matching adapt to centroided, deconvoluted, singleton, and decharged spectra.
+- Unified persistence implementations and retained backward compatibility for the old `score` key.
+- Supported both released and upcoming `tdfpy` centroid APIs.
 
 ## 0.3.0 (2026-04-07)
 
-### New features
-* **PRM support** — `DReader` now opens PRM `.d` folders via the dedicated `tdfpy.PRM` reader. MS2 iteration yields one `MsnSpectrum` per `PrmTransition` (frame × target slice), with target metadata exposed via the `precursors` field and isolation window/collision energy populated from the transition. Native ID format is `"{frame_id}@t{target_id}"`. PRM MS2 lookup by integer ID raises `NotImplementedError` (transitions are keyed by `(frame_id, target_id)`).
-* **USI loading** — `Spectrum.from_usi()` and the underlying `spxtacular.usi.fetch_usi` retrieve spectra from public repositories (PRIDE, MassIVE, PeptideAtlas, jPOST, or the PROXI aggregator) by Universal Spectrum Identifier. Returns an `MsnSpectrum` when precursor info is present, otherwise a plain `Spectrum`.
-* **Precursor peak removal** — `Spectrum.remove_precursor_peak()` strips the precursor, its isotope envelope, and (optionally) all charge states from 1..z. Adapts to centroid / deconvoluted / decharged spectra; auto-detects precursors from `MsnSpectrum.precursors` when no explicit `precursor_mz` is given.
-* **Intensity scaling** — `Spectrum.scale_intensity(method="root"|"log"|"rank")` for dynamic-range compression. Independent of `normalize()` (which divides by a reference value).
-* **m/z rounding** — `Spectrum.round_mz(decimals, combine="sum"|"max")` rounds m/z values and merges duplicates with sum or max-intensity reduction.
-* **New visualisations** — `mass_error_plot()` (bubble chart of fragment mass errors vs m/z, sized by intensity, coloured by ion series) and `facet_plot()` (multi-panel spectrum + mass-error + optional mirror). Convenience methods on `Spectrum` (`.mass_error_plot()`, `.facet_plot()`) included.
-* **Unit conversion** — `spxtacular.da_to_ppm` and `spxtacular.ppm_to_da` helpers.
-* **`Spectrum.annotate()`** — convenience method calling `annotate_spectrum` for fragment-labelled plots.
+- Added Bruker PRM reading, USI loading, precursor-envelope removal, intensity scaling, and m/z rounding.
+- Added mass-error and faceted plots plus `Spectrum.annotate()`.
+- Added `da_to_ppm()` and `ppm_to_da()`.
 
 ## 0.2.0 (2026-03-18)
 
-### New features
-* **Plot table API** — `build_plot_table()`, `build_annot_plot_table()`, `plot_from_table()` provide an intermediate `pandas.DataFrame` layer between data and plotting.  Users can freely modify colours, line widths, labels, and font settings before rendering.
-* `Spectrum.plot_table()` and `Spectrum.annot_plot_table()` convenience methods.
-* **Scored deconvolution** — `Spectrum.deconvolute()` now uses Bhattacharyya-coefficient isotope-profile scoring; peaks carry a `score` array (0–1).
-* `Spectrum.filter(min_score=, max_score=)` for quality-based peak filtering.
-* `min_intensity` and `min_score` parameters added to `Spectrum.deconvolute()`.
-* **Fragment matching** — `match_fragments()` supports charge-state filtering when the spectrum has a `charge` array; singletons (`charge == -1`) are excluded.
-* **PSM scoring** — `score()` function with eight metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
-* `mirror_plot()` and `annotate_spectrum()` added to the visualization module.
-* `show_scores` parameter added to `plot_spectrum()` and `Spectrum.plot()`.
-* **Persistence** — `Spectrum.save()` / `Spectrum.load()` and `MsnSpectrum.save()` / `MsnSpectrum.load()` round-trip spectra to compact `.npz` files. Arrays are stored natively; scalar metadata (and `MsnSpectrum.precursors`) is serialised as JSON under a `meta` key.
-* **`Spectrum.combine()`** — classmethod that concatenates peaks from multiple spectra into a single new `Spectrum`, m/z-sorted. Optional per-peak arrays (`charge`, `im`, `iso_score`) carry over only when **all** input spectra provide them.
-* **`Spectrum.merge()`** — greedy intensity-ordered peak merging. Replaces the older single-tolerance signature with split `mz_tolerance` / `mz_tolerance_type` and `im_tolerance` / `im_tolerance_type` (relative or absolute) kwargs; charge-aware (only peaks of matching charge are merged).
-* **Unified `Reader`** — `spxtacular.Reader(path)` auto-detects `.d` vs `.mzML` and dispatches to `DReader` or `MzmlReader`.
-
-### Dependencies
-* `pandas>=2.0` added as a runtime dependency.
-
-### Fixes & polish
-* Missing `stacklevel` added to all `warnings.warn()` calls in `reader.py`.
-* Dead code (`_fragment_label` in `visualization.py`) removed.
-* `pyproject.toml`: added `[project.urls]`, `license`, and `keywords` fields.
-* `LICENSE` (MIT) file added to repository root.
+- Added the editable plot-table API and `Spectrum` plot-table convenience methods.
+- Added scored deconvolution, isotope scores, and score-based filtering.
+- Added charge-aware fragment matching and eight peptide-spectrum scoring metrics.
+- Added mirror and annotated spectrum plots.
+- Added `.npz` persistence for `Spectrum` and `MsnSpectrum`.
+- Added spectrum combination, charge-aware peak merging, and unified reader auto-detection.
+- Added pandas as a runtime dependency and completed package metadata/LICENSE cleanup.
 
 ## 0.1.0 (2026-01-16)
 
-* First release on PyPI.
+- First PyPI release.

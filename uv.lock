@@ -1799,16 +1799,16 @@ wheels = [
 
 [[package]]
 name = "spectrl"
-version = "0.4.0"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cbor2" },
-    { name = "mzmlpy" },
     { name = "numpy" },
+    { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/82/aa582206f4774e1bbdcfed0afe85524617861f2ff94762a3c3683f454701/spectrl-0.4.0.tar.gz", hash = "sha256:4a08c42fa9b7c9527e30a5970c8ecf7337bfc6502b7a83222495633b49dd952e", size = 214346, upload-time = "2026-08-16T02:31:21.245Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/80/b20048be843be2312c9914b154d5a0aa830cd22f3fad5d78f4d134c566e9/spectrl-1.0.0.tar.gz", hash = "sha256:95f442284886c9f12964cfa0445869528a096161b8c729d77dcd5f63770697b7", size = 242360, upload-time = "2026-08-17T22:29:56.418Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/bf/3c6b1a151e9058fadf74e40cd7d542266aaf54281590a89eb6caf96e502d/spectrl-0.4.0-py3-none-any.whl", hash = "sha256:26efe0cddb252c0708343a2740d416ef002a2f39bf6c23cdbc53582cf5452949", size = 43524, upload-time = "2026-08-16T02:31:20.028Z" },
+    { url = "https://files.pythonhosted.org/packages/00/db/080eadfd5a7b55b145767a6cc7537a0053ac1d80ec025b226869eb3db1f0/spectrl-1.0.0-py3-none-any.whl", hash = "sha256:55214b4b0381e85c7f36f23a117f7ae8fe82188b474b472f01de2cfecc84f0b4", size = 52943, upload-time = "2026-08-17T22:29:55.204Z" },
 ]
 
 [[package]]
@@ -1916,8 +1916,8 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.0" },
     { name = "peptacular", specifier = ">=3.2.0" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "spectrl", marker = "extra == 'all'", specifier = ">=0.4.0" },
-    { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=0.4.0" },
+    { name = "spectrl", marker = "extra == 'all'", specifier = ">=1.0.0" },
+    { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=1.0.0" },
     { name = "spectrum-utils", marker = "extra == 'all'", specifier = ">=0.5.0" },
     { name = "spectrum-utils", marker = "extra == 'interop'", specifier = ">=0.5.0" },
     { name = "spectrum-utils", marker = "extra == 'spectrum-utils'", specifier = ">=0.5.0" },
@@ -1938,7 +1938,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.11" },
-    { name = "spectrl", specifier = ">=0.4.0" },
+    { name = "spectrl", specifier = ">=1.0.0" },
     { name = "spectrum-utils", specifier = ">=0.5.0" },
     { name = "tdfpy", specifier = ">=3.0.0" },
     { name = "ty", specifier = ">=0.0.11" },

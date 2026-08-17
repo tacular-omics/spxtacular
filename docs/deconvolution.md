@@ -74,9 +74,13 @@ known acquisition range warrants one.
 ### 4. Scoring
 
 Each candidate cluster is scored against a theoretical isotope distribution using the
-**Bhattacharyya coefficient**, penalised for missed peaks that should have been detectable above
-`min_intensity`. The score is in the range 0–1, where 1 is a perfect match to the theoretical
-envelope. A cluster of a single peak scores `0.0` — one peak is no evidence of a charge state.
+**Bhattacharyya coefficient**. This comparison is two-sided: both missing predicted intensity and
+unexpected intensity among the aligned candidate peaks lower the coefficient. Aligned observed
+entries participate even where the corresponding model entry falls below the detectability
+cutoffs. Missing peaks that should have been detectable above `min_intensity` receive an additional
+penalty; absent theoretical peaks below that floor do not. The score is in the range 0–1, where 1 is
+a perfect match to the theoretical envelope. A cluster of a single peak scores `0.0` — one peak is
+no evidence of a charge state.
 
 The theoretical envelope is calculated with a BRAIN-style recurrence and cached at one-Dalton
 resolution. Built-in average-composition models are available for peptides, glycans, lipids, DNA,

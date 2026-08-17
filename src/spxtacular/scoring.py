@@ -302,7 +302,7 @@ def _mean_ppm_error(
 
 def _fragment_identity(fragment) -> tuple[str, Any, Any]:
     """Key identifying a theoretical ion across the fragment list and the matches."""
-    return (str(fragment.ion_type), fragment.position, getattr(fragment, "charge", None))
+    return (str(fragment.ion_type), fragment.position, fragment.charge_state)
 
 
 def _spectral_angle_predicted(

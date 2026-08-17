@@ -428,6 +428,21 @@ class TestPrecursorMarker:
         fig = plot_spectrum(_spectrum(4))
         assert not any("precursor" in str(a.text) for a in fig.layout.annotations)
 
+    def test_negative_charge_uses_a_negative_suffix(self) -> None:
+        from spxtacular.core import MsnSpectrum, Precursor
+
+        spec = MsnSpectrum(
+            mz=np.array([100.0, 200.0]),
+            intensity=np.array([1.0, 2.0]),
+            polarity="negative",
+            precursors=[Precursor(mz=250.0, intensity=1e6, charge=-2, is_monoisotopic=True)],
+        )
+
+        fig = plot_spectrum(spec)
+        labels = [str(a.text) for a in fig.layout.annotations if "precursor" in str(a.text)]
+
+        assert labels == ["precursor 250.0000 (2-)"]
+
 
 class TestTableViewAndTexture:
     def test_table_view_carries_the_values(self) -> None:
@@ -499,6 +514,34 @@ class TestSaveFigure:
         fig = plot_spectrum(_spectrum(3))
         with pytest.raises(ValueError, match="unsupported figure format"):
             save_figure(fig, tmp_path / "fig.tiff")
+
+    def test_eps_is_rejected_before_static_export(self, tmp_path) -> None:
+        fig = plot_spectrum(_spectrum(3))
+        with pytest.raises(ValueError, match="unsupported figure format"):
+            save_figure(fig, tmp_path / "fig.eps")
+
+    def test_missing_kaleido_has_an_install_hint(self, tmp_path, monkeypatch) -> None:
+        import importlib
+
+        fig = plot_spectrum(_spectrum(3))
+
+        def missing(_name: str, *_args, **_kwargs):
+            raise ImportError("no kaleido")
+
+        monkeypatch.setattr(importlib, "import_module", missing)
+        with pytest.raises(ImportError, match="pip install kaleido"):
+            save_figure(fig, tmp_path / "fig.png")
+
+    def test_non_dependency_export_errors_are_preserved(self, tmp_path, monkeypatch) -> None:
+        import importlib
+
+        class BrokenFigure:
+            def write_image(self, *_args, **_kwargs) -> None:
+                raise PermissionError("read-only destination")
+
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        with pytest.raises(PermissionError, match="read-only destination"):
+            save_figure(BrokenFigure(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
 
 
 class TestDegenerateInputs:

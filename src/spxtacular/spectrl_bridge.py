@@ -1,11 +1,11 @@
 """Bridge between spxtacular's :class:`~spxtacular.core.Spectrum` and
-`spectrl <https://github.com/tacular-omics/spectrl>`_'s
+`spectrl <https://github.com/pgarrett-scripps/spectrl>`_'s
 :class:`InlineSpectrum` / token format.
 
 `spectrl` is a sibling library that encodes a full mass spectrum into a single
 compact, URL-safe token. Its data model is faithful to mzML (typed
 ``SpectrlCvParam`` lists with PSI-MS accessions, a single CBOR document,
-MS-Numpress peak compression, SHA-256 integrity hash) and is well-suited for sharing
+MS-Numpress peak compression, CRC-32 integrity checksum) and is well-suited for sharing
 spectra outside spxtacular — embedded in URLs, QR codes, notebooks, papers.
 
 This module provides the four-way conversion::
@@ -161,8 +161,7 @@ _ANALYZER_ACCESSIONS: dict[str, str] = {
     Analyzer.ELECTROSTATIC_ENERGY_ANALYZER: "MS:1000254",
 }
 
-# Ion-mobility array accessions (must be drawn from spectrl.ION_MOBILITY_ARRAY_TAILS,
-# i.e. mzmlpy.constants.ION_MOBILITIES, otherwise spectrl will not recognise them on decode).
+# Ion-mobility array accessions recognized by spectrl's generated CV registry.
 # Keyed by :class:`spxtacular.enums.IMType` members where one exists; the extra
 # lowercase aliases ("1/k0", "drift_time") stay accepted as raw strings.
 # PSI-MS has no collision-cross-section array term, so ``ccs`` is encoded with
@@ -436,11 +435,15 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     if spec.charge is not None:
         charge_arr = spec.charge.astype(np.float64, copy=False)
 
-    # iso_score travels as a non-standard mzML binary array (MS:1000786)
-    # via spectrl's extra_arrays slot.
+    # iso_score travels as a non-standard mzML binary array (MS:1000786),
+    # while Spectrl 1.0 carries each mobility variant under its exact PSI-MS
+    # accession in the same extra_arrays mapping.
     extra_arrays: dict[str, np.ndarray] = {}
     if spec.iso_score is not None:
         extra_arrays["iso_score"] = spec.iso_score.astype(np.float64, copy=False)
+    if spec.im is not None:
+        assert ion_mobility_type is not None
+        extra_arrays[ion_mobility_type] = spec.im.astype(np.float64, copy=False)
 
     # spxtacular scalar fields with no CV term travel as namespaced user_params.
     user_params = []
@@ -489,8 +492,6 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         mz=spec.mz.astype(np.float64, copy=False) if spec.mz is not None else None,
         intensity=spec.intensity.astype(np.float64, copy=False) if spec.intensity is not None else None,
         charge=charge_arr,
-        ion_mobility=spec.im.astype(np.float64, copy=False) if spec.im is not None else None,
-        ion_mobility_type=ion_mobility_type,
         id=msn_spec.native_id if msn_spec is not None else None,
         params=params,
         scans=scans,
@@ -501,7 +502,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
 
 
 def to_spectrl_token(spec: Spectrum, *, lossless: bool = False, max_len: int | None = None) -> str:
-    """Encode a spxtacular spectrum directly to a ``spectrl2.…`` token.
+    """Encode a spxtacular spectrum directly to a ``spectrl.v1.…`` token.
 
     Convenience wrapper over :func:`to_inline_spectrum` +
     :func:`spectrl.encode_spectrum`. See :func:`spectrl.encode_spectrum` for
@@ -545,6 +546,24 @@ def _range_from_user_params(
     return (float(lo), float(hi))
 
 
+def _mobility_array(decoded: DecodedSpectrum) -> tuple[str | None, np.ndarray | None]:
+    """Return Spectrl 1.0's accession-keyed mobility column, if present.
+
+    Spectrl can carry several mobility arrays at once, whereas spxtacular has
+    one ``im`` column. Refuse an ambiguous conversion rather than silently
+    discarding scientifically distinct arrays.
+    """
+    mobility_arrays = decoded.mobility_arrays
+    if len(mobility_arrays) > 1:
+        accessions = ", ".join(sorted(mobility_arrays))
+        message = "cannot convert multiple spectrl ion-mobility arrays to one spxtacular im array"
+        raise ValueError(f"{message}: {accessions}")
+    if not mobility_arrays:
+        return None, None
+    accession, values = next(iter(mobility_arrays.items()))
+    return accession, np.asarray(values, dtype=np.float64)
+
+
 def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     """Convert a :class:`spectrl.DecodedSpectrum` back to a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
@@ -573,7 +592,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         else np.empty(0, dtype=np.float64)
     )
     charge = np.asarray(decoded.charge, dtype=np.int32) if decoded.charge is not None else None
-    im = np.asarray(decoded.ion_mobility, dtype=np.float64) if decoded.ion_mobility is not None else None
+    im_accession, im = _mobility_array(decoded)
 
     # iso_score is carried as a non-standard mzML binary array under
     # extra_arrays["iso_score"] — see to_inline_spectrum.
@@ -613,7 +632,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
         or ms_level_p is not None
         or decoded.scans
         or decoded.precursors
-        or decoded.ion_mobility_type is not None
+        or im_accession is not None
         or _find_param(decoded.params, _POSITIVE) is not None
         or _find_param(decoded.params, _NEGATIVE) is not None
         or any(name in up for name in _MSN_USER_PARAMS)
@@ -733,7 +752,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     im_type = (
         str(im_type_v)
         if im_type_v is not None
-        else (_IM_TYPE_FROM_ACCESSION.get(decoded.ion_mobility_type) if decoded.ion_mobility_type else None)
+        else (_IM_TYPE_FROM_ACCESSION.get(im_accession) if im_accession else None)
     )
 
     # Remaining spxtacular scalar fields from user_params.
@@ -780,7 +799,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
 
 
 def from_spectrl_token(token: str) -> Spectrum:
-    """Decode a ``spectrl2.…`` token into a spxtacular
+    """Decode a ``spectrl.v1.…`` token into a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
     when MSn metadata is present).
     """
@@ -809,10 +828,10 @@ def to_spectrl_url(
     Convenience wrapper over :func:`to_spectrl_token` + spectrl's URL binding
     helpers. ``mode`` selects the binding:
 
-    - ``"fragment"`` (default): ``base#spectrl2.…`` — the token rides in the URL
+    - ``"fragment"`` (default): ``base#spectrl.v1.…`` — the token rides in the URL
       fragment, which is never sent to the server (no length limits, no logs).
-    - ``"query"``: ``base?<param>=spectrl2.…`` — token as a query parameter.
-    - ``"data"``: a ``data:application/vnd.spectrl;v=2,…`` URI (``base`` ignored).
+    - ``"query"``: ``base?<param>=spectrl.v1.…`` — token as a query parameter.
+    - ``"data"``: a ``data:application/vnd.spectrl;v=1,…`` URI (``base`` ignored).
 
     ``base`` is required for ``"fragment"`` and ``"query"``. See
     :func:`spectrl.encode_spectrum` for ``lossless`` / ``max_len``.
@@ -843,7 +862,7 @@ def to_spectrl_url(
 
 
 def from_spectrl_url(url: str) -> Spectrum:
-    """Extract a ``spectrl2.…`` token from a URL fragment, query string, or
+    """Extract a ``spectrl.v1.…`` token from a URL fragment, query string, or
     ``data:`` URI and decode it into a spxtacular
     :class:`~spxtacular.core.Spectrum` / :class:`~spxtacular.core.MsnSpectrum`.
     """

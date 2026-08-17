@@ -21,7 +21,7 @@ from spxtacular import (
     resolve_isotope_model,
 )
 from spxtacular.decon.greedy import NEUTRON_MASS, PROTON_MASS, _match_apex_cluster
-from spxtacular.decon.scored import deconvolve_spectrum
+from spxtacular.decon.scored import _score_cluster, deconvolve_spectrum
 from spxtacular.isotopes import MAX_ISOTOPE_PEAKS, NATURAL_ISOTOPE_ABUNDANCES
 
 
@@ -100,6 +100,42 @@ def test_adaptive_distribution_exceeds_old_limit_and_honors_cap() -> None:
     assert len(adaptive) > MAX_ISOTOPE_PEAKS
     assert int(adaptive.argmax()) == 31
     assert len(capped) == 20
+
+
+def test_isotope_score_penalises_missing_detectable_intensity() -> None:
+    template = np.array([0.6, 0.3, 0.1, 0.0], dtype=np.float64)
+    complete = np.array([600.0, 300.0, 100.0, 0.0], dtype=np.float64)
+    missing = np.array([600.0, 300.0, 0.0, 0.0], dtype=np.float64)
+
+    complete_score = _score_cluster(complete, template, 0.0, 0.01)
+    missing_score = _score_cluster(missing, template, 0.0, 0.01)
+
+    assert complete_score == pytest.approx(1.0)
+    assert missing_score < complete_score
+
+
+def test_isotope_score_penalises_unexpected_observed_intensity() -> None:
+    template = np.array([0.6, 0.3, 0.1, 0.0], dtype=np.float64)
+    expected = np.array([600.0, 300.0, 100.0, 0.0], dtype=np.float64)
+    unexpected = np.array([600.0, 300.0, 100.0, 200.0], dtype=np.float64)
+
+    expected_score = _score_cluster(expected, template, 0.0, 0.01)
+    unexpected_score = _score_cluster(unexpected, template, 0.0, 0.01)
+
+    assert expected_score == pytest.approx(1.0)
+    assert unexpected_score < expected_score
+
+
+def test_observed_intensity_bypasses_theoretical_detectability_cutoffs() -> None:
+    template = np.array([0.69, 0.30, 0.01], dtype=np.float64)
+    expected = np.array([690.0, 300.0, 0.0], dtype=np.float64)
+    unexpected = np.array([690.0, 300.0, 200.0], dtype=np.float64)
+
+    expected_score = _score_cluster(expected, template, 100.0, 0.05)
+    unexpected_score = _score_cluster(unexpected, template, 100.0, 0.05)
+
+    assert expected_score == pytest.approx(1.0)
+    assert unexpected_score < expected_score
 
 
 @pytest.mark.parametrize(
@@ -404,9 +440,17 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
     mono_mz = (neutral_mass + charge * PROTON_MASS) / charge
     mz = mono_mz + offsets * NEUTRON_MASS / charge
     intensity = distribution[offsets] * 1e6
+    _, clean_charge, _, clean_scores = deconvolve_spectrum(
+        mz,
+        intensity,
+        charge_range=(charge, charge),
+        tolerance=5.0,
+        is_ppm=True,
+    )
+    clean_cluster = int(np.flatnonzero(clean_charge == charge)[0])
     intensity[2] *= 3.0  # Outside the default twofold gate, but still below the apex.
 
-    out_mz, out_charge, out_intensity, _ = deconvolve_spectrum(
+    out_mz, out_charge, out_intensity, out_scores = deconvolve_spectrum(
         mz,
         intensity,
         charge_range=(charge, charge),
@@ -416,6 +460,7 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
 
     first_cluster = int(np.argmin(np.abs(out_mz - mono_mz)))
     assert out_charge[first_cluster] == charge
+    assert out_scores[first_cluster] < clean_scores[clean_cluster]
     assert out_intensity[first_cluster] == pytest.approx(float(intensity[:2].sum()))
     assert len(out_mz) > 1
     assert float(out_intensity.sum()) == pytest.approx(float(intensity.sum()))

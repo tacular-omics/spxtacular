@@ -15,6 +15,7 @@ from spxtacular import (
     IonizationModel,
     IsotopeModel,
     MsnSpectrum,
+    Precursor,
     Spectrum,
     from_matchms,
     from_spectrl_token,
@@ -126,6 +127,54 @@ def test_negative_precursor_removal_uses_deprotonated_charge_targets() -> None:
         isotopes=0,
     )
     np.testing.assert_allclose(result.mz, [700.0])
+
+
+def test_signed_negative_precursor_charge_removes_all_centroid_charge_states() -> None:
+    neutral = 900.0
+    charge_1 = DEPROTONATED.ion_mz(neutral, 1)
+    charge_2 = DEPROTONATED.ion_mz(neutral, 2)
+    spec = MsnSpectrum(
+        mz=np.array([charge_2, charge_1, 700.0]),
+        intensity=np.array([100.0, 80.0, 10.0]),
+        spectrum_type="centroid",
+        polarity="negative",
+        precursors=[
+            Precursor(
+                mz=float(charge_2),
+                intensity=100.0,
+                charge=-2,
+                is_monoisotopic=True,
+            )
+        ],
+    )
+
+    result = spec.remove_precursor_peak(isotopes=0)
+
+    np.testing.assert_allclose(result.mz, [700.0])
+
+
+def test_signed_negative_precursor_charge_matches_deconvoluted_charge_magnitude() -> None:
+    precursor_mz = float(DEPROTONATED.ion_mz(900.0, 2))
+    spec = MsnSpectrum(
+        mz=np.array([precursor_mz, 700.0]),
+        intensity=np.array([100.0, 10.0]),
+        charge=np.array([2, 1]),
+        spectrum_type="deconvoluted",
+        polarity="negative",
+        precursors=[
+            Precursor(
+                mz=precursor_mz,
+                intensity=100.0,
+                charge=-2,
+                is_monoisotopic=True,
+            )
+        ],
+    )
+
+    result = spec.remove_precursor_peak(isotopes=0)
+
+    np.testing.assert_allclose(result.mz, [700.0])
+    np.testing.assert_array_equal(result.charge, [1])
 
 
 def test_deconvolution_records_models_and_parameters() -> None:

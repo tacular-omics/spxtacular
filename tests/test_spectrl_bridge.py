@@ -96,6 +96,17 @@ def test_to_inline_msn_metadata() -> None:
     assert "MS:1000127" in accessions  # centroid
 
 
+def test_to_inline_uses_accession_keyed_mobility_array() -> None:
+    spec = MsnSpectrum(
+        mz=np.array([100.0, 200.0], dtype=np.float64),
+        intensity=np.array([1.0, 2.0], dtype=np.float64),
+        im=np.array([0.85, 1.15], dtype=np.float64),
+        im_type="ook0",
+    )
+    inline = to_inline_spectrum(spec)
+    np.testing.assert_array_equal(inline.extra_arrays["MS:1003008"], spec.im)
+
+
 def test_to_inline_precursor_isolation_window() -> None:
     inline = to_inline_spectrum(_basic_msn())
     assert len(inline.precursors) == 1
@@ -169,7 +180,7 @@ def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
 def test_token_roundtrip_plain_spectrum() -> None:
     spec = _basic_spectrum()
     token = to_spectrl_token(spec, lossless=True)
-    assert token.startswith("spectrl2.")
+    assert token.startswith("spectrl.v1.")
 
     restored = from_spectrl_token(token)
     np.testing.assert_allclose(restored.mz, spec.mz)
@@ -489,6 +500,17 @@ def test_isolation_window_without_values_decodes_without_range() -> None:
     assert restored.isolation_mz_range is None
 
 
+def test_multiple_foreign_mobility_arrays_are_rejected() -> None:
+    decoded = _foreign_decoded(
+        extra_arrays={
+            "MS:1003008": np.array([0.8, 0.9]),
+            "MS:1003153": np.array([1.0, 1.1]),
+        }
+    )
+    with pytest.raises(ValueError, match="multiple spectrl ion-mobility arrays"):
+        from_decoded_spectrum(decoded)
+
+
 # ---------------------------------------------------------------------------
 # URL sharing helpers
 # ---------------------------------------------------------------------------
@@ -497,7 +519,7 @@ def test_isolation_window_without_values_decodes_without_range() -> None:
 def test_url_fragment_roundtrip() -> None:
     spec = _basic_msn()
     url = to_spectrl_url(spec, "https://example.com/view", lossless=True)
-    assert url.startswith("https://example.com/view#spectrl2.")
+    assert url.startswith("https://example.com/view#spectrl.v1.")
     restored = from_spectrl_url(url)
     assert isinstance(restored, MsnSpectrum)
     assert restored.scan_number == 42
@@ -506,7 +528,7 @@ def test_url_fragment_roundtrip() -> None:
 def test_url_query_roundtrip() -> None:
     spec = _basic_spectrum()
     url = to_spectrl_url(spec, "https://example.com/view", mode="query", param="s", lossless=True)
-    assert "s=spectrl2." in url
+    assert "s=spectrl.v1." in url
     restored = from_spectrl_url(url)
     np.testing.assert_allclose(restored.mz, spec.mz)
 
@@ -514,7 +536,7 @@ def test_url_query_roundtrip() -> None:
 def test_url_data_uri_roundtrip_needs_no_base() -> None:
     spec = _basic_spectrum()
     uri = to_spectrl_url(spec, mode="data", lossless=True)
-    assert uri.startswith("data:application/vnd.spectrl")
+    assert uri.startswith("data:application/vnd.spectrl;v=1,spectrl.v1.")
     restored = from_spectrl_url(uri)
     np.testing.assert_allclose(restored.mz, spec.mz)
 

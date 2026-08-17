@@ -119,7 +119,7 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx
 | **Accessible by design** | Colour-vision-safe palette validated in light *and* dark modes (`spxtacular.theme`), relative-intensity y-axis by default, capped/collision-avoided labels, and `table_view()` for a screen-reader-friendly peak table |
 | **File reading** | Bruker timsTOF `.d` files (`DReader`), mzML (`MzmlReader`), and Thermo `.raw` (`ThermoReader`, vendor centroids included), or `Reader` to auto-detect the format from the path |
 | **Peak lists & libraries** | Read *and* write MGF, MS2, and MSP spectral libraries (`MgfReader`, `Ms2Reader`, `MspReader` + matching writers) — pure standard library, gzip-aware, no extra to install |
-| **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/tacular-omics/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
+| **Spectrum sharing** | Encode a full spectrum to a compact, URL-safe [spectrl](https://github.com/pgarrett-scripps/spectrl) token or link (`to_spectrl_token` / `to_spectrl_url`) |
 
 ## Deconvolution pipeline
 
@@ -218,10 +218,10 @@ ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
 ready-to-share link — with no backend required.
 
 ```python
-token = spec.to_spectrl_token()                       # spectrl2.… token
+token = spec.to_spectrl_token()                       # spectrl.v1.… token
 restored = spx.Spectrum.from_spectrl_token(token)
 
-url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl2.… (shareable)
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl.v1.… (shareable)
 restored = spx.Spectrum.from_spectrl_url(url)
 ```
 

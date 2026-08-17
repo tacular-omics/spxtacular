@@ -1,145 +1,52 @@
-# spxtacular
+# spxtacular coding guide
 
-Mass spectrometry spectrum processing library. Companion to [peptacular](../peptacular).
+Python 3.12+ mass-spectrometry spectrum processing library; `peptacular` supplies peptide and fragment math.
 
 ## Commands
 
+Use `just` recipes when available and `uv run` otherwise:
+
 ```bash
-uv run pytest tests/ -v          # run all tests
-uv run ruff check src/ tests/    # lint
-uv run ruff format src/ tests/   # format
-uv run ty check src tests        # type check (CI checks tests too — must stay clean)
+just --list
+just test
+just lint
+just format
+just check
 ```
 
-## Architecture
+Equivalent direct commands are `uv run pytest tests/ -v`, `uv run ruff check src/ tests/`, `uv run ruff format src/ tests/`, and `uv run ty check src tests`.
 
-```
-src/spxtacular/
-├── core.py          # Spectrum, MsnSpectrum, Peak, SpectrumType — all processing lives here
-├── enums.py         # StrEnums: ToleranceType, PeakSelection, Polarity, ActivationType, IMType, Analyzer
-├── reader.py        # Reader (auto-detect), DReader (Bruker timsTOF via tdfpy), MzmlReader, CentroidConfig
-├── thermo.py        # ThermoReader (Thermo .raw via fisher-py; lazy import — fisher_py boots .NET at import time)
-├── peaklist.py      # MGF / MS2 / MSP read + write (MgfReader, Ms2Reader, MspReader + writers) — pure stdlib
-├── usi.py           # fetch_usi — USI / PROXI spectrum fetching
-├── utils.py         # da_to_ppm / ppm_to_da
-├── decon/
-│   ├── greedy.py    # isotope cluster finder (optionally JIT'd with numba)
-│   └── scored.py    # scored deconvolution entry point (Bhattacharyya scoring)
-├── matching.py      # fragment peak matching (match_fragments)
-├── scoring.py       # peptide-spectrum match scoring (hyperscore, spectral_angle, …)
-├── similarity.py    # spectrum-to-spectrum similarity (cosine, modified_cosine, entropy)
-├── spectrl_bridge.py # spectrl token / URL serialisation bridge (optional [spectrl] extra)
-├── interop.py       # matchms + spectrum_utils conversion adapters (optional extras)
-├── chromatogram.py  # run-level extraction (extract_chromatogram, extract_xic)
-├── noise.py         # noise estimation (MAD, fixed threshold)
-├── theme.py         # plot palettes + plotly template (single source of truth for colour)
-├── plot_table.py    # intermediate DataFrame API (build_plot_table, plot_from_table, table_view)
-└── visualization.py # plotly plotting (plot_spectrum, mirror_plot, annotate_spectrum,
-                     #   sequence_coverage_plot, mass_error_plot, facet_plot, save_figure)
-```
+## Source map
 
-## Core concepts
+- `core.py`: `Spectrum`, `MsnSpectrum`, `Peak`, `SpectrumType`, and spectrum transforms.
+- `reader.py`, `thermo.py`, `peaklist.py`: Bruker/mzML, Thermo RAW, and MGF/MS2/MSP I/O.
+- `decon/`: greedy isotope-cluster finding and separate scored selection.
+- `matching.py`, `scoring.py`, `similarity.py`: fragment matching, PSM scoring, and spectrum similarity.
+- `interop.py`, `spectrl_bridge.py`, `usi.py`: ecosystem conversion, serialization, and remote identifiers.
+- `chromatogram.py`, `noise.py`, `isotopes.py`, `ionization.py`: domain algorithms.
+- `theme.py`, `plot_table.py`, `visualization.py`: plot styling, intermediate tables, and figures.
 
-**`Spectrum`** — central class. Holds `mz`, `intensity`, and optionally `charge` (int32 array),
-`im` (ion mobility), and `iso_score` (per-peak isotopic profile score from deconvolution). Methods
-return a new `Spectrum` (or mutate inplace) and are chainable:
+## Load-bearing rules
 
-```python
-spec.filter(min_mz=100).normalize().deconvolute(charge_range=(1, 5)).decharge()
-```
+- Preserve all parallel peak arrays (`mz`, `intensity`, `charge`, `im`, `iso_score`) with the same length and permutation.
+- Do not assume m/z is sorted; timsTOF frames are ordered by ion-mobility scan.
+- `charge > 0` means assigned, `-1` means singleton/unassigned, and `0` means neutralized after `decharge()`.
+- Call `deconvolute()` before `decharge()`; `SpectrumType` guards this state transition.
+- Keep cluster finding in `decon/greedy.py` and isotope scoring in `decon/scored.py`.
+- Keep optional backends lazy: reader classes must remain importable without their extras, and `fisher_py` must not load at package import time.
+- Keep `peaklist.py` standard-library-only apart from numpy.
+- Use `theme.py` as the only source of plot colors; ion type is categorical, charge is ordinal, and isotope score/mobility are sequential.
+- Render profile spectra as traces and decimate with min/max buckets, never stride sampling.
+- Keep labels capped and collision-avoided; full data remains available in hover/table output.
+- Prefer immutable transformations; non-inplace methods must not share mutable arrays with their input.
+- Coerce and validate enum-like inputs rather than silently selecting a fallback.
 
-**`SpectrumType`** — `CENTROID | PROFILE | DECONVOLUTED`. Guards prevent calling `.decharge()` before `.deconvolute()`.
+## Style
 
-**`MsnSpectrum`** — extends `Spectrum` with MS metadata: `scan_number`, `ms_level`, `rt`, `precursors`, `collision_energy`, etc.
+- Add precise type hints to production code and reasonable hints to tests.
+- Prefer Python 3.12 syntax and built-in generic types.
+- Choose readable helpers over clever expressions.
+- Keep docstrings brief, document non-obvious reasons, and include `Raises` when useful.
+- Add a concise `HISTORY.md` bullet only for user-visible changes.
 
-**`Peak`** — frozen dataclass for a single peak `(mz, intensity, charge, im, iso_score)`.
-
-**Metadata enums** (`enums.py`) — `Polarity`, `ActivationType`, `IMType`, `Analyzer` are `StrEnum`s
-typing the `MsnSpectrum.polarity`/`activation_type`/`im_type`/`analyzer` fields as `Enum | str`
-(open vocabulary — raw PSI-MS accessions and vendor strings still pass through). `ActivationType`
-and `Analyzer` are the single source of truth for the PSI-MS accession maps in `spectrl_bridge.py`.
-
-## Deconvolution pipeline
-
-```python
-# 1. identify isotope clusters → monoisotopic m/z + charge state + isotopic profile score
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
-# decon.charge: -1 = singleton/unassigned, >0 = assigned charge state
-# decon.iso_score:  0.0 for singletons, Bhattacharyya score (0–1) for clusters
-
-# 2. filter by score quality
-filtered = decon.filter(min_score=0.5)
-
-# 3. convert charged peaks to neutral masses (drops singletons)
-neutral = filtered.decharge()
-```
-
-**How the scored algorithm works** (`decon/scored.py` + `decon/greedy.py`):
-- Seeds on the most-intense unused peak, tries every charge in `charge_range`
-- For each charge, `_find_isotope_cluster` extends forward by `NEUTRON_MASS / charge` steps (10 peaks max)
-- Each candidate cluster is scored by Bhattacharyya coefficient against a theoretical isotope template, penalised for missed detectable peaks (score range 0–1)
-- Picks the charge with the highest score; ties broken by cluster size
-- Clusters below `min_score` are recorded as singletons (`charge = -1`, `iso_score = 0.0`); their peaks remain available for future seeds
-- Singletons (no neighbours found at any charge) also get `charge = -1`
-
-## Charge conventions
-
-| `charge` value | meaning |
-|---|---|
-| `> 0` | assigned isotope cluster |
-| `-1` | singleton / unassigned |
-| `0` | after `decharge()` (neutral mass, charge unknown) |
-
-## Key dependencies
-
-- **peptacular** — isotope distribution estimation, `pt.PROTON_MASS`
-- **paftacular** — fragment label serialisation (mzPAF format)
-- **numpy** — all numeric operations
-- **pandas** — plot table DataFrames (`plot_table.py`)
-- **plotly** — interactive visualisation
-- **tdfpy** *(optional)* — Bruker `.d` file reading; required only for `DReader`. Install with `pip install spxtacular[bruker]`
-- **mzmlpy** *(optional)* — mzML reading; required only for `MzmlReader`. Install with `pip install spxtacular[mzml]`
-- **fisher-py** *(optional)* — Thermo `.raw` reading; required only for `ThermoReader`. Install with `pip install spxtacular[thermo]`. Needs a .NET runtime on the machine; `import fisher_py` boots it and raises `RuntimeError` without one, so `thermo.py` imports it lazily (never at `import spxtacular` time) — keep it that way
-- **numba** *(optional)* — JIT-compiles `_find_isotope_cluster` and `_score_cluster` for ~3–4× speedup; install with `pip install spxtacular[numba]`
-- **spectrl** *(optional)* — token / URL spectrum serialisation used by `spectrl_bridge.py`; required only for `to_spectrl_token`/`to_spectrl_url` and their inverses. Install with `pip install spxtacular[spectrl]`
-- **matchms / spectrum_utils** *(optional)* — ecosystem conversion adapters in `interop.py`; both imports stay lazy. Install individually with `[matchms]` / `[spectrum-utils]`, or together with `[interop]`.
-
-`DReader`, `MzmlReader`, and `ThermoReader` remain importable from `spxtacular`
-regardless of whether their backends are installed; only instantiation raises
-`ImportError` when the corresponding optional dep is missing. This lets
-downstream libraries (e.g. `pydiode`) depend on `spxtacular` without pulling in
-the raw-file readers.
-
-`peaklist.py` (MGF / MS2 / MSP, read and write) has **no** optional dependency —
-it is pure standard library plus numpy, so those formats are always available.
-Keep it that way: do not reach for a parsing library there.
-
-## Plot colour
-
-`theme.py` is the single source of truth — never hardcode a hex value in `plot_table.py` or
-`visualization.py`. Colour is assigned by the **job** it does:
-
-| Job | Encoding |
-|---|---|
-| ion type | nominal categorical following the proteomics convention: b blue, y red, a green, c teal, x purple, z orange; anything else folds to neutral |
-| charge state | **ordinal** — one hue, light→dark; clamps past the ramp; `charge <= 0` is neutral |
-| `iso_score`, ion mobility | sequential — one hue, light→dark |
-| unmatched peaks | recessive grey, thinner and dimmer |
-
-The palettes were validated for colour-vision deficiency (protanopia/deuteranopia) against both the
-light and dark surfaces. Both modes are explicit sets of steps; dark is not an inversion of light.
-
-## What NOT to do
-
-- Do not call `decharge()` on a non-deconvoluted spectrum — it will raise `ValueError`.
-- Do not move isotope scoring logic into `greedy.py` — keep cluster finding and scoring separate.
-- Do not colour charge states with a categorical cycle — charge is ordinal, and a cycle repeats
-  (the old 10-colour version made `z=1` and `z=11` identical).
-- Do not label every annotated peak — labels are capped and collision-avoided on purpose; a
-  deconvoluted spectrum with a label per peak is an unreadable smear.
-- Do not add a hex value straight into a plot function; add it to `theme.py` and validate it.
-- Do not assume `spectrum.mz` is sorted — a timsTOF frame is ordered by ion-mobility scan,
-  so roughly half its m/z steps descend. Sort a working copy and map indices back.
-- Do not draw profile spectra as sticks — `plot_spectrum` renders `SpectrumType.PROFILE` as a
-  continuous trace. And never thin a profile by taking every Nth sample; that deletes peaks.
-  Use `_decimate_profile` (min/max per bucket).
+Consult the relevant source, tests, and `docs/` page for API details instead of expanding this file.

@@ -42,6 +42,7 @@ import peptacular as pt
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
+from .utils import format_precursor_charge, signed_precursor_charge
 
 __all__ = ["MgfReader", "Ms2Reader", "MspReader", "PeakListLookup", "write_mgf", "write_ms2", "write_msp"]
 
@@ -858,13 +859,11 @@ def _written_charge(spec: Spectrum) -> int | None:
     is therefore written negative (and reads back negative).
     """
     prec = _first_precursor(spec)
-    if prec is None or prec.charge is None:
-        return None
-    charge = int(prec.charge)
     msn = _meta(spec)
-    if charge > 0 and msn is not None and msn.polarity == Polarity.NEGATIVE:
-        return -charge
-    return charge
+    return signed_precursor_charge(
+        prec.charge if prec is not None else None,
+        msn.polarity if msn is not None else None,
+    )
 
 
 def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
@@ -922,7 +921,7 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
                     fh.write(f"PEPMASS={_fmt(prec.mz)}\n")
             charge = _written_charge(spec)
             if charge is not None:
-                fh.write(f"CHARGE={abs(charge)}{'-' if charge < 0 else '+'}\n")
+                fh.write(f"CHARGE={format_precursor_charge(charge)}\n")
 
             peak_charges = spec.charge
             for i in range(len(spec.mz)):

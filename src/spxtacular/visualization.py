@@ -43,6 +43,7 @@ from .plot_table import (
     build_plot_table,
     plot_from_table,
 )
+from .utils import format_precursor_charge
 
 
 def _add_precursor_marker(
@@ -79,7 +80,8 @@ def _add_precursor_marker(
         if mz_val is None:
             continue
         charge = getattr(prec, "charge", None)
-        text = f"precursor {float(mz_val):.4f}" + (f" ({charge}+)" if charge else "")
+        charge_text = format_precursor_charge(charge, getattr(spectrum, "polarity", None))
+        text = f"precursor {float(mz_val):.4f}" + (f" ({charge_text})" if charge_text is not None else "")
         fig.add_vline(
             x=float(mz_val),
             line_width=1,
@@ -96,8 +98,8 @@ def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) 
 
     ``.html`` always works. Static formats (``.png``, ``.svg``, ``.pdf``,
     ``.jpg``, ``.webp``) go through plotly's static export, which needs the
-    ``kaleido`` package -- so a missing dependency is reported here with the
-    install command rather than as a bare exception from deep inside plotly.
+    ``kaleido`` package. Missing-package errors include an install command;
+    export failures such as an invalid destination remain their original type.
 
     Parameters
     ----------
@@ -121,17 +123,20 @@ def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) 
         fig.write_html(str(out), **kwargs)
         return out
 
-    static = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp", ".eps")
+    static = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp")
     if suffix not in static:
         raise ValueError(f"unsupported figure format {suffix!r}; expected .html or one of {', '.join(static)}")
 
     try:
-        fig.write_image(str(out), scale=scale, **kwargs)
-    except Exception as exc:  # kaleido missing, or its browser dependency
+        import importlib
+
+        importlib.import_module("kaleido")
+    except (ImportError, OSError) as exc:
         raise ImportError(
             f"writing {suffix} requires the kaleido package: pip install kaleido "
             "(or save to .html, which needs nothing extra)"
         ) from exc
+    fig.write_image(str(out), scale=scale, **kwargs)
     return out
 
 

@@ -237,6 +237,11 @@ class TestScaleIntensity:
         result = spec.scale_intensity(method="root", degree=3)
         np.testing.assert_allclose(result.intensity, np.power(spec.intensity, 1.0 / 3))
 
+    @pytest.mark.parametrize("degree", [0, -1])
+    def test_root_requires_positive_degree(self, degree: int) -> None:
+        with pytest.raises(ValueError, match="degree must be positive"):
+            _spec().scale_intensity(method="root", degree=degree)
+
     def test_log_default_base2(self) -> None:
         spec = _spec()
         result = spec.scale_intensity(method="log")
@@ -248,6 +253,11 @@ class TestScaleIntensity:
         result = spec.scale_intensity(method="log", base=10.0)
         expected = np.log1p(spec.intensity) / np.log(10)
         np.testing.assert_allclose(result.intensity, expected)
+
+    @pytest.mark.parametrize("base", [0.0, -2.0, 1.0, float("inf"), float("nan")])
+    def test_log_requires_valid_base(self, base: float) -> None:
+        with pytest.raises(ValueError, match="base must be finite, positive, and not equal to 1"):
+            _spec().scale_intensity(method="log", base=base)
 
     def test_rank(self) -> None:
         spec = _spec()

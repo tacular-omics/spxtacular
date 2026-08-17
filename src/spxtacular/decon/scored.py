@@ -2,9 +2,9 @@
 Greedy isotope-cluster deconvolution with isotopic profile scoring.
 
 Same interface as greedy.py, plus ``min_intensity`` for S/N filtering.
-The best charge state is chosen by isotopic pattern score (Bhattacharyya
-coefficient penalised for missed detectable peaks) rather than longest
-chain length.
+The best charge state is chosen by isotopic pattern score (a two-sided
+Bhattacharyya comparison, with an additional penalty for missed detectable
+peaks) rather than longest chain length.
 
 Public entry point::
 
@@ -57,7 +57,14 @@ def _score_cluster(
     min_intensity: float,
     min_relative_abundance: float,
 ) -> float:
-    """Isotopic pattern score: bhattacharyya × (1 − missed_penalty).
+    """Two-sided isotopic score: Bhattacharyya × (1 − missed penalty).
+
+    The Bhattacharyya coefficient decreases for both missing theoretical
+    intensity and unexpected intensity in the aligned observed vector.  An
+    observed entry is included even where its theoretical entry is below the
+    detectability cutoffs.  Missing peaks receive the additional penalty
+    because a theoretical peak below the cutoffs cannot be interpreted as an
+    observable false negative.
 
     Parameters
     ----------

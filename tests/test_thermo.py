@@ -32,6 +32,72 @@ except ImportError:
 needs_fisher = pytest.mark.skipif(not _HAS_FISHER, reason="fisher-py or its .NET runtime is unavailable")
 
 
+class _FakeScanEvent:
+    def __init__(self, reaction) -> None:
+        self.reaction = reaction
+
+    def get_reaction(self, index: int):
+        if index == 0:
+            return self.reaction
+        raise IndexError(index)
+
+
+class _FakeRaw:
+    """Small RawFileReader-shaped object for parser coverage without .NET."""
+
+    def __init__(self) -> None:
+        self.stats = types.SimpleNamespace(
+            is_centroid_scan=False,
+            start_time=1.25,
+            tic=12345.0,
+            low_mass=100.0,
+            high_mass=1000.0,
+        )
+        self.scan_filter = types.SimpleNamespace(
+            ms_order=types.SimpleNamespace(value=2),
+            polarity=types.SimpleNamespace(name="Negative"),
+            mass_analyzer=types.SimpleNamespace(name="MassAnalyzerFTMS"),
+        )
+        self.reaction = types.SimpleNamespace(
+            activation_type=types.SimpleNamespace(name="CollisionInducedDissociation"),
+            collision_energy=30.0,
+            collision_energy_valid=True,
+            precursor_mass=500.0,
+            isolation_width=2.0,
+            isolation_width_offset=0.25,
+        )
+
+    def get_scan_stats_for_scan_number(self, _scan_number: int):
+        return self.stats
+
+    def get_filter_for_scan_number(self, _scan_number: int):
+        return self.scan_filter
+
+    def get_trailer_extra_information(self, _scan_number: int):
+        return types.SimpleNamespace(
+            labels=["Ion Injection Time (ms):", "Orbitrap Resolution:", "Monoisotopic M/Z:", "Charge State:"],
+            values=["7.5", "60000", "499.9", "2"],
+        )
+
+    def get_centroid_stream(self, _scan_number: int, _centroid_result: bool):
+        return types.SimpleNamespace(masses=[150.0, 250.0], intensities=[1000.0, 500.0], charges=[0, 2])
+
+    def get_segmented_scan_from_scan_number(self, _scan_number: int, _stats):
+        return types.SimpleNamespace(positions=[149.9, 150.0, 150.1], intensities=[1.0, 10.0, 1.0])
+
+    def get_scan_event_for_scan_number(self, _scan_number: int):
+        return _FakeScanEvent(self.reaction)
+
+
+def _reader_with_fake_raw(raw: _FakeRaw, *, prefer_vendor_centroid: bool) -> ThermoReader:
+    reader = object.__new__(ThermoReader)
+    reader.raw_path = RAW_PATH
+    reader.prefer_vendor_centroid = prefer_vendor_centroid
+    reader._raw = raw
+    reader._instrument_model = "Orbitrap Fusion Lumos"
+    return reader
+
+
 # ---------------------------------------------------------------------------
 # Import-failure translation (no backend needed)
 # ---------------------------------------------------------------------------
@@ -59,6 +125,43 @@ def test_missing_dotnet_runtime_raises_dotnet_hint(monkeypatch):
     monkeypatch.setitem(sys.modules, "fisher_py.data", broken)
     with pytest.raises(ImportError, match=r"\.NET"):
         ThermoReader(RAW_PATH)
+
+
+def test_parse_scan_without_fisher_runtime() -> None:
+    reader = _reader_with_fake_raw(_FakeRaw(), prefer_vendor_centroid=True)
+
+    spec = reader._parse_scan(7)
+
+    assert spec.scan_number == 7
+    assert spec.ms_level == 2
+    assert spec.spectrum_type == SpectrumType.CENTROID
+    assert spec.rt == pytest.approx(75.0)
+    assert spec.polarity == Polarity.NEGATIVE
+    assert spec.analyzer == Analyzer.ORBITRAP
+    assert spec.activation_type == ActivationType.CID
+    assert spec.collision_energy == 30.0
+    assert spec.injection_time == 7.5
+    assert spec.resolution == 60000.0
+    assert spec.isolation_mz_range == pytest.approx((499.25, 501.25))
+    np.testing.assert_array_equal(spec.mz, [150.0, 250.0])
+    np.testing.assert_array_equal(spec.charge, [-1, 2])
+    assert spec.precursors is not None
+    assert spec.precursors[0].mz == 499.9
+    assert spec.precursors[0].charge == 2
+
+
+def test_profile_parse_path_without_fisher_runtime() -> None:
+    raw = _FakeRaw()
+    raw.scan_filter.ms_order.value = 1
+    reader = _reader_with_fake_raw(raw, prefer_vendor_centroid=False)
+
+    spec = reader._parse_scan(3)
+
+    assert spec.ms_level == 1
+    assert spec.spectrum_type == SpectrumType.PROFILE
+    assert spec.charge is None
+    assert spec.precursors is None
+    np.testing.assert_array_equal(spec.mz, [149.9, 150.0, 150.1])
 
 
 # ---------------------------------------------------------------------------

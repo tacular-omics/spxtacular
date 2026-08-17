@@ -69,6 +69,21 @@ def _rows(spec: Spectrum) -> list[tuple[float, float, int, float, float]]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("field", "kwargs"),
+    [
+        ("mz", {"mz": [[100.0, 200.0]], "intensity": [1.0, 2.0]}),
+        ("intensity", {"mz": [100.0, 200.0], "intensity": [[1.0, 2.0]]}),
+        ("charge", {"mz": [100.0, 200.0], "intensity": [1.0, 2.0], "charge": [[1, 2]]}),
+        ("im", {"mz": [100.0, 200.0], "intensity": [1.0, 2.0], "im": [[0.9, 1.0]]}),
+        ("iso_score", {"mz": [100.0, 200.0], "intensity": [1.0, 2.0], "iso_score": [[0.8, 0.9]]}),
+    ],
+)
+def test_spectrum_rejects_non_one_dimensional_peak_arrays(field: str, kwargs: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match=rf"{field} array must be one-dimensional"):
+        Spectrum(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # _centroid_peaks
 # ---------------------------------------------------------------------------
@@ -695,6 +710,16 @@ def test_update_inplace_coerces_dtypes_like_construction() -> None:
     assert spec.charge is not None
     assert spec.charge.dtype == np.int32
     assert _mzs(spec.filter(min_mz=250.0)) == [400.0, 300.0]
+
+
+def test_update_inplace_validation_failure_leaves_spectrum_unchanged() -> None:
+    spec = _spec(charge=True, im=True, iso_score=True)
+    original = spec.copy()
+
+    with pytest.raises(ValueError, match="same length"):
+        spec.update(intensity=[1.0], normalized="tic", inplace=True)
+
+    assert spec == original
 
 
 # ---------------------------------------------------------------------------

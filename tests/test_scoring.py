@@ -492,6 +492,40 @@ class TestSpectralAngleWithPrediction:
         got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
         assert got["spectral_angle"] == pytest.approx(1.0, abs=1e-7)
 
+    def test_charge_states_remain_distinct(self) -> None:
+        import peptacular as pt
+
+        frags = [frag for frag in pt.fragment("PEPTIDE", ion_types=("b",), charges=(1, 2)) if frag.position == 2]
+        assert [frag.charge_state for frag in frags] == [1, 2]
+        spec = Spectrum(mz=np.array([frags[1].mz]), intensity=np.array([100.0]))
+
+        matched_prediction = score(
+            spec,
+            frags,
+            tolerance=0.001,
+            tolerance_type="da",
+            predicted_intensities=[0.0, 1.0],
+        )
+        mismatched_prediction = score(
+            spec,
+            frags,
+            tolerance=0.001,
+            tolerance_type="da",
+            predicted_intensities=[1.0, 0.0],
+        )
+
+        assert matched_prediction["spectral_angle"] == pytest.approx(1.0)
+        assert mismatched_prediction["spectral_angle"] == pytest.approx(0.0)
+
+    def test_spectrum_method_forwards_predicted_intensities(self) -> None:
+        frags, pred, mz, order = self._setup()
+        spec = Spectrum(mz=mz[order], intensity=pred[order])
+
+        direct = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        via_method = spec.score(frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+
+        assert via_method == direct
+
     def test_a_mismatched_pattern_scores_lower(self) -> None:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[::-1][order])

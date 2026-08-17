@@ -66,6 +66,17 @@ class Chromatogram:
     tolerance_type: str | None = None
     meta: dict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Coerce array inputs and validate the one-row-per-time-point model."""
+        self.rt = np.asarray(self.rt, dtype=np.float64)
+        self.intensity = np.asarray(self.intensity, dtype=np.float64)
+        if self.rt.ndim != 1:
+            raise ValueError(f"rt array must be one-dimensional; got shape {self.rt.shape}")
+        if self.intensity.ndim != 1:
+            raise ValueError(f"intensity array must be one-dimensional; got shape {self.intensity.shape}")
+        if len(self.rt) != len(self.intensity):
+            raise ValueError("rt and intensity must have the same length")
+
     def __len__(self) -> int:
         return len(self.rt)
 

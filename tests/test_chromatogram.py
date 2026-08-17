@@ -56,6 +56,36 @@ class _CountingIterable:
         return iter(self._items)
 
 
+class TestChromatogramModel:
+    def test_list_inputs_are_coerced_to_float_arrays(self) -> None:
+        chromatogram = Chromatogram(rt=[1, 2], intensity=[3, 4])  # ty: ignore[invalid-argument-type]
+
+        assert chromatogram.rt.dtype == np.float64
+        assert chromatogram.intensity.dtype == np.float64
+        assert chromatogram.total == 7.0
+        assert chromatogram.apex_rt == 2.0
+
+    def test_mismatched_lengths_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            Chromatogram(rt=np.array([1.0, 2.0]), intensity=np.array([3.0]))
+
+    @pytest.mark.parametrize(
+        ("field", "rt", "intensity"),
+        [
+            ("rt", np.array([[1.0, 2.0]]), np.array([3.0, 4.0])),
+            ("intensity", np.array([1.0, 2.0]), np.array([[3.0, 4.0]])),
+        ],
+    )
+    def test_non_one_dimensional_arrays_are_rejected(
+        self,
+        field: str,
+        rt: np.ndarray,
+        intensity: np.ndarray,
+    ) -> None:
+        with pytest.raises(ValueError, match=rf"{field} array must be one-dimensional"):
+            Chromatogram(rt=rt, intensity=intensity)
+
+
 # ---------------------------------------------------------------------------
 # Chromatogram extraction
 # ---------------------------------------------------------------------------

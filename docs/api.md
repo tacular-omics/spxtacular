@@ -167,8 +167,8 @@ positional mix-ups.
 | `Spectrum.combine(spectra)` | `Spectrum` | Classmethod: concatenate multiple spectra |
 | `.match_fragments(fragments, ...)` | `list[MatchedFragment]` | Fragment-to-peak matching |
 | `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
-| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl2.…` URL-safe token (requires `[spectrl]` extra) |
-| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl2.…` token (classmethod) |
+| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.v1.…` URL-safe token (requires `[spectrl]` extra) |
+| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl.v1.…` token (classmethod) |
 | `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_url(url)` | `Spectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
@@ -523,10 +523,10 @@ threshold = estimate_noise_level(intensity_array, method="mad")
 ## Token serialisation (spectrl)
 
 The single supported wire format for sharing a spectrum as a string is the
-[spectrl](https://github.com/tacular-omics/spectrl) token. Encodes a full
+[spectrl](https://github.com/pgarrett-scripps/spectrl) token. Encodes a full
 spectrum (peaks, metadata, precursors) into a compact URL-safe token that
 mirrors mzML semantics, with PSI-MS CV params, a single CBOR document,
-MS-Numpress compression, and a SHA-256 integrity hash.
+MS-Numpress compression, and a CRC-32 integrity checksum.
 
 Requires the optional ``[spectrl]`` extra.
 
@@ -542,7 +542,7 @@ inline = to_inline_spectrum(spec)                    # → spectrl.InlineSpectru
 The round-trip is faithful — every spxtacular field is carried.
 
 Via mzML-native CV params: `mz`, `intensity`, `charge` (including singletons),
-`im` + `im_type`, spectrum type, and — for `MsnSpectrum` — `native_id`,
+`im` under its exact PSI-MS array accession, `im_type`, spectrum type, and — for `MsnSpectrum` — `native_id`,
 `ms_level`, `polarity`, `rt`, `mz_range`, `total_ion_current`, `precursors`,
 `isolation_mz_range`, `collision_energy`, `activation_type`.
 
@@ -573,8 +573,8 @@ spec = from_spectrl_url(url)                                       # extract + d
 
 | `mode` | Result | `base` |
 |---|---|---|
-| `"fragment"` (default) | `base#spectrl2.…` — token in the URL fragment (never sent to the server) | required |
-| `"query"` | `base?<param>=spectrl2.…` — token as a query parameter | required |
+| `"fragment"` (default) | `base#spectrl.v1.…` — token in the URL fragment (never sent to the server) | required |
+| `"query"` | `base?<param>=spectrl.v1.…` — token as a query parameter | required |
 | `"data"` | `data:application/vnd.spectrl;v=1,…` URI | ignored |
 
 `lossless` and `max_len` are forwarded to the token encoder.

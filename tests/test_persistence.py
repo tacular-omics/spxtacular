@@ -166,6 +166,35 @@ def test_spectrum_load_without_iso_score(tmp_path):
     assert restored.iso_score is None
 
 
+def test_load_closes_the_npz_archive(tmp_path, monkeypatch):
+    spec = _basic_spectrum()
+    spec.save(tmp_path / "spec")
+    real_load = np.load
+    closed = False
+
+    class TrackingArchive:
+        def __init__(self, archive):
+            self.archive = archive
+
+        def __enter__(self):
+            return self.archive
+
+        def __exit__(self, *_args) -> None:
+            nonlocal closed
+            closed = True
+            self.archive.close()
+
+    def tracking_load(*args, **kwargs):
+        return TrackingArchive(real_load(*args, **kwargs))
+
+    monkeypatch.setattr(np, "load", tracking_load)
+
+    restored = Spectrum.load(tmp_path / "spec.npz")
+
+    assert closed
+    assert restored == spec
+
+
 # ---------------------------------------------------------------------------
 # No pickle
 # ---------------------------------------------------------------------------
