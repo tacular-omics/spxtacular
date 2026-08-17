@@ -34,7 +34,7 @@ from spxtacular import (
     # Utilities
     da_to_ppm, ppm_to_da,
     # Remote / serialised spectra
-    fetch_usi,
+    fetch_usi, spectrum_from_proxi_response,
     to_inline_spectrum,
     to_spectrl_token, from_spectrl_token,
     to_spectrl_url, from_spectrl_url,
@@ -587,7 +587,7 @@ Fetch spectra from public proteomics repositories by Universal Spectrum
 Identifier via the PROXI protocol.
 
 ```python
-from spxtacular import fetch_usi
+from spxtacular import fetch_usi, spectrum_from_proxi_response
 # or via Spectrum.from_usi(...) for the same result
 
 spec = fetch_usi(
@@ -595,10 +595,14 @@ spec = fetch_usi(
     backend="aggregator",  # or "pride", "massive", "peptideatlas", "jpost", or a full URL
     timeout=30,
 )
+
+# For clients that perform the HTTP request themselves:
+spec = spectrum_from_proxi_response(decoded_proxi_json, usi)
 ```
 
-Returns an `MsnSpectrum` when the response includes precursor info, otherwise a
-plain `Spectrum`.
+The parser preserves PROXI centroid/profile representation and scan polarity
+metadata. It returns an `MsnSpectrum` when scan-level metadata or precursor
+information is available, otherwise a plain `Spectrum`.
 
 ---
 

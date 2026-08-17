@@ -17,8 +17,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from spxtacular.core import MsnSpectrum, Spectrum
-from spxtacular.usi import _parse_proxi_response, fetch_usi
+from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType
+from spxtacular.enums import Polarity
+from spxtacular.usi import _parse_proxi_response, fetch_usi, spectrum_from_proxi_response
 
 USI = "mzspec:TEST:test:scan:1"
 
@@ -76,6 +77,69 @@ class TestParseProxiResponse:
     def test_empty_list_still_reports_an_empty_response(self) -> None:
         with pytest.raises(ValueError, match="Empty PROXI response"):
             _parse_proxi_response([], USI)
+
+    @pytest.mark.parametrize(
+        ("attribute", "expected"),
+        [
+            ({"accession": "MS:1000127"}, "centroid"),
+            ({"accession": "MS:1000128"}, "profile"),
+            ({"accession": "MS:1000525", "value": "profile spectrum"}, "profile"),
+        ],
+    )
+    def test_spectrum_representation_is_parsed(self, attribute: dict[str, str], expected: str) -> None:
+        entry = {"mzs": [100.0], "intensities": [10.0], "attributes": [attribute]}
+        assert _parse_proxi_response([entry], USI)["spectrum_type"] == expected
+
+    @pytest.mark.parametrize(
+        ("attribute", "expected"),
+        [
+            ({"accession": "MS:1000130"}, "positive"),
+            ({"accession": "MS:1000129"}, "negative"),
+            ({"accession": "MS:1000465", "value": "negative scan"}, "negative"),
+        ],
+    )
+    def test_scan_polarity_is_parsed(self, attribute: dict[str, str], expected: str) -> None:
+        entry = {"mzs": [100.0], "intensities": [10.0], "attributes": [attribute]}
+        assert _parse_proxi_response([entry], USI)["polarity"] == expected
+
+    def test_dense_data_without_representation_is_inferred_as_profile(self) -> None:
+        mz = np.linspace(100.0, 101.0, 201)
+        entry = {"mzs": mz.tolist(), "intensities": np.ones_like(mz).tolist()}
+        assert _parse_proxi_response([entry], USI)["spectrum_type"] == "profile"
+
+    def test_conflicting_polarities_are_rejected(self) -> None:
+        entry = {
+            "mzs": [100.0],
+            "intensities": [10.0],
+            "attributes": [{"accession": "MS:1000130"}, {"accession": "MS:1000129"}],
+        }
+        with pytest.raises(ValueError, match="conflicting scan polarities"):
+            _parse_proxi_response([entry], USI)
+
+
+class TestSpectrumFromProxiResponse:
+    def test_public_parser_preserves_representation_and_polarity(self) -> None:
+        entry = {
+            "mzs": [100.0],
+            "intensities": [10.0],
+            "attributes": [
+                {"accession": "MS:1000128"},
+                {"accession": "MS:1000129"},
+                {"accession": "MS:1000511", "value": "1"},
+            ],
+        }
+        result = spectrum_from_proxi_response([entry], USI)
+        assert isinstance(result, MsnSpectrum)
+        assert result.spectrum_type == SpectrumType.PROFILE
+        assert result.polarity == Polarity.NEGATIVE
+        assert result.ms_level == 1
+        assert result.scan_number == 1
+
+    def test_public_parser_returns_plain_spectrum_without_msn_metadata(self) -> None:
+        entry = {"mzs": [100.0], "intensities": [10.0], "attributes": [{"accession": "MS:1000127"}]}
+        result = spectrum_from_proxi_response([entry], USI)
+        assert type(result) is Spectrum
+        assert result.spectrum_type == SpectrumType.CENTROID
 
 
 # ---------------------------------------------------------------------------

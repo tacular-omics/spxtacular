@@ -1407,6 +1407,10 @@ class Spectrum:
             ValueError: if the spectrum has not been deconvoluted yet. Call
                 ``deconvolute()`` first so the charge states are known.
 
+        Warns:
+            UserWarning: if no positively charged peaks are available. The
+                spectrum is returned unchanged instead of being emptied.
+
         Returns a new Spectrum with m/z values as neutral masses, sorted ascending.
         """
         if self.charge is None:
@@ -1422,11 +1426,18 @@ class Spectrum:
             )
             return self if inplace else self.copy()
 
-        resolved_ionization = self._resolve_ionization_model(ionization_model)
-
         # charge > 0, not != -1: a charge of 0 means "already decharged", and
         # multiplying by it would collapse the peak to a neutral mass of 0.0.
         known = self.charge > 0
+        if not np.any(known):
+            warnings.warn(
+                "No positively charged peaks are available; decharge() left the spectrum unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self if inplace else self.copy()
+
+        resolved_ionization = self._resolve_ionization_model(ionization_model)
         known_mz = self.mz[known]
         known_charge = self.charge[known]
         known_int = self.intensity[known]

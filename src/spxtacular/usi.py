@@ -50,6 +50,12 @@ _PRECURSOR_MZ_ACCESSIONS: tuple[str, ...] = (
 _CHARGE_ACCESSION = "MS:1000041"  # charge state
 _PRECURSOR_INTENSITY_ACCESSION = "MS:1000042"  # peak intensity
 _MS_LEVEL_ACCESSION = "MS:1000511"  # ms level
+_CENTROID_ACCESSION = "MS:1000127"  # centroid spectrum
+_PROFILE_ACCESSION = "MS:1000128"  # profile spectrum
+_SPECTRUM_REPRESENTATION_ACCESSION = "MS:1000525"  # spectrum representation
+_POSITIVE_POLARITY_ACCESSION = "MS:1000130"  # positive scan
+_NEGATIVE_POLARITY_ACCESSION = "MS:1000129"  # negative scan
+_SCAN_POLARITY_ACCESSION = "MS:1000465"  # scan polarity
 
 
 class ParsedUsi(NamedTuple):
@@ -186,7 +192,7 @@ def _parse_proxi_response(
     data: Any,
     usi: str,
 ) -> dict[str, Any]:
-    """Extract m/z, intensity, and precursor info from a PROXI response."""
+    """Extract peaks and spectrum metadata from a PROXI response."""
     if isinstance(data, dict):
         raise ValueError(
             f"Unexpected PROXI response for USI: {usi}. Expected a list of spectra, got a JSON object with keys: "
@@ -229,16 +235,43 @@ def _parse_proxi_response(
         "intensity": np.array(intensities, dtype=np.float64),
     }
 
-    # Extract precursor attributes. Candidates are collected first so a fixed
+    # Extract spectrum and precursor attributes. Candidates are collected first so a fixed
     # precedence can be applied — the order the server happens to list them in
     # must not decide which m/z wins.
     mz_candidates: dict[str, float] = {}
+    explicit_spectrum_types: set[str] = set()
+    generic_spectrum_types: set[str] = set()
+    explicit_polarities: set[str] = set()
+    generic_polarities: set[str] = set()
     attributes = spectrum.get("attributes") or []
     for attr in attributes:
         if not isinstance(attr, dict):
             continue
         accession = attr.get("accession", "")
         value = attr.get("value")
+
+        if accession == _CENTROID_ACCESSION:
+            explicit_spectrum_types.add("centroid")
+        elif accession == _PROFILE_ACCESSION:
+            explicit_spectrum_types.add("profile")
+        elif accession == _SPECTRUM_REPRESENTATION_ACCESSION:
+            representation = str(value or attr.get("name", "")).lower()
+            if "centroid" in representation:
+                generic_spectrum_types.add("centroid")
+            elif "profile" in representation:
+                generic_spectrum_types.add("profile")
+
+        if accession == _POSITIVE_POLARITY_ACCESSION:
+            explicit_polarities.add("positive")
+        elif accession == _NEGATIVE_POLARITY_ACCESSION:
+            explicit_polarities.add("negative")
+        elif accession == _SCAN_POLARITY_ACCESSION:
+            polarity = str(value or attr.get("name", "")).lower()
+            if "positive" in polarity:
+                generic_polarities.add("positive")
+            elif "negative" in polarity:
+                generic_polarities.add("negative")
+
         if value is None:
             continue
 
@@ -256,7 +289,80 @@ def _parse_proxi_response(
             result["precursor_mz"] = mz_candidates[accession]
             break
 
+    spectrum_types = explicit_spectrum_types or generic_spectrum_types
+    if len(spectrum_types) > 1:
+        raise ValueError(f"PROXI response has conflicting spectrum representations for USI: {usi}")
+    if spectrum_types:
+        result["spectrum_type"] = next(iter(spectrum_types))
+    else:
+        # Some PROXI providers omit the representation CV term. A long run of
+        # tightly spaced samples is characteristic of profile data; otherwise
+        # use the conventional centroid representation. Centralising this
+        # fallback keeps browser and native clients consistent.
+        ordered_mz = np.sort(result["mz"])
+        positive_diffs = np.diff(ordered_mz)
+        positive_diffs = positive_diffs[positive_diffs > 0]
+        is_profile = len(positive_diffs) >= 200 and float(np.mean(positive_diffs < 0.05)) >= 0.8
+        result["spectrum_type"] = "profile" if is_profile else "centroid"
+
+    polarities = explicit_polarities or generic_polarities
+    if len(polarities) > 1:
+        raise ValueError(f"PROXI response has conflicting scan polarities for USI: {usi}")
+    if polarities:
+        result["polarity"] = next(iter(polarities))
+
     return result
+
+
+def spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum:
+    """Create a spectrum from a decoded PROXI JSON response.
+
+    This pure parser is useful when an application performs the HTTP request
+    itself (for example, asynchronously in a browser). Spectrum representation
+    and scan polarity CV terms are preserved when present.
+    """
+    from .core import MsnSpectrum, Precursor, Spectrum
+    from .enums import Polarity
+
+    parsed_usi = parse_usi(usi)
+    response_data = _parse_proxi_response(data, usi)
+    mz = response_data["mz"]
+    intensity = response_data["intensity"]
+    prec_mz = response_data.get("precursor_mz")
+    prec_charge = response_data.get("precursor_charge")
+    prec_intensity = response_data.get("precursor_intensity")
+    ms_level = response_data.get("ms_level")
+    spectrum_type = response_data.get("spectrum_type")
+    polarity_value = response_data.get("polarity")
+    polarity = Polarity(polarity_value) if polarity_value is not None else None
+
+    precursor = None
+    if prec_mz is not None:
+        precursor = Precursor(
+            mz=prec_mz,
+            # PROXI responses rarely carry a precursor intensity; 0.0 marks it
+            # as unmeasured rather than genuinely zero.
+            intensity=prec_intensity if prec_intensity is not None else 0.0,
+            charge=prec_charge,
+            is_monoisotopic=None,
+        )
+
+    # MsnSpectrum owns scan-level metadata. Construct one whenever PROXI
+    # supplied any such metadata, even if the response has no precursor.
+    if precursor is not None or ms_level is not None or polarity is not None:
+        return MsnSpectrum(
+            mz=mz,
+            intensity=intensity,
+            spectrum_type=spectrum_type,
+            precursors=[precursor] if precursor is not None else None,
+            # Only assume MS2 when the server omitted the level but supplied a precursor.
+            ms_level=ms_level if ms_level is not None else (2 if precursor is not None else None),
+            scan_number=parsed_usi.scan_number,
+            native_id=parsed_usi.native_id,
+            polarity=polarity,
+        )
+
+    return Spectrum(mz=mz, intensity=intensity, spectrum_type=spectrum_type)
 
 
 def fetch_usi(
@@ -294,9 +400,7 @@ def fetch_usi(
         If the USI is invalid, the server returns an error, or the response
         is missing required data.
     """
-    from .core import MsnSpectrum, Precursor, Spectrum
-
-    parsed = parse_usi(usi)
+    parse_usi(usi)
 
     # Resolve backend URL
     if backend in _PROXI_BACKENDS:
@@ -335,31 +439,4 @@ def fetch_usi(
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON response for USI: {usi}. {e}") from e
 
-    response_data = _parse_proxi_response(data, usi)
-    mz = response_data["mz"]
-    intensity = response_data["intensity"]
-    prec_mz = response_data.get("precursor_mz")
-    prec_charge = response_data.get("precursor_charge")
-    prec_intensity = response_data.get("precursor_intensity")
-    ms_level = response_data.get("ms_level")
-
-    if prec_mz is not None:
-        precursor = Precursor(
-            mz=prec_mz,
-            # PROXI responses rarely carry a precursor intensity; 0.0 marks it
-            # as unmeasured rather than genuinely zero.
-            intensity=prec_intensity if prec_intensity is not None else 0.0,
-            charge=prec_charge,
-            is_monoisotopic=None,
-        )
-        return MsnSpectrum(
-            mz=mz,
-            intensity=intensity,
-            precursors=[precursor],
-            # Only assume MS2 when the server didn't say and a precursor exists.
-            ms_level=ms_level if ms_level is not None else 2,
-            scan_number=parsed.scan_number,
-            native_id=parsed.native_id,
-        )
-
-    return Spectrum(mz=mz, intensity=intensity)
+    return spectrum_from_proxi_response(data, usi)

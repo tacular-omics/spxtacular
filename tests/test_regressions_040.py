@@ -116,7 +116,23 @@ def test_decharge_on_non_deconvoluted_raises() -> None:
 def test_decharge_after_deconvolute_ok() -> None:
     decon = _spec().deconvolute(charge_range=(1, 2))
     assert decon.spectrum_type == SpectrumType.DECONVOLUTED
-    decon.decharge()  # must not raise
+    # This synthetic spectrum has no isotope cluster, so every charge is unknown.
+    with pytest.warns(UserWarning, match="unchanged"):
+        result = decon.decharge()
+    assert result == decon
+
+
+def test_decharge_without_any_positive_charge_warns_and_preserves_spectrum() -> None:
+    decon = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensity=np.array([10.0, 20.0]),
+        charge=np.array([-1, -1]),
+        spectrum_type=SpectrumType.DECONVOLUTED,
+    )
+    with pytest.warns(UserWarning, match="unchanged"):
+        result = decon.decharge()
+    assert result == decon
+    assert result is not decon
 
 
 # ---------------------------------------------------------------------------

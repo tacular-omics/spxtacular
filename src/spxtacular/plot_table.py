@@ -399,9 +399,24 @@ def _ion_priority(ion_type: str) -> int:
 
 
 def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
+    import copy
+
     import paftacular as pft
 
-    return pft.to_mzpaf(fragment, include_annotation=include_sequence).serialize()
+    if fragment.charge_state >= 1:
+        return pft.to_mzpaf(fragment, include_annotation=include_sequence).serialize()
+
+    # mzPAF currently rejects negative charge values. Build its otherwise
+    # canonical label from a temporary positive-magnitude copy, then restore
+    # the polarity in the rendered charge suffix.
+    label_fragment = copy.copy(fragment)
+    magnitude = abs(fragment.charge_state)
+    label_fragment.charge_state = magnitude
+    label_fragment.external_charge = magnitude
+    label = pft.to_mzpaf(label_fragment, include_annotation=include_sequence).serialize()
+    if magnitude == 1:
+        return f"{label}^-1"
+    return f"{label.removesuffix(f'^{magnitude}')}^-{magnitude}"
 
 
 def build_annot_plot_table(

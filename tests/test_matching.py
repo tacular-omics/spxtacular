@@ -207,6 +207,20 @@ def test_charge_mismatch_excluded() -> None:
     assert result == []
 
 
+def test_negative_fragment_matches_deconvoluted_charge_magnitude() -> None:
+    spec = _decon_spectrum()
+    frag = _make_frag(200.005, charge_state=-1)
+    result = match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da")
+    assert len(result) == 1
+    assert result[0].peak_index == 0
+
+
+def test_negative_fragment_still_rejects_wrong_charge_magnitude() -> None:
+    spec = _decon_spectrum()
+    frag = _make_frag(200.005, charge_state=-2)
+    assert match_fragments(spec, [frag], tolerance=0.02, tolerance_type="da") == []
+
+
 def test_charge_filter_all_mode() -> None:
     """In 'all' mode, only peaks whose charge matches are returned."""
     spec = Spectrum(

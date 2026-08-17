@@ -283,6 +283,13 @@ def test_annot_plot_table_matched_label_nonempty() -> None:
     assert matched_label != ""
 
 
+def test_annot_plot_table_negative_fragment_label_preserves_polarity() -> None:
+    frag = _real_frag(200.0, ion_type="b", position=2, charge_state=-2)
+    spec = Spectrum(mz=np.array([frag.mz]), intensity=np.array([100.0]))
+    table = build_annot_plot_table(spec, [frag], tolerance=0.02)
+    assert table.loc[0, "label"].endswith("^-2")
+
+
 def test_annot_plot_table_y_ion_color() -> None:
     frag = _real_frag(200.005, ion_type="y", position=2)
     table = build_annot_plot_table(_spectrum(), [frag], tolerance=0.02)

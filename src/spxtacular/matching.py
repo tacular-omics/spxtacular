@@ -99,9 +99,9 @@ def match_fragments(
     * **Centroid / profile** (``spectrum.charge is None``) — match by m/z
       with no charge constraint.
     * **Deconvoluted** (``spectrum.charge`` has values > 0 or -1) — match by
-      m/z; require the peak's assigned charge to equal
-      ``fragment.charge_state``. Singletons (``charge == -1``, unknown
-      charge) are treated as a wildcard and may still match by m/z.
+      m/z; require the peak's assigned charge magnitude to equal the fragment
+      charge magnitude. Singletons (``charge == -1``, unknown charge) are
+      treated as a wildcard and may still match by m/z.
     * **Decharged** (every peak's ``charge`` is 0, i.e. neutral masses) —
       match the peak's neutral mass against ``fragment.neutral_mass``;
       ``charge_state`` is no longer a constraint, so multi-charge
@@ -149,7 +149,11 @@ def match_fragments(
         if charge is None or is_decharged:
             return True
         pc = int(charge[peak_idx])
-        return pc == -1 or pc == frag_charge  # -1 = unknown, treat as wildcard
+        # Deconvolution records a charge magnitude; fragment polarity is carried
+        # by the sign of charge_state. Compare magnitudes so negative-mode
+        # fragments match their deconvoluted peaks. -1 remains the unknown-charge
+        # sentinel and therefore acts as a wildcard.
+        return pc == -1 or abs(pc) == abs(frag_charge)
 
     def _ppm_err(delta: float, target_mz: float) -> float:
         return da_to_ppm(delta, target_mz) if target_mz != 0.0 else 0.0
