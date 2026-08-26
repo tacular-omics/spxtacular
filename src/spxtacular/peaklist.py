@@ -117,6 +117,23 @@ def _first_int(text: str, *, field_name: str, path: Path, line_no: int) -> int:
     return int(match.group())
 
 
+def _scan_int(text: str, *, path: Path, line_no: int) -> int:
+    """Parse a scan number from common MGF ``SCANS`` representations.
+
+    Numeric values and ranges keep their leading integer. Some producers use
+    identifiers such as ``F1:2478`` or ``scan=2478``. For those values, the
+    final integer is the native scan number.
+    """
+    token = text.strip()
+    leading = _INT_RE.match(token)
+    if leading is not None:
+        return int(leading.group())
+    matches = list(_INT_RE.finditer(token))
+    if matches:
+        return int(matches[-1].group())
+    raise ValueError(f"{path}:{line_no}: could not parse SCANS from {text!r}")
+
+
 def _parse_charge(text: str, *, path: Path, line_no: int) -> int:
     """Parse one charge token: ``2``, ``2+``, ``+2``, ``3-`` all work.
 
@@ -240,7 +257,7 @@ def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
     scan_number: int | None = None
     if "SCANS" in headers:
         value, line_no = headers["SCANS"]
-        scan_number = _first_int(value, field_name="SCANS", path=path, line_no=line_no)
+        scan_number = _scan_int(value, path=path, line_no=line_no)
 
     rt: float | None = None
     if "RTINSECONDS" in headers:

@@ -1,10 +1,11 @@
 """Chainable mass-spectrum processing and metadata-preserving data models."""
 
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -41,11 +42,126 @@ from .ionization import (
 )
 from .isotopes import IsotopeModelLike, resolve_isotope_model
 from .noise import estimate_noise_level
+from .serialization import (
+    JSON_SCHEMA_VERSION,
+    SPECTRUM_SCHEMA,
+    require_boolean,
+    require_exact_keys,
+    require_integer,
+    require_integer_array_or_none,
+    require_mapping,
+    require_number,
+    require_number_array_or_none,
+    require_range_or_none,
+    require_schema,
+    require_string,
+    strict_json_dumps,
+    strict_json_loads,
+    to_json_value,
+)
 from .utils import precursor_charge_magnitude
 
 # ============================================================================
 # Core Data Structures
 # ============================================================================
+
+
+def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
+    """Validate canonical schema-v2 deconvolution provenance metadata."""
+    if value is None:
+        return None
+    path = "payload.metadata.deconvolution"
+    payload = require_mapping(value, path)
+    expected = {
+        "schema_version",
+        "isotope_model",
+        "isotope_model_definition",
+        "ionization_model",
+        "charge_range",
+        "tolerance",
+        "tolerance_type",
+        "intensity_mode",
+        "min_intensity",
+        "min_score",
+        "min_isotope_abundance",
+        "max_isotope_fold_error",
+        "max_isotope_gaps",
+        "max_isotopes",
+        "im_tolerance",
+        "im_tolerance_type",
+    }
+    require_exact_keys(payload, expected, path)
+    if require_integer(payload["schema_version"], f"{path}.schema_version") != 2:
+        raise ValueError(f"{path}.schema_version must be 2")
+    charge_range = require_integer_array_or_none(payload["charge_range"], f"{path}.charge_range")
+    if charge_range is None or len(charge_range) != 2:
+        raise ValueError(f"{path}.charge_range must contain exactly two integers")
+    require_integer(payload["max_isotope_gaps"], f"{path}.max_isotope_gaps")
+    require_integer(payload["max_isotopes"], f"{path}.max_isotopes", nullable=True)
+    try:
+        canonical = to_json_value(DeconvolutionProvenance.from_dict(dict(payload)).to_dict(), path)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"{path} is invalid: {error}") from error
+    if canonical != to_json_value(payload, path):
+        raise ValueError(f"{path} must use canonical schema-v2 value types and fields")
+    return canonical
+
+
+def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[str, Any]:
+    """Validate and normalize the v1 metadata object."""
+    result = dict(metadata)
+    result["spectrum_type"] = require_string(metadata["spectrum_type"], "payload.metadata.spectrum_type", nullable=True)
+    result["denoised"] = require_string(metadata["denoised"], "payload.metadata.denoised", nullable=True)
+    result["normalized"] = require_string(metadata["normalized"], "payload.metadata.normalized", nullable=True)
+    result["deconvolution"] = _validate_deconvolution_json(metadata["deconvolution"])
+    if not msn:
+        return result
+
+    for field in ("scan_number", "ms_level"):
+        result[field] = require_integer(metadata[field], f"payload.metadata.{field}", nullable=True)
+    if result["scan_number"] is not None and result["scan_number"] < 0:
+        raise ValueError("payload.metadata.scan_number must be nonnegative or null")
+    if result["ms_level"] is not None and result["ms_level"] < 1:
+        raise ValueError("payload.metadata.ms_level must be positive or null")
+    for field in ("native_id", "im_type", "polarity", "analyzer", "activation_type"):
+        result[field] = require_string(metadata[field], f"payload.metadata.{field}", nullable=True)
+    for field in (
+        "rt",
+        "injection_time",
+        "total_ion_current",
+        "resolution",
+        "ramp_time",
+        "collision_energy",
+    ):
+        result[field] = require_number(metadata[field], f"payload.metadata.{field}", nullable=True)
+    for field in ("mz_range", "im_range", "isolation_mz_range", "isolation_im_range"):
+        result[field] = require_range_or_none(metadata[field], f"payload.metadata.{field}")
+
+    precursors = metadata["precursors"]
+    if precursors is None:
+        result["precursors"] = None
+    elif not isinstance(precursors, list):
+        raise TypeError("payload.metadata.precursors must be a JSON array or null")
+    else:
+        result["precursors"] = []
+        precursor_fields = {"mz", "intensity", "charge", "im", "iso_score", "is_monoisotopic"}
+        for index, value in enumerate(precursors):
+            path = f"payload.metadata.precursors[{index}]"
+            precursor = require_mapping(value, path)
+            require_exact_keys(precursor, precursor_fields, path)
+            result["precursors"].append(
+                {
+                    "mz": require_number(precursor["mz"], f"{path}.mz"),
+                    "intensity": require_number(precursor["intensity"], f"{path}.intensity"),
+                    "charge": require_integer(precursor["charge"], f"{path}.charge", nullable=True),
+                    "im": require_number(precursor["im"], f"{path}.im", nullable=True),
+                    "iso_score": require_number(precursor["iso_score"], f"{path}.iso_score", nullable=True),
+                    "is_monoisotopic": require_boolean(
+                        precursor["is_monoisotopic"], f"{path}.is_monoisotopic", nullable=True
+                    ),
+                }
+            )
+    return result
 
 
 def _apex_indices(intensity: NDArray[np.float64]) -> NDArray[np.intp]:
@@ -210,6 +326,10 @@ class Spectrum:
     denoised: str | None = None
     normalized: str | None = None
     deconvolution: DeconvolutionProvenance | None = None
+
+    _JSON_META_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"spectrum_type", "denoised", "normalized", "deconvolution"}
+    )
 
     def __post_init__(self):
         """Coerce array dtypes and validate shapes."""
@@ -1569,6 +1689,85 @@ class Spectrum:
     # Persistence
     # -------------------------------------------------------------------------
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a versioned, JSON-compatible representation.
+
+        The transport keeps peak columns as parallel arrays and preserves the
+        concrete ``Spectrum`` or ``MsnSpectrum`` kind. Every value is converted
+        to a strict JSON-native type, including NumPy scalars commonly emitted
+        by file readers.
+        """
+        kind = "msn_spectrum" if isinstance(self, MsnSpectrum) else "spectrum"
+        arrays = {
+            "mz": self.mz,
+            "intensity": self.intensity,
+            "charge": self.charge,
+            "im": self.im,
+            "iso_score": self.iso_score,
+        }
+        return {
+            "schema": SPECTRUM_SCHEMA,
+            "schema_version": JSON_SCHEMA_VERSION,
+            "kind": kind,
+            "arrays": to_json_value(arrays, "arrays"),
+            "metadata": to_json_value(self._meta_dict(), "metadata"),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Spectrum | MsnSpectrum":
+        """Reconstruct a spectrum from :meth:`to_dict` output.
+
+        Calling this on ``Spectrum`` dispatches to ``MsnSpectrum`` when the
+        payload carries ``kind='msn_spectrum'``. Calling it on ``MsnSpectrum``
+        requires an MSn payload.
+        """
+        data = require_mapping(payload, "payload")
+        kind = require_schema(data, SPECTRUM_SCHEMA, {"spectrum", "msn_spectrum"})
+
+        if cls is Spectrum:
+            target_cls: Any = MsnSpectrum if kind == "msn_spectrum" else Spectrum
+        elif issubclass(cls, MsnSpectrum):
+            if kind != "msn_spectrum":
+                raise ValueError("MsnSpectrum.from_dict requires kind='msn_spectrum'")
+            target_cls = cls
+        else:
+            if kind != "spectrum":
+                raise ValueError(f"{cls.__name__}.from_dict requires kind='spectrum'")
+            target_cls = cls
+
+        arrays = require_mapping(data["arrays"], "payload.arrays")
+        require_exact_keys(arrays, {"mz", "intensity", "charge", "im", "iso_score"}, "payload.arrays")
+        mz = require_number_array_or_none(arrays["mz"], "payload.arrays.mz")
+        intensity = require_number_array_or_none(arrays["intensity"], "payload.arrays.intensity")
+        if mz is None or intensity is None:
+            raise ValueError("payload.arrays.mz and payload.arrays.intensity cannot be null")
+
+        metadata = require_mapping(data["metadata"], "payload.metadata")
+        require_exact_keys(metadata, set(target_cls._JSON_META_FIELDS), "payload.metadata")
+        normalized_metadata = _validate_json_metadata(metadata, msn=kind == "msn_spectrum")
+        charge = require_integer_array_or_none(arrays["charge"], "payload.arrays.charge")
+        im = require_number_array_or_none(arrays["im"], "payload.arrays.im")
+        iso_score = require_number_array_or_none(arrays["iso_score"], "payload.arrays.iso_score")
+
+        return target_cls(
+            mz=np.asarray(mz, dtype=np.float64),
+            intensity=np.asarray(intensity, dtype=np.float64),
+            charge=None if charge is None else np.asarray(charge, dtype=np.int32),
+            im=None if im is None else np.asarray(im, dtype=np.float64),
+            iso_score=None if iso_score is None else np.asarray(iso_score, dtype=np.float64),
+            **target_cls._meta_kwargs(normalized_metadata),
+        )
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        """Encode :meth:`to_dict` output as standards-compliant JSON."""
+        return strict_json_dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_json(cls, value: str | bytes | bytearray) -> "Spectrum | MsnSpectrum":
+        """Reconstruct a spectrum from a JSON string or UTF-8 byte sequence."""
+        payload = require_mapping(strict_json_loads(value), "payload")
+        return cls.from_dict(payload)
+
     def _meta_dict(self) -> dict:
         """Build the JSON-serialisable metadata dict for :meth:`save`.
 
@@ -2157,6 +2356,29 @@ class MsnSpectrum(Spectrum):
 
     isolation_mz_range: tuple[float, float] | None = None  # Isolation window (min_mz, max_mz) for MS2
     isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
+
+    _JSON_META_FIELDS: ClassVar[frozenset[str]] = Spectrum._JSON_META_FIELDS | frozenset(
+        {
+            "scan_number",
+            "ms_level",
+            "native_id",
+            "rt",
+            "injection_time",
+            "total_ion_current",
+            "im_type",
+            "polarity",
+            "resolution",
+            "analyzer",
+            "ramp_time",
+            "collision_energy",
+            "activation_type",
+            "mz_range",
+            "im_range",
+            "isolation_mz_range",
+            "isolation_im_range",
+            "precursors",
+        }
+    )
 
     def __str__(self) -> str:
         rt_str = f"{self.rt:.2f}s" if self.rt is not None else "None"

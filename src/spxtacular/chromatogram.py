@@ -27,15 +27,28 @@ targets cheap.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal, Self
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .core import Spectrum
 from .enums import ToleranceLike, ToleranceType
+from .serialization import (
+    CHROMATOGRAM_SCHEMA,
+    JSON_SCHEMA_VERSION,
+    require_exact_keys,
+    require_mapping,
+    require_number,
+    require_number_array_or_none,
+    require_schema,
+    require_string,
+    strict_json_dumps,
+    strict_json_loads,
+    to_json_value,
+)
 
 Aggregate = Literal["sum", "max"]
 
@@ -79,6 +92,69 @@ class Chromatogram:
 
     def __len__(self) -> int:
         return len(self.rt)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a versioned, JSON-compatible representation."""
+        return {
+            "schema": CHROMATOGRAM_SCHEMA,
+            "schema_version": JSON_SCHEMA_VERSION,
+            "kind": "chromatogram",
+            "arrays": to_json_value({"rt": self.rt, "intensity": self.intensity}, "arrays"),
+            "metadata": to_json_value(
+                {
+                    "label": self.label,
+                    "mz": self.mz,
+                    "tolerance": self.tolerance,
+                    "tolerance_type": self.tolerance_type,
+                    "meta": self.meta,
+                },
+                "metadata",
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> Self:
+        """Reconstruct a chromatogram from :meth:`to_dict` output."""
+        data = require_mapping(payload, "payload")
+        require_schema(data, CHROMATOGRAM_SCHEMA, {"chromatogram"})
+
+        arrays = require_mapping(data["arrays"], "payload.arrays")
+        require_exact_keys(arrays, {"rt", "intensity"}, "payload.arrays")
+        rt = require_number_array_or_none(arrays["rt"], "payload.arrays.rt")
+        intensity = require_number_array_or_none(arrays["intensity"], "payload.arrays.intensity")
+        if rt is None or intensity is None:
+            raise ValueError("payload.arrays.rt and payload.arrays.intensity cannot be null")
+
+        metadata = require_mapping(data["metadata"], "payload.metadata")
+        require_exact_keys(
+            metadata,
+            {"label", "mz", "tolerance", "tolerance_type", "meta"},
+            "payload.metadata",
+        )
+        normalized_metadata = to_json_value(metadata, "payload.metadata")
+        meta = require_mapping(normalized_metadata["meta"], "payload.metadata.meta")
+
+        return cls(
+            rt=np.asarray(rt, dtype=np.float64),
+            intensity=np.asarray(intensity, dtype=np.float64),
+            label=require_string(normalized_metadata["label"], "payload.metadata.label"),
+            mz=require_number(normalized_metadata["mz"], "payload.metadata.mz", nullable=True),
+            tolerance=require_number(normalized_metadata["tolerance"], "payload.metadata.tolerance", nullable=True),
+            tolerance_type=require_string(
+                normalized_metadata["tolerance_type"], "payload.metadata.tolerance_type", nullable=True
+            ),
+            meta=dict(meta),
+        )
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        """Encode :meth:`to_dict` output as standards-compliant JSON."""
+        return strict_json_dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_json(cls, value: str | bytes | bytearray) -> Self:
+        """Reconstruct a chromatogram from a JSON string or UTF-8 byte sequence."""
+        payload = require_mapping(strict_json_loads(value), "payload")
+        return cls.from_dict(payload)
 
     @property
     def apex_rt(self) -> float | None:

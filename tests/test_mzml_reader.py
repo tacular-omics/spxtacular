@@ -4,10 +4,10 @@ import pathlib
 import numpy as np
 import pytest
 
-pytest.importorskip("mzmlpy")
+mzp = pytest.importorskip("mzmlpy")
 
 from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
-from spxtacular.reader import MzmlReader  # noqa: E402
+from spxtacular.reader import MzmlReader, Reader  # noqa: E402
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
 EXAMPLE_MZML = DATA_DIR / "example.mzML"
@@ -244,6 +244,42 @@ def test_gz_getitem_by_index():
     r = MzmlReader(str(EXAMPLE_MZML_GZ))
     spec = r[0]
     assert isinstance(spec, MsnSpectrum)
+
+
+def test_gz_stream_mode_reads_sequentially_without_extraction():
+    with MzmlReader(EXAMPLE_MZML_GZ, gzip_mode="stream", in_memory=False) as r:
+        spec = next(iter(r.ms1))
+
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.ms_level == 1
+
+
+def test_unified_reader_forwards_mzml_options():
+    with Reader(EXAMPLE_MZML_GZ, mzml_gzip_mode="stream", mzml_in_memory=False) as r:
+        spec = next(iter(r.ms1))
+
+    assert isinstance(spec, MsnSpectrum)
+    assert spec.ms_level == 1
+
+
+def test_mzml_options_apply_without_persistent_handle(monkeypatch):
+    calls = []
+    real_mzml = mzp.Mzml
+
+    def recording_mzml(path, **kwargs):
+        calls.append((path, kwargs))
+        return real_mzml(path, **kwargs)
+
+    monkeypatch.setattr(mzp, "Mzml", recording_mzml)
+    reader = MzmlReader(EXAMPLE_MZML_GZ, gzip_mode="stream", in_memory=False)
+    next(iter(reader.ms1))
+
+    assert calls == [
+        (
+            EXAMPLE_MZML_GZ,
+            {"gzip_mode": "stream", "in_memory": False, "extract_dir": None},
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------

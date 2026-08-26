@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tacular-omics.github.io/spxtacular/schemas/spectrum-v1.schema.json",
+  "title": "Spxtacular Spectrum v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "kind", "arrays", "metadata"],
+  "properties": {
+    "schema": {"const": "spxtacular.spectrum"},
+    "schema_version": {"const": 1},
+    "kind": {"enum": ["spectrum", "msn_spectrum"]},
+    "arrays": {"$ref": "#/$defs/arrays"},
+    "metadata": {"type": "object"}
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "kind": {"const": "spectrum"},
+        "metadata": {"$ref": "#/$defs/spectrumMetadata"}
+      }
+    },
+    {
+      "properties": {
+        "kind": {"const": "msn_spectrum"},
+        "metadata": {"$ref": "#/$defs/msnSpectrumMetadata"}
+      }
+    }
+  ],
+  "$defs": {
+    "numberArray": {
+      "type": "array",
+      "items": {"type": "number"}
+    },
+    "integerArray": {
+      "type": "array",
+      "items": {"type": "integer"}
+    },
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "nullableRange": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "prefixItems": [{"type": "number"}, {"type": "number"}],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      ]
+    },
+    "ionizationModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "polarity", "carrier_mass", "carrier"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "polarity": {"enum": ["positive", "negative"]},
+        "carrier_mass": {"type": "number"},
+        "carrier": {"type": "string"}
+      }
+    },
+    "isotopeModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "atoms_per_da", "fixed_composition", "isotope_abundances"],
+      "properties": {
+        "name": {"type": "string"},
+        "atoms_per_da": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0}
+        },
+        "fixed_composition": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "isotope_abundances": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    },
+    "deconvolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "isotope_model",
+        "isotope_model_definition",
+        "ionization_model",
+        "charge_range",
+        "tolerance",
+        "tolerance_type",
+        "intensity_mode",
+        "min_intensity",
+        "min_score",
+        "min_isotope_abundance",
+        "max_isotope_fold_error",
+        "max_isotope_gaps",
+        "max_isotopes",
+        "im_tolerance",
+        "im_tolerance_type"
+      ],
+      "properties": {
+        "schema_version": {"const": 2},
+        "isotope_model": {"type": "string"},
+        "isotope_model_definition": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/isotopeModel"}]
+        },
+        "ionization_model": {"$ref": "#/$defs/ionizationModel"},
+        "charge_range": {
+          "type": "array",
+          "prefixItems": [{"type": "integer"}, {"type": "integer"}],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "tolerance": {"type": "number", "minimum": 0},
+        "tolerance_type": {"type": "string"},
+        "intensity_mode": {"type": "string"},
+        "min_intensity": {"type": "number", "minimum": 0},
+        "min_score": {"type": "number", "minimum": 0},
+        "min_isotope_abundance": {"type": "number", "exclusiveMinimum": 0},
+        "max_isotope_fold_error": {"type": "number", "minimum": 0},
+        "max_isotope_gaps": {"type": "integer", "minimum": 0},
+        "max_isotopes": {"type": ["integer", "null"], "minimum": 1},
+        "im_tolerance": {"type": "number", "minimum": 0},
+        "im_tolerance_type": {"type": "string"}
+      }
+    },
+    "arrays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mz", "intensity", "charge", "im", "iso_score"],
+      "properties": {
+        "mz": {"$ref": "#/$defs/numberArray"},
+        "intensity": {"$ref": "#/$defs/numberArray"},
+        "charge": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/integerArray"}]
+        },
+        "im": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/numberArray"}]
+        },
+        "iso_score": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/numberArray"}]
+        }
+      }
+    },
+    "spectrumMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spectrum_type", "denoised", "normalized", "deconvolution"],
+      "properties": {
+        "spectrum_type": {"$ref": "#/$defs/nullableString"},
+        "denoised": {"$ref": "#/$defs/nullableString"},
+        "normalized": {"$ref": "#/$defs/nullableString"},
+        "deconvolution": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/deconvolution"}]
+        }
+      }
+    },
+    "precursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mz", "intensity", "charge", "im", "iso_score", "is_monoisotopic"],
+      "properties": {
+        "mz": {"type": "number"},
+        "intensity": {"type": "number"},
+        "charge": {"type": ["integer", "null"]},
+        "im": {"$ref": "#/$defs/nullableNumber"},
+        "iso_score": {"$ref": "#/$defs/nullableNumber"},
+        "is_monoisotopic": {"type": ["boolean", "null"]}
+      }
+    },
+    "msnSpectrumMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spectrum_type",
+        "denoised",
+        "normalized",
+        "deconvolution",
+        "scan_number",
+        "ms_level",
+        "native_id",
+        "rt",
+        "injection_time",
+        "total_ion_current",
+        "im_type",
+        "polarity",
+        "resolution",
+        "analyzer",
+        "ramp_time",
+        "collision_energy",
+        "activation_type",
+        "mz_range",
+        "im_range",
+        "isolation_mz_range",
+        "isolation_im_range",
+        "precursors"
+      ],
+      "properties": {
+        "spectrum_type": {"$ref": "#/$defs/nullableString"},
+        "denoised": {"$ref": "#/$defs/nullableString"},
+        "normalized": {"$ref": "#/$defs/nullableString"},
+        "deconvolution": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/deconvolution"}]
+        },
+        "scan_number": {"type": ["integer", "null"], "minimum": 0},
+        "ms_level": {"type": ["integer", "null"], "minimum": 1},
+        "native_id": {"$ref": "#/$defs/nullableString"},
+        "rt": {"$ref": "#/$defs/nullableNumber"},
+        "injection_time": {"$ref": "#/$defs/nullableNumber"},
+        "total_ion_current": {"$ref": "#/$defs/nullableNumber"},
+        "im_type": {"$ref": "#/$defs/nullableString"},
+        "polarity": {"$ref": "#/$defs/nullableString"},
+        "resolution": {"$ref": "#/$defs/nullableNumber"},
+        "analyzer": {"$ref": "#/$defs/nullableString"},
+        "ramp_time": {"$ref": "#/$defs/nullableNumber"},
+        "collision_energy": {"$ref": "#/$defs/nullableNumber"},
+        "activation_type": {"$ref": "#/$defs/nullableString"},
+        "mz_range": {"$ref": "#/$defs/nullableRange"},
+        "im_range": {"$ref": "#/$defs/nullableRange"},
+        "isolation_mz_range": {"$ref": "#/$defs/nullableRange"},
+        "isolation_im_range": {"$ref": "#/$defs/nullableRange"},
+        "precursors": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "items": {"$ref": "#/$defs/precursor"}}
+          ]
+        }
+      }
+    }
+  }
+}

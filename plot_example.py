@@ -7,6 +7,7 @@ Usage:
     uv run python plot_example.py           # write plots/
     uv run python plot_example.py --show    # open in browser
 """
+
 import sys
 from pathlib import Path
 
@@ -51,11 +52,11 @@ for spec, name in [
 
 # ── mirror plots (raw below, deconvoluted above) ───────────────────────────────
 save_or_show(
-    spx.mirror_plot(raw, decon, title="Mirror – all clusters"),
+    spx.mirror_plot(raw, decon, title="Mirror - all clusters"),
     "mirror",
 )
 save_or_show(
-    spx.mirror_plot(raw, decon_filtered, title="Mirror – min_score=0.5"),
+    spx.mirror_plot(raw, decon_filtered, title="Mirror - min_score=0.5"),
     "mirror_filtered",
 )
 
@@ -113,7 +114,7 @@ save_or_show(
         fragments,
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,
-        title=f"Annotated – {PEPTIDE}",
+        title=f"Annotated - {PEPTIDE}",
     ),
     "annotated",
 )
@@ -139,7 +140,7 @@ save_or_show(
         fragments,
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,
-        title=f"Annotated (dark) – {PEPTIDE}",
+        title=f"Annotated (dark) - {PEPTIDE}",
         theme_mode="dark",
     ),
     "annotated_dark",
@@ -154,7 +155,7 @@ save_or_show(
         fragments,
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,
-        title=f"Annotated, log intensity – {PEPTIDE}",
+        title=f"Annotated, log intensity - {PEPTIDE}",
         intensity_transform="log",
     ),
     "annotated_log",
@@ -169,7 +170,7 @@ save_or_show(
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,
         unit="ppm",
-        title=f"Mass errors – {PEPTIDE}",
+        title=f"Mass errors - {PEPTIDE}",
     ),
     "mass_errors",
 )
@@ -183,7 +184,7 @@ save_or_show(
         mirror_spectrum=annot_decon,
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,
-        title=f"Facet – {PEPTIDE}",
+        title=f"Facet - {PEPTIDE}",
     ),
     "facet",
 )

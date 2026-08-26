@@ -2,6 +2,21 @@
 
 User-visible changes only; implementation details belong in commits and pull requests.
 
+## Unreleased
+
+### Added
+
+- Added versioned `to_dict`/`from_dict` and `to_json`/`from_json` transport for `Spectrum`, `MsnSpectrum`, and `Chromatogram`, including packaged JSON Schema documents.
+- Added configurable mzML gzip handling so large compressed runs can use low-latency sequential streaming.
+
+### Changed
+
+- Added strict validation for nested deconvolution provenance, scan identifiers, JSON object keys, and packaged Draft 2020-12 schemas.
+
+### Fixed
+
+- Accepted prefixed MGF scan identifiers such as `SCANS=F1:2478` while preserving numeric range behavior.
+
 ## 0.5.0 (2026-08-17)
 
 ### Added

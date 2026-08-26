@@ -448,6 +448,65 @@ renamed = spec.update(spectrum_type="centroid")
 
 ---
 
+### JSON transport
+
+#### `to_dict` / `Spectrum.from_dict`
+
+```python
+def to_dict(self) -> dict[str, Any]
+
+@classmethod
+def from_dict(cls, payload: Mapping[str, Any]) -> Spectrum | MsnSpectrum
+```
+
+Convert a spectrum to or from the versioned `spxtacular.spectrum` transport
+format. The payload contains only JSON-native values. Peak columns stay in
+parallel arrays, and `kind` records whether the original object was a
+`Spectrum` or `MsnSpectrum`.
+
+```python
+payload = spec.to_dict()
+restored = Spectrum.from_dict(payload)
+
+assert type(restored) is type(spec)
+assert restored == spec
+```
+
+Calling `Spectrum.from_dict()` dispatches to `MsnSpectrum` when appropriate.
+Calling `MsnSpectrum.from_dict()` requires an MSn payload. Version 1 rejects
+missing fields, unknown fields, malformed arrays, and non-finite numeric values
+instead of silently discarding data.
+
+#### `to_json` / `Spectrum.from_json`
+
+```python
+def to_json(self, *, indent: int | None = None) -> str
+
+@classmethod
+def from_json(cls, value: str | bytes | bytearray) -> Spectrum | MsnSpectrum
+```
+
+Encode or decode the same transport as strict JSON. Compact JSON is the
+default. Pass `indent=2` for readable output.
+
+```python
+message = spec.to_json()
+restored = Spectrum.from_json(message)
+```
+
+The format is designed for APIs and browser visualization. It is not a storage
+replacement for `.npz`, which is smaller and retains NumPy arrays natively.
+
+The packaged JSON Schema is available without an extra dependency:
+
+```python
+from spxtacular import get_json_schema
+
+schema = get_json_schema("spectrum")
+```
+
+---
+
 ### Serialisation (spectrl token)
 
 #### `to_spectrl_token` / `Spectrum.from_spectrl_token`

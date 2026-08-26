@@ -46,6 +46,7 @@ from .peaklist import MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, wri
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
 from .scoring import score
+from .serialization import get_json_schema
 from .similarity import cosine, entropy_similarity, modified_cosine
 from .spectrl_bridge import (
     from_spectrl_token,
@@ -136,6 +137,7 @@ __all__ = [
     "from_spectrl_token",
     "to_spectrl_url",
     "from_spectrl_url",
+    "get_json_schema",
     "IsotopeModel",
     "IsotopeModelLike",
     "IsotopeModelType",

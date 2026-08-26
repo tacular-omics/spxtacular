@@ -319,6 +319,18 @@ Z	3	1333.35
     np.testing.assert_array_equal(spec.mz, np.array([110.0715, 200.5]))
 
 
+@pytest.mark.parametrize("value", ["F1:2478", "scan=2478", "controller:1 scan:2478"])
+def test_mgf_scans_accepts_prefixed_identifiers(tmp_path, value):
+    path = write_text(
+        tmp_path / "prefixed-scan.mgf",
+        f"BEGIN IONS\nSCANS={value}\n100 10\nEND IONS\n",
+    )
+
+    (spec,) = list(MgfReader(path))
+
+    assert spec.scan_number == 2478
+
+
 def test_ms2_rettime_alias(tmp_path):
     path = write_text(
         tmp_path / "rettime.ms2",

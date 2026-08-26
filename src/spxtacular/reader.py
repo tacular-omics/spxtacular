@@ -537,7 +537,7 @@ class MzmlSpectraLookup:
                     continue
                 yield MzmlReader._parse_spectrum(spec, decon)
         else:
-            with mzp.Mzml(self._reader.mzml_path) as r:
+            with self._reader._new_handle() as r:
                 decon = _deconvolution_refs(r)
                 for spec in r.spectra:
                     if self._ms_level is not None and spec.ms_level != self._ms_level:
@@ -551,7 +551,7 @@ class MzmlSpectraLookup:
             spec = handle.spectra[key]
             decon = _deconvolution_refs(handle)
         else:
-            with mzp.Mzml(self._reader.mzml_path) as r:
+            with self._reader._new_handle() as r:
                 spec = r.spectra[key]
                 decon = _deconvolution_refs(r)
         return MzmlReader._parse_spectrum(spec, decon)
@@ -613,14 +613,50 @@ def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
 
 
 class MzmlReader:
-    def __init__(self, mzml_path: str | Path):
+    """Read spectra from an mzML or gzipped mzML file.
+
+    Parameters
+    ----------
+    mzml_path:
+        Path to the mzML file.
+    gzip_mode:
+        How mzmlpy opens gzipped input. ``"extract"`` preserves the historical
+        behavior and gives fast random access after an up-front extraction.
+        ``"stream"`` starts immediately and is well suited to sequential reads.
+        ``"indexed"`` builds a random-access gzip index and requires rapidgzip.
+    in_memory:
+        Whether mzmlpy should keep its XML index in memory.
+    extract_dir:
+        Optional directory for files produced by ``gzip_mode="extract"``.
+    """
+
+    def __init__(
+        self,
+        mzml_path: str | Path,
+        *,
+        gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+        in_memory: bool = True,
+        extract_dir: str | Path | None = None,
+    ) -> None:
         if not _HAS_MZMLPY:
             raise ImportError(
                 "MzmlReader requires the 'mzmlpy' package, which is not installed. "
                 "Install it with: pip install spxtacular[mzml]"
             )
         self.mzml_path = mzml_path
+        self.gzip_mode = gzip_mode
+        self.in_memory = in_memory
+        self.extract_dir = extract_dir
         self._mzml_handle = None
+
+    def _new_handle(self) -> Any:
+        """Create an mzmlpy handle with this reader's public I/O options."""
+        return mzp.Mzml(
+            self.mzml_path,
+            gzip_mode=self.gzip_mode,
+            in_memory=self.in_memory,
+            extract_dir=self.extract_dir,
+        )
 
     @staticmethod
     def _parse_spectrum(spec: mzp.Spectrum, decon: _DeconvolutionRefs = _NO_DECONVOLUTION) -> MsnSpectrum:
@@ -818,7 +854,7 @@ class MzmlReader:
         """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
         if self._mzml_handle is not None:
             self.close()
-        handle = mzp.Mzml(self.mzml_path)
+        handle = self._new_handle()
         # Only publish the handle once it is genuinely open, so a failing
         # __enter__ doesn't leave a half-open reader behind.
         handle.__enter__()
@@ -871,6 +907,15 @@ class Reader:
         ``.raw`` file, or an ``.mgf`` / ``.ms2`` / ``.msp`` peak list. Every
         text format may be gzipped (``.mzML.gz``, ``.mgf.gz``, ``.ms2.gz``,
         ``.msp.gz``). Extension matching is case-insensitive.
+    centroid_config:
+        Optional Bruker centroiding settings.
+    mzml_gzip_mode:
+        Gzip strategy forwarded to :class:`MzmlReader`. Use ``"stream"`` for
+        low-latency sequential access to large gzipped mzML files.
+    mzml_in_memory:
+        Whether mzmlpy should keep its XML index in memory.
+    mzml_extract_dir:
+        Optional directory for mzmlpy's extracted gzip content.
 
     Raises
     ------
@@ -883,7 +928,15 @@ class Reader:
     inputs is a valid but always empty walk.
     """
 
-    def __init__(self, path: str | Path, centroid_config: CentroidConfig | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        centroid_config: CentroidConfig | None = None,
+        *,
+        mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+        mzml_in_memory: bool = True,
+        mzml_extract_dir: str | Path | None = None,
+    ) -> None:
         p = Path(path)
         suffixes = [s.lower() for s in p.suffixes]
         if suffixes and suffixes[-1] == ".gz":
@@ -894,7 +947,12 @@ class Reader:
                 p, centroid_config=centroid_config
             )
         elif suffix == ".mzml":
-            self._reader = MzmlReader(p)
+            self._reader = MzmlReader(
+                p,
+                gzip_mode=mzml_gzip_mode,
+                in_memory=mzml_in_memory,
+                extract_dir=mzml_extract_dir,
+            )
         elif suffix == ".raw":
             self._reader = ThermoReader(p)
         elif suffix == ".mgf":

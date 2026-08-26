@@ -62,6 +62,10 @@ class Reader:
         self,
         path: str | Path,
         centroid_config: CentroidConfig | None = None,
+        *,
+        mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+        mzml_in_memory: bool = True,
+        mzml_extract_dir: str | Path | None = None,
     ): ...
 
     def open(self) -> None: ...
@@ -87,7 +91,8 @@ with Reader("/data/sample.d") as r:
     ms2 = r.ms2[42]                # DDA precursor_id
 ```
 
-`centroid_config` is only meaningful for `.d` inputs; it is ignored for mzML and peak lists. `Reader` exposes
+`centroid_config` is only meaningful for `.d` inputs. The `mzml_*` options are forwarded only to
+`MzmlReader`. `Reader` exposes
 `ms1`, `ms2`, `open`, and `close` only — backend-specific members (`MzmlReader.__getitem__`,
 `DReader.acquisition_type`) are not proxied.
 
@@ -100,7 +105,14 @@ recommended — see [File handles](#file-handles) below.
 
 ```python
 class MzmlReader:
-    def __init__(self, mzml_path: str | Path): ...
+    def __init__(
+        self,
+        mzml_path: str | Path,
+        *,
+        gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+        in_memory: bool = True,
+        extract_dir: str | Path | None = None,
+    ): ...
 
     def open(self) -> None: ...
     def close(self) -> None: ...
@@ -115,6 +127,18 @@ class MzmlReader:
 
     def __getitem__(self, key: int | str) -> MsnSpectrum: ...
 ```
+
+For gzipped mzML, the default `gzip_mode="extract"` preserves fast random access after an initial
+extraction. Use `gzip_mode="stream", in_memory=False` when a service needs the first spectra from a
+large file immediately and reads sequentially:
+
+```python
+with MzmlReader("large-run.mzML.gz", gzip_mode="stream", in_memory=False) as r:
+    first_ms1 = next(iter(r.ms1))
+```
+
+The `"indexed"` mode builds a random-access gzip index and requires `rapidgzip`. Streaming avoids
+temporary extracted files, but later index lookups must scan forward from the start.
 
 ### Properties
 

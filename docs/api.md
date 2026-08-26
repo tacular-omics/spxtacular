@@ -167,6 +167,10 @@ positional mix-ups.
 | `Spectrum.combine(spectra)` | `Spectrum` | Classmethod: concatenate multiple spectra |
 | `.match_fragments(fragments, ...)` | `list[MatchedFragment]` | Fragment-to-peak matching |
 | `.score(fragments, ...)` | `dict[str, float]` | All PSM scores |
+| `.to_dict()` | `dict` | Versioned JSON-compatible spectrum payload |
+| `Spectrum.from_dict(payload)` | `Spectrum` | Reconstruct `Spectrum` or `MsnSpectrum` from a payload |
+| `.to_json(indent=...)` | `str` | Encode the versioned spectrum payload as strict JSON |
+| `Spectrum.from_json(value)` | `Spectrum` | Reconstruct from JSON text or UTF-8 bytes |
 | `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.v1.…` URL-safe token (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl.v1.…` token (classmethod) |
 | `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
@@ -324,7 +328,14 @@ Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (The
 `ValueError`.
 
 ```python
-Reader(path: str | Path, centroid_config: CentroidConfig | None = None)
+Reader(
+    path: str | Path,
+    centroid_config: CentroidConfig | None = None,
+    *,
+    mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+    mzml_in_memory: bool = True,
+    mzml_extract_dir: str | Path | None = None,
+)
 ```
 
 | Property / Method | Type | Description |
@@ -351,8 +362,17 @@ Reads `.mzML` files. A context manager is optional but recommended — it keeps 
 instead of reopening the file per operation.
 
 ```python
-MzmlReader(mzml_path: str | Path)
+MzmlReader(
+    mzml_path: str | Path,
+    *,
+    gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
+    in_memory: bool = True,
+    extract_dir: str | Path | None = None,
+)
 ```
+
+For low-latency sequential reads from large `.mzML.gz` files, use
+`gzip_mode="stream", in_memory=False`. The default `"extract"` mode favors repeated random access.
 
 | Property / Method | Type | Description |
 |---|---|---|
@@ -603,6 +623,51 @@ spec = spectrum_from_proxi_response(decoded_proxi_json, usi)
 The parser preserves PROXI centroid/profile representation and scan polarity
 metadata. It returns an `MsnSpectrum` when scan-level metadata or precursor
 information is available, otherwise a plain `Spectrum`.
+
+---
+
+## JSON transport
+
+`Spectrum`, `MsnSpectrum`, and `Chromatogram` provide versioned dictionary and
+JSON round-trips for APIs, browser visualization, and cross-process messages.
+The methods use only standard JSON values and require no optional dependency.
+
+```python
+from spxtacular import Chromatogram, Spectrum, get_json_schema
+
+spectrum_payload = spec.to_dict()
+spectrum_json = spec.to_json()
+restored_spec = Spectrum.from_json(spectrum_json)
+
+chromatogram_payload = tic.to_dict()
+chromatogram_json = tic.to_json()
+restored_tic = Chromatogram.from_dict(chromatogram_payload)
+
+spectrum_schema = get_json_schema("spectrum")
+chromatogram_schema = get_json_schema("chromatogram")
+```
+
+The spectrum envelope uses schema name `spxtacular.spectrum`, schema version
+`1`, and kind `spectrum` or `msn_spectrum`. The chromatogram envelope uses
+schema name `spxtacular.chromatogram`, schema version `1`, and kind
+`chromatogram`. Unknown schema versions are rejected so consumers never
+silently misinterpret a newer contract.
+
+Peak columns are parallel arrays rather than one object per peak. Optional
+arrays are explicit `null` values. `Spectrum.from_dict()` preserves the
+concrete class, all MSn metadata, multiple precursors, ion mobility, charge,
+isotope score, and processing provenance.
+
+The JSON Schema documents are packaged as:
+
+```text
+spxtacular/schemas/spectrum-v1.schema.json
+spxtacular/schemas/chromatogram-v1.schema.json
+```
+
+For large profile spectra, filter or decimate before transport when the browser
+does not need every sample. Use `.npz` persistence when compact local storage
+is more important than a language-neutral API representation.
 
 ---
 
