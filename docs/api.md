@@ -5,7 +5,7 @@ Every name in `spxtacular.__all__`, grouped by area:
 ```python
 from spxtacular import (
     # Core data structures
-    Spectrum, MsnSpectrum, Peak, Precursor,
+    Spectrum, MsnSpectrum, Peak, Precursor, SpectrumType,
     # Enums and their permissive type aliases
     ToleranceType, ToleranceLike,
     PeakSelection, PeakSelectionLike,
@@ -14,19 +14,26 @@ from spxtacular import (
     IMType, IMTypeLike,
     Analyzer, AnalyzerLike,
     # Readers and peak-list writers
-    Reader, DReader, MzmlReader, ThermoReader, CentroidConfig,
+    Reader, DReader, MzmlReader, ThermoReader, CentroidConfig, AcquisitionType,
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
     # Matching and scoring
-    match_fragments, score,
+    match_fragments, score, cosine, modified_cosine, entropy_similarity,
     # Isotope envelopes and average-composition models
     IsotopeModel, IsotopeModelType, IsotopeModelLike,
     ISOTOPE_MODELS,
     PEPTIDE_ISOTOPE_MODEL, GLYCAN_ISOTOPE_MODEL, LIPID_ISOTOPE_MODEL,
     DNA_ISOTOPE_MODEL, RNA_ISOTOPE_MODEL,
     brain_isotopic_distribution, resolve_isotope_model,
+    # Ionization models and deconvolution provenance
+    IonizationModel, IonizationModelLike, DeconvolutionProvenance,
+    PROTONATED, DEPROTONATED, SODIATED, AMMONIATED,
+    IONIZATION_MODELS, resolve_ionization_model,
+    # Run-level extraction
+    Chromatogram, extract_chromatogram, extract_xic,
     # Visualization
     plot_spectrum, mirror_plot, annotate_spectrum, mass_error_plot, facet_plot,
-    sequence_coverage_plot, save_figure,
+    sequence_coverage_plot, profile_centroid_plot,
+    plot_chromatogram, plot_xic, save_figure,
     # Plot tables
     build_plot_table, build_annot_plot_table, plot_from_table, table_view,
     # Theme (a submodule, not a function)
@@ -44,9 +51,9 @@ from spxtacular import (
 )
 ```
 
-`SpectrumType`, `AcquisitionType`, `MatchedFragment`, `estimate_noise_level`, and the reader lookup
-classes (including `PeakListLookup`) are **not** exported from the package root; import them from
-their defining modules as shown in the relevant sections below.
+`MatchedFragment`, `estimate_noise_level`, and the reader lookup classes (including
+`PeakListLookup`) are not exported from the package root. Import them from their defining modules
+as shown in the relevant sections below.
 
 ---
 
@@ -69,7 +76,7 @@ from_matchms(
     spectrum: matchms.Spectrum,
     *,
     prefer_spxtacular_metadata: bool = True,
-) -> Spectrum
+) -> Spectrum | MsnSpectrum
 ```
 
 `to_matchms` stable-sorts peaks by m/z and populates matchms fields including `id`,
@@ -84,6 +91,9 @@ m/z values and alignment is no longer possible, the extension arrays are dropped
 rather than attached to the wrong peaks. Set `include_spxtacular_metadata=False` for a conventional,
 intentionally lossy matchms object; set `prefer_spxtacular_metadata=False` to ignore an existing
 payload while importing.
+
+Import returns `MsnSpectrum` when the payload or conventional matchms metadata contains scan-level
+fields. Otherwise it returns `Spectrum`.
 
 ### `to_spectrum_utils` / `from_spectrum_utils`
 
@@ -120,7 +130,7 @@ annotations applied by spectrum_utils are likewise warned about and dropped by
 
 ### `Spectrum`
 
-Central data structure for a mass spectrum. Holds parallel numpy arrays for `mz`, `intensity`, and optionally `charge` and `im` (ion mobility). All processing methods return a new `Spectrum` and are chainable.
+Central data structure for a mass spectrum. Holds parallel numpy arrays for `mz`, `intensity`, and optionally `charge`, `im` (ion mobility), and `iso_score`. Transformation methods are chainable and return a new `Spectrum` unless `inplace=True` is requested.
 
 **Constructor:**
 
@@ -156,7 +166,7 @@ positional mix-ups.
 | `.normalize(method)` | `Spectrum` | Scale intensities (max / tic / median) |
 | `.scale_intensity(method, ...)` | `Spectrum` | Non-linear scaling: `"root"`, `"log"`, `"rank"` |
 | `.denoise(method)` | `Spectrum` | Remove peaks below noise threshold |
-| `.centroid()` | `Spectrum` | Convert profile to centroid via Gaussian fit |
+| `.centroid(min_intensity=...)` | `Spectrum` | Convert profile to centroid via Gaussian fit, optionally applying a noise or absolute intensity floor |
 | `.merge(mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type)` | `Spectrum` | Merge nearby peaks by weighted average |
 | `.round_mz(decimals, combine)` | `Spectrum` | Round m/z, then sum / max-reduce duplicates |
 | `.deconvolute(..., ionization_model=...)` | `Spectrum` | Assign isotope clusters and charge magnitudes using a selected adduct/carrier model |
@@ -172,14 +182,14 @@ positional mix-ups.
 | `.to_json(indent=...)` | `str` | Encode the versioned spectrum payload as strict JSON |
 | `Spectrum.from_json(value)` | `Spectrum` | Reconstruct from JSON text or UTF-8 bytes |
 | `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.v1.…` URL-safe token (requires `[spectrl]` extra) |
-| `Spectrum.from_spectrl_token(t)` | `Spectrum` | Decode a `spectrl.v1.…` token (classmethod) |
+| `Spectrum.from_spectrl_token(t)` | `Spectrum \| MsnSpectrum` | Decode a `spectrl.v1.…` token (classmethod) |
 | `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
-| `Spectrum.from_spectrl_url(url)` | `Spectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
-| `Spectrum.from_usi(usi, ...)` | `Spectrum` | Fetch via PROXI from USI (classmethod) |
+| `Spectrum.from_spectrl_url(url)` | `Spectrum \| MsnSpectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
+| `Spectrum.from_usi(usi, ...)` | `Spectrum \| MsnSpectrum` | Fetch via PROXI from USI (classmethod) |
 | `.save(path)` | `None` | Serialise to `.npz` |
 | `Spectrum.load(path)` | `Spectrum` | Load from `.npz` (classmethod) |
 | `.update(**kwargs)` | `Spectrum` | Return copy with specified fields replaced |
-| `.plot(title, color, show_scores, ...)` | `go.Figure` | Stick plot (requires plotly) |
+| `.plot(title, color, show_scores, ...)` | `go.Figure` | Stick or profile plot, selected from spectrum type (requires plotly) |
 | `.annotate(fragments, ...)` | `go.Figure` | Plot with fragment annotations |
 | `.mass_error_plot(fragments, ...)` | `go.Figure` | Bubble chart of fragment mass errors |
 | `.facet_plot(fragments, mirror_spectrum, ...)` | `go.Figure` | Multi-panel facet plot |
@@ -192,7 +202,7 @@ Full documentation: [Spectrum reference](spectrum.md)
 
 ### `MsnSpectrum`
 
-Extends `Spectrum` with instrument metadata fields. Returned by both readers.
+Extends `Spectrum` with instrument metadata fields. Returned by every reader.
 
 **Additional fields (all optional):**
 
@@ -299,10 +309,10 @@ Precursor(mz=..., intensity=..., charge=..., im=..., iso_score=..., is_monoisoto
 
 ### `SpectrumType`
 
-Not exported from the package root. Import via:
+Exported from the package root:
 
 ```python
-from spxtacular.core import SpectrumType
+from spxtacular import SpectrumType
 ```
 
 `StrEnum` with three members:
@@ -340,7 +350,7 @@ Reader(
 
 | Property / Method | Type | Description |
 |---|---|---|
-| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS1 spectra — iterate or index (empty for `.mgf` / `.ms2`) |
+| `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS1 spectra. Iterate or index. Empty for `.mgf` / `.ms2` / `.msp` |
 | `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS2 spectra — iterate or index |
 | `.access_strategy` | `str \| None` | Concrete mzML access route, or `None` for other formats |
 | `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
@@ -511,10 +521,10 @@ Full documentation: [Readers — CentroidConfig](readers.md#centroidconfig)
 
 ### `AcquisitionType`
 
-Not exported from the package root. Import via:
+Exported from the package root:
 
 ```python
-from spxtacular.reader import AcquisitionType
+from spxtacular import AcquisitionType
 ```
 
 `StrEnum` with four members: `DDA`, `DIA`, `PRM`, `UNKNOWN`.
@@ -539,6 +549,64 @@ threshold = estimate_noise_level(intensity_array, method="mad")
 | `"baseline"` | Bottom-quartile mean + 3 σ |
 | `"iterative_median"` | Three-pass iterative median refinement |
 | `float` or `int` | Used directly as the absolute threshold |
+
+---
+
+## Isotope and ionization models
+
+The deconvolution guide explains how these models affect cluster finding and neutral-mass
+conversion. All names below are exported from `spxtacular`.
+
+### Isotope models
+
+```python
+IsotopeModel(
+    atoms_per_da: Mapping[str, float],
+    fixed_composition: Mapping[str, int] = ...,
+    isotope_abundances: Mapping[str, Sequence[tuple[int, float]]] | None = None,
+    name: str = "custom",
+)
+
+brain_isotopic_distribution(
+    composition: Mapping[str, int],
+    max_isotopes: int = 32,
+    isotope_abundances=None,
+) -> NDArray[np.float64]
+
+resolve_isotope_model(model: IsotopeModel | IsotopeModelType | str = "peptide") -> IsotopeModel
+```
+
+`IsotopeModelType` has `PEPTIDE`, `GLYCAN`, `LIPID`, `DNA`, and `RNA` members. The corresponding
+objects are `PEPTIDE_ISOTOPE_MODEL`, `GLYCAN_ISOTOPE_MODEL`, `LIPID_ISOTOPE_MODEL`,
+`DNA_ISOTOPE_MODEL`, and `RNA_ISOTOPE_MODEL`. `ISOTOPE_MODELS` maps their lowercase names to the
+objects. Custom models store expected atoms per Dalton plus any fixed terminal composition. When
+omitted, `fixed_composition` is an empty mapping.
+
+### Ionization models
+
+```python
+IonizationModel(
+    name: str,
+    polarity: Polarity | str,
+    carrier_mass: float,
+    carrier: str = "custom",
+)
+
+resolve_ionization_model(
+    model: IonizationModel | str | float = PROTONATED,
+) -> IonizationModel
+```
+
+The presets are `PROTONATED` (`[M+H]+`), `DEPROTONATED` (`[M-H]-`), `SODIATED` (`[M+Na]+`), and
+`AMMONIATED` (`[M+NH4]+`). `IONIZATION_MODELS` maps accepted names and aliases to these objects.
+Each model provides `ion_mz()`, `neutral_mass()`, `notation()`, `to_dict()`, and `from_dict()`.
+Charge arrays keep positive magnitudes. Polarity and carrier mass live in the model.
+
+`DeconvolutionProvenance` records the resolved isotope and ionization models plus every
+deconvolution parameter that affects matching. It is attached to deconvoluted spectra and is
+preserved by native persistence, matchms, and spectrl round trips. `decharge()` and automatic
+precursor removal reuse it by default. See [Deconvolution](deconvolution.md) for the full parameter
+set and examples.
 
 ---
 
@@ -713,6 +781,80 @@ repeated in each parameter table.
 | **Autosize** | Figures fill their container (`autosize=True`, from the template) rather than a fixed pixel box, so they lay out correctly in notebooks and docs pages. |
 | **Theme** | Every function takes `theme_mode="light" \| "dark"`; `None` (default) uses the module default from `theme.set_plot_theme()`. See [Theme](#theme). |
 
+### Chromatograms and XICs
+
+```python
+Chromatogram(
+    rt: NDArray[np.float64],
+    intensity: NDArray[np.float64],
+    label: str = "",
+    mz: float | None = None,
+    tolerance: float | None = None,
+    tolerance_type: str | None = None,
+    meta: dict = ...,
+)
+
+extract_chromatogram(
+    spectra: Iterable[Spectrum],
+    mode: Literal["tic", "bpc"] = "tic",
+    mz_range: tuple[float, float] | None = None,
+) -> Chromatogram
+
+extract_xic(
+    spectra: Iterable[Spectrum],
+    targets: Sequence[float] | float,
+    tolerance: float = 20.0,
+    tolerance_type: Literal["ppm", "da"] = "ppm",
+    im_window: tuple[float, float] | None = None,
+    aggregate: Literal["sum", "max"] = "sum",
+) -> list[Chromatogram]
+```
+
+`extract_xic()` handles every target in one pass. `Chromatogram.apex_rt` reports the most intense
+time point and `Chromatogram.total` reports summed intensity. The omitted `meta` default is a new
+empty dictionary for each object. The plotting wrappers are:
+
+```python
+plot_chromatogram(
+    chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
+    title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
+    show_apex: bool = True,
+    fill: bool | None = None,
+    **layout_kwargs,
+) -> go.Figure
+
+plot_xic(
+    spectra: Iterable[Spectrum],
+    targets: Sequence[float] | float,
+    tolerance: float = 20.0,
+    tolerance_type: Literal["ppm", "da"] = "ppm",
+    im_window: tuple[float, float] | None = None,
+    aggregate: Literal["sum", "max"] = "sum",
+    title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
+    **layout_kwargs,
+) -> go.Figure
+```
+
+Full documentation: [Visualization, chromatograms and XICs](visualization.md#chromatograms-and-xics)
+
+### `profile_centroid_plot`
+
+```python
+profile_centroid_plot(
+    profile: Spectrum,
+    centroids: Spectrum | None = None,
+    title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
+    max_points: int | None = 4000,
+    **layout_kwargs,
+) -> go.Figure
+```
+
+Overlays centroid sticks on the profile trace. When `centroids` is omitted, the function calls
+`profile.centroid()`. Profile samples above `max_points` are reduced with min/max buckets.
+
 ### `plot_spectrum`
 
 ```python
@@ -732,6 +874,8 @@ plot_spectrum(
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
     show_precursor: bool = True,
+    render: Literal["sticks", "profile"] | None = None,
+    max_points: int | None = 4000,
     **layout_kwargs,
 )
 ```
@@ -748,6 +892,8 @@ Everything after `title` is keyword-only.
 | `intensity_scale` | `"relative"` | `"relative"` (base peak = 100%) or `"absolute"` |
 | `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
 | `show_precursor` | `True` | On an `MsnSpectrum` carrying precursors, draw the precursor m/z hairline and the isolation window as recessive chrome behind the peaks |
+| `render` | `None` | Choose from `spectrum_type`, or explicitly force `"sticks"` or `"profile"` |
+| `max_points` | `4000` | Profile-sample cap after min/max decimation. `None` draws every sample |
 
 `color="im"` takes a separate rendering path that bins ion mobility into 20 steps of the sequential
 scale; `intensity_scale`, `intensity_transform`, and `show_precursor` apply there as on the other
@@ -836,14 +982,15 @@ mass_error_plot(
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     unit: str = "ppm",              # "ppm" or "da"
     title: str | None = None,
+    max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     **layout_kwargs,
 )
 ```
 
 Bubbles are coloured by ion series from the categorical palette and labelled with their mzPAF
-identifier, so a 2+ and a 1+ of the same ion do not both render as `b3`. There is no `max_labels`
-here — every match is labelled — and no `intensity_scale`, `intensity_transform`, or `texture`:
+identifier, so a 2+ and a 1+ of the same ion do not both render as `b3`. `max_labels` caps direct
+labels by peak intensity. There is no `intensity_scale`, `intensity_transform`, or `texture` because
 the y-axis is mass error, not intensity.
 
 ### `facet_plot`
@@ -925,7 +1072,7 @@ import spxtacular as spx
 peptide = "FDSFGDLSSASAIMGNPK"
 fragments = pt.fragment(peptide, ion_types=("b", "y"), charges=(1, 2))
 
-# A toy spectrum: one peak per theoretical fragment (m/z must be sorted).
+# A toy spectrum: one peak per theoretical fragment.
 mz = np.sort(np.array([f.mz for f in fragments]))
 spectrum = spx.Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
 
@@ -954,7 +1101,7 @@ save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) -> P
 | Suffix | Backend | Extra install |
 |---|---|---|
 | `.html`, or no suffix (`.html` is appended) | `fig.write_html` | none — always works |
-| `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp`, `.eps` | `fig.write_image` | `pip install kaleido` |
+| `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp` | `fig.write_image` | `pip install kaleido` |
 | anything else | — | raises `ValueError` |
 
 A missing static-export backend is reported as an `ImportError` naming `kaleido`, rather than as a
@@ -1153,10 +1300,44 @@ score(
     tolerance: float = 0.02,
     tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
+    predicted_intensities: Sequence[float] | None = None,
 ) -> dict[str, float]
 ```
 
-Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
+Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`. When `predicted_intensities` is supplied, it must contain one value per fragment in the same order and enables the literature spectral-angle metric.
+
+### Spectrum similarity
+
+```python
+cosine(
+    query: Spectrum,
+    reference: Spectrum,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    transform: Literal["sqrt", "linear", "log"] = "sqrt",
+) -> float
+
+modified_cosine(
+    query: Spectrum,
+    reference: Spectrum,
+    query_precursor_mz: float,
+    reference_precursor_mz: float,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+    transform: Literal["sqrt", "linear", "log"] = "sqrt",
+) -> float
+
+entropy_similarity(
+    query: Spectrum,
+    reference: Spectrum,
+    tolerance: float = 0.02,
+    tolerance_type: Literal["da", "ppm"] = "da",
+) -> float
+```
+
+All three return values in `[0, 1]`, accept unsorted spectra, and use one-to-one peak matching.
+`modified_cosine()` also considers the precursor-mass displacement. Full documentation:
+[Spectrum-to-spectrum similarity](scoring.md#spectrum-to-spectrum-similarity).
 
 ---
 
@@ -1227,7 +1408,6 @@ build_plot_table(
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
     intensity_transform: Literal["sqrt", "log"] | None = None,
-    texture: bool = False,
 ) -> pd.DataFrame
 ```
 
@@ -1239,7 +1419,9 @@ build_plot_table(
 | `theme_mode` | `None` | `"light"` / `"dark"` — decides the hex values written into `color` and `label_color` |
 | `intensity_scale` | `"relative"` | Scaling written into `intensity` (`intensity_abs` is unaffected) |
 | `intensity_transform` | `None` | `None`, `"sqrt"`, or `"log"` |
-| `texture` | `False` | Accepted for signature parity with `build_annot_plot_table`; a plain spectrum has no ion series to texture, so `dash` stays `"solid"` either way |
+
+Plain spectra have no `texture` parameter because they have no ion series to distinguish. Their
+`dash` column is always `"solid"` unless the caller edits it.
 
 ### `build_annot_plot_table`
 
@@ -1280,12 +1462,16 @@ plot_from_table(
     table: pd.DataFrame,
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
+    render: Literal["sticks", "profile"] | None = None,
+    max_points: int | None = 4000,
     **layout_kwargs,
 ) -> go.Figure
 ```
 
 Renders one `go.Scatter` trace per unique `(series, color)` group, plus the transparent hit-target
-trace, plus one annotation per row with a non-empty `label`.
+trace, plus one annotation per row with a non-empty `label`. `render=None` uses
+`table.attrs["render"]`, falling back to sticks. Profile rendering applies min/max decimation above
+`max_points`, or draws every sample when it is `None`.
 
 The required columns are validated up front — a missing one raises
 `ValueError: plot table is missing required column(s): …` immediately, rather than part-way through
@@ -1341,7 +1527,7 @@ import spxtacular as spx
 peptide = "FDSFGDLSSASAIMGNPK"
 fragments = pt.fragment(peptide, ion_types=("b", "y"), charges=(1, 2))
 
-# A toy spectrum: one peak per theoretical fragment (m/z must be sorted).
+# A toy spectrum: one peak per theoretical fragment.
 mz = np.sort(np.array([f.mz for f in fragments]))
 spectrum = spx.Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
 

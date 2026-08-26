@@ -49,12 +49,14 @@ except (ImportError, OSError):
 
 Unified reader API for different mass-spectrometry file formats.
 Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML, Thermo
-.raw files (see thermo.py), plus the MGF and MS2 peak-list formats (see
+.raw files (see thermo.py), plus the MGF, MS2, and MSP peak-list formats (see
 peaklist.py).
 """
 
 
 class AcquisitionType(StrEnum):
+    """Acquisition scheme detected for a Bruker timsTOF run."""
+
     DDA = "DDA"
     DIA = "DIA"
     PRM = "PRM"
@@ -233,6 +235,12 @@ class DReaderMs2Lookup:
 
 
 class DReader:
+    """Reader for Bruker timsTOF ``.d`` directories.
+
+    The optional ``tdfpy`` backend is loaded lazily. Open the reader before
+    accessing ``ms1`` or ``ms2``, preferably by using it as a context manager.
+    """
+
     def __init__(self, analysis_dir: str | Path, centroid_config: CentroidConfig | None = None) -> None:
         if not _HAS_TDFPY:
             raise ImportError(
@@ -615,6 +623,10 @@ def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
 class MzmlReader:
     """Read spectra from an mzML or gzipped mzML file.
 
+    The optional ``mzmlpy`` backend is loaded lazily. Iteration works without
+    an explicit context manager. A context manager keeps one handle open and
+    is more efficient for repeated access.
+
     Parameters
     ----------
     mzml_path:
@@ -933,8 +945,8 @@ class Reader:
 
     Notes
     -----
-    ``.mgf`` and ``.ms2`` hold fragmentation spectra only, so ``.ms1`` on those
-    inputs is a valid but always empty walk.
+    ``.mgf``, ``.ms2``, and ``.msp`` hold fragmentation spectra only, so
+    ``.ms1`` on those inputs is a valid but always empty walk.
     """
 
     def __init__(

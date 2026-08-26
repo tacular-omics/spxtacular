@@ -7,11 +7,15 @@ from typing import Literal
 
 
 class ToleranceType(StrEnum):
+    """Unit used to interpret an m/z tolerance."""
+
     DA = "da"
     PPM = "ppm"
 
 
 class PeakSelection(StrEnum):
+    """Rule for resolving multiple observed peaks near one target."""
+
     CLOSEST = "closest"
     LARGEST = "largest"
     ALL = "all"

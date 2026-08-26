@@ -391,8 +391,9 @@ def fetch_usi(
     Returns
     -------
     Spectrum or MsnSpectrum
-        :class:`~spxtacular.core.MsnSpectrum` if precursor information is
-        available, otherwise :class:`~spxtacular.core.Spectrum`.
+        :class:`~spxtacular.core.MsnSpectrum` when scan-level metadata or
+        precursor information is available, otherwise
+        :class:`~spxtacular.core.Spectrum`.
 
     Raises
     ------

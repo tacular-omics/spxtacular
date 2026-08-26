@@ -97,7 +97,7 @@ def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) 
     """Write a figure to disk, choosing the writer from the file extension.
 
     ``.html`` always works. Static formats (``.png``, ``.svg``, ``.pdf``,
-    ``.jpg``, ``.webp``) go through plotly's static export, which needs the
+    ``.jpg``, ``.jpeg``, ``.webp``) go through plotly's static export, which needs the
     ``kaleido`` package. Missing-package errors include an install command;
     export failures such as an invalid destination remain their original type.
 
@@ -110,6 +110,8 @@ def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) 
     scale:
         Device pixel ratio for raster formats; ``2.0`` gives a figure that still
         looks sharp in a paper or on a high-density display.
+    **kwargs:
+        Forwarded to Plotly's HTML or static-image writer.
 
     Returns
     -------
@@ -333,6 +335,13 @@ def plot_spectrum(
         present. Only peaks with score > 0 are labelled. Defaults to True.
     show_charges:
         Deprecated. Use ``color="charge"`` or ``color=None`` instead.
+    intensity_scale:
+        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
+        raw intensities on the y-axis.
+    intensity_transform:
+        Optional ``"sqrt"`` or ``"log"`` display transform.
+    show_precursor:
+        Draw precursor m/z and isolation-window markers when available.
     render:
         ``"sticks"`` or ``"profile"``. ``None`` (default) picks from
         ``spectrum.spectrum_type``: profile data is drawn as a continuous trace
@@ -447,6 +456,10 @@ def mirror_plot(
         Colour deconvoluted sticks by charge state when charge data is present.
     show_scores:
         Annotate deconvoluted peaks with isotope profile scores (score > 0).
+    max_labels:
+        Maximum number of score labels, strongest peaks first.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
@@ -615,6 +628,19 @@ def annotate_spectrum(
     include_sequence:
         Embed the residue sequence in each label (e.g. ``b3{PEP}``).
         Set to ``False`` for compact labels (``b3``).
+    max_labels:
+        Maximum number of direct ion labels, strongest peaks first.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
+    intensity_scale:
+        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
+        raw intensities on the y-axis.
+    intensity_transform:
+        Optional ``"sqrt"`` or ``"log"`` display transform.
+    texture:
+        Give each ion series a distinct dash pattern.
+    show_precursor:
+        Draw precursor m/z and isolation-window markers when available.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
 
@@ -674,6 +700,8 @@ def plot_chromatogram(
     fill:
         Fill under the trace. Defaults to on for a single trace and off for
         several, where overlapping washes obscure each other.
+    **layout_kwargs:
+        Forwarded to ``fig.update_layout``.
 
     Returns
     -------
@@ -796,10 +824,9 @@ def profile_centroid_plot(
     A stick off the apex means a mis-assigned centre; an apex with no stick means
     a peak was dropped.
 
-    That second case is worth looking for. :func:`~spxtacular.core.Spectrum.centroid`
-    requires a strict maximum (``prev < curr > next``), so a peak whose apex is a
-    two-sample plateau -- routine in quantised or saturated data -- is discarded
-    silently. This plot is how you would notice.
+    Use this view to verify that thresholding did not remove a real peak and
+    that fitted centers remain aligned with their profile apexes. Flat-topped
+    peaks are supported and produce one centroid at the middle of the plateau.
 
     Parameters
     ----------
@@ -813,6 +840,8 @@ def profile_centroid_plot(
         ``"light"`` or ``"dark"``.
     max_points:
         Cap on drawn profile samples; see :func:`~spxtacular.plot_table.plot_from_table`.
+    **layout_kwargs:
+        Forwarded to ``fig.update_layout``.
 
     Returns
     -------
@@ -929,6 +958,8 @@ def sequence_coverage_plot(
         Plot title.
     theme_mode:
         ``"light"`` or ``"dark"``.
+    **layout_kwargs:
+        Forwarded to ``fig.update_layout``.
 
     Returns
     -------
@@ -1054,6 +1085,8 @@ def mass_error_plot(
         avoidance the spectrum plots use. ``None`` labels every bubble, which
         for a few hundred matches is an unreadable smear -- the labels stay on
         hover regardless.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
@@ -1237,6 +1270,10 @@ def facet_plot(
         Embed residue sequence in annotation labels.
     unit:
         Error unit for mass error panel: ``"ppm"`` or ``"da"``.
+    max_labels:
+        Maximum number of direct labels in the annotated and mass-error panels.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """

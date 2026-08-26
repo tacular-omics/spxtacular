@@ -70,7 +70,7 @@ for peak in neutral.peaks:
 
 ```text
 Peak(mz=998.5000, int=1.52e+05, z=0, score=1.000)
-Peak(mz=2400.9001, int=1.46e+05, z=0, score=0.997)
+Peak(mz=2400.8999, int=1.46e+05, z=0, score=0.998)
 ```
 
 Fourteen input peaks collapse to two neutral masses. Note the 3+ envelope's most
@@ -126,7 +126,7 @@ spx.save_figure(fig, "spectrum.html")   # .png/.svg/.pdf also work — those nee
 ```
 
 Peaks are plotted as a percentage of the base peak by default (`intensity_scale="absolute"`
-restores raw counts), direct labels are capped at 25 and collision-avoided along m/z, and every
+restores raw counts), direct labels are capped at 60 and collision-avoided along m/z, and every
 tooltip reports the true intensity regardless of scaling. See
 [Visualization](visualization.md) for the full set of plots and options.
 
@@ -164,7 +164,7 @@ drops populated fields; see [API reference — Ecosystem interoperability](api.m
 
 | Concept | Summary |
 |---|---|
-| `Spectrum` | Central class. Holds `mz`, `intensity`, and optionally `charge`, `im`, and `iso_score` arrays. All processing methods return a new `Spectrum` and are chainable. |
+| `Spectrum` | Central class. Holds `mz`, `intensity`, and optionally `charge`, `im`, and `iso_score` arrays. Transformations are chainable and return a new object unless `inplace=True` is requested. |
 | `MsnSpectrum` | Extends `Spectrum` with instrument metadata: scan number, MS level, retention time, precursors, etc. |
 | `Peak` | Frozen dataclass for a single `(mz, intensity, charge, im, iso_score)` observation. |
 | `SpectrumType` | Enum: `CENTROID`, `PROFILE`, or `DECONVOLUTED`. Guards prevent calling `.decharge()` before `.deconvolute()`. |
@@ -193,7 +193,7 @@ drops populated fields; see [API reference — Ecosystem interoperability](api.m
 
 - [Spectrum reference](spectrum.md) — all `Spectrum` and `MsnSpectrum` methods
 - [Deconvolution](deconvolution.md) — how the greedy algorithm works and how to use it
-- [Readers](readers.md) — loading data from mzML, Bruker `.d`, Thermo `.raw`, and MGF / MS2 files
+- [Readers](readers.md): loading data from mzML, Bruker `.d`, Thermo `.raw`, MGF, MS2, and MSP files
 - [Matching & scoring](scoring.md) — `match_fragments()` and PSM `score()` metrics
 - [Visualization](visualization.md) — stick, mirror, annotated, facet, mass-error, and sequence coverage plots; theming, intensity scaling, and the accessible table view
 - [API reference](api.md) — concise listing of all public names

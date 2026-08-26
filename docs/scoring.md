@@ -84,6 +84,7 @@ result = score(spectrum, fragments, tolerance=10, tolerance_type="ppm")
 | `tolerance` | `0.02` | Matching tolerance |
 | `tolerance_type` | `"da"` | `"da"` or `"ppm"` |
 | `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance — `"closest"`, `"largest"`, or `"all"` |
+| `predicted_intensities` | `None` | Optional predicted intensity for every fragment, in the same order. Enables the literature spectral-angle metric |
 
 **Returned metrics:**
 

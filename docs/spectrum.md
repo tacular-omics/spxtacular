@@ -25,7 +25,7 @@ class Peak:
     iso_score: float | None = None
 ```
 
-A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso_score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()` — they are read-only views, not references into the underlying arrays.
+A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso_score` are optional. `Peak` objects are returned by `.peaks`, `.top_peaks()`, `.get_peak()`, and `.get_peaks()`. They are read-only snapshots, not references into the underlying arrays.
 
 `iso_score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
 
@@ -211,7 +211,8 @@ Returns all peaks matching the criteria (may be empty).
 
 ### Filtering and processing
 
-All processing methods accept `inplace: bool = False`. When `inplace=False` (the default) a new `Spectrum` is returned, leaving the original unchanged and allowing method chaining.
+Transformation methods that expose `inplace` default to `False`. In that mode they return a new
+`Spectrum`, leave the input unchanged, and support method chaining.
 
 #### `filter`
 
@@ -274,7 +275,8 @@ Scales all intensities so that the chosen reference equals 1.0.
 | `"tic"` | Total ion current (sum of all intensities) |
 | `"median"` | Median intensity |
 
-Calling `normalize` on an already-normalized spectrum emits a `UserWarning` and returns `self` unchanged.
+Calling `normalize` on an already-normalized spectrum emits a `UserWarning` and leaves its data
+unchanged. The default non-inplace path returns an independent copy.
 
 ```python
 norm = spec.normalize()            # max normalization
@@ -303,7 +305,8 @@ Removes peaks below an estimated noise threshold. Peaks at or above the threshol
 | `"iterative_median"` | Iteratively refines median/MAD estimate over 3 passes |
 | `float` or `int` | Used directly as the absolute threshold |
 
-Calling `denoise` on an already-denoised spectrum emits a `UserWarning` and returns `self` unchanged.
+Calling `denoise` on an already-denoised spectrum emits a `UserWarning` and leaves its data
+unchanged. The default non-inplace path returns an independent copy.
 
 ```python
 spec.denoise()                       # MAD (robust, recommended for most spectra)
@@ -314,12 +317,17 @@ spec.denoise(5000.0)                 # fixed absolute threshold
 #### `centroid`
 
 ```python
-def centroid(self, inplace: bool = False) -> Self
+def centroid(
+    self,
+    min_intensity: float | Literal["noise"] | None = None,
+    inplace: bool = False,
+) -> Self
 ```
 
-Converts a profile-mode spectrum to centroid mode using vectorized Gaussian fitting. Detects local maxima, fits a Gaussian to each triplet of points, and returns sub-bin peak positions. Ion mobility data is preserved at the apex value.
+Converts a profile-mode spectrum to centroid mode using vectorized Gaussian fitting. Detects local maxima, fits a Gaussian to each triplet of points, and returns sub-bin peak positions. Ion mobility data is preserved at the apex value. `min_intensity="noise"` uses the MAD noise estimate. A number applies an absolute floor, and `None` keeps every detected local maximum.
 
-Calling this on an already-centroided spectrum emits a `UserWarning` and returns `self` unchanged.
+Calling this on an already-centroided spectrum emits a `UserWarning` and leaves its data unchanged.
+The default non-inplace path returns an independent copy.
 
 ```python
 centroided = profile_spec.centroid()
@@ -365,6 +373,7 @@ def deconvolute(
     max_isotopes: int | None = None,
     im_tolerance: float = 0.05,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
 
@@ -386,6 +395,7 @@ Assigns each peak to an isotope cluster and records the charge state. Returns a 
 | `max_isotopes` | Optional hard envelope-length limit. Default `None` is adaptive. |
 | `im_tolerance` | Candidate-to-seed mobility tolerance when ion mobility is available. Default `0.05`. |
 | `im_tolerance_type` | `"relative"` (default) or `"absolute"`. |
+| `ionization_model` | Adduct preset, signed carrier mass, or custom model. Defaults from scan polarity |
 
 After deconvolution the `charge` array follows the [charge conventions](#charge-conventions) table: `> 0` for assigned clusters, `-1` for singletons.
 
@@ -398,14 +408,25 @@ decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm"
 #### `decharge`
 
 ```python
-def decharge(self, inplace: bool = False) -> Self
+def decharge(
+    self,
+    inplace: bool = False,
+    *,
+    ionization_model: IonizationModel | str | float | None = None,
+) -> Self
 ```
 
-Converts deconvoluted m/z values to neutral monoisotopic masses using `neutral_mass = (mz × charge) - (charge × proton_mass)`. Singletons (`charge == -1`) are dropped. The resulting `charge` array is set to all zeros (meaning "charge unknown / neutral mass").
+Converts deconvoluted m/z values to neutral monoisotopic masses using the ionization model recorded
+by `deconvolute()`. Singletons (`charge == -1`) are dropped. The resulting `charge` array is set to
+all zeros, which marks neutral masses.
+
+Pass `ionization_model` only to override recorded provenance. Without provenance, positive scans
+use `[M+H]+` and negative scans use `[M-H]-`.
 
 Raises `ValueError` if the spectrum is not in `DECONVOLUTED` state.
 
-Calling `decharge()` again on an already-decharged spectrum (`spec.is_decharged`) warns and returns the original spectrum unchanged, rather than corrupting the (already-neutral) `mz` values.
+Calling `decharge()` again on an already-decharged spectrum (`spec.is_decharged`) warns and leaves
+the neutral m/z values unchanged. The default non-inplace path returns an independent copy.
 
 > The `iso_score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
 
@@ -515,7 +536,7 @@ schema = get_json_schema("spectrum")
 def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str
 
 @classmethod
-def from_spectrl_token(cls, token: str) -> Spectrum
+def from_spectrl_token(cls, token: str) -> Spectrum | MsnSpectrum
 ```
 
 Encode the spectrum as a [spectrl](https://github.com/pgarrett-scripps/spectrl) `spectrl.v1.…` URL-safe token, or decode one back to a `Spectrum`/`MsnSpectrum`. The token mirrors mzML semantics (PSI-MS CV params, a single CBOR document, MS-Numpress compression, CRC-32 integrity checksum) and is suitable for sharing in URLs, QR codes, notebooks, and papers.
@@ -544,7 +565,7 @@ def to_spectrl_url(
 ) -> str
 
 @classmethod
-def from_spectrl_url(cls, url: str) -> Spectrum
+def from_spectrl_url(cls, url: str) -> Spectrum | MsnSpectrum
 ```
 
 Bind a token into a shareable URL (or `data:` URI), or extract and decode one. `mode="fragment"` (default) puts the token after `#` so it never reaches the server; `mode="query"` uses `base?<param>=…`; `mode="data"` emits a `data:application/vnd.spectrl;v=1,…` URI (`base` ignored). `base` is required for `"fragment"` and `"query"`.
@@ -581,10 +602,15 @@ For `MsnSpectrum`, all MSn metadata (scan number, RT, precursors, isolation wind
 
 ```python
 @classmethod
-def from_usi(cls, usi: str, backend: str = "aggregator", timeout: float = 30) -> Spectrum
+def from_usi(
+    cls,
+    usi: str,
+    backend: str = "aggregator",
+    timeout: float = 30,
+) -> Spectrum | MsnSpectrum
 ```
 
-Fetch a spectrum from a public proteomics repository via Universal Spectrum Identifier. Uses the PROXI REST API; backends: `"aggregator"` (default), `"pride"`, `"massive"`, `"peptideatlas"`, `"jpost"`, or a full URL. Returns `MsnSpectrum` when precursor info is present.
+Fetch a spectrum from a public proteomics repository via Universal Spectrum Identifier. It uses the PROXI REST API. Backends are `"aggregator"` (default), `"pride"`, `"massive"`, `"peptideatlas"`, `"jpost"`, or a full URL. It returns `MsnSpectrum` when scan-level metadata or precursor information is present.
 
 ```python
 spec = Spectrum.from_usi(
@@ -617,7 +643,7 @@ Returns a Plotly `Figure` (stick plot). `plotly` is a required dependency, so no
 | Parameter | Description |
 |---|---|
 | `title` | Plot title |
-| `color` | `"charge"` colours sticks by charge state, `"im"` by ion mobility (Viridis), `None` for uniform colour |
+| `color` | `"charge"` colours sticks by charge state, `"im"` by ion mobility on the theme's single-hue sequential scale, `None` for uniform colour |
 | `show_scores` | Annotate scored peaks with their score value when an `iso_score` array is present |
 | `show_charges` | Deprecated. Use `color="charge"` or `color=None` instead |
 
@@ -767,10 +793,11 @@ def score(
     tolerance: float = 0.02,
     tolerance_type: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
+    predicted_intensities: Sequence[float] | None = None,
 ) -> dict[str, float]
 ```
 
-Returns a dict with eight PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`.
+Returns a dict with eight PSM metrics: `hyperscore`, `probability_score`, `total_matched_intensity`, `matched_fraction`, `intensity_fraction`, `mean_ppm_error`, `spectral_angle`, `longest_run`. Pass one predicted intensity per fragment to compute the literature spectral-angle metric.
 
 ---
 
@@ -790,6 +817,7 @@ def remove_precursor_peak(
     remove_charge_states: bool = True,
     inplace: bool = False,
     isotope_model: IsotopeModel | IsotopeModelType | str = "peptide",
+    ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
 
@@ -802,7 +830,7 @@ Remove the precursor peak, its isotope envelope, and (optionally) all lower char
 | **Decharged** | Targets the precursor neutral mass directly |
 | **Profile** | Raises `ValueError` (call `.centroid()` first) |
 
-When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method auto-detects from `MsnSpectrum.precursors` and removes peaks for **all** precursors. With `isotopes="auto"`, it uses the selected isotope model to determine the significant isotopes.
+When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method auto-detects from `MsnSpectrum.precursors` and removes peaks for **all** precursors. With `isotopes="auto"`, it uses the selected isotope model to determine the significant isotopes. The ionization model defaults to recorded deconvolution provenance, then scan polarity.
 
 ```python
 # Auto from MsnSpectrum.precursors
@@ -850,7 +878,7 @@ Round m/z values to `decimals` decimals and merge duplicate peaks via `sum` or `
 def combine(cls, spectra: list[Spectrum]) -> Spectrum
 ```
 
-Concatenate peaks from multiple spectra into a single new `Spectrum`, sorted by m/z ascending. Optional per-peak arrays (`charge`, `im`, `iso_score`) are carried over only when **all** input spectra provide them. Scalar metadata (`spectrum_type`, `normalized`, `denoised`) is preserved when all spectra agree, otherwise set to `None`.
+Concatenate peaks from multiple spectra into a single new `Spectrum`, sorted by m/z ascending. Optional per-peak arrays (`charge`, `im`, `iso_score`) are carried over only when **all** input spectra provide them. Scalar metadata (`spectrum_type`, `normalized`, `denoised`, `deconvolution`) is preserved when all spectra agree, otherwise set to `None`.
 
 ```python
 combined = Spectrum.combine([spec1, spec2, spec3])
@@ -880,7 +908,8 @@ peaks stay small, so a follow-up `filter(min_intensity=...)` — thresholded at,
 
 ## MsnSpectrum
 
-`MsnSpectrum` extends `Spectrum` with instrument-level metadata. It is what the readers (`DReader`, `MzmlReader`) yield. All `Spectrum` methods are available unchanged.
+`MsnSpectrum` extends `Spectrum` with instrument-level metadata. Every file reader yields it. All
+`Spectrum` methods remain available.
 
 ```python
 @dataclass(slots=True, kw_only=True)

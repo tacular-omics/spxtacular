@@ -147,10 +147,10 @@ latter two by keyword.
 | `max_isotopes` | `None` | Adaptive by default; an integer imposes a hard envelope-length limit |
 | `im_tolerance` | `0.05` | Candidate-to-seed mobility gate when the spectrum contains ion mobility |
 | `im_tolerance_type` | `"relative"` | Scale the mobility tolerance by the seed value or use it as an absolute difference |
-| `ionization_model` | `None` | Adduct preset/alias, custom model, or signed carrier mass. Defaults from scan polarity, with positive protonation as the fallback |
+| `ionization_model` | `None` | Adduct preset/alias, custom model, or signed carrier mass. Negative scans use `[M-H]-`, and other scans use `[M+H]+` |
 
-Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum emits a `UserWarning` and returns it
-unchanged.
+Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum emits a `UserWarning` and leaves its
+data unchanged. The default non-inplace path still returns an independent copy.
 
 ### Isotope models
 
