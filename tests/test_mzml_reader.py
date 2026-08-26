@@ -6,6 +6,7 @@ import pytest
 
 mzp = pytest.importorskip("mzmlpy")
 
+from spxtacular import write_indexed_mzml_gzip  # noqa: E402
 from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
 from spxtacular.reader import MzmlReader, Reader  # noqa: E402
 
@@ -280,6 +281,39 @@ def test_mzml_options_apply_without_persistent_handle(monkeypatch):
             {"gzip_mode": "stream", "in_memory": False, "extract_dir": None},
         )
     ]
+
+
+def test_default_mzml_options_use_auto_disk_backed_access(monkeypatch, tmp_path):
+    calls = []
+    real_mzml = mzp.Mzml
+
+    def recording_mzml(path, **kwargs):
+        calls.append((path, kwargs))
+        return real_mzml(path, **kwargs)
+
+    monkeypatch.setattr(mzp, "Mzml", recording_mzml)
+    reader = MzmlReader(EXAMPLE_MZML_GZ, extract_dir=tmp_path)
+    next(iter(reader.ms1))
+
+    assert calls == [
+        (
+            EXAMPLE_MZML_GZ,
+            {"gzip_mode": "auto", "in_memory": False, "extract_dir": tmp_path},
+        )
+    ]
+    assert reader.access_strategy == "extracted"
+
+
+def test_indexed_gzip_creation_and_access_strategy(tmp_path):
+    output = tmp_path / "example.indexed.mzML.gz"
+    result = write_indexed_mzml_gzip(EXAMPLE_MZML, output)
+
+    assert result.spectrum_count == 4
+    with MzmlReader(output) as reader:
+        assert reader.access_strategy == "embedded"
+        assert reader["scan=20"].native_id == "scan=20"
+    with Reader(output) as reader:
+        assert reader.access_strategy == "embedded"
 
 
 # ---------------------------------------------------------------------------

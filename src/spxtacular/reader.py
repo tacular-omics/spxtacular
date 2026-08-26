@@ -620,8 +620,8 @@ class MzmlReader:
     mzml_path:
         Path to the mzML file.
     gzip_mode:
-        How mzmlpy opens gzipped input. ``"extract"`` preserves the historical
-        behavior and gives fast random access after an up-front extraction.
+        How mzmlpy opens gzipped input. ``"auto"`` reuses an embedded index,
+        extracted cache, or complete rapidgzip sidecars before extracting.
         ``"stream"`` starts immediately and is well suited to sequential reads.
         ``"indexed"`` builds a random-access gzip index and requires rapidgzip.
     in_memory:
@@ -634,8 +634,8 @@ class MzmlReader:
         self,
         mzml_path: str | Path,
         *,
-        gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-        in_memory: bool = True,
+        gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        in_memory: bool = False,
         extract_dir: str | Path | None = None,
     ) -> None:
         if not _HAS_MZMLPY:
@@ -648,15 +648,24 @@ class MzmlReader:
         self.in_memory = in_memory
         self.extract_dir = extract_dir
         self._mzml_handle = None
+        self._last_access_strategy: str | None = None
 
     def _new_handle(self) -> Any:
         """Create an mzmlpy handle with this reader's public I/O options."""
-        return mzp.Mzml(
+        handle = mzp.Mzml(
             self.mzml_path,
             gzip_mode=self.gzip_mode,
             in_memory=self.in_memory,
             extract_dir=self.extract_dir,
         )
+        strategy = getattr(handle, "access_strategy", None)
+        self._last_access_strategy = str(strategy) if strategy is not None else None
+        return handle
+
+    @property
+    def access_strategy(self) -> str | None:
+        """Concrete mzMLPy storage strategy selected by the latest open operation."""
+        return self._last_access_strategy
 
     @staticmethod
     def _parse_spectrum(spec: mzp.Spectrum, decon: _DeconvolutionRefs = _NO_DECONVOLUTION) -> MsnSpectrum:
@@ -910,8 +919,8 @@ class Reader:
     centroid_config:
         Optional Bruker centroiding settings.
     mzml_gzip_mode:
-        Gzip strategy forwarded to :class:`MzmlReader`. Use ``"stream"`` for
-        low-latency sequential access to large gzipped mzML files.
+        Gzip strategy forwarded to :class:`MzmlReader`. ``"auto"`` is the
+        default and selects the best valid random-access representation.
     mzml_in_memory:
         Whether mzmlpy should keep its XML index in memory.
     mzml_extract_dir:
@@ -933,8 +942,8 @@ class Reader:
         path: str | Path,
         centroid_config: CentroidConfig | None = None,
         *,
-        mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-        mzml_in_memory: bool = True,
+        mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        mzml_in_memory: bool = False,
         mzml_extract_dir: str | Path | None = None,
     ) -> None:
         p = Path(path)
@@ -976,6 +985,11 @@ class Reader:
     def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup | ThermoScanLookup | PeakListLookup:
         """MS2 spectra — supports iteration and index-based access."""
         return self._reader.ms2
+
+    @property
+    def access_strategy(self) -> str | None:
+        """Concrete mzML access strategy, or ``None`` for non-mzML readers."""
+        return self._reader.access_strategy if isinstance(self._reader, MzmlReader) else None
 
     def open(self) -> None:
         """Open the underlying reader."""

@@ -332,8 +332,8 @@ Reader(
     path: str | Path,
     centroid_config: CentroidConfig | None = None,
     *,
-    mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-    mzml_in_memory: bool = True,
+    mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+    mzml_in_memory: bool = False,
     mzml_extract_dir: str | Path | None = None,
 )
 ```
@@ -342,6 +342,7 @@ Reader(
 |---|---|---|
 | `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS1 spectra — iterate or index (empty for `.mgf` / `.ms2`) |
 | `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS2 spectra — iterate or index |
+| `.access_strategy` | `str \| None` | Concrete mzML access route, or `None` for other formats |
 | `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
 
 ```python
@@ -365,20 +366,21 @@ instead of reopening the file per operation.
 MzmlReader(
     mzml_path: str | Path,
     *,
-    gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-    in_memory: bool = True,
+    gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+    in_memory: bool = False,
     extract_dir: str | Path | None = None,
 )
 ```
 
-For low-latency sequential reads from large `.mzML.gz` files, use
-`gzip_mode="stream", in_memory=False`. The default `"extract"` mode favors repeated random access.
+The default `"auto"` mode selects a self-indexed gzip file, a current extraction, or complete
+rapidgzip sidecars before extracting. For intentional sequential reads, use `gzip_mode="stream"`.
 
 | Property / Method | Type | Description |
 |---|---|---|
 | `.ms1` | `MzmlSpectraLookup` | MS1 spectra — iterate, or index by overall index / native ID |
 | `.ms2` | `MzmlSpectraLookup` | MS2 spectra — iterate, or index by overall index / native ID |
 | `reader[key]` | `MsnSpectrum` | Spectrum by 0-based index (`reader[0]`) or native ID (`reader["scan=19"]`) |
+| `.access_strategy` | `str \| None` | Concrete route selected by mzMLPy |
 | `.open()` / `.close()` | `None` | Open / close the persistent `mzmlpy` handle |
 
 Index access is not MS-level filtered — `reader.ms2[0]` is the first spectrum in the file, not the

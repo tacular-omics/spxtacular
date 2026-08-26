@@ -102,9 +102,13 @@ Reading raw files works the same for every format — `Reader` picks `DReader`, 
 
 ```python
 with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx.Reader("run.raw")
+    print(reader.access_strategy)         # embedded, extracted, rapidgzip, plain, or None
     for spec in reader.ms1:              # .ms1/.ms2 are iterable *and* indexable
         ...
 ```
+
+Gzipped mzML uses automatic disk-backed access by default. Create a self-indexed gzip artifact
+with `spx.write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")`.
 
 ## Features
 

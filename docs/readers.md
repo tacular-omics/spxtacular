@@ -63,8 +63,8 @@ class Reader:
         path: str | Path,
         centroid_config: CentroidConfig | None = None,
         *,
-        mzml_gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-        mzml_in_memory: bool = True,
+        mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        mzml_in_memory: bool = False,
         mzml_extract_dir: str | Path | None = None,
     ): ...
 
@@ -78,6 +78,9 @@ class Reader:
 
     @property
     def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup: ...
+
+    @property
+    def access_strategy(self) -> str | None: ...
 ```
 
 ```python
@@ -92,9 +95,8 @@ with Reader("/data/sample.d") as r:
 ```
 
 `centroid_config` is only meaningful for `.d` inputs. The `mzml_*` options are forwarded only to
-`MzmlReader`. `Reader` exposes
-`ms1`, `ms2`, `open`, and `close` only — backend-specific members (`MzmlReader.__getitem__`,
-`DReader.acquisition_type`) are not proxied.
+`MzmlReader`. `Reader` exposes `ms1`, `ms2`, `access_strategy`, `open`, and `close`.
+`access_strategy` is `None` for non-mzML inputs.
 
 ---
 
@@ -109,8 +111,8 @@ class MzmlReader:
         self,
         mzml_path: str | Path,
         *,
-        gzip_mode: Literal["extract", "indexed", "stream"] = "extract",
-        in_memory: bool = True,
+        gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        in_memory: bool = False,
         extract_dir: str | Path | None = None,
     ): ...
 
@@ -125,12 +127,16 @@ class MzmlReader:
     @property
     def ms2(self) -> MzmlSpectraLookup: ...
 
+    @property
+    def access_strategy(self) -> str | None: ...
+
     def __getitem__(self, key: int | str) -> MsnSpectrum: ...
 ```
 
-For gzipped mzML, the default `gzip_mode="extract"` preserves fast random access after an initial
-extraction. Use `gzip_mode="stream", in_memory=False` when a service needs the first spectra from a
-large file immediately and reads sequentially:
+For gzipped mzML, the default `gzip_mode="auto"` checks for a self-indexed gzip file, a current
+extracted cache, and complete rapidgzip sidecars before falling back to extraction. The selected
+route is reported by `access_strategy`. Use `gzip_mode="stream"` when a service intentionally reads
+sequentially:
 
 ```python
 with MzmlReader("large-run.mzML.gz", gzip_mode="stream", in_memory=False) as r:
@@ -140,12 +146,21 @@ with MzmlReader("large-run.mzML.gz", gzip_mode="stream", in_memory=False) as r:
 The `"indexed"` mode builds a random-access gzip index and requires `rapidgzip`. Streaming avoids
 temporary extracted files, but later index lookups must scan forward from the start.
 
+Create the self-indexed format through the thin mzMLPy-backed helper:
+
+```python
+from spxtacular import write_indexed_mzml_gzip
+
+write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")
+```
+
 ### Properties
 
 | Property | Contents |
 |---|---|
 | `ms1` | All MS1 spectra in scan order (iteration); index/native-ID access is unfiltered |
 | `ms2` | All MS2 spectra in scan order, including parsed precursor information (iteration); index/native-ID access is unfiltered |
+| `access_strategy` | Concrete mzMLPy route such as `embedded`, `extracted`, `rapidgzip`, or `plain` |
 
 ### Metadata populated from mzML
 

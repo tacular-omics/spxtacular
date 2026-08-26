@@ -8,10 +8,12 @@ User-visible changes only; implementation details belong in commits and pull req
 
 - Added versioned `to_dict`/`from_dict` and `to_json`/`from_json` transport for `Spectrum`, `MsnSpectrum`, and `Chromatogram`, including packaged JSON Schema documents.
 - Added configurable mzML gzip handling so large compressed runs can use low-latency sequential streaming.
+- Added automatic mzML access selection, observable `access_strategy`, and a thin self-indexed gzip creation helper backed by mzMLPy 0.7.
 
 ### Changed
 
 - Added strict validation for nested deconvolution provenance, scan identifiers, JSON object keys, and packaged Draft 2020-12 schemas.
+- Changed mzML reading defaults to `gzip_mode="auto"` and `in_memory=False` for scalable random access.
 
 ### Fixed
 

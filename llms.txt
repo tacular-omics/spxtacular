@@ -96,9 +96,11 @@ with Reader("run.mzML") as reader:
 ```
 
 - `Reader` auto-detects Bruker `.d`, mzML, Thermo `.raw`, MGF, MS2, and MSP, including supported gzip forms.
+- mzML uses `gzip_mode="auto"` and `in_memory=False` by default. Inspect `reader.access_strategy` for the selected route.
+- `write_indexed_mzml_gzip(source, output)` creates a pyMZML-compatible self-indexed gzip through mzMLPy.
 - Reader `.ms1`/`.ms2` views are iterable and indexable but are not iterators; use `next(iter(reader.ms2))`.
 - Use a context manager or explicit `open()`/`close()`.
-- `DReader` handles DDA/DIA/PRM; `MzmlReader` provides index/native-ID access; concrete-only properties are not proxied by `Reader`.
+- `DReader` handles DDA/DIA/PRM. `MzmlReader` provides index/native-ID access. `Reader` proxies mzML `access_strategy`.
 - `MgfReader`, `Ms2Reader`, `MspReader`, and their writers are always available and preserve only metadata representable by those formats.
 - `Spectrum.from_usi()` fetches public spectra through PROXI.
 

@@ -1,4 +1,4 @@
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
 from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType
@@ -42,6 +42,7 @@ from .isotopes import (
     resolve_isotope_model,
 )
 from .matching import match_fragments
+from .mzml import write_indexed_mzml_gzip
 from .peaklist import MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
@@ -113,6 +114,7 @@ __all__ = [
     "write_mgf",
     "write_ms2",
     "write_msp",
+    "write_indexed_mzml_gzip",
     "Reader",
     "plot_spectrum",
     "mirror_plot",
