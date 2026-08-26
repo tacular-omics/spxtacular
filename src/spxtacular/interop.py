@@ -247,7 +247,9 @@ def _payload_peak_indices(current_mz: NDArray[np.float64], original_mz: NDArray[
     return np.asarray(indices, dtype=np.intp)
 
 
-def _from_matchms_payload(mz: NDArray[np.float64], intensity: NDArray[np.float64], payload_text: str) -> Spectrum:
+def _from_matchms_payload(
+    mz: NDArray[np.float64], intensity: NDArray[np.float64], payload_text: str
+) -> Spectrum | MsnSpectrum:
     try:
         payload = json.loads(payload_text)
     except (TypeError, json.JSONDecodeError) as exc:
@@ -303,7 +305,7 @@ def _from_matchms_payload(mz: NDArray[np.float64], intensity: NDArray[np.float64
     )
 
 
-def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -> Spectrum:
+def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -> Spectrum | MsnSpectrum:
     """Convert a :class:`matchms.Spectrum` to spxtacular.
 
     A payload produced by :func:`to_matchms` is used when available.  Peak

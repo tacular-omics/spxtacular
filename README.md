@@ -53,7 +53,7 @@ pip install spxtacular[mzml]        # mzmlpy — MzmlReader
 pip install spxtacular[thermo]     # fisher-py — ThermoReader (also needs a .NET runtime)
 pip install spxtacular[readers]     # all three readers
 
-# Everything (numba + readers + spectrl)
+# Everything (numba + readers + spectrl + interoperability adapters)
 pip install spxtacular[all]
 ```
 
@@ -92,7 +92,7 @@ neutral = (
 for peak in neutral.peaks:
     print(peak)
 # Peak(mz=998.5000, int=1.52e+05, z=0, score=1.000)
-# Peak(mz=2400.9001, int=1.46e+05, z=0, score=0.997)
+# Peak(mz=2400.8999, int=1.46e+05, z=0, score=0.998)
 
 neutral.plot(title="Neutral masses").show()
 ```

@@ -1,6 +1,6 @@
 # spxtacular — compact LLM reference
 
-spxtacular is a Python 3.12+ mass-spectrometry spectrum-processing library centered on immutable, chainable `Spectrum` and `MsnSpectrum` objects; consult `docs/` or the typed source for complete signatures.
+spxtacular is a Python 3.12+ mass-spectrometry spectrum-processing library centered on chainable, non-mutating-by-default `Spectrum` and `MsnSpectrum` objects. Consult `docs/` or the typed source for complete signatures.
 
 ## Install
 

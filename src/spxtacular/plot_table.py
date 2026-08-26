@@ -1,19 +1,21 @@
 """
 Intermediate plot-table API for spectrum visualisation.
 
-The plot table is a pandas DataFrame with one row per peak.  Each row carries
-both the raw data (m/z, intensity, charge, …) and all visual properties
-(color, linewidth, label, font settings, …).  Users can freely modify the
-DataFrame before passing it to :func:`plot_from_table`.
+The plot table is a pandas DataFrame with one row per peak. Each row carries
+peak data and all visual properties. ``intensity`` is the plotted value, while
+``intensity_abs`` preserves the unscaled value used by hover and table output.
+Users can modify the DataFrame before passing it to :func:`plot_from_table`.
 
 What the renderer reads
 -----------------------
 :func:`plot_from_table` draws from ``mz``, ``intensity``, ``series``, ``color``,
-``linewidth``, ``opacity``, ``hover``, and the ``label*`` columns *only*.  The
-``charge``, ``score``, and ``im`` columns are inputs to the *builders* and are
-carried along for reference; editing them after the table is built changes
-nothing on the figure.  In particular ``hover`` is baked in by the builder, so
-to change a tooltip edit ``hover`` directly rather than the value behind it.
+``linewidth``, ``opacity``, optional ``dash``, ``hover``, and the ``label*``
+columns. The ``charge``, ``score``, ``im``, and ``intensity_abs`` columns are
+carried for reference and accessible output. Editing them after the table is
+built does not change the figure. In particular, ``hover`` is baked in by the
+builder, so change that column directly to change a tooltip. The renderer also
+uses ``table.attrs["intensity_label"]`` for the y-axis title and
+``table.attrs["render"]`` to choose sticks or a profile trace.
 
 Public API
 ----------
@@ -289,6 +291,16 @@ def build_plot_table(
     show_scores:
         When ``True`` (default) and score data is present, peaks with
         ``score > 0`` are labelled with their score value.
+    max_labels:
+        Maximum number of direct labels, strongest peaks first. ``None``
+        removes the count cap, but collision avoidance still applies.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
+    intensity_scale:
+        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
+        raw values in the plotted intensity column.
+    intensity_transform:
+        Optional ``"sqrt"`` or ``"log"`` display transform.
 
     Returns
     -------
@@ -452,6 +464,18 @@ def build_annot_plot_table(
         ``"largest"``, or ``"all"``.
     include_sequence:
         Embed the residue sequence in each label (e.g. ``b3{PEP}``).
+    max_labels:
+        Maximum number of direct labels, strongest peaks first. ``None``
+        removes the count cap, but collision avoidance still applies.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
+    intensity_scale:
+        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
+        raw values in the plotted intensity column.
+    intensity_transform:
+        Optional ``"sqrt"`` or ``"log"`` display transform.
+    texture:
+        Give each matched ion series a distinct dash pattern.
 
     Returns
     -------
@@ -606,7 +630,7 @@ def table_view(
     table:
         A table from :func:`build_plot_table` or :func:`build_annot_plot_table`.
     max_rows:
-        Keep only the this many most intense peaks. ``None`` (default) keeps all.
+        Keep only this many most intense peaks. ``None`` (default) keeps all.
     annotated_only:
         Keep only peaks carrying a label. Useful beside an annotated spectrum,
         where the unmatched peaks are context rather than results.
@@ -737,6 +761,13 @@ def plot_from_table(
         ``label_font``, ``label_color``, ``label_yshift``, ``label_xanchor``.
     title:
         Plot title.
+    theme_mode:
+        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
+    render:
+        ``"sticks"`` or ``"profile"``. ``None`` uses the table metadata.
+    max_points:
+        Maximum profile samples to draw after min/max decimation. ``None``
+        draws every sample.
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
 

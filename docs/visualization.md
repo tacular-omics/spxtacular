@@ -55,6 +55,8 @@ fig = plot_spectrum(
     intensity_scale="relative",  # "relative" (base peak = 100%) | "absolute"
     intensity_transform=None,    # None | "sqrt" | "log"
     show_precursor=True,         # draw precursor m/z + isolation window on MSn
+    render=None,                 # None | "sticks" | "profile"
+    max_points=4000,             # profile-sample cap, or None for every sample
     **layout_kwargs,             # passed to fig.update_layout()
 )
 fig.show()
@@ -228,6 +230,7 @@ fig = mass_error_plot(
     peak_selection="closest",    # "closest" | "largest" | "all"
     unit="ppm",                  # error units
     title=None,
+    max_labels=60,
     theme_mode=None,
     **layout_kwargs,
 )
@@ -393,14 +396,11 @@ profile_centroid_plot(profile)                    # centroids computed for you
 profile_centroid_plot(profile, my_centroids)      # or supply your own
 ```
 
-A stick off the apex means a mis-assigned centre; an apex with no stick means a peak was dropped.
-Two things are worth watching for:
-
-- `centroid()` applies **no intensity threshold** — every local maximum becomes a peak, so on noisy
-  data it produces far more centroids than there are real peaks. On a test spectrum with 6 real
-  peaks it returned 769; `filter(min_intensity=…)` afterwards brought it back to exactly 6.
-- It also requires a strict maximum (`prev < curr > next`), so a peak whose apex is a two-sample
-  plateau — routine in quantised or saturated data — is discarded silently.
+A stick off the apex means a mis-assigned centre. An apex with no stick means a peak was removed by
+thresholding or was not detected. `centroid()` uses no intensity floor by default, so every local
+maximum becomes a peak. On noisy data, pass `min_intensity="noise"` for the MAD-estimated floor or
+provide an absolute threshold. Flat-topped peaks are supported and produce one centroid at the
+middle of the plateau.
 
 ---
 
@@ -517,6 +517,6 @@ save_figure(fig, "figure.png", scale=2)  # needs: pip install kaleido
 ```
 
 The file extension picks the writer. `.html` (or no suffix) needs nothing extra. Static formats —
-`.png`, `.svg`, `.pdf`, `.jpg`, `.webp`, `.eps` — go through Plotly's static export and raise
+`.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, and `.webp` go through Plotly's static export and raise
 `ImportError` naming `kaleido` if it is not installed. An unrecognised suffix raises `ValueError`.
 `scale=2` renders at twice the device resolution, which is what you want for a paper figure.

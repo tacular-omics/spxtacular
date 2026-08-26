@@ -501,6 +501,9 @@ def score(
     peak_selection:
         How to resolve multiple peaks within tolerance per fragment:
         ``"closest"`` (default), ``"largest"``, or ``"all"``.
+    predicted_intensities:
+        Optional predicted intensity for each input fragment, in matching input
+        order. When supplied, ``spectral_angle`` is the literature metric.
 
     Returns
     -------

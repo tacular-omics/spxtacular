@@ -1,9 +1,9 @@
 """MGF, MS2, and MSP peak-list reading and writing — pure standard library.
 
-Unlike :class:`~spxtacular.reader.DReader` and :class:`~spxtacular.reader.MzmlReader`,
-nothing here is behind an optional extra: MGF, MS2, and MSP (the NIST spectral-library
-format) are plain text and are parsed and written with nothing but the standard library
-(plus numpy, which spxtacular always has). All three formats are always available.
+Unlike the Bruker, mzML, and Thermo readers, nothing here is behind an optional
+extra. MGF, MS2, and MSP (the NIST spectral-library format) are plain text and
+are parsed and written with nothing but the standard library plus numpy. All
+three formats are always available.
 
 All three hold fragmentation spectra only, so every spectrum read back is an
 :class:`~spxtacular.core.MsnSpectrum` with ``ms_level=2`` and

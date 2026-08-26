@@ -26,3 +26,5 @@ nav:
   - Matching & Scoring: scoring.md
   - Visualization: visualization.md
   - API Reference: api.md
+  - Design Records:
+      - Polarity, Adducts, and Isotope Models: design/polarity-adducts-and-isotope-roadmap.md

@@ -367,8 +367,8 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         ion_mobility_type = "MS:1002893"  # generic ion mobility when type unknown
 
     # Scalar ion-selection accession for precursor ion mobility. Drift-time types
-    # get MS:1002476; everything else (including an unknown type) gets the
-    # inverse-reduced-mobility term, which is what both readers measure.
+    # get MS:1002476. Other and unknown types use the inverse-reduced-mobility
+    # term, which preserves the historical timsTOF-oriented fallback.
     im_type_key = msn_spec.im_type.lower() if msn_spec is not None and msn_spec.im_type is not None else None
     precursor_im_accession = (
         _SELECTED_ION_DRIFT_TIME if im_type_key in ("drift_time", IMType.DRIFT_TIME_MS) else _SELECTED_ION_OOK0
@@ -411,7 +411,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             if is_first and msn_spec.activation_type is not None:
                 # Emit a standard dissociation-method CV param when we can: either the
                 # value is a known acronym (mapped to its accession) or it is already an
-                # ``MS:NNNNNNN``-shaped accession (as both readers produce). Only truly
+                # ``MS:NNNNNNN``-shaped accession (as reader output may contain). Only truly
                 # free-text vendor strings fall through to the _UP_ACTIVATION_TYPE
                 # user_param below, since spectrl's accession_tail() would reject them.
                 acc = _ACTIVATION_ACCESSIONS_LOWER.get(msn_spec.activation_type.lower())
@@ -564,7 +564,7 @@ def _mobility_array(decoded: DecodedSpectrum) -> tuple[str | None, np.ndarray | 
     return accession, np.asarray(values, dtype=np.float64)
 
 
-def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
+def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
     """Convert a :class:`spectrl.DecodedSpectrum` back to a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
     when MSn metadata is present).
@@ -798,7 +798,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum:
     )
 
 
-def from_spectrl_token(token: str) -> Spectrum:
+def from_spectrl_token(token: str) -> Spectrum | MsnSpectrum:
     """Decode a ``spectrl.v1.…`` token into a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
     when MSn metadata is present).
@@ -861,7 +861,7 @@ def to_spectrl_url(
     return to_query(token, base, param=param)
 
 
-def from_spectrl_url(url: str) -> Spectrum:
+def from_spectrl_url(url: str) -> Spectrum | MsnSpectrum:
     """Extract a ``spectrl.v1.…`` token from a URL fragment, query string, or
     ``data:`` URI and decode it into a spxtacular
     :class:`~spxtacular.core.Spectrum` / :class:`~spxtacular.core.MsnSpectrum`.

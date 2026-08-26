@@ -174,6 +174,8 @@ class DeconvolutionProvenance:
     im_tolerance_type: str = "relative"
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the versioned JSON-compatible representation."""
+
         return {
             "schema_version": 2,
             "isotope_model": self.isotope_model,
@@ -197,6 +199,8 @@ class DeconvolutionProvenance:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> DeconvolutionProvenance:
+        """Restore provenance written by schema version 1 or 2."""
+
         schema_version = value.get("schema_version", 1)
         if schema_version not in (1, 2):
             raise ValueError(f"unsupported deconvolution provenance schema: {value.get('schema_version')!r}")

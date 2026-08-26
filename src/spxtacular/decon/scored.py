@@ -206,7 +206,8 @@ def _deconvolve_spectrum(
 
     Returns
     -------
-    Tuple of (mz, charges, intensity, scores) arrays sorted by m/z.
+    Tuple of (mz, charges, intensity, scores, source indices) arrays sorted by
+    m/z. Source indices identify the observed seed used for each output peak.
     Singletons have charge == -1 and score == 0.0.
 
     Raises

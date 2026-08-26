@@ -192,6 +192,8 @@ class Peak:
 
 
 class SpectrumType(StrEnum):
+    """Processing state of a spectrum."""
+
     CENTROID = "centroid"
     PROFILE = "profile"
     DECONVOLUTED = "deconvoluted"
@@ -1307,6 +1309,60 @@ class Spectrum:
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         ionization_model: IonizationModelLike | None = None,
     ) -> Self:
+        """Collapse isotope envelopes and assign charge magnitudes.
+
+        Parameters
+        ----------
+        tolerance, tolerance_type:
+            Isotope peak matching window. The default is 50 ppm.
+        charge_range:
+            Inclusive minimum and maximum positive charge magnitudes to test.
+        intensity:
+            ``"total"`` sums the matched isotope intensities. ``"base"`` uses
+            the observed A+0 intensity, or zero when A+0 was inferred.
+        max_dpeaks:
+            Maximum number of output peaks to process.
+        inplace:
+            Mutate this spectrum instead of returning a new one.
+        min_intensity:
+            Absolute detectability floor. ``"min"`` uses the smallest input
+            intensity.
+        min_score:
+            Minimum isotope-profile score needed to assign a cluster.
+        isotope_model:
+            Built-in average-composition name or a custom
+            :class:`~spxtacular.isotopes.IsotopeModel`.
+        min_isotope_abundance:
+            Minimum predicted abundance relative to the envelope apex.
+        max_isotope_fold_error:
+            Maximum observed-to-expected intensity ratio in either direction.
+        max_isotope_gaps:
+            Missing isotope positions allowed before expansion stops.
+        max_isotopes:
+            Optional hard envelope-length limit. ``None`` is adaptive.
+        im_tolerance, im_tolerance_type:
+            Ion-mobility gate for spectra that carry an ``im`` array.
+        ionization_model:
+            Adduct preset, signed carrier mass, or custom ionization model.
+            When omitted, negative scans use deprotonation and other scans use
+            protonation.
+
+        Returns
+        -------
+        Spectrum with monoisotopic m/z values, charge magnitudes, isotope
+        scores, and deconvolution provenance.
+
+        Raises
+        ------
+        ValueError
+            If the charge range is invalid or the spectrum contains profile
+            data. Profile data must be centroided first.
+
+        Warns
+        -----
+        UserWarning
+            If the spectrum is already deconvoluted.
+        """
         min_charge, max_charge = charge_range
         if min_charge < 1 or max_charge < min_charge:
             raise ValueError(f"charge_range must be a (min, max) tuple with 1 <= min <= max; got {charge_range!r}")
@@ -1493,7 +1549,7 @@ class Spectrum:
         return to_spectrl_token(self, lossless=lossless, max_len=max_len)
 
     @classmethod
-    def from_spectrl_token(cls, token: str) -> "Spectrum":
+    def from_spectrl_token(cls, token: str) -> "Spectrum | MsnSpectrum":
         """Decode a ``spectrl.v1.…`` token into a :class:`Spectrum` /
         :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
 
@@ -1522,7 +1578,7 @@ class Spectrum:
         return to_spectrl_url(self, base, mode=mode, param=param, lossless=lossless, max_len=max_len)
 
     @classmethod
-    def from_spectrl_url(cls, url: str) -> "Spectrum":
+    def from_spectrl_url(cls, url: str) -> "Spectrum | MsnSpectrum":
         """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
         carrying a ``spectrl.v1.…`` token (requires ``spxtacular[spectrl]``).
 
@@ -1538,7 +1594,7 @@ class Spectrum:
         usi: str,
         backend: str = "aggregator",
         timeout: float = 30,
-    ) -> "Spectrum":
+    ) -> "Spectrum | MsnSpectrum":
         """Load a spectrum from a public repository via Universal Spectrum Identifier.
 
         Uses the PROXI protocol to fetch spectra from aggregated proteomics
@@ -1558,8 +1614,8 @@ class Spectrum:
         Returns
         -------
         Spectrum or MsnSpectrum
-            :class:`MsnSpectrum` if precursor info is available, else
-            :class:`Spectrum`.
+            :class:`MsnSpectrum` when scan-level metadata or precursor
+            information is available, otherwise :class:`Spectrum`.
         """
         from .usi import fetch_usi
 
