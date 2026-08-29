@@ -17,8 +17,7 @@ def write_indexed_mzml_gzip(
         from mzmlpy import write_indexed_gzip
     except ImportError as error:
         raise ImportError(
-            "write_indexed_mzml_gzip requires mzMLPy 0.7 or newer. "
-            "Install it with: pip install spxtacular[mzml]"
+            "write_indexed_mzml_gzip requires mzMLPy 0.7 or newer. Install it with: pip install spxtacular[mzml]"
         ) from error
     return write_indexed_gzip(source, output, compression_level=compression_level)
 

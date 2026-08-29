@@ -37,7 +37,21 @@ jobs:
         enable-cache: true
         cache-dependency-glob: "uv.lock"
         python-version: "3.12"
+    - name: Install just
+      uses: extractions/setup-just@v2
+    - name: Install and verify candidate
+      run: |
+        just install
+        just lint
+        just fmt-check
+        just check
+        just test
     - name: Build package with uv
       run: uv build
+    - name: Verify tag and distributions
+      run: |
+        package_version=$(uv run python -c "print(__import__('spxtacular').__version__)")
+        test "v$package_version" = "$GITHUB_REF_NAME"
+        uvx twine check dist/*
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@release/v1

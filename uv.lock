@@ -1114,14 +1114,14 @@ wheels = [
 
 [[package]]
 name = "mzmlpy"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/d7/10d283393d0442a975e0f722840133d684c913383717c91d11ca30d960ff/mzmlpy-0.6.0.tar.gz", hash = "sha256:9fded46a9d0bffd5ec71bace52c650e82823b092304299204b0859b632486b81", size = 51941, upload-time = "2026-08-16T00:52:03.857Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/c7/2e5e848a05cac770007ee2f115d5b516b2a9a2a8768cc8a7743be2e47d25/mzmlpy-0.7.0.tar.gz", hash = "sha256:a5d0133141e6b72e7d31120e24d6d5193a4c5e068859f4c14363962e094edad1", size = 60188, upload-time = "2026-08-29T05:07:18.767Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/c9/b6a5e03e11bec60df61d58a44684199181cff9d3ca11addb48bde9284bfc/mzmlpy-0.6.0-py3-none-any.whl", hash = "sha256:6d55ccdf413c959bcb99e341a57bb7761eb554c9371ad5d252813b3b165da432", size = 57808, upload-time = "2026-08-16T00:52:02.855Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/98/8e6217a28e1d513c5ab694532f41330c26456760bbaf11562800a490e66d/mzmlpy-0.7.0-py3-none-any.whl", hash = "sha256:49bf855122dfe0047711051176fe557a08881683ba252e4bf394288fdc4a5b89", size = 66736, upload-time = "2026-08-29T05:07:17.726Z" },
 ]
 
 [[package]]
@@ -2053,9 +2053,9 @@ requires-dist = [
     { name = "matchms", marker = "extra == 'all'", specifier = ">=0.33.1" },
     { name = "matchms", marker = "extra == 'interop'", specifier = ">=0.33.1" },
     { name = "matchms", marker = "extra == 'matchms'", specifier = ">=0.33.1" },
-    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.6.0" },
-    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.6.0" },
-    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.6.0" },
+    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.7.0" },
+    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.7.0" },
+    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.7.0" },
     { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy", specifier = ">=1.26" },
@@ -2081,7 +2081,7 @@ dev = [
     { name = "matchms", specifier = ">=0.33.1" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7.5" },
-    { name = "mzmlpy", specifier = ">=0.6.0" },
+    { name = "mzmlpy", specifier = ">=0.7.0" },
     { name = "numba", specifier = ">=0.64.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
