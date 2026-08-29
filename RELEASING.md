@@ -18,7 +18,8 @@ upload the same release manually, because that would create a duplicate record.
 2. Set the same version in `src/spxtacular/__init__.py`, `CITATION.cff`, and the heading in
    `HISTORY.md`.
 3. Confirm that the changelog date and citation metadata are correct.
-4. Run:
+4. Confirm that mzMLPy 0.7 or later is available from PyPI, then refresh and commit the tested lock with `uv lock --upgrade-package mzmlpy`.
+5. Run:
 
    ```bash
    just lint
@@ -30,9 +31,9 @@ upload the same release manually, because that would create a duplicate record.
    uv build
    ```
 
-5. Inspect the wheel and source archive under `dist/`; install the wheel in a clean environment for
+6. Inspect the wheel and source archive under `dist/`. Install the wheel in a clean environment for
    a final import smoke test.
-6. Merge the release branch to `main` and wait for all required checks to pass.
+7. Merge the release branch to `main` and wait for all required checks to pass.
 
 ## Publish and archive
 

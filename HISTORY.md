@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## Unreleased
 
+## 0.6.0 (2026-08-28)
+
 ### Added
 
 - Added versioned `to_dict`/`from_dict` and `to_json`/`from_json` transport for `Spectrum`, `MsnSpectrum`, and `Chromatogram`, including packaged JSON Schema documents.
