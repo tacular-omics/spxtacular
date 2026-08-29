@@ -13,7 +13,7 @@ jobs:
     name: JOSS paper draft
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build draft PDF
         uses: openjournals/openjournals-draft-action@master
@@ -22,7 +22,7 @@ jobs:
           paper-path: paper/paper.md
 
       - name: Upload draft
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: joss-paper
           path: paper/paper.pdf

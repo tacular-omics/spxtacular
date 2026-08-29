@@ -27,7 +27,7 @@ jobs:
         python-version: ["3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
@@ -35,7 +35,7 @@ jobs:
         cache-dependency-glob: "uv.lock"
         python-version: ${{ matrix.python-version }}
     - name: Install just
-      uses: extractions/setup-just@v2
+      uses: extractions/setup-just@v4
     - name: Install dependencies
       run: just install
     - name: Lint with ruff
@@ -47,14 +47,14 @@ jobs:
     - name: Test with pytest
       run: just test-cov
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/spxtacular
         fail_ci_if_error: false
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/spxtacular
@@ -69,7 +69,7 @@ jobs:
     name: Minimal install (no extras, no dev deps)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
