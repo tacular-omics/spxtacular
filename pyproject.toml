@@ -103,6 +103,8 @@ dev = [
     "numba>=0.64.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
+    "pytest-timeout>=2.4,<3",
+    "pytest-xdist>=3.8,<4",
     "ruff>=0.14.11",
     "spectrl>=1.0.0",
     "spectrum-utils>=0.5.0",
@@ -168,7 +170,7 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config -n 4 --dist loadscope --timeout=15"
 filterwarnings = [
     "error",
     # tdfpy leaks its sqlite3 connections; the ResourceWarning surfaces at GC

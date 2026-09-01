@@ -21,6 +21,7 @@ from spxtacular.core import MsnSpectrum, Spectrum
 from spxtacular.visualization import plot_chromatogram, plot_xic
 
 TARGETS = [500.0, 700.0, 900.0]
+REAL_DDA_DATA = Path(__file__).parent / "data" / "example_dda.d"
 
 
 def _run(n_scans: int = 12, shuffle: bool = False, with_im: bool = False) -> list[MsnSpectrum]:
@@ -54,6 +55,23 @@ class _CountingIterable:
     def __iter__(self):
         self.passes += 1
         return iter(self._items)
+
+
+@pytest.fixture(scope="module")
+def real_dda_frames() -> list[Spectrum]:
+    """Load the large Bruker fixture once for all real-run assertions."""
+    pytest.importorskip("tdfpy")
+    from spxtacular.reader import DReader
+
+    with DReader(str(REAL_DDA_DATA)) as reader:
+        return [
+            Spectrum(
+                mz=s.mz.copy(),
+                intensity=s.intensity.copy(),
+                im=None if s.im is None else s.im.copy(),
+            )
+            for s in reader.ms1
+        ]
 
 
 class TestChromatogramModel:
@@ -313,38 +331,21 @@ class TestRealRun:
     by 12.9 million when this was first prototyped.
     """
 
-    DATA = Path(__file__).parent / "data" / "example_dda.d"
-
-    def _frames(self):
-        pytest.importorskip("tdfpy")
-        from spxtacular.reader import DReader
-
-        with DReader(str(self.DATA)) as reader:
-            return [
-                Spectrum(
-                    mz=s.mz.copy(),
-                    intensity=s.intensity.copy(),
-                    im=None if s.im is None else s.im.copy(),
-                )
-                for s in reader.ms1
-            ]
-
-    def test_frames_really_are_unsorted(self) -> None:
+    def test_frames_really_are_unsorted(self, real_dda_frames: list[Spectrum]) -> None:
         """If this ever fails the fixture changed, and the tests below lose their point."""
-        frames = self._frames()
-        assert any(bool(np.any(np.diff(f.mz) < 0)) for f in frames)
+        assert any(bool(np.any(np.diff(f.mz) < 0)) for f in real_dda_frames)
 
-    def test_xic_matches_brute_force_on_real_frames(self) -> None:
-        frames = self._frames()
+    def test_xic_matches_brute_force_on_real_frames(self, real_dda_frames: list[Spectrum]) -> None:
         targets = [599.3262, 621.3293, 733.4002]
-        chroms = extract_xic(frames, targets, tolerance=20, tolerance_type="ppm")
+        chroms = extract_xic(real_dda_frames, targets, tolerance=20, tolerance_type="ppm")
         for target, chrom in zip(targets, chroms, strict=True):
-            expected = np.array([float(f.intensity[np.abs(f.mz - target) <= target * 20 / 1e6].sum()) for f in frames])
+            expected = np.array(
+                [float(f.intensity[np.abs(f.mz - target) <= target * 20 / 1e6].sum()) for f in real_dda_frames]
+            )
             np.testing.assert_array_equal(chrom.intensity, expected)
             assert chrom.total > 0, "these targets are real peaks from the first frame"
 
-    def test_tic_covers_every_frame(self) -> None:
-        frames = self._frames()
-        tic = extract_chromatogram(frames)
-        assert len(tic) == len(frames)
+    def test_tic_covers_every_frame(self, real_dda_frames: list[Spectrum]) -> None:
+        tic = extract_chromatogram(real_dda_frames)
+        assert len(tic) == len(real_dda_frames)
         assert (tic.intensity > 0).all()

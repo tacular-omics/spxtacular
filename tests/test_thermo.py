@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import types
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,34 @@ except ImportError:
     _HAS_FISHER = False
 
 needs_fisher = pytest.mark.skipif(not _HAS_FISHER, reason="fisher-py or its .NET runtime is unavailable")
+
+
+@pytest.fixture(scope="module")
+def raw_reader() -> Iterator[ThermoReader]:
+    """Keep one vendor file handle open for read-only fixture assertions."""
+    if not _HAS_FISHER:
+        pytest.skip("fisher-py or its .NET runtime is unavailable")
+    with ThermoReader(RAW_PATH) as reader:
+        yield reader
+
+
+@pytest.fixture(scope="module")
+def raw_spectra(raw_reader: ThermoReader) -> list[MsnSpectrum]:
+    """Read the ten fixture spectra once instead of once per assertion."""
+    return list(raw_reader.ms2)
+
+
+@pytest.fixture(scope="module")
+def raw_spectrum(raw_reader: ThermoReader) -> MsnSpectrum:
+    return raw_reader.ms2[1]
+
+
+@pytest.fixture(scope="module")
+def profile_spectrum() -> MsnSpectrum:
+    if not _HAS_FISHER:
+        pytest.skip("fisher-py or its .NET runtime is unavailable")
+    with ThermoReader(RAW_PATH, prefer_vendor_centroid=False) as reader:
+        return reader.ms2[1]
 
 
 class _FakeScanEvent:
@@ -199,17 +228,12 @@ def test_lookup_before_open_raises():
 def test_reader_autodetects_raw_suffix():
     reader = Reader(RAW_PATH)
     assert isinstance(reader._reader, ThermoReader)
-    with reader:
-        spectra = list(reader.ms2)
-    assert len(spectra) == 10
 
 
 @needs_fisher
-def test_iterate_ms2():
-    with ThermoReader(RAW_PATH) as reader:
-        spectra = list(reader.ms2)
-    assert len(spectra) == 10
-    for spec in spectra:
+def test_iterate_ms2(raw_spectra: list[MsnSpectrum]):
+    assert len(raw_spectra) == 10
+    for spec in raw_spectra:
         assert isinstance(spec, MsnSpectrum)
         assert spec.ms_level == 2
         assert spec.spectrum_type == SpectrumType.CENTROID
@@ -218,15 +242,13 @@ def test_iterate_ms2():
 
 
 @needs_fisher
-def test_ms1_iteration_is_empty_for_ms2_only_file():
-    with ThermoReader(RAW_PATH) as reader:
-        assert list(reader.ms1) == []
+def test_ms1_iteration_is_empty_for_ms2_only_file(raw_reader: ThermoReader):
+    assert list(raw_reader.ms1) == []
 
 
 @needs_fisher
-def test_scan_metadata():
-    with ThermoReader(RAW_PATH) as reader:
-        spec = reader.ms2[1]
+def test_scan_metadata(raw_spectrum: MsnSpectrum):
+    spec = raw_spectrum
     assert spec.scan_number == 1
     assert spec.native_id == "controllerType=0 controllerNumber=1 scan=1"
     assert spec.polarity == Polarity.POSITIVE
@@ -241,9 +263,8 @@ def test_scan_metadata():
 
 
 @needs_fisher
-def test_precursor_metadata():
-    with ThermoReader(RAW_PATH) as reader:
-        spec = reader.ms2[1]
+def test_precursor_metadata(raw_spectrum: MsnSpectrum):
+    spec = raw_spectrum
     assert spec.activation_type == ActivationType.CID
     assert spec.collision_energy == 35.0
     assert spec.isolation_mz_range == (324.0, 326.0)
@@ -258,9 +279,8 @@ def test_precursor_metadata():
 
 
 @needs_fisher
-def test_vendor_centroid_charges_use_spxtacular_conventions():
-    with ThermoReader(RAW_PATH) as reader:
-        spec = reader.ms2[1]
+def test_vendor_centroid_charges_use_spxtacular_conventions(raw_spectrum: MsnSpectrum):
+    spec = raw_spectrum
     # Thermo label streams store 0 for "unknown charge"; spxtacular reserves 0
     # for decharged spectra, so unknowns must arrive as -1.
     assert spec.charge is not None
@@ -270,11 +290,9 @@ def test_vendor_centroid_charges_use_spxtacular_conventions():
 
 
 @needs_fisher
-def test_profile_mode_returns_profile_trace():
-    with ThermoReader(RAW_PATH, prefer_vendor_centroid=False) as reader:
-        profile = reader.ms2[1]
-    with ThermoReader(RAW_PATH) as reader:
-        centroid = reader.ms2[1]
+def test_profile_mode_returns_profile_trace(profile_spectrum: MsnSpectrum, raw_spectrum: MsnSpectrum):
+    profile = profile_spectrum
+    centroid = raw_spectrum
     assert profile.spectrum_type == SpectrumType.PROFILE
     assert profile.charge is None
     assert len(profile) > len(centroid)  # trace has many samples per peak
@@ -285,21 +303,18 @@ def test_profile_mode_returns_profile_trace():
 
 
 @needs_fisher
-def test_getitem_by_scan_number():
-    with ThermoReader(RAW_PATH) as reader:
-        assert reader[3].scan_number == 3
-        assert reader.ms2[10].scan_number == 10
-        with pytest.raises(KeyError):
-            reader[999]
-        with pytest.raises(KeyError):
-            reader.ms1[1]  # scan 1 is MS2
+def test_getitem_by_scan_number(raw_reader: ThermoReader):
+    assert raw_reader[3].scan_number == 3
+    assert raw_reader.ms2[10].scan_number == 10
+    with pytest.raises(KeyError):
+        raw_reader[999]
+    with pytest.raises(KeyError):
+        raw_reader.ms1[1]  # scan 1 is MS2
 
 
 @needs_fisher
-def test_spectrum_is_processable():
-    with ThermoReader(RAW_PATH) as reader:
-        spec = reader.ms2[1]
-    processed = spec.filter(min_intensity=1000.0).normalize()
+def test_spectrum_is_processable(raw_spectrum: MsnSpectrum):
+    processed = raw_spectrum.filter(min_intensity=1000.0).normalize()
     assert len(processed) > 0
     assert processed.intensity.max() == pytest.approx(1.0)
 
