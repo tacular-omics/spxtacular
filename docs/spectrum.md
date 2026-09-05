@@ -278,6 +278,10 @@ Scales all intensities so that the chosen reference equals 1.0.
 Calling `normalize` on an already-normalized spectrum emits a `UserWarning` and leaves its data
 unchanged. The default non-inplace path returns an independent copy.
 
+Removing peaks, replacing intensities, rounding peaks, or combining multiple nonempty spectra
+clears the normalization marker. Normalize again after those operations when the resulting
+spectrum needs a unit reference.
+
 ```python
 norm = spec.normalize()            # max normalization
 norm = spec.normalize("tic")       # TIC normalization
@@ -324,7 +328,12 @@ def centroid(
 ) -> Self
 ```
 
-Converts a profile-mode spectrum to centroid mode using vectorized Gaussian fitting. Detects local maxima, fits a Gaussian to each triplet of points, and returns sub-bin peak positions. Ion mobility data is preserved at the apex value. `min_intensity="noise"` uses the MAD noise estimate. A number applies an absolute floor, and `None` keeps every detected local maximum.
+Converts a profile-mode spectrum to centroid mode using vectorized Gaussian fitting. Sharp local
+maxima use a three-point log-space fit for sub-bin positions. Flat maxima use the midpoint of the
+plateau's m/z bounds and its observed height, since a Gaussian fit is not identifiable there.
+Ion mobility is taken from the apex sample, or the lower middle sample of a plateau.
+`min_intensity="noise"` uses the MAD noise estimate. A number applies an absolute floor,
+and `None` applies no intensity floor. Boundary peaks without both flanks are excluded.
 
 Calling this on an already-centroided spectrum emits a `UserWarning` and leaves its data unchanged.
 The default non-inplace path returns an independent copy.
@@ -865,7 +874,10 @@ def round_mz(
 ) -> Self
 ```
 
-Round m/z values to `decimals` decimals and merge duplicate peaks via `sum` or `max` of their intensities. Drops `charge`, `im`, and `iso_score` arrays since the merge invalidates them.
+Round m/z values to `decimals` decimals and merge duplicate peaks via `sum` or `max` of their intensities.
+Clears normalization, mobility, and isotope scores. Charged spectra also lose their charge assignments
+and deconvolution record. Already decharged spectra retain their zero-charge marker and provenance
+so the rounded values remain identifiable as neutral masses.
 
 ---
 
@@ -878,7 +890,16 @@ Round m/z values to `decimals` decimals and merge duplicate peaks via `sum` or `
 def combine(cls, spectra: list[Spectrum]) -> Spectrum
 ```
 
-Concatenate peaks from multiple spectra into a single new `Spectrum`, sorted by m/z ascending. Optional per-peak arrays (`charge`, `im`, `iso_score`) are carried over only when **all** input spectra provide them. Scalar metadata (`spectrum_type`, `normalized`, `denoised`, `deconvolution`) is preserved when all spectra agree, otherwise set to `None`.
+Concatenate peaks from multiple spectra into a single new `Spectrum`, sorted by m/z ascending.
+Empty inputs do not erase metadata from nonempty inputs. Optional per-peak arrays (`charge`, `im`,
+`iso_score`) are carried over when every contributing input provides them. Combining multiple
+nonempty inputs clears normalization. Other scalar metadata is preserved when all inputs agree.
+
+Combining neutral masses with m/z values raises `ValueError`. Charged inputs with differing
+deconvolution records also raise, including records that differ only in processing parameters.
+Decharge those inputs separately before combining them, so each conversion uses its own carrier.
+A charged scan whose negative polarity would be lost in the base `Spectrum` also requires this
+explicit conversion.
 
 ```python
 combined = Spectrum.combine([spec1, spec2, spec3])

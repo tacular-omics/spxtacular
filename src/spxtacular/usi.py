@@ -423,6 +423,7 @@ def fetch_usi(
             raw = response.read().decode("utf-8")
             data = json.loads(raw)
     except urllib.error.HTTPError as e:
+        e.close()
         raise ValueError(f"HTTP {e.code} error fetching USI: {usi}. {e.reason}") from e
     except urllib.error.URLError as e:
         raise ValueError(f"Network error fetching USI: {usi}. {e.reason}") from e

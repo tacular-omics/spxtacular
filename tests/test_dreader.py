@@ -36,6 +36,17 @@ def test_dreader_detects_dda():
     assert DReader(str(HELA_D)).acquisition_type == AcquisitionType.DDA
 
 
+def test_fractional_precursor_scan_preserves_backend_mobility():
+    with tdfpy.DDA(str(HELA_D)) as reader:
+        precursor = next(p for p in reader.precursors if p.scan_number != int(p.scan_number))
+        converted = DReader._parse_dda_precursor(precursor)
+        restored = MsnSpectrum.from_json(converted.to_json())
+        assert isinstance(restored, MsnSpectrum)
+        assert restored.scan_number == precursor.precursor_id
+        assert restored.precursors is not None
+        assert restored.precursors[0].im == precursor.ook0
+
+
 def _fake_d_folder(tmp_path, msms_types):
     """A .d folder whose analysis.tdf declares only the given MsMsType values."""
     d_dir = tmp_path / "fake.d"

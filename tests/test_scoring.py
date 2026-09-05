@@ -31,6 +31,20 @@ _EXPECTED_KEYS = {
 }
 
 
+@pytest.mark.parametrize("ion_type", ["p", "n"])
+def test_position_free_fragments_match_and_score_without_a_ladder(ion_type: str) -> None:
+    import peptacular as pt
+
+    fragments = pt.fragment("PEPTIDE", ion_types=(pt.IonType(ion_type),), charges=(1, 2))
+    assert len(fragments) == 2
+    assert all(fragment.position is None for fragment in fragments)
+    spectrum = Spectrum(mz=np.array([f.mz for f in fragments]), intensity=np.array([10.0, 20.0]))
+    result = score(spectrum, fragments, tolerance=0.01, tolerance_type="da")
+    assert result["matched_fraction"] == 1.0
+    assert result["hyperscore"] == pytest.approx(math.log10(30.0))
+    assert result["longest_run"] == 0
+
+
 def _make_frag(mz: float, ion_type: str = "b", position: int = 1) -> MagicMock:
     f = MagicMock()
     f.mz = mz
@@ -401,12 +415,7 @@ def test_score_dict_fragments_returns_expected_keys() -> None:
 
 
 class TestHyperscoreFormula:
-    """Pin the hyperscore to X!Tandem.
-
-    Previously the only assertions were ``> 0.0`` and ``== 0`` with no matches,
-    so the formula could have been anything at all. These pin it to the published
-    definition and to the property that makes it discriminating.
-    """
+    """Check the base-10 dot-product/factorial convention independently."""
 
     def _by_spectrum(self):
         """A spectrum with two b ions and two y ions of known intensity."""
@@ -422,29 +431,25 @@ class TestHyperscoreFormula:
         order = np.argsort(mz)
         return Spectrum(mz=mz[order], intensity=inten[order]), chosen, b, y
 
-    def test_matches_the_xtandem_formula_exactly(self) -> None:
+    def test_matches_the_dot_product_factorial_formula(self) -> None:
         spec, frags, b, y = self._by_spectrum()
         result = score(spec, frags, tolerance=0.01, tolerance_type="da")
-        # X!Tandem: log10(sum(I_b) * sum(I_y) * n_b! * n_y!) with sums 30 and 70, n=2 each
-        expected = math.log10(30.0 * 70.0 * math.factorial(2) * math.factorial(2))
+        # Unit theoretical intensities give a dot product of 100.
+        expected = math.log10(100.0 * math.factorial(2) * math.factorial(2))
         assert result["hyperscore"] == pytest.approx(expected, rel=1e-12)
 
-    def test_a_searched_series_with_no_signal_collapses_the_score(self) -> None:
-        """The product is what discriminates: y-only evidence must not look good.
-
-        A sum over all matched peaks would happily score this; the product form
-        rejects it, which is what X!Tandem does and why it separates decoys better.
-        """
+    def test_missing_series_contributes_zero_factorial(self) -> None:
+        """One-sided evidence still contributes because 0! is one."""
         spec, frags, b, y = self._by_spectrum()
         # Keep only the y peaks in the spectrum; b was still searched for.
         y_mz = np.array(sorted(f.mz for f in y), dtype=np.float64)
         y_only = Spectrum(mz=y_mz, intensity=np.array([30.0, 40.0]))
         result = score(y_only, frags, tolerance=0.01, tolerance_type="da")
         assert result["matched_fraction"] > 0.0, "the y ions really did match"
-        assert result["hyperscore"] == 0.0
+        assert result["hyperscore"] == pytest.approx(math.log10(70.0 * math.factorial(2)))
 
     def test_generalises_beyond_b_and_y(self) -> None:
-        """An ETD c/z search scores; X!Tandem's hardcoded b/y would give zero."""
+        """Apply the same counting convention to c/z fragments."""
         import peptacular as pt
 
         frags = pt.fragment("PEPTIDEK", ion_types=("c", "z"), charges=(1,))
@@ -458,8 +463,8 @@ class TestHyperscoreFormula:
         base = score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
         scaled = Spectrum(mz=spec.mz, intensity=spec.intensity * 100.0)
         got = score(scaled, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
-        # Two series, so scaling every intensity by s shifts the score by 2*log10(s).
-        assert got == pytest.approx(base + 2 * math.log10(100.0), rel=1e-12)
+        # A single dot product scales once, regardless of the number of series.
+        assert got == pytest.approx(base + math.log10(100.0), rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

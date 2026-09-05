@@ -23,14 +23,13 @@ def _spec(
 ) -> Spectrum:
     mz = np.linspace(100.0, 400.0, n, dtype=np.float64)
     intensity = np.array([10.0, 50.0, 20.0, 15.0][:n], dtype=np.float64)
-    kw = {}
-    if charge:
-        kw["charge"] = np.array([1, 2, 1, 2][:n], dtype=np.int32)
-    if im:
-        kw["im"] = np.array([0.9, 1.0, 1.1, 1.2][:n], dtype=np.float64)
-    if iso_score:
-        kw["iso_score"] = np.array([0.8, 0.9, 0.7, 0.6][:n], dtype=np.float64)
-    return Spectrum(mz=mz, intensity=intensity, **kw)
+    return Spectrum(
+        mz=mz,
+        intensity=intensity,
+        charge=np.array([1, 2, 1, 2][:n], dtype=np.int32) if charge else None,
+        im=np.array([0.9, 1.0, 1.1, 1.2][:n], dtype=np.float64) if im else None,
+        iso_score=np.array([0.8, 0.9, 0.7, 0.6][:n], dtype=np.float64) if iso_score else None,
+    )
 
 
 def _multi_spec() -> Spectrum:

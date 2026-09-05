@@ -1,6 +1,6 @@
 {
   "title": "spxtacular: Mass spectrometry spectrum processing in Python",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "description": "spxtacular is a Python library for general mass-spectrum processing through chainable Spectrum and MsnSpectrum objects. Processing operations include denoising, peak filtering, adaptive biological isotope deconvolution, charge assignment, neutral-mass conversion, matching, scoring, and spectrum comparison. Reader adapters cover Bruker timsTOF directories, mzML files, and Thermo RAW files, while separate readers and writers support MGF, MS2, and MSP peak lists and spectral libraries. Plotly-based views and accessible tables support inspection, optional adapters exchange spectra with matchms and spectrum_utils, and spectrl integration provides URL-safe sharing. spxtacular supports interactive analysis, pipeline construction, spectral-library work, and method development across proteomics, metabolomics, lipidomics, glycomics, and oligonucleotide data.",
   "creators": [
     {

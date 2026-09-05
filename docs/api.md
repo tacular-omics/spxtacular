@@ -812,7 +812,14 @@ extract_xic(
 
 `extract_xic()` handles every target in one pass. `Chromatogram.apex_rt` reports the most intense
 time point and `Chromatogram.total` reports summed intensity. The omitted `meta` default is a new
-empty dictionary for each object. The plotting wrappers are:
+empty dictionary for each object.
+
+Extracted traces record `meta["rt_unit"]` as `"s"` when every scan has a retention time,
+or `"scan_index"` when none do. Mixed missing and present times, or nonfinite times, raise
+`ValueError`. Plots label scan indices explicitly and reject overlaid traces with different
+axis units. `total` sums samples without integration over time.
+
+The plotting wrappers are:
 
 ```python
 plot_chromatogram(

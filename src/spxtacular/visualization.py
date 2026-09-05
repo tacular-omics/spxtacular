@@ -715,7 +715,7 @@ def plot_chromatogram(
     if isinstance(chromatograms, _Chrom):
         traces_in = [chromatograms]
     elif isinstance(chromatograms, Sequence) and all(isinstance(c, _Chrom) for c in chromatograms):
-        traces_in = list(chromatograms)
+        traces_in = list(cast("Sequence[_Chrom]", chromatograms))
     else:
         spectra = cast("Iterable[Spectrum]", chromatograms)
         traces_in = [extract_chromatogram(spectra)]
@@ -723,6 +723,15 @@ def plot_chromatogram(
     if fill is None:
         fill = len(traces_in) == 1
 
+    units = {chrom.meta.get("rt_unit", "s") for chrom in traces_in if len(chrom)}
+    if len(units) > 1:
+        raise ValueError("Cannot plot retention times and scan indices on the same axis")
+    unit = next(iter(units), "s")
+    if unit not in ("s", "scan_index"):
+        raise ValueError(f"Unsupported chromatogram time unit: {unit!r}")
+    axis_title = "Scan index" if unit == "scan_index" else "Retention time (s)"
+    time_label = "Scan index" if unit == "scan_index" else "RT"
+    time_suffix = "" if unit == "scan_index" else " s"
     fig = go.Figure()
     for i, chrom in enumerate(traces_in):
         # Several traces are distinct series, so they take categorical slots; a
@@ -740,7 +749,14 @@ def plot_chromatogram(
                 line={"color": color, "width": 1.8},
                 fill="tozeroy" if fill else None,
                 fillcolor=_rgba(color, 0.12) if fill else None,
-                hovertemplate="RT: %{x:.2f} s<br>intensity: %{y:.4g}<extra>" + (chrom.label or "") + "</extra>",
+                hovertemplate=(
+                    time_label
+                    + ": %{x:.2f}"
+                    + time_suffix
+                    + "<br>intensity: %{y:.4g}<extra>"
+                    + (chrom.label or "")
+                    + "</extra>"
+                ),
             )
         )
 
@@ -750,7 +766,7 @@ def plot_chromatogram(
                 fig.add_annotation(
                     x=float(chrom.rt[apex]),
                     y=float(chrom.intensity[apex]),
-                    text=f"{chrom.rt[apex]:.1f} s",
+                    text=f"{chrom.rt[apex]:.1f}{time_suffix}",
                     showarrow=False,
                     yshift=10,
                     font={"size": 10, "color": theme.text_color("secondary", theme_mode)},
@@ -760,7 +776,7 @@ def plot_chromatogram(
     fig.update_layout(
         template=theme.template(theme_mode),
         title=title or (traces_in[0].label if len(traces_in) == 1 else "Chromatograms"),
-        xaxis_title="Retention time (s)",
+        xaxis_title=axis_title,
         yaxis_title="Intensity",
         showlegend=len(traces_in) > 1,
         **layout_kwargs,

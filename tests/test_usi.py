@@ -178,6 +178,18 @@ class TestRequestUrl:
 
 
 class TestFetchErrors:
+    def test_http_error_response_body_is_closed(self) -> None:
+        from email.message import Message
+        from io import BytesIO
+        from urllib.error import HTTPError
+
+        body = BytesIO(b"Not found")
+        error = HTTPError("https://example.org/spectrum", 404, "Not Found", Message(), body)
+        with patch("spxtacular.usi.urllib.request.urlopen", side_effect=error):
+            with pytest.raises(ValueError, match="HTTP 404"):
+                fetch_usi(USI)
+        assert body.closed
+
     def test_incomplete_read_is_wrapped_in_valueerror(self) -> None:
         """http.client exceptions are not OSErrors, so they escaped unwrapped."""
         response = _response([SPECTRUM_ENTRY])

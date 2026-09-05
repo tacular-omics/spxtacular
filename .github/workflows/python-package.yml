@@ -24,18 +24,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       with:
         enable-cache: true
         cache-dependency-glob: "uv.lock"
         python-version: ${{ matrix.python-version }}
     - name: Install just
-      uses: extractions/setup-just@v2
+      uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
     - name: Install dependencies
       run: just install
     - name: Lint with ruff
@@ -47,38 +47,87 @@ jobs:
     - name: Test with pytest
       run: just test-cov
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/spxtacular
         fail_ci_if_error: false
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/spxtacular
         report_type: test_results
         fail_ci_if_error: false
 
-  # Guards the CLAUDE.md promise: spxtacular must import with *no* optional
-  # extras installed, and DReader/MzmlReader must stay importable while raising
-  # ImportError only on instantiation. Downstream libraries (e.g. pydiode)
-  # depend on this, so it gets its own job with no dev deps and no extras.
-  minimal-install:
-    name: Minimal install (no extras, no dev deps)
+  portable-wheel:
+    name: Wheel (${{ matrix.os }}, Python ${{ matrix.python }}, ${{ matrix.resolution }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12", "3.13", "3.14"]
+        resolution: [latest]
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+            resolution: lowest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Build distributions
+        run: uv build --out-dir wheel-dist
+      - name: Test installed wheel outside checkout
+        shell: bash
+        env:
+          RESOLUTION: ${{ matrix.resolution }}
+        run: |
+          args=()
+          if [ "$RESOLUTION" = lowest ]
+          then
+            args+=(--lowest)
+          fi
+          uv run --no-project python .github/scripts/check_wheel.py wheel-dist "${args[@]}"
+
+  docs:
+    name: Strict documentation build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-        python-version: "3.12"
-    - name: Install the package alone (no extras, no dependency groups)
-      run: |
-        uv venv
-        uv pip install .
-    - name: Assert optional backends degrade correctly
-      run: uv run --no-project python .github/scripts/check_minimal_install.py
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv sync --locked
+      - run: uv run --locked mkdocs build --strict
+
+  thermo:
+    name: Thermo integration with required runtime
+    runs-on: ubuntu-latest
+    env:
+      PYTHONNET_RUNTIME: coreclr
+      SPXTACULAR_REQUIRE_THERMO: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: "8.0.x"
+      - run: uv sync --locked
+      - name: Verify backend is usable
+        run: uv run --locked python -c "__import__('spxtacular.thermo', fromlist=['_require_fisher'])._require_fisher()"
+      - name: Run vendor integration tests
+        run: uv run --locked pytest tests/test_thermo.py -n 0 --junitxml=thermo-junit.xml
+      - name: Reject skipped integration tests
+        run: uv run --locked python .github/scripts/check_no_skips.py thermo-junit.xml

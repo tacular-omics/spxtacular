@@ -7,7 +7,7 @@ what spectral library search, replicate comparison and clustering are built on.
 
     cosine(query, reference, tolerance=20)                  # 0-1
     modified_cosine(query, reference, 500.25, 508.28)       # tolerates a mass shift
-    entropy_similarity(query, reference)                    # sharper discrimination
+    entropy_similarity(query, reference)                    # unweighted entropy
 
 All three align peaks within a tolerance, **one-to-one**: a peak may back at most
 one match. Greedy alignment by descending contribution is the convention here
@@ -202,13 +202,13 @@ def entropy_similarity(
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
 ) -> float:
-    """Entropy similarity between two spectra, 0 to 1 (Li et al. 2021).
+    """Unweighted entropy similarity between two spectra, from 0 to 1.
 
-    Merges the two spectra and compares the entropy of the merged intensity
-    distribution against the entropies of the originals. Where cosine treats
-    every matched peak as equally informative, this weights by how much
-    *structure* the peaks carry, which separates true from false matches more
-    sharply -- the reason it has largely displaced cosine for library search.
+    Compare the entropy of the merged distribution with the original entropies.
+    Intensities are clipped to nonnegative values and probability-normalized.
+    Peaks are greedily aligned one-to-one. No entropy-dependent weighting,
+    noise removal, precursor removal, or additional centroiding is applied.
+    Preprocess inputs consistently before comparing scores.
 
     Returns
     -------

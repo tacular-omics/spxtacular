@@ -12,14 +12,26 @@ from __future__ import annotations
 
 import sys
 
-OPTIONAL_BACKENDS = ("tdfpy", "mzmlpy", "numba", "spectrl", "matchms", "spectrum_utils")
+OPTIONAL_BACKENDS = ("tdfpy", "mzmlpy", "numba", "spectrl", "matchms", "spectrum_utils", "fisher_py")
 
 
 def main() -> int:
+    from importlib.resources import files
+
     import numpy as np
 
     import spxtacular
-    from spxtacular import DReader, MsnSpectrum, MzmlReader, Precursor, Spectrum, to_matchms, to_spectrum_utils
+    from spxtacular import (
+        DReader,
+        MsnSpectrum,
+        MzmlReader,
+        Precursor,
+        Spectrum,
+        ThermoReader,
+        to_matchms,
+        to_spectrum_utils,
+    )
+    from spxtacular.serialization import get_json_schema
 
     failures: list[str] = []
 
@@ -32,7 +44,7 @@ def main() -> int:
         else:
             failures.append(f"{mod} must NOT be installed in the minimal job")
 
-    for cls in (DReader, MzmlReader):
+    for cls in (DReader, MzmlReader, ThermoReader):
         name = cls.__name__
         try:
             cls("nonexistent.path")
@@ -69,6 +81,12 @@ def main() -> int:
             failures.append(f"{name} raised {type(exc).__name__} instead of ImportError: {exc}")
         else:
             failures.append(f"{name} should raise ImportError without its backend")
+
+    for kind in ("spectrum", "chromatogram"):
+        assert get_json_schema(kind)["$schema"].endswith("2020-12/schema")
+    assert files("spxtacular").joinpath("py.typed").is_file()
+    spectrum = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))
+    assert Spectrum.from_json(spectrum.to_json()) == spectrum
 
     if failures:
         for failure in failures:

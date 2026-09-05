@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self
 
 import numpy as np
 
@@ -14,6 +14,11 @@ from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
 from .peaklist import MgfReader, Ms2Reader, MspReader, PeakListLookup
 from .thermo import ThermoReader, ThermoScanLookup
+
+if TYPE_CHECKING:
+    from mzmlpy import Spectrum as MzmlSpectrum
+    from tdfpy import DiaWindow, PrmTransition
+    from tdfpy import Precursor as TdfPrecursor
 
 # The optional backends load native libraries, so a broken install can raise
 # OSError rather than ImportError. Either way the backend is simply unavailable —
@@ -23,7 +28,7 @@ try:
 
     _HAS_MZMLPY = True
 except (ImportError, OSError):
-    mzp = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    mzp = None
     _HAS_MZMLPY = False
 
 try:
@@ -31,7 +36,7 @@ try:
 
     _HAS_TDFPY = True
 except (ImportError, OSError):
-    tdfpy = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    tdfpy = None
     _HAS_TDFPY = False
 
 # tdfpy's smoothing branch (post-1.2.0) reshaped Frame.centroid() — the old
@@ -42,7 +47,7 @@ try:
 
     _HAS_NEW_CENTROID_API = True
 except (ImportError, OSError):
-    _MergePeaksCentroider = None  # type: ignore[assignment] # ty: ignore[invalid-assignment]
+    _MergePeaksCentroider = None
     _HAS_NEW_CENTROID_API = False
 
 """
@@ -358,7 +363,7 @@ class DReader:
         )
 
     @staticmethod
-    def _parse_dda_precursor(precursor: tdfpy.Precursor) -> MsnSpectrum:
+    def _parse_dda_precursor(precursor: TdfPrecursor) -> MsnSpectrum:
         peaks = precursor.peaks
         match precursor.polarity:
             case "positive":
@@ -408,7 +413,7 @@ class DReader:
             activation_type=ActivationType.PASEF,
         )
 
-    def _parse_dia_window(self, window: tdfpy.DiaWindow) -> MsnSpectrum:
+    def _parse_dia_window(self, window: DiaWindow) -> MsnSpectrum:
         peaks = self._centroid(window)
         match window.polarity:
             case "positive":
@@ -446,7 +451,7 @@ class DReader:
             im_type=IMType.OOK0,
         )
 
-    def _parse_prm_transition(self, transition: tdfpy.PrmTransition) -> MsnSpectrum:
+    def _parse_prm_transition(self, transition: PrmTransition) -> MsnSpectrum:
         peaks = self._centroid(transition)
         match transition.polarity:
             case "positive":
@@ -664,6 +669,7 @@ class MzmlReader:
 
     def _new_handle(self) -> Any:
         """Create an mzmlpy handle with this reader's public I/O options."""
+        assert mzp is not None
         handle = mzp.Mzml(
             self.mzml_path,
             gzip_mode=self.gzip_mode,
@@ -680,7 +686,7 @@ class MzmlReader:
         return self._last_access_strategy
 
     @staticmethod
-    def _parse_spectrum(spec: mzp.Spectrum, decon: _DeconvolutionRefs = _NO_DECONVOLUTION) -> MsnSpectrum:
+    def _parse_spectrum(spec: MzmlSpectrum, decon: _DeconvolutionRefs = _NO_DECONVOLUTION) -> MsnSpectrum:
         """Convert a raw mzmlpy Spectrum into an MsnSpectrum.
 
         ``decon`` carries the file's deconvolution ``dataProcessing`` ids (see
@@ -813,8 +819,8 @@ class MzmlReader:
                 if has_target_mz and has_lower and has_upper:
                     isolation_ranges.append(
                         (
-                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset,  # type: ignore
-                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset,  # type: ignore
+                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset,
+                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset,
                         )
                     )
         if len(set(collision_energies)) > 1:

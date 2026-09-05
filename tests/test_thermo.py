@@ -10,6 +10,7 @@ backend is skipped — not failed — on machines without one.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from collections.abc import Iterator
@@ -28,6 +29,8 @@ try:
     thermo_module._require_fisher()
     _HAS_FISHER = True
 except ImportError:
+    if os.environ.get("SPXTACULAR_REQUIRE_THERMO") == "1":
+        raise
     _HAS_FISHER = False
 
 needs_fisher = pytest.mark.skipif(not _HAS_FISHER, reason="fisher-py or its .NET runtime is unavailable")
