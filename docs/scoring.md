@@ -90,7 +90,7 @@ result = score(spectrum, fragments, tolerance=10, tolerance_type="ppm")
 
 | Key | Description |
 |---|---|
-| `hyperscore` | X!Tandem hyperscore: log10(∏ₛ ΣIₛ) + Σₛ log10(nₛ!) over the searched ion series |
+| `hyperscore` | Base-10 matched-intensity dot product plus log-factorial terms per ion series |
 | `probability_score` | -log10 P(>= k matches by chance) |
 | `total_matched_intensity` | Sum of matched peak intensities |
 | `matched_fraction` | Fraction of theoretical ions matched |
@@ -104,18 +104,25 @@ collapsed to avoid inflating factorial terms in the hyperscore.
 
 ### Hyperscore
 
-For a b/y search this is numerically identical to the X!Tandem hyperscore, so values are
-comparable with X!Tandem, Comet and MSFragger. The product runs over whichever series you
-*searched* rather than a hardcoded b/y, so an ETD c/z search is scored the same way.
+The score uses `log10(sum(I_matched)) + sum_s(log10(n_s!))`, with unit theoretical
+intensities. Each observed peak contributes once to the intensity sum. Each distinct
+`(ion_type, position)` contributes once to its series count, so charge, neutral-loss,
+and isotope variants do not inflate the factorial terms. Missing series contribute
+`0! = 1`, and one-sided evidence can have a positive score. No matches or a nonpositive
+matched-intensity sum returns zero.
 
-The product is what makes it discriminating: a searched series with no signal collapses the whole
-score to zero, so a PSM supported only by b ions cannot look as convincing as one corroborated
-from both directions.
+This follows the dot-product/factorial structure described in
+[OpenMS's HyperScore documentation](https://openms.de/current_doxygen/html/HyperScore_8h_source.html).
+The base-10 logarithm, unit theoretical intensities, preprocessing, and duplicate
+handling are explicit spxtacular conventions. Scores are not guaranteed numerically
+interchangeable with X!Tandem, OpenMS, Comet, or MSFragger outputs.
 
 !!! warning
-    The intensity term uses **raw** intensities, so the score shifts by `log10(s)` per series if
-    the spectrum is scaled by `s`, and can go negative on a normalised spectrum. Only compare
-    hyperscores computed on identically scaled spectra.
+    Versions through 0.6.0 multiplied the intensity sums of different ion series.
+    That was a different heuristic, incorrectly described as identical to X!Tandem.
+    Recompute stored scores and retune thresholds when upgrading. Scaling all
+    intensities by `s` now shifts a positive-signal score by `log10(s)`, once rather
+    than once per ion series. Normalized inputs can produce negative scores.
 
 ### Spectral angle
 
@@ -176,7 +183,7 @@ entropy_similarity(query, reference, tolerance=0.02)           # 0-1
 |---|---|
 | `cosine` | The standard spectral dot product: sqrt-transformed intensities, unit-normalised, peaks matched one-to-one |
 | `modified_cosine` | Cosine that also matches peaks displaced by the precursor mass difference — the GNPS molecular-networking metric |
-| `entropy_similarity` | Entropy similarity (Li et al. 2021), which discriminates more sharply and has largely displaced cosine for library search |
+| `entropy_similarity` | Unweighted entropy similarity with one-to-one greedy peak alignment |
 
 All three are symmetric, scale-invariant, and bounded in `[0, 1]`: identical spectra score 1,
 spectra with no shared peaks score 0.
@@ -198,3 +205,12 @@ modified_cosine(a, b, 500.0, 579.966, tolerance=0.02)     # 1.00 - recovered
 ```
 
 It reduces exactly to `cosine` when the two precursors are equal.
+
+`entropy_similarity` uses the unweighted entropy expression. It does not apply
+entropy-dependent intensity weights or automatically remove precursor and noise peaks.
+Negative intensities are clipped to zero and each spectrum is normalized to a probability
+distribution. Preprocess both inputs consistently. The
+[MS Entropy reference](https://msentropy.readthedocs.io/en/latest/classical_entropy_similarity.html)
+distinguishes weighted and unweighted variants and documents its own cleaning defaults.
+The tests include independent values for unambiguous peak alignments. They do not establish
+that one metric outperforms another for compound identification.

@@ -7,22 +7,25 @@ on:
       - ".github/workflows/draft-pdf.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   paper:
     runs-on: ubuntu-latest
     name: JOSS paper draft
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Build draft PDF
-        uses: openjournals/openjournals-draft-action@master
+        uses: openjournals/openjournals-draft-action@85a18372e48f551d8af9ddb7a747de685fbbb01c # master, verified 2026-09-04
         with:
           journal: joss
           paper-path: paper/paper.md
 
       - name: Upload draft
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: joss-paper
           path: paper/paper.pdf

@@ -41,7 +41,7 @@ scoring, interoperability, and interactive visualization.
 ```bash
 pip install spxtacular
 
-# Optional: Numba JIT acceleration (~3–4× faster deconvolution)
+# Optional: Numba JIT acceleration
 pip install spxtacular[numba]
 
 # Optional: share spectra as compact URL-safe tokens (spectrl)

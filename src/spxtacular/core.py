@@ -164,116 +164,58 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
     return result
 
 
-def _apex_indices(intensity: NDArray[np.float64]) -> NDArray[np.intp]:
-    """Indices of local maxima, treating a flat top as one peak.
-
-    The obvious test — ``prev < curr > next`` — silently discards any peak whose
-    apex is two or more equal samples, which is routine in quantised or saturated
-    data. Runs of equal intensity are collapsed first, so a plateau is compared
-    against its neighbouring *values* rather than against itself, and the apex is
-    reported at the middle of the run.
-    """
-    n = intensity.size
-    if n < 3:
-        return np.empty(0, dtype=np.intp)
-
-    change = np.empty(n, dtype=bool)
-    change[0] = True
-    change[1:] = intensity[1:] != intensity[:-1]
-    starts = np.flatnonzero(change)
-    if starts.size < 3:
-        return np.empty(0, dtype=np.intp)
-
-    values = intensity[starts]
-    is_max = (values[:-2] < values[1:-1]) & (values[1:-1] > values[2:])
-    run = np.flatnonzero(is_max) + 1  # index into `starts`
-
-    # Middle sample of each winning run; for a single-sample run this is itself.
-    lo = starts[run]
-    hi = np.where(run + 1 < starts.size, starts[np.minimum(run + 1, starts.size - 1)] - 1, n - 1)
-    return ((lo + hi) // 2).astype(np.intp)
-
-
 def _centroid_peaks(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
     im: NDArray[np.float64] | None = None,
     min_intensity: float | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64] | None]:
-    """Centroid peaks using numpy-optimized vectorized Gaussian fitting.
+    """Fit sharp apexes in log space and retain flat apexes at their midpoint.
 
-    ``min_intensity`` drops apexes at or below the given value *before* fitting.
-    Without one every local maximum is a peak, so noise alone produces orders of
-    magnitude more centroids than there are real peaks.
+    A plateau does not identify a Gaussian height or width. Report its observed
+    maximum and the midpoint of its m/z bounds, with mobility from the lower
+    middle sample. Boundary runs without both flanks are not local maxima.
     """
+    empty = np.empty(0, dtype=np.float64)
     if len(intensity) < 4:
-        empty_im = np.empty(0, dtype=np.float64) if im is not None else None
-        return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64), empty_im
+        return empty, empty.copy(), empty.copy() if im is not None else None
 
-    # Match pymzml: start at index 2
-    i_prev = intensity[1:-2]
-    i_curr = intensity[2:-1]
-    i_next = intensity[3:]
-
-    mz_prev = mz[1:-2]
-    mz_curr = mz[2:-1]
-    mz_next = mz[3:]
-
-    # Apexes found on the run-collapsed sequence, expressed in this window's
-    # coordinates (the window starts at index 2 of the full array).
-    apex = _apex_indices(intensity) - 2
-    is_peak = np.zeros(i_curr.size, dtype=bool)
-    apex = apex[(apex >= 0) & (apex < i_curr.size)]
-    is_peak[apex] = True
-    is_peak &= (i_prev > 0) & (i_next > 0)
-
+    starts = np.r_[0, np.flatnonzero(intensity[1:] != intensity[:-1]) + 1]
+    values = intensity[starts]
+    runs = np.flatnonzero((values[1:-1] > values[:-2]) & (values[1:-1] > values[2:])) + 1
+    lo = starts[runs]
+    hi = starts[runs + 1] - 1
+    keep = np.isfinite(values[runs]) & (values[runs] > 0)
     if min_intensity is not None:
-        is_peak &= i_curr > min_intensity
+        keep &= values[runs] > min_intensity
+    lo, hi = lo[keep], hi[keep]
+    apex = (lo + hi) // 2
+    centers = (mz[lo] + mz[hi]) / 2.0
+    heights = intensity[apex].copy()
 
-    # Filter out peaks with irregular spacing
-    dx1 = mz_curr - mz_prev
-    dx2 = mz_next - mz_curr
-    valid_spacing = ~((dx1 > dx2 * 10) | (dx1 * 10 < dx2))
-    is_peak = is_peak & valid_spacing
-
-    # Extract valid peaks
-    x1 = mz_prev[is_peak]
-    y1 = i_prev[is_peak]
-    x2 = mz_curr[is_peak]
-    y2 = i_curr[is_peak]
-    x3 = mz_next[is_peak]
-    y3 = i_next[is_peak]
-
-    if len(y1) == 0:
-        empty_im = np.empty(0, dtype=np.float64) if im is not None else None
-        return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64), empty_im
-
-    # Handle y3 == y1 case
-    y3_adjusted = np.where(y3 == y1, y3 + 0.01 * y1, y3)
-
-    # Vectorized Gaussian fit
-    with np.errstate(divide="ignore", invalid="ignore"):
-        double_log = np.log(y2 / y1) / np.log(y3_adjusted / y1)
-        numerator = double_log * (x1 * x1 - x3 * x3) - x1 * x1 + x2 * x2
-        denominator = 2 * (x2 - x1) - 2 * double_log * (x3 - x1)
-        mue = numerator / denominator
-
-        c_squared_num = x2 * x2 - x1 * x1 - 2 * x2 * mue + 2 * x1 * mue
-        c_squared_denom = 2 * np.log(y1 / y2)
-        c_squared = c_squared_num / c_squared_denom
-
-        a = y1 * np.exp((x1 - mue) * (x1 - mue) / (2 * c_squared))
-
-    # Filter only invalid numerical results
-    valid = np.isfinite(mue) & np.isfinite(a)
-
-    # Handle ion mobility if present - use apex value
-    im_result = None
-    if im is not None:
-        im_apex = im[2:-1][is_peak][valid]
-        im_result = im_apex
-
-    return mue[valid], a[valid], im_result
+    sharp = lo == hi
+    fit = sharp & (intensity[lo - 1] > 0) & (intensity[hi + 1] > 0)
+    # Keep the existing positive-flank requirement for Gaussian fits.
+    valid = ~sharp | fit
+    indices = np.flatnonzero(fit)
+    x = mz[apex[indices]]
+    left = mz[lo[indices] - 1] - x
+    right = mz[hi[indices] + 1] - x
+    regular = (left < 0) & (right > 0) & (-left <= right * 10) & (right <= -left * 10)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        log_apex = np.log(heights[indices])
+        left_slope = (np.log(intensity[lo[indices] - 1]) - log_apex) / left
+        right_slope = (np.log(intensity[hi[indices] + 1]) - log_apex) / right
+        quadratic = (right_slope - left_slope) / (right - left)
+        linear = left_slope - quadratic * left
+        offset = -linear / (2 * quadratic)
+        fitted_height = np.exp(log_apex - linear * linear / (4 * quadratic))
+    centers[indices] = x + offset
+    heights[indices] = fitted_height
+    valid[indices] = regular & (quadratic < 0) & (offset >= left) & (offset <= right)
+    valid &= np.isfinite(centers) & np.isfinite(heights)
+    mobility = im[apex[valid]].copy() if im is not None else None
+    return centers[valid], heights[valid], mobility
 
 
 def _is_ppm(tolerance_type: ToleranceLike) -> bool:
@@ -1064,7 +1006,9 @@ class Spectrum:
         )
 
     def _apply_mask(self, mask: NDArray[np.bool_], inplace: bool = False) -> Self:
+        normalized = self.normalized if bool(np.all(mask)) else None
         if inplace:
+            self.normalized = normalized
             self.mz = self.mz[mask]
             self.intensity = self.intensity[mask]
             if self.charge is not None:
@@ -1082,6 +1026,7 @@ class Spectrum:
             charge=self.charge[mask] if self.charge is not None else None,
             im=self.im[mask] if self.im is not None else None,
             iso_score=self.iso_score[mask] if self.iso_score is not None else None,
+            normalized=normalized,
         )
 
     def sort(
@@ -1124,14 +1069,17 @@ class Spectrum:
     def combine(cls, spectra: list["Spectrum"]) -> "Spectrum":
         """Concatenate peaks from multiple spectra into a single new Spectrum.
 
-        Peaks are sorted by m/z ascending. Optional per-peak arrays (charge,
-        im, score) are included only if **all** spectra carry that array;
-        otherwise the field is dropped (set to None). Scalar metadata
-        (spectrum_type, normalized, denoised, deconvolution) is preserved when all spectra
-        share the same value, otherwise set to None.
+        Peaks are sorted by m/z ascending. Empty inputs do not erase metadata
+        from nonempty inputs. Optional arrays are kept when every contributing
+        spectrum carries them. Normalization is cleared when combining multiple
+        nonempty spectra. Other scalar metadata is kept when shared.
 
-        MsnSpectrum instances are accepted as input but the return type is
-        always the base Spectrum — per-scan MSn metadata is not combinable.
+        Neutral masses cannot be mixed with m/z values. Charged spectra must
+        have matching deconvolution records, since dropping the carrier would
+        change later mass conversions. Decharge inputs separately when their
+        records differ, then combine the neutral spectra.
+
+        MsnSpectrum inputs return a base Spectrum, without scan metadata.
 
         Parameters
         ----------
@@ -1150,6 +1098,28 @@ class Spectrum:
         """
         if not spectra:
             raise ValueError("combine() requires at least one Spectrum")
+
+        # Empty inputs contribute no measurements and must not erase state.
+        spectra = [s for s in spectra if len(s)] or spectra
+        neutral = [s.is_decharged for s in spectra]
+        if any(neutral) and not all(neutral):
+            raise ValueError("combine() cannot mix neutral masses and m/z. Decharge inputs separately first.")
+        for spec in spectra:
+            if spec.charge is not None and np.any(spec.charge == 0) and not spec.is_decharged:
+                raise ValueError("combine() cannot accept mixed neutral and charged peaks")
+        records = {s.deconvolution for s in spectra}
+        if not all(neutral) and any(s.charge is not None for s in spectra) and len(records) > 1:
+            raise ValueError(
+                "combine() cannot discard differing deconvolution records for charged spectra. "
+                "Decharge inputs separately before combining."
+            )
+        # A base Spectrum cannot retain a scan's negative polarity fallback.
+        if (
+            not all(neutral)
+            and any(s.charge is not None for s in spectra)
+            and any(s.deconvolution is None and s._resolve_ionization_model(None) != PROTONATED for s in spectra)
+        ):
+            raise ValueError("combine() would lose scan polarity. Decharge inputs separately first.")
 
         combined_mz = np.concatenate([s.mz for s in spectra])
         combined_intensity = np.concatenate([s.intensity for s in spectra])
@@ -1186,8 +1156,7 @@ class Spectrum:
         types = {s.spectrum_type for s in spectra}
         spectrum_type: SpectrumType | str | None = types.pop() if len(types) == 1 else None
 
-        normalized_vals = {s.normalized for s in spectra}
-        normalized: str | None = normalized_vals.pop() if len(normalized_vals) == 1 else None
+        normalized = spectra[0].normalized if len(spectra) == 1 else None
 
         denoised_vals = {s.denoised for s in spectra}
         denoised: str | None = denoised_vals.pop() if len(denoised_vals) == 1 else None
@@ -1241,6 +1210,8 @@ class Spectrum:
         assigned to ``mz`` would otherwise break the next array operation) and
         a failed update leaves the original object unchanged.
         """
+        if "intensity" in kwargs and "normalized" not in kwargs:
+            kwargs["normalized"] = None
         if inplace:
             candidate = replace(self, **kwargs)
             for field in fields(candidate):
@@ -1613,6 +1584,9 @@ class Spectrum:
                 stacklevel=2,
             )
             return self if inplace else self.copy()
+
+        if np.any(self.charge == 0):
+            raise ValueError("Cannot decharge a mixture of neutral masses and charged m/z values")
 
         # charge > 0, not != -1: a charge of 0 means "already decharged", and
         # multiplying by it would collapse the peak to a neutral mass of 0.0.
@@ -2252,15 +2226,18 @@ class Spectrum:
         return self.update(
             mz=unique_mz,
             intensity=new_intensity,
-            charge=None,
+            charge=np.zeros(len(unique_mz), dtype=np.int32) if self.is_decharged else None,
             im=None,
             iso_score=None,
-            # Rounding merges peaks and drops the charge/score arrays, so the
-            # result is no longer deconvoluted. Leaving the flag set wedges the
-            # spectrum: decharge() refuses it and deconvolute() no-ops on it.
+            # Neutral masses retain their zero-charge marker. Charged m/z
+            # values lose their assignments when rounded peaks are merged.
             spectrum_type=(
-                SpectrumType.CENTROID if self.spectrum_type == SpectrumType.DECONVOLUTED else self.spectrum_type
+                SpectrumType.CENTROID
+                if self.spectrum_type == SpectrumType.DECONVOLUTED and not self.is_decharged
+                else self.spectrum_type
             ),
+            deconvolution=self.deconvolution if self.is_decharged else None,
+            normalized=None,
             inplace=inplace,
         )
 
@@ -2412,6 +2389,12 @@ class MsnSpectrum(Spectrum):
 
     isolation_mz_range: tuple[float, float] | None = None  # Isolation window (min_mz, max_mz) for MS2
     isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
+
+    def __post_init__(self) -> None:
+        Spectrum.__post_init__(self)
+        # Frozen Precursor values may be shared, but their list must be owned.
+        if self.precursors is not None:
+            self.precursors = list(self.precursors)
 
     _JSON_META_FIELDS: ClassVar[frozenset[str]] = Spectrum._JSON_META_FIELDS | frozenset(
         {

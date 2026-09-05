@@ -18,8 +18,8 @@ keywords = [
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
-    "peptacular>=3.2.0",
-    "paftacular>=1.1.0",
+    "peptacular>=3.3.0",
+    "paftacular>=1.2.0",
     "plotly>=6.6.0",
 ]
 authors = [
@@ -34,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Chemistry",
@@ -72,22 +73,22 @@ only-include = [
 
 [project.optional-dependencies]
 numba = ["numba>=0.64.0"]
-bruker = ["tdfpy>=3.0.0"]
-mzml = ["mzmlpy>=0.7.0"]
+bruker = ["tdfpy>=4.0.1"]
+mzml = ["mzmlpy>=0.9.0"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.0"]
-readers = ["tdfpy>=3.0.0", "mzmlpy>=0.7.0", "fisher-py>=2.0.0"]
-spectrl = ["spectrl>=1.0.0"]
+readers = ["tdfpy>=4.0.1", "mzmlpy>=0.9.0", "fisher-py>=2.0.0"]
+spectrl = ["spectrl>=1.1.0"]
 matchms = ["matchms>=0.33.1"]
 spectrum-utils = ["spectrum-utils>=0.5.0"]
 interop = ["matchms>=0.33.1", "spectrum-utils>=0.5.0"]
 all = [
     "numba>=0.64.0",
-    "tdfpy>=3.0.0",
-    "mzmlpy>=0.7.0",
+    "tdfpy>=4.0.1",
+    "mzmlpy>=0.9.0",
     "fisher-py>=2.0.0",
-    "spectrl>=1.0.0",
+    "spectrl>=1.1.0",
     "matchms>=0.33.1",
     "spectrum-utils>=0.5.0",
 ]
@@ -99,16 +100,16 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "matchms>=0.33.1",
-    "mzmlpy>=0.7.0",
+    "mzmlpy>=0.9.0",
     "numba>=0.64.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist>=3.8,<4",
     "ruff>=0.14.11",
-    "spectrl>=1.0.0",
+    "spectrl>=1.1.0",
     "spectrum-utils>=0.5.0",
-    "tdfpy>=3.0.0",
+    "tdfpy>=4.0.1",
     "ty>=0.0.11",
 ]
 
@@ -171,12 +172,7 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config -n 4 --dist loadscope --timeout=15"
-filterwarnings = [
-    "error",
-    # tdfpy leaks its sqlite3 connections; the ResourceWarning surfaces at GC
-    # time in unrelated tests and is not actionable from this repo.
-    "ignore::ResourceWarning",
-]
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["src/spxtacular"]

@@ -154,6 +154,40 @@ class TestExtractChromatogram:
         assert src.passes == 1
 
 
+@pytest.mark.parametrize("xic", [False, True])
+def test_scan_index_metadata_survives_serialization_and_plotting(xic: bool) -> None:
+    spectra = [Spectrum(mz=np.array([100.0]), intensity=np.array([1.0])) for _ in range(3)]
+    chrom = extract_xic(spectra, [100.0])[0] if xic else extract_chromatogram(spectra)
+    restored = Chromatogram.from_json(chrom.to_json())
+    assert restored.meta["rt_unit"] == "scan_index"
+    fig = plot_chromatogram(restored)
+    assert fig.layout.xaxis.title.text == "Scan index"
+    assert "Scan index" in fig.data[0].hovertemplate
+
+
+@pytest.mark.parametrize("xic", [False, True])
+def test_mixed_retention_times_and_scan_indices_are_rejected(xic: bool) -> None:
+    spectra = [*_run(1), Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))]
+    with pytest.raises(ValueError, match="Cannot mix retention times and scan indices"):
+        extract_xic(spectra, [100.0]) if xic else extract_chromatogram(spectra)
+
+
+@pytest.mark.parametrize("rt", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("xic", [False, True])
+def test_nonfinite_scan_retention_time_is_rejected(rt: float, xic: bool) -> None:
+    spectra = _run(1)
+    spectra[0].rt = rt
+    with pytest.raises(ValueError, match="nonfinite retention time"):
+        extract_xic(spectra, [100.0]) if xic else extract_chromatogram(spectra)
+
+
+def test_plot_rejects_mixed_axis_units() -> None:
+    timed = extract_chromatogram(_run(1))
+    indexed = extract_chromatogram([Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))])
+    with pytest.raises(ValueError, match="same axis"):
+        plot_chromatogram([timed, indexed])
+
+
 # ---------------------------------------------------------------------------
 # XIC extraction
 # ---------------------------------------------------------------------------

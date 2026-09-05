@@ -335,6 +335,11 @@ with spx.Reader("run.d") as reader:
 `extract_chromatogram()` and `extract_xic()` return `Chromatogram` objects if you want the numbers
 rather than a figure — each carries `rt`, `intensity`, `apex_rt` and `total`.
 
+Extractors expect supplied retention times in seconds. When every scan lacks a retention time,
+they use scan indices and record `meta["rt_unit"] = "scan_index"`. Plots label that axis as
+`Scan index`. Mixing measured times with fallback indices raises `ValueError`, as does overlaying
+traces with different axis units. `total` is a sum of intensities, without time integration.
+
 Two things shape the API:
 
 **Everything is one pass.** A reader is expensive to walk (several seconds for a 65-frame timsTOF

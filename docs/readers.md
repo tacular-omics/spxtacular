@@ -696,9 +696,19 @@ write_ms2(spectra, path) -> Path
 write_msp(spectra, path) -> Path
 ```
 
-Both take an iterable of `Spectrum`/`MsnSpectrum` (a lone spectrum is accepted too) and return the
+All three take an iterable of `Spectrum`/`MsnSpectrum` (a lone spectrum is accepted too) and return the
 path written. `mz` and `intensity` go out at repr precision, so a write → read round trip reproduces
-them **exactly**; the mapped metadata in the tables above round-trips with them.
+them **exactly**. The mapped metadata in the tables above round-trips with them.
+
+Writers build a temporary file beside the destination and replace the destination only after
+the entire iterable has been written and closed successfully. A failure preserves an existing
+file and removes the temporary output. Reading and writing the same path is supported, including
+gzip files. Neutral masses are rejected because these formats describe m/z values. Use JSON or
+NPZ to preserve a decharged spectrum.
+
+Before using an MSP library for chromatogram extraction or exporting its retention times to
+another format, convert its `rt` values to seconds according to the library's source convention.
+The reader cannot infer an MSP time unit.
 
 | Rule | Detail |
 |---|---|

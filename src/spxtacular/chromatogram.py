@@ -60,7 +60,8 @@ class Chromatogram:
     Attributes
     ----------
     rt:
-        Retention times, seconds, ascending.
+        Retention times, seconds, ascending. Extractors use scan indices when
+        every input lacks retention time, recording ``meta['rt_unit']='scan_index'``.
     intensity:
         One value per retention time.
     label:
@@ -165,14 +166,24 @@ class Chromatogram:
 
     @property
     def total(self) -> float:
-        """Summed intensity across the trace -- the usual peak-area proxy."""
+        """Sum of sample intensities, without integration over retention time."""
         return float(self.intensity.sum())
 
 
 def _rt_of(spectrum: Spectrum, index: int) -> float:
     """Retention time, falling back to the scan index when the reader gave none."""
     rt = getattr(spectrum, "rt", None)
-    return float(rt) if rt is not None else float(index)
+    value = float(rt) if rt is not None else float(index)
+    if not np.isfinite(value):
+        raise ValueError(f"Spectrum {index} has a nonfinite retention time")
+    return value
+
+
+def _time_metadata(present: list[bool]) -> dict[str, str]:
+    """Keep missing-time scan indices distinct from retention times in seconds."""
+    if any(present) and not all(present):
+        raise ValueError("Cannot mix retention times and scan indices. Supply retention times for every spectrum.")
+    return {"rt_unit": "s" if all(present) else "scan_index"}
 
 
 def _sorted_view(mz: NDArray[np.float64], *arrays: NDArray[np.float64] | None):
@@ -212,6 +223,7 @@ def extract_chromatogram(
         raise ValueError(f"mode must be 'tic' or 'bpc', got {mode!r}")
 
     rts: list[float] = []
+    rt_present: list[bool] = []
     values: list[float] = []
 
     for i, spec in enumerate(spectra):
@@ -222,6 +234,7 @@ def extract_chromatogram(
             intensity = intensity[keep]
 
         rts.append(_rt_of(spec, i))
+        rt_present.append(getattr(spec, "rt", None) is not None)
         if intensity.size == 0:
             values.append(0.0)
         else:
@@ -234,7 +247,7 @@ def extract_chromatogram(
     label = "TIC" if mode == "tic" else "Base peak"
     if mz_range is not None:
         label += f" ({mz_range[0]:g}-{mz_range[1]:g} m/z)"
-    return Chromatogram(rt=rt[order], intensity=inten[order], label=label)
+    return Chromatogram(rt=rt[order], intensity=inten[order], label=label, meta=_time_metadata(rt_present))
 
 
 def extract_xic(
@@ -291,6 +304,7 @@ def extract_xic(
         hi_targets = target_arr + tolerance
 
     rts: list[float] = []
+    rt_present: list[bool] = []
     rows: list[NDArray[np.float64]] = []
     # An IM-less spectrum cannot be gated. Dropping it would silently shorten a
     # trace, so it passes through ungated -- but the caller has to be told, or a
@@ -327,6 +341,7 @@ def extract_xic(
                     row[k] = float(seg.sum() if aggregate == "sum" else seg.max())
         rows.append(row)
         rts.append(_rt_of(spec, i))
+        rt_present.append(getattr(spec, "rt", None) is not None)
 
     if im_ungated:
         if im_gated:
@@ -347,6 +362,7 @@ def extract_xic(
     matrix = np.vstack(rows)[order] if rows else np.zeros((0, target_arr.size))
 
     unit = "ppm" if tol_type is ToleranceType.PPM else "Da"
+    time_metadata = _time_metadata(rt_present)
     out = [
         Chromatogram(
             rt=rt[order],
@@ -356,6 +372,7 @@ def extract_xic(
             tolerance=float(tolerance),
             tolerance_type=unit,
             meta={
+                **time_metadata,
                 "im_window": im_window,
                 "im_window_applied": im_gated > 0,
                 "im_window_skipped": im_ungated,

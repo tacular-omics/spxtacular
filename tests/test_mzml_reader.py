@@ -58,6 +58,45 @@ def test_ms1_intensity_positive(ms1_spectrum):
     assert np.all(ms1_spectrum.intensity > 0)
 
 
+@pytest.mark.parametrize(
+    ("dtype", "accession", "type_name"),
+    [
+        ("<f4", "MS:1000521", "32-bit float"),
+        ("<f8", "MS:1000523", "64-bit float"),
+        ("<i4", "MS:1000519", "32-bit integer"),
+        ("<i8", "MS:1000522", "64-bit integer"),
+    ],
+)
+def test_native_mzml_dtypes_convert_to_independent_float64_arrays(tmp_path, dtype, accession, type_name):
+    # mzMLPy 0.9 retains native types. The processing API still owns float64 arrays.
+    values = np.arange(1, 16, dtype=dtype) * 100
+    encoded = base64.b64encode(values.tobytes()).decode()
+    source = EXAMPLE_MZML.read_text(encoding="ISO-8859-1")
+    body = source[source.index("<mzML ") : source.index("</mzML>") + len("</mzML>")]
+    start = body.index('<binaryDataArrayList count="2">')
+    end = body.index("</binaryDataArrayList>", start)
+    arrays = ['<binaryDataArrayList count="2">']
+    for array_accession, array_name in [("MS:1000514", "m/z array"), ("MS:1000515", "intensity array")]:
+        arrays.append(
+            f'<binaryDataArray encodedLength="{len(encoded)}">'
+            f'<cvParam cvRef="MS" accession="{accession}" name="{type_name}" value=""/>'
+            '<cvParam cvRef="MS" accession="MS:1000576" name="no compression" value=""/>'
+            f'<cvParam cvRef="MS" accession="{array_accession}" name="{array_name}" value=""/>'
+            f"<binary>{encoded}</binary></binaryDataArray>"
+        )
+    path = tmp_path / "typed.mzML"
+    path.write_text(body[:start] + "".join(arrays) + body[end:], encoding="utf-8")
+    with mzp.Mzml(path, in_memory=False) as reader:
+        raw = reader.spectra[0]
+        assert raw.mz.dtype == np.dtype(dtype)
+        assert raw.intensity.dtype == np.dtype(dtype)
+        converted = MzmlReader._parse_spectrum(raw)
+        for output, original in [(converted.mz, raw.mz), (converted.intensity, raw.intensity)]:
+            assert output.dtype == np.float64
+            np.testing.assert_array_equal(output, values)
+            assert not np.shares_memory(output, original)
+
+
 def test_ms1_rt_is_float(ms1_spectrum):
     assert isinstance(ms1_spectrum.rt, float)
     assert ms1_spectrum.rt > 0

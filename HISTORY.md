@@ -4,6 +4,19 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## Unreleased
 
+## 0.7.0 (2026-09-04)
+
+- Required peptacular 3.3.0 and tdfpy 4.0.1. Verified position-free precursor fragment scoring and preservation of fractional-scan precursor mobility. Bruker mobility values can change because tdfpy now preserves the recorded fractional coordinate.
+- Closed HTTP-error response bodies during USI fetch failures and removed the broad resource-warning suppression from tests.
+- Updated the complete dependency lock to current compatible releases. Required mzMLPy 0.9.0, paftacular 1.2.0, and spectrl 1.1.0, and verified native mzML array conversion. Adjusted optional-backend annotations for the current type checker.
+- Fixed hyperscore to use a matched-intensity dot product and factorial terms. Scores and thresholds from 0.6.0 must be recomputed. Removed unsupported cross-engine equivalence claims and clarified unweighted entropy similarity.
+- Prevented combining neutral masses with m/z values or discarding conflicting charged-spectrum provenance. Decharge incompatible inputs separately before combining. Empty inputs no longer erase measurement metadata.
+- Preserved wide flat-topped peaks during centroiding and removed symmetric Gaussian fit bias.
+- Invalidated normalization after peak selection, intensity updates, concatenation, and rounding. Non-inplace transformations now own their precursor lists.
+- Preserved the neutral-mass marker through rounding and rejected neutral masses in m/z-only peak-list exports. Peak-list writers now replace destinations atomically after successful completion.
+- Distinguished scan-index chromatograms from retention times in seconds and rejected mixed or nonfinite time axes.
+- Added independent analytical regression fixtures and a reproducible deconvolution benchmark. Expanded CI to isolated wheels on Linux, Windows, and macOS, Python 3.12 through 3.14, lowest installable direct dependencies, strict documentation builds, and required Thermo runtime tests. Locked development installs and pinned workflow actions to commits.
+
 ## 0.6.0 (2026-08-28)
 
 ### Added
@@ -47,7 +60,7 @@ User-visible changes only; implementation details belong in commits and pull req
 ### Changed
 
 - The `[spectrl]` integration now requires Spectrl 1.0, emits the frozen `spectrl.v1` token format, and preserves ion mobility through accession-keyed auxiliary arrays.
-- `hyperscore` now implements the X!Tandem product-of-series-sums formula; stored thresholds must be retuned.
+- `hyperscore` implemented a product-of-series-sums heuristic, incorrectly identified as X!Tandem. This was corrected after 0.6.0. Stored thresholds must be retuned.
 - `spectral_angle` now implements the literature metric when `predicted_intensities` are supplied and otherwise retains the documented flat-reference fallback.
 - Deconvolution now uses complete-envelope scoring, float64 arithmetic, expected-position stepping, and isotope templates through 20,000 Da.
 - Matching and scoring now accept unsorted m/z arrays by sorting a working copy and mapping indices back.

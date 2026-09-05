@@ -183,12 +183,12 @@ def test_combine_mixed_spectrum_type_becomes_none():
 # ---------------------------------------------------------------------------
 
 
-def test_combine_same_normalized_preserved():
+def test_combine_clears_normalization():
     s1 = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]), normalized="max")
     s2 = Spectrum(mz=np.array([200.0]), intensity=np.array([2.0]), normalized="max")
     result = Spectrum.combine([s1, s2])
 
-    assert result.normalized == "max"
+    assert result.normalized is None
 
 
 def test_combine_mixed_normalized_becomes_none():

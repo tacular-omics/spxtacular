@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any, cast
 
 import numpy as np
@@ -147,84 +147,27 @@ def _binom_log10_survival(k: int, n: int, p: float) -> float:
 # ---------------------------------------------------------------------------
 
 
-def _series_key(fragment) -> str:
-    """Ion-series name for a fragment, e.g. ``"b"`` / ``"y"`` / ``"c"``."""
-    return str(fragment.ion_type)
+def _hyperscore(spectrum: Spectrum, matches: list[MatchedFragment]) -> float:
+    """Base-10 hyperscore using unit theoretical intensities.
 
+    Compute log10 of the matched intensity sum plus log10(n!) per ion series.
+    Count each observed peak once in the intensity term and each distinct
+    (ion type, position) once in the factorial terms. Missing series contribute
+    0! = 1, so one-sided evidence still scores. No matches returns zero.
 
-def _searched_series(fragments: FragmentInput) -> set[str]:
-    """Ion series present in the theoretical fragment set.
-
-    These are the series the search *asked about*, which is what the hyperscore
-    product runs over -- a series that was searched and returned nothing is
-    evidence against the match, and can only be counted as such if we know it was
-    looked for.
-    """
-    if not isinstance(fragments, dict):
-        return {str(f.ion_type) for f in fragments}
-    d: Any = fragments
-    return {str(cast(tuple, key)[0]) for key in d}
-
-
-def _hyperscore(
-    spectrum: Spectrum,
-    matches: list[MatchedFragment],
-    searched_series: Iterable[str] | None = None,
-) -> float:
-    """X!Tandem hyperscore, generalised over ion series.
-
-    ``log10( prod_s sum(I_s) ) + sum_s log10(n_s!)``, the product running over the
-    ion series that were *searched* (``searched_series``), where ``sum(I_s)`` is
-    the summed intensity of the peaks matched by series ``s`` and ``n_s`` the
-    number of distinct ions matched from it.
-
-    For the usual b/y search this is **exactly** the X!Tandem hyperscore
-    ``log10(sum(I_b) * sum(I_y) * n_b! * n_y!)`` — verified to ~1e-15 — so scores
-    are comparable with X!Tandem, Comet and MSFragger. Unlike those, it is not
-    limited to b/y: an ETD search over c/z gets the same treatment.
-
-    The product, rather than a sum over all matched peaks, is what makes the score
-    discriminating. A searched series with no signal at all collapses the whole
-    product to zero, so a PSM supported only by b ions cannot look as good as one
-    corroborated from both directions. Summing instead lets those through: on a
-    target-decoy trial, 17% of decoys scored above zero under a sum where the
-    product correctly rejected them (separation, Cohen's d: 5.8 product vs 4.6 sum).
-
-    .. warning::
-       The intensity term consumes **raw** intensities, so the score is
-       intensity-scale dependent: it shifts by ``log10(s)`` if the whole spectrum
-       is multiplied by ``s``, and it can go *negative* on a normalised spectrum
-       (e.g. TIC-normalised, where the matched sums are < 1). Only compare
-       hyperscores computed on identically scaled spectra.
+    This uses the dot-product/factorial structure documented by OpenMS:
+    https://openms.de/current_doxygen/html/HyperScore_8h_source.html
+    Our log base, preprocessing and duplicate handling are explicit conventions,
+    so numerical equivalence with another search engine is not implied.
+    Scaling intensities by s shifts a positive-signal score by log10(s).
     """
     if not matches:
         return 0.0
-
-    series_positions = _unique_series_positions(matches)
-    expected = set(searched_series) if searched_series else set(series_positions)
-    if not expected:
+    total_intensity = float(spectrum.intensity[_unique_peak_indices(matches)].sum())
+    if total_intensity <= 0:
         return 0.0
-
-    # Sum intensity per series, counting each peak once within a series even if
-    # several of that series' ions hit it.
-    series_intensity: dict[str, float] = {}
-    seen: dict[str, set[int]] = {}
-    for m in matches:
-        s = _series_key(m.fragment)
-        if m.peak_index in seen.setdefault(s, set()):
-            continue
-        seen[s].add(m.peak_index)
-        series_intensity[s] = series_intensity.get(s, 0.0) + float(spectrum.intensity[m.peak_index])
-
-    total = 0.0
-    for s in sorted(expected):
-        intensity_s = series_intensity.get(s, 0.0)
-        if intensity_s <= 0.0:
-            # A searched series with no signal collapses the product.
-            return 0.0
-        total += math.log10(intensity_s)
-        total += _log10_factorial(len(series_positions.get(s, ())))
-    return float(total)
+    counts = _unique_series_positions(matches)
+    return math.log10(total_intensity) + sum(_log10_factorial(len(positions)) for positions in counts.values())
 
 
 def _probability_score(
@@ -474,10 +417,9 @@ def score(
     pairs, so neutral-loss and isotope variants of the same fragment do not
     inflate the scores.
 
-    ``hyperscore`` is the X!Tandem hyperscore, generalised so the product runs over
-    whichever ion series were searched rather than only b/y; for a b/y search it is
-    numerically identical to X!Tandem. It consumes raw intensities and is therefore
-    intensity-scale dependent — see :func:`_hyperscore`.
+    ``hyperscore`` uses a base-10 matched-intensity dot product with unit
+    theoretical intensities and factorial terms per ion series. It consumes raw
+    intensities. See :func:`_hyperscore` for counting and scaling conventions.
 
     ``spectral_angle`` is the literature spectral angle when
     ``predicted_intensities`` is supplied. Without one there is nothing to compare
@@ -520,7 +462,7 @@ def score(
     n_unique = _count_unique_ions(fragments)
 
     return {
-        "hyperscore": _hyperscore(spectrum, matches, _searched_series(fragments)),
+        "hyperscore": _hyperscore(spectrum, matches),
         "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tol_type),
         "total_matched_intensity": _total_matched_intensity(spectrum, matches),
         "matched_fraction": _matched_fraction(matches, n_unique),

@@ -18,7 +18,8 @@ upload the same release manually, because that would create a duplicate record.
 2. Set the same version in `src/spxtacular/__init__.py`, `CITATION.cff`, and the heading in
    `HISTORY.md`.
 3. Confirm that the changelog date and citation metadata are correct.
-4. Confirm that mzMLPy 0.7 or later is available from PyPI, then refresh and commit the tested lock with `uv lock --upgrade-package mzmlpy`.
+4. Review dependency updates and commit any intentional lockfile changes. Use `uv sync --locked`
+   to verify the tested environment without silently refreshing the lock.
 5. Run:
 
    ```bash
@@ -29,10 +30,13 @@ upload the same release manually, because that would create a duplicate record.
    just docs-build
    just paper-preflight
    uv build
+   uv run --no-project python .github/scripts/check_wheel.py dist
    ```
 
-6. Inspect the wheel and source archive under `dist/`. Install the wheel in a clean environment for
-   a final import smoke test.
+6. Inspect the wheel and source archive under `dist/`. The wheel check verifies packaged schemas,
+   optional imports, and regression behavior in an isolated environment outside the checkout.
+   For the correctness release after 0.6.0, include the hyperscore migration guidance from
+   `docs/scoring.md` and the stricter combination rules from `docs/spectrum.md` in release notes.
 7. Merge the release branch to `main` and wait for all required checks to pass.
 
 ## Publish and archive

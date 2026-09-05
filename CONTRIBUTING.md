@@ -13,7 +13,7 @@ development environment:
 ```bash
 git clone https://github.com/tacular-omics/spxtacular.git
 cd spxtacular
-uv sync
+uv sync --locked
 ```
 
 Before opening a pull request, run the same checks used by continuous integration:
@@ -25,6 +25,21 @@ just check
 just test-cov
 just docs-build
 ```
+
+CI also builds and tests the installed wheel outside the checkout on Linux, Windows, and macOS
+with Python 3.12 through 3.14. A separate Python 3.12 job resolves the lowest direct dependencies
+available as binary wheels. To run the wheel check locally:
+
+```bash
+uv build --out-dir wheel-dist
+uv run --no-project python .github/scripts/check_wheel.py wheel-dist
+uv run --no-project python .github/scripts/check_wheel.py wheel-dist --lowest
+```
+
+The dedicated Thermo job installs .NET 8 and sets `SPXTACULAR_REQUIRE_THERMO=1` so backend
+failures cannot become successful skipped tests. Other jobs may skip optional reader tests.
+Run `just benchmark` for timing, mass accuracy, assignment checks, and Python-tracked memory
+on the analytical fixtures. Their provenance and limitations are in `tests/reference/README.md`.
 
 Changes should include tests for new behavior and user-facing documentation when the public API
 changes. Add a concise entry to `HISTORY.md` for changes that users need to know about. Keep pull

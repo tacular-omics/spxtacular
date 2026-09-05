@@ -29,11 +29,14 @@ Writing::
 from __future__ import annotations
 
 import gzip
+import os
 import re
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from types import TracebackType
 from typing import IO, Self
 
@@ -82,11 +85,27 @@ def _open_text(path: Path) -> IO[str]:
     return open(path, encoding="utf-8", errors="replace")
 
 
-def _open_text_write(path: Path) -> IO[str]:
-    """Open a peak-list file for writing, gzipping when the path ends in ``.gz``."""
-    if path.suffix.lower() == ".gz":
-        return gzip.open(path, "wt", encoding="utf-8", newline="\n")
-    return open(path, "w", encoding="utf-8", newline="\n")
+@contextmanager
+def _open_text_write(path: Path) -> Iterator[IO[str]]:
+    """Replace the destination only after all records have been written.
+
+    The temporary file lives beside the destination for an atomic rename.
+    This also permits streaming from and writing to the same source path.
+    """
+    with NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as temporary:
+        staged = Path(temporary.name)
+    try:
+        if path.suffix.lower() == ".gz":
+            with gzip.open(staged, "wt", encoding="utf-8", newline="\n") as handle:
+                yield handle
+        else:
+            with open(staged, "w", encoding="utf-8", newline="\n") as handle:
+                yield handle
+        if path.exists():
+            staged.chmod(path.stat().st_mode & 0o777)
+        os.replace(staged, path)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def _fmt(value: float) -> str:
@@ -849,6 +868,11 @@ def _as_spectra(spectra: Iterable[Spectrum] | Spectrum) -> Iterable[Spectrum]:
 
 
 def _check_writable(spec: Spectrum, index: int, fmt: str) -> None:
+    if spec.charge is not None and np.any(spec.charge == 0):
+        raise ValueError(
+            f"cannot write neutral masses in spectrum {index} to {fmt}. "
+            "Peak lists require m/z. Use JSON or NPZ to preserve neutral masses."
+        )
     if spec.spectrum_type == SpectrumType.PROFILE:
         raise ValueError(
             f"cannot write spectrum {index} to {fmt}: peak lists hold centroid data, not profile data. "

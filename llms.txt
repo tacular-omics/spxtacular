@@ -81,7 +81,7 @@ scores = spec.score(fragments, tolerance=10, tolerance_type="ppm")
 
 - Fragment matching accepts unsorted spectra and adapts to centroided, deconvoluted, and decharged states.
 - Matching/scoring default to `tolerance=0.02` and `tolerance_type="da"`.
-- `hyperscore` uses the X!Tandem product-of-series-sums formula and raw, scale-dependent intensities.
+- `hyperscore` uses a base-10 matched-intensity sum and factorial terms per ion series. It is scale-dependent and is not numerically interchangeable with other search engines.
 - `spectral_angle` is the literature metric only with one predicted intensity per fragment.
 - Spectrum-to-spectrum functions are `cosine`, `modified_cosine`, and `entropy_similarity`; all use one-to-one peak matching.
 

@@ -142,8 +142,8 @@ class TestModifiedCosine:
 
 
 class TestEntropySimilarity:
-    def test_discriminates_more_sharply_than_cosine(self) -> None:
-        """The reason it displaced cosine for library search."""
+    def test_entropy_and_cosine_differ_for_intensity_mismatch(self) -> None:
+        """Different metrics need not assign the same score to an intensity mismatch."""
         a = _spec(intensity=np.array([100.0, 80.0, 60.0, 40.0, 20.0]))
         # Shares peak positions but a very different intensity pattern.
         b = _spec(intensity=np.array([20.0, 40.0, 60.0, 80.0, 100.0]))
