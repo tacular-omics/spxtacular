@@ -1,0 +1,1124 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing library.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/scoring/">
+      
+      
+        <link rel="prev" href="../readers/">
+      
+      
+        <link rel="next" href="../visualization/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Matching & Scoring - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fragment-matching-and-scoring" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Matching & Scoring
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spectrum/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deconvolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching & Scoring
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching & Scoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#match_fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        match_fragments()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score()
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="score()">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hyperscore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hyperscore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spectral-angle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectral angle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spectrum-to-spectrum-similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum-to-spectrum similarity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spectrum-to-spectrum similarity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modified-cosine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modified cosine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polarity, Adducts, and Isotope Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#match_fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        match_fragments()
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        score()
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="score()">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hyperscore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hyperscore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spectral-angle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectral angle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spectrum-to-spectrum-similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum-to-spectrum similarity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spectrum-to-spectrum similarity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modified-cosine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modified cosine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fragment-matching-and-scoring">Fragment matching and scoring</h1>
+<p>spxtacular provides two functions for peptide-spectrum match (PSM) scoring:
+<code>match_fragments()</code> for matching and <code>score()</code> for computing all metrics at once.</p>
+<hr />
+<h2 id="match_fragments"><code>match_fragments()</code></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">match_fragments</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">peptacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">fragments</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">fragment</span><span class="p">(</span><span class="s2">"PEPTIDE"</span><span class="p">,</span> <span class="n">ion_types</span><span class="o">=</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">),</span> <span class="n">charges</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">matches</span> <span class="o">=</span> <span class="n">match_fragments</span><span class="p">(</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">spectrum</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"da"</span><span class="p">,</span>         <span class="c1"># "da" or "ppm"</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">peak_selection</span><span class="o">=</span><span class="s2">"closest"</span><span class="p">,</span>    <span class="c1"># "closest", "largest", or "all"</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># matches: list[MatchedFragment], sorted by peak index</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spectrum</code></td>
+<td></td>
+<td><code>Spectrum</code> to search</td>
+</tr>
+<tr>
+<td><code>fragments</code></td>
+<td></td>
+<td>Iterable of fragment objects from <code>peptacular</code></td>
+</tr>
+<tr>
+<td><code>tolerance</code></td>
+<td><code>0.02</code></td>
+<td>Matching tolerance</td>
+</tr>
+<tr>
+<td><code>tolerance_type</code></td>
+<td><code>"da"</code></td>
+<td><code>"da"</code> or <code>"ppm"</code></td>
+</tr>
+<tr>
+<td><code>peak_selection</code></td>
+<td><code>"closest"</code></td>
+<td>How to resolve multiple peaks within tolerance (see below)</td>
+</tr>
+<tr>
+<td><code>is_monoisotopic</code></td>
+<td><code>True</code></td>
+<td>Forwarded to the constructed <code>Fragment</code> objects when <code>fragments</code> is a <code>dict[(IonType, charge_state), list[float]]</code> (peptacular's <code>fast_fragment</code> output); otherwise has no effect</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>peak_selection</code> modes:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"closest"</code></td>
+<td>Keep the single peak with smallest m/z error (default)</td>
+</tr>
+<tr>
+<td><code>"largest"</code></td>
+<td>Keep the single peak with highest intensity</td>
+</tr>
+<tr>
+<td><code>"all"</code></td>
+<td>Keep every peak within tolerance</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Return value:</strong></p>
+<p><code>match_fragments()</code> returns a <code>list[MatchedFragment]</code>, sorted by ascending <code>peak_index</code>. Each <code>MatchedFragment</code> carries both the fragment and the matched peak's metadata:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fragment</code></td>
+<td>The matched <code>Fragment</code> object</td>
+</tr>
+<tr>
+<td><code>peak_index</code></td>
+<td>Index of the matched peak in <code>spectrum.mz</code>/<code>spectrum.intensity</code></td>
+</tr>
+<tr>
+<td><code>peak_mz</code></td>
+<td>m/z of the matched peak</td>
+</tr>
+<tr>
+<td><code>peak_intensity</code></td>
+<td>Intensity of the matched peak</td>
+</tr>
+<tr>
+<td><code>intensity_pct</code></td>
+<td><code>peak_intensity / total_spectrum_intensity * 100</code></td>
+</tr>
+<tr>
+<td><code>ppm_error</code></td>
+<td>Signed error: <code>(peak_mz - theoretical_mz) / theoretical_mz * 1e6</code></td>
+</tr>
+<tr>
+<td><code>da_error</code></td>
+<td>Signed error: <code>peak_mz - theoretical_mz</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">matches</span> <span class="o">=</span> <span class="n">match_fragments</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Peak </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">peak_index</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">peak_mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> m/z) matched </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">fragment</span><span class="si">}</span><span class="s2"> (Δ=</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">ppm_error</span><span class="si">:</span><span class="s2">+.1f</span><span class="si">}</span><span class="s2"> ppm)"</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="score"><code>score()</code></h2>
+<p>Runs <code>match_fragments()</code> internally and returns all scoring metrics as a dict.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">score</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">result</span> <span class="o">=</span> <span class="n">score</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spectrum</code></td>
+<td></td>
+<td><code>Spectrum</code> to score against</td>
+</tr>
+<tr>
+<td><code>fragments</code></td>
+<td></td>
+<td>Iterable of fragment objects from <code>peptacular</code></td>
+</tr>
+<tr>
+<td><code>tolerance</code></td>
+<td><code>0.02</code></td>
+<td>Matching tolerance</td>
+</tr>
+<tr>
+<td><code>tolerance_type</code></td>
+<td><code>"da"</code></td>
+<td><code>"da"</code> or <code>"ppm"</code></td>
+</tr>
+<tr>
+<td><code>peak_selection</code></td>
+<td><code>"closest"</code></td>
+<td>How to resolve multiple peaks within tolerance — <code>"closest"</code>, <code>"largest"</code>, or <code>"all"</code></td>
+</tr>
+<tr>
+<td><code>predicted_intensities</code></td>
+<td><code>None</code></td>
+<td>Optional predicted intensity for every fragment, in the same order. Enables the literature spectral-angle metric</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returned metrics:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hyperscore</code></td>
+<td>Base-10 matched-intensity dot product plus log-factorial terms per ion series</td>
+</tr>
+<tr>
+<td><code>probability_score</code></td>
+<td>-log10 P(&gt;= k matches by chance)</td>
+</tr>
+<tr>
+<td><code>total_matched_intensity</code></td>
+<td>Sum of matched peak intensities</td>
+</tr>
+<tr>
+<td><code>matched_fraction</code></td>
+<td>Fraction of theoretical ions matched</td>
+</tr>
+<tr>
+<td><code>intensity_fraction</code></td>
+<td>Fraction of total spectrum intensity explained by matches</td>
+</tr>
+<tr>
+<td><code>mean_ppm_error</code></td>
+<td>Mean absolute ppm error of matches</td>
+</tr>
+<tr>
+<td><code>spectral_angle</code></td>
+<td>Spectral angle vs <code>predicted_intensities</code> (0–1). Without a prediction, a coverage/evenness fallback — see below</td>
+</tr>
+<tr>
+<td><code>longest_run</code></td>
+<td>Longest consecutive ion sequence matched</td>
+</tr>
+</tbody>
+</table>
+<p>Neutral-loss and isotope variants of the same fragment share <code>(ion_type, position)</code> and are
+collapsed to avoid inflating factorial terms in the hyperscore.</p>
+<h3 id="hyperscore">Hyperscore</h3>
+<p>The score uses <code>log10(sum(I_matched)) + sum_s(log10(n_s!))</code>, with unit theoretical
+intensities. Each observed peak contributes once to the intensity sum. Each distinct
+<code>(ion_type, position)</code> contributes once to its series count, so charge, neutral-loss,
+and isotope variants do not inflate the factorial terms. Missing series contribute
+<code>0! = 1</code>, and one-sided evidence can have a positive score. No matches or a nonpositive
+matched-intensity sum returns zero.</p>
+<p>This follows the dot-product/factorial structure described in
+<a href="https://openms.de/current_doxygen/html/HyperScore_8h_source.html">OpenMS's HyperScore documentation</a>.
+The base-10 logarithm, unit theoretical intensities, preprocessing, and duplicate
+handling are explicit spxtacular conventions. Scores are not guaranteed numerically
+interchangeable with X!Tandem, OpenMS, Comet, or MSFragger outputs.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Versions through 0.6.0 multiplied the intensity sums of different ion series.
+That was a different heuristic, incorrectly described as identical to X!Tandem.
+Recompute stored scores and retune thresholds when upgrading. Scaling all
+intensities by <code>s</code> now shifts a positive-signal score by <code>log10(s)</code>, once rather
+than once per ion series. Normalized inputs can produce negative scores.</p>
+</div>
+<h3 id="spectral-angle">Spectral angle</h3>
+<p>Supply <code>predicted_intensities</code> — one value per fragment, in the same order — and you get the
+spectral angle of the literature (Toprak et al.; the metric Prosit and Spectronaut report):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">spx</span><span class="o">.</span><span class="n">score</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">spec</span><span class="p">,</span> <span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">predicted_intensities</span><span class="o">=</span><span class="n">predicted</span><span class="p">,</span>   <span class="c1"># aligned with `fragments`</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>It is a cosine, so it is scale-invariant: 1.0 means the observed pattern matches the prediction.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Without <code>predicted_intensities</code> there is nothing to compare against, and the value falls back
+to a cosine against a <em>flat</em> reference — which measures intensity evenness × coverage, not
+similarity to a predicted spectrum. A perfect match with realistic intensities <code>[100, 50, 10, 1]</code>
+scores 0.509 that way. Do not compare the fallback to published spectral angles.</p>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">peptacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span><span class="p">,</span> <span class="n">score</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">with</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="c1"># reader.ms2 is an iterable lookup object, not an iterator — wrap it in iter()</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">))</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">fragments</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">fragment</span><span class="p">(</span><span class="s2">"ACDEFGHIK"</span><span class="p">,</span> <span class="n">ion_types</span><span class="o">=</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">),</span> <span class="n">charges</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">score</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Hyperscore:      </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">'hyperscore'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Spectral angle:  </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">'spectral_angle'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Matched ions:    </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">'matched_fraction'</span><span class="p">]</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="spectrum-to-spectrum-similarity">Spectrum-to-spectrum similarity</h2>
+<p><code>score()</code> answers <em>how well does this peptide explain this spectrum</em>. These answer <em>how alike are
+these two spectra</em>, which is what spectral library search, replicate comparison and clustering are
+built on.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">cosine</span><span class="p">,</span> <span class="n">modified_cosine</span><span class="p">,</span> <span class="n">entropy_similarity</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">cosine</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>   <span class="c1"># 0-1</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">entropy_similarity</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>           <span class="c1"># 0-1</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cosine</code></td>
+<td>The standard spectral dot product: sqrt-transformed intensities, unit-normalised, peaks matched one-to-one</td>
+</tr>
+<tr>
+<td><code>modified_cosine</code></td>
+<td>Cosine that also matches peaks displaced by the precursor mass difference — the GNPS molecular-networking metric</td>
+</tr>
+<tr>
+<td><code>entropy_similarity</code></td>
+<td>Unweighted entropy similarity with one-to-one greedy peak alignment</td>
+</tr>
+</tbody>
+</table>
+<p>All three are symmetric, scale-invariant, and bounded in <code>[0, 1]</code>: identical spectra score 1,
+spectra with no shared peaks score 0.</p>
+<p>Matching is <strong>one-to-one</strong> — a peak may back at most one match, resolved greedily by descending
+contribution. Allowing every pair within tolerance instead would let one intense peak match several
+neighbours and push the score past 1.</p>
+<h3 id="modified-cosine">Modified cosine</h3>
+<p>Two spectra of the same molecule differing by one modification share many fragments, but every
+fragment containing the modified site is shifted by the modification's mass. A plain cosine reads
+those as mismatches:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># same peptide, one +79.966 phospho on the C-terminal half</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">cosine</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>                              <span class="c1"># 0.53 - looks unrelated</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">modified_cosine</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">,</span> <span class="mf">579.966</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>     <span class="c1"># 1.00 - recovered</span>
+</code></pre></div>
+<p>It reduces exactly to <code>cosine</code> when the two precursors are equal.</p>
+<p><code>entropy_similarity</code> uses the unweighted entropy expression. It does not apply
+entropy-dependent intensity weights or automatically remove precursor and noise peaks.
+Negative intensities are clipped to zero and each spectrum is normalized to a probability
+distribution. Preprocess both inputs consistently. The
+<a href="https://msentropy.readthedocs.io/en/latest/classical_entropy_similarity.html">MS Entropy reference</a>
+distinguishes weighted and unweighted variants and documents its own cleaning defaults.
+The tests include independent values for unambiguous peak alignments. They do not establish
+that one metric outperforms another for compound identification.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1337 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing library.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/deconvolution/">
+      
+      
+        <link rel="prev" href="../spectrum/">
+      
+      
+        <link rel="next" href="../readers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Deconvolution - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deconvolution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deconvolution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spectrum/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-algorithm-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the algorithm works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the algorithm works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-seed-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Seed selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-apex-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Apex alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-cluster-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Cluster building
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-charge-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Charge assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-rejection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Rejection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-repeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Repeat
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#isotope-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Isotope models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score output
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Score output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deconvolution-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deconvolution provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#charge-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Charge conventions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Charge conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#polarity-and-adducts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Polarity and adducts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching & Scoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polarity, Adducts, and Isotope Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-algorithm-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the algorithm works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the algorithm works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-seed-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Seed selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-apex-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Apex alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-cluster-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Cluster building
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-charge-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Charge assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-rejection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Rejection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-repeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Repeat
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#isotope-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Isotope models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score output
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Score output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deconvolution-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deconvolution provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#charge-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Charge conventions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Charge conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#polarity-and-adducts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Polarity and adducts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="deconvolution">Deconvolution</h1>
+<p>Deconvolution takes a raw centroid spectrum and groups peaks into <strong>isotope clusters</strong>, assigning each cluster a monoisotopic m/z and a charge state. The output is still a spectrum — same <code>mz</code> and <code>intensity</code> arrays — but now with a <code>charge</code> array and <code>spectrum_type = DECONVOLUTED</code>.</p>
+<p>Converting those charged peaks to neutral masses is a separate step: see <a href="../spectrum/#decharge"><code>decharge</code></a>.</p>
+<hr />
+<h2 id="basic-usage">Basic usage</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">Spectrum</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># A 2+ cluster of three peaks, then a 1+ cluster of two.</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">mz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">500.2573</span><span class="p">,</span> <span class="mf">500.7590</span><span class="p">,</span> <span class="mf">501.2606</span><span class="p">,</span> <span class="mf">800.2000</span><span class="p">,</span> <span class="mf">801.2033</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">intensity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1e5</span><span class="p">,</span> <span class="mf">5.2e4</span><span class="p">,</span> <span class="mf">1.1e4</span><span class="p">,</span> <span class="mf">2e5</span><span class="p">,</span> <span class="mf">6.5e4</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="p">(</span><span class="n">mz</span><span class="o">=</span><span class="n">mz</span><span class="p">,</span> <span class="n">intensity</span><span class="o">=</span><span class="n">intensity</span><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">decon</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">tolerance</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">)</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">mz</span><span class="p">)</span>         <span class="c1"># monoisotopic m/z, one entry per cluster (or singleton)</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">charge</span><span class="p">)</span>     <span class="c1"># charge state per peak; -1 for singletons</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">intensity</span><span class="p">)</span>  <span class="c1"># summed over the cluster</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">iso_score</span><span class="p">)</span>  <span class="c1"># isotopic profile fit, 0–1</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[500.2573 800.2   ]
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>[2 1]
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>[163000. 265000.]
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>[0.99834984 0.8899464 ]
+</code></pre></div>
+<p>The output has <strong>one peak per identified cluster</strong>, not one peak per input peak: five input peaks became two entries. A cluster of three isotope peaks at z=2 collapses to a single output entry at the monoisotopic m/z with <code>charge=2</code>, and its intensity is the sum over the cluster.</p>
+<hr />
+<h2 id="how-the-algorithm-works">How the algorithm works</h2>
+<p>The implementation lives in <code>src/spxtacular/decon/</code> — pure NumPy, no graph construction.</p>
+<h3 id="1-seed-selection">1. Seed selection</h3>
+<p>Pick the <strong>most intense unused peak</strong> as the seed for the next cluster. High-intensity clusters are therefore assigned first.</p>
+<h3 id="2-apex-alignment">2. Apex alignment</h3>
+<p>The seed is treated as the observed envelope apex. For every charge in <code>charge_range</code>, the selected
+isotope model predicts which isotope is most abundant. The algorithm tests the exact theoretical
+apex and the contiguous near-apex positions whose predicted abundance is at least 90% of the
+maximum. It matches and scores the complete envelope for each alignment. This prevents small
+intensity fluctuations across a broad high-mass apex from causing a one-isotope error in the
+inferred monoisotopic m/z. The mass and theoretical apex are recalculated until stable.</p>
+<h3 id="3-cluster-building">3. Cluster building</h3>
+<p>Starting at the apex, the algorithm walks left and right independently in steps of
+<code>NEUTRON_MASS / z</code>, where <code>NEUTRON_MASS</code> is the C13 neutron mass (~1.00335 Da). At each position,
+all unused peaks inside the m/z window are considered. Candidates outside the abundance fold gate
+or ion-mobility window are rejected. The remaining candidates are ranked by the sum of squared,
+normalised m/z error, log-abundance error, and ion-mobility error. Ion mobility participates only
+when the spectrum contains it. Expansion in that direction stops when the theoretical abundance is
+too low, no peak is found beyond the allowed gap count, or every candidate fails a hard gate. A
+blocking peak is left unused for a later greedy pass.</p>
+<p>Envelope length is adaptive by default. <code>max_isotopes</code> can impose a hard limit when runtime or a
+known acquisition range warrants one.</p>
+<h3 id="4-scoring">4. Scoring</h3>
+<p>Each candidate cluster is scored against a theoretical isotope distribution using the
+<strong>Bhattacharyya coefficient</strong>. This comparison is two-sided: both missing predicted intensity and
+unexpected intensity among the aligned candidate peaks lower the coefficient. Aligned observed
+entries participate even where the corresponding model entry falls below the detectability
+cutoffs. Missing peaks that should have been detectable above <code>min_intensity</code> receive an additional
+penalty; absent theoretical peaks below that floor do not. The score is in the range 0–1, where 1 is
+a perfect match to the theoretical envelope. A cluster of a single peak scores <code>0.0</code> — one peak is
+no evidence of a charge state.</p>
+<p>The theoretical envelope is calculated with a BRAIN-style recurrence and cached at one-Dalton
+resolution. Built-in average-composition models are available for peptides, glycans, lipids, DNA,
+and RNA. The peptide model is the default.</p>
+<h3 id="5-charge-assignment">5. Charge assignment</h3>
+<p>Every charge candidate is evaluated without modifying the input state. The candidate with the
+<strong>highest score</strong> wins, with ties broken by matched peak count.</p>
+<h3 id="6-rejection">6. Rejection</h3>
+<p>If the winning score is below <code>min_score</code>, the seed is marked as a <strong>singleton</strong> (<code>charge=-1</code>, <code>iso_score=0.0</code>). The other peaks that were tested as cluster members remain available as seeds for future iterations.</p>
+<h3 id="7-repeat">7. Repeat</h3>
+<p>Only peaks accepted into the winning cluster are marked as used. Missing, abundance-rejected, and
+fold-rejected peaks remain available. The cycle restarts from the next most-intense unused peak
+until every input peak has been consumed or <code>max_dpeaks</code> is reached.</p>
+<hr />
+<h2 id="parameters">Parameters</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">deconvolute</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"ppm"</span><span class="p">,</span> <span class="s2">"da"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"ppm"</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">charge_range</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">intensity</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"base"</span><span class="p">,</span> <span class="s2">"total"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"total"</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">max_dpeaks</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2000</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">inplace</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">min_intensity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"min"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"min"</span><span class="p">,</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">min_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">isotope_model</span><span class="p">:</span> <span class="n">IsotopeModel</span> <span class="o">|</span> <span class="n">IsotopeModelType</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"peptide"</span><span class="p">,</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">min_isotope_abundance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">max_isotope_fold_error</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">max_isotope_gaps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">max_isotopes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">im_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">im_tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"relative"</span><span class="p">,</span> <span class="s2">"absolute"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"relative"</span><span class="p">,</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">ionization_model</span><span class="p">:</span> <span class="n">IonizationModel</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span>
+</code></pre></div>
+<p>Note the positional order: <code>inplace</code> comes <strong>before</strong> <code>min_intensity</code> and <code>min_score</code>. Pass the
+latter two by keyword.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tolerance</code></td>
+<td><code>50</code></td>
+<td>Peak matching tolerance</td>
+</tr>
+<tr>
+<td><code>tolerance_type</code></td>
+<td><code>"ppm"</code></td>
+<td><code>"ppm"</code> or <code>"da"</code></td>
+</tr>
+<tr>
+<td><code>charge_range</code></td>
+<td><code>(1, 3)</code></td>
+<td>Min and max charge to try, inclusive. Requires <code>1 &lt;= min &lt;= max</code>, else <code>ValueError</code></td>
+</tr>
+<tr>
+<td><code>intensity</code></td>
+<td><code>"total"</code></td>
+<td><code>"total"</code> sums matched peaks; <code>"base"</code> uses observed A+0, or zero when A+0 is absent</td>
+</tr>
+<tr>
+<td><code>max_dpeaks</code></td>
+<td><code>2000</code></td>
+<td>Upper bound on output peaks</td>
+</tr>
+<tr>
+<td><code>inplace</code></td>
+<td><code>False</code></td>
+<td>Mutate in place instead of returning a new <code>Spectrum</code></td>
+</tr>
+<tr>
+<td><code>min_intensity</code></td>
+<td><code>"min"</code></td>
+<td>Intensity floor for detectability scoring. <code>"min"</code> uses the spectrum minimum</td>
+</tr>
+<tr>
+<td><code>min_score</code></td>
+<td><code>0.0</code></td>
+<td>Minimum profile score to accept a cluster; <code>0.0</code> accepts everything</td>
+</tr>
+<tr>
+<td><code>isotope_model</code></td>
+<td><code>"peptide"</code></td>
+<td><code>"peptide"</code>, <code>"glycan"</code>, <code>"lipid"</code>, <code>"dna"</code>, <code>"rna"</code>, or a custom <code>IsotopeModel</code></td>
+</tr>
+<tr>
+<td><code>min_isotope_abundance</code></td>
+<td><code>0.01</code></td>
+<td>Stop when theoretical abundance falls below 1% of the apex</td>
+</tr>
+<tr>
+<td><code>max_isotope_fold_error</code></td>
+<td><code>2.0</code></td>
+<td>Stop when observed intensity is outside 0.5x to 2x expected</td>
+</tr>
+<tr>
+<td><code>max_isotope_gaps</code></td>
+<td><code>0</code></td>
+<td>Missing isotope positions allowed before stopping one direction</td>
+</tr>
+<tr>
+<td><code>max_isotopes</code></td>
+<td><code>None</code></td>
+<td>Adaptive by default; an integer imposes a hard envelope-length limit</td>
+</tr>
+<tr>
+<td><code>im_tolerance</code></td>
+<td><code>0.05</code></td>
+<td>Candidate-to-seed mobility gate when the spectrum contains ion mobility</td>
+</tr>
+<tr>
+<td><code>im_tolerance_type</code></td>
+<td><code>"relative"</code></td>
+<td>Scale the mobility tolerance by the seed value or use it as an absolute difference</td>
+</tr>
+<tr>
+<td><code>ionization_model</code></td>
+<td><code>None</code></td>
+<td>Adduct preset/alias, custom model, or signed carrier mass. Negative scans use <code>[M-H]-</code>, and other scans use <code>[M+H]+</code></td>
+</tr>
+</tbody>
+</table>
+<p>Calling <code>deconvolute()</code> on an already-<code>DECONVOLUTED</code> spectrum emits a <code>UserWarning</code> and leaves its
+data unchanged. The default non-inplace path still returns an independent copy.</p>
+<h3 id="isotope-models">Isotope models</h3>
+<p>Select a built-in model by string or enum:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">IsotopeModelType</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">glycan</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">isotope_model</span><span class="o">=</span><span class="s2">"glycan"</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">rna</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">isotope_model</span><span class="o">=</span><span class="n">IsotopeModelType</span><span class="o">.</span><span class="n">RNA</span><span class="p">)</span>
+</code></pre></div>
+<p>Define a custom average composition as expected atoms per Dalton. A fixed composition represents
+atoms that occur once rather than scaling with mass.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">IsotopeModel</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">IsotopeModel</span><span class="p">(</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">atoms_per_da</span><span class="o">=</span><span class="p">{</span><span class="s2">"C"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"H"</span><span class="p">:</span> <span class="mf">0.08</span><span class="p">,</span> <span class="s2">"N"</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span> <span class="s2">"O"</span><span class="p">:</span> <span class="mf">0.02</span><span class="p">},</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">fixed_composition</span><span class="o">=</span><span class="p">{</span><span class="s2">"H"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"O"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">custom</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">isotope_model</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+</code></pre></div>
+<p>The general lipid preset spans several lipid classes and is necessarily approximate. Prefer an
+exact formula or a class-specific custom model when that information is available.</p>
+<hr />
+<h2 id="score-output">Score output</h2>
+<p>After deconvolution, <code>spectrum.iso_score</code> is a <code>float64</code> array parallel to <code>mz</code>/<code>intensity</code>. Each assigned cluster carries a score in 0–1 representing how well its observed intensity distribution matches the theoretical isotope envelope. Singletons always have <code>iso_score=0.0</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">decon</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">iso_score</span><span class="p">)</span>   <span class="c1"># array of float64, same length as decon.mz</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Keep only well-matched clusters (score &gt;= 0.5) and assigned peaks (charge &gt; 0)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">confident</span> <span class="o">=</span> <span class="n">decon</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_score</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">min_charge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+<p>The <code>iso_score</code> array is propagated through <code>.decharge()</code>, so neutral-mass peaks retain their cluster score.</p>
+<h3 id="deconvolution-provenance">Deconvolution provenance</h3>
+<p>The output spectrum records the resolved ionization and isotope models together with every
+parameter that affects envelope construction and matching. This includes the abundance threshold,
+fold-error gate, allowed gaps, envelope-length limit, and ion-mobility tolerance. Custom
+<code>IsotopeModel</code> compositions and isotope abundances are stored by value, so native <code>.npz</code>, matchms,
+and spectrl round-trips preserve the exact model. Schema-v1 provenance remains readable.</p>
+<hr />
+<p><strong><code>charge_range</code>:</strong> Cover the full range you expect. A wider range increases runtime linearly. For tryptic peptides <code>(1, 5)</code> is typical; for intact proteins <code>(5, 50)</code> or wider.</p>
+<p><strong><code>tolerance</code>:</strong> The default 50 ppm is conservative. For high-resolution instruments (Orbitrap, timsTOF) use 5–15 ppm.</p>
+<p><strong><code>intensity</code> mode:</strong> <code>"total"</code> is recommended for quantification. <code>"base"</code> returns the observed
+A+0 intensity and returns zero when the monoisotopic peak was inferred rather than observed.</p>
+<hr />
+<h2 id="charge-conventions">Charge conventions</h2>
+<table>
+<thead>
+<tr>
+<th><code>charge</code> value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&gt; 0</code></td>
+<td>Assigned isotope cluster with this charge state</td>
+</tr>
+<tr>
+<td><code>-1</code></td>
+<td>Singleton — no isotope neighbours found at any tested charge</td>
+</tr>
+<tr>
+<td><code>0</code></td>
+<td>After <code>.decharge()</code> — neutral mass, charge state no longer tracked</td>
+</tr>
+</tbody>
+</table>
+<p>Charge values are positive magnitudes. Polarity and carrier mass are recorded
+separately in deconvolution provenance.</p>
+<h3 id="polarity-and-adducts">Polarity and adducts</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">negative</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">isotope_model</span><span class="o">=</span><span class="s2">"rna"</span><span class="p">,</span> <span class="n">ionization_model</span><span class="o">=</span><span class="s2">"[M-H]-"</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">sodium</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">isotope_model</span><span class="o">=</span><span class="s2">"lipid"</span><span class="p">,</span> <span class="n">ionization_model</span><span class="o">=</span><span class="s2">"[M+Na]+"</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">neutral</span> <span class="o">=</span> <span class="n">sodium</span><span class="o">.</span><span class="n">decharge</span><span class="p">()</span>  <span class="c1"># reuses the recorded sodium carrier</span>
+</code></pre></div>
+<p>Built-ins cover <code>[M+H]+</code>, <code>[M-H]-</code>, <code>[M+Na]+</code>, and <code>[M+NH4]+</code>.
+<code>IonizationModel</code> accepts custom signed carrier masses.</p>
+<hr />
+<h2 id="worked-example">Worked example</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">Spectrum</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Simulated z=2 peptide of neutral mass 1398.70, with its isotope envelope.</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Isotope spacing at z=2 is 1.00335 / 2 ≈ 0.5017 Da.</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">mz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="mf">450.2000</span><span class="p">,</span>                                       <span class="c1"># singleton</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="mf">700.3573</span><span class="p">,</span> <span class="mf">700.8590</span><span class="p">,</span> <span class="mf">701.3606</span><span class="p">,</span> <span class="mf">701.8623</span><span class="p">,</span>         <span class="c1"># z=2 cluster</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">intensity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1e3</span><span class="p">,</span> <span class="mf">80000.0</span><span class="p">,</span> <span class="mf">58614.0</span><span class="p">,</span> <span class="mf">21276.0</span><span class="p">,</span> <span class="mf">3828.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="p">(</span><span class="n">mz</span><span class="o">=</span><span class="n">mz</span><span class="p">,</span> <span class="n">intensity</span><span class="o">=</span><span class="n">intensity</span><span class="p">)</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">decon</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="k">for</span> <span class="n">mz_val</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">inten</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">decon</span><span class="o">.</span><span class="n">mz</span><span class="p">,</span> <span class="n">decon</span><span class="o">.</span><span class="n">charge</span><span class="p">,</span> <span class="n">decon</span><span class="o">.</span><span class="n">intensity</span><span class="p">,</span> <span class="n">decon</span><span class="o">.</span><span class="n">iso_score</span><span class="p">):</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">label</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"z=</span><span class="si">{</span><span class="n">z</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">z</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span> <span class="k">else</span> <span class="s2">"singleton"</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  mz=</span><span class="si">{</span><span class="n">mz_val</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">label</span><span class="si">:</span><span class="s2">&lt;9</span><span class="si">}</span><span class="s2"> intensity=</span><span class="si">{</span><span class="n">inten</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">  score=</span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<p>Expected output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>  mz=450.2000  singleton intensity=1.00e+03  score=0.000
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  mz=700.3573  z=2       intensity=1.64e+05  score=0.968
+</code></pre></div>
+<p>Four input peaks collapsed into one cluster entry at the monoisotopic m/z, with the intensities
+summed. The singleton is preserved with <code>charge=-1</code> and <code>iso_score=0.0</code>.</p>
+<p>Note that the envelope matters: supply only the first two or three isotope peaks of a large
+cluster and the missing tail is penalised, which can leave a z=1 reading of the same peaks scoring
+marginally higher. Deconvolution is most reliable on complete envelopes.</p>
+<p>To convert the assigned peaks to neutral masses, chain <code>.decharge()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">neutral</span> <span class="o">=</span> <span class="n">decon</span><span class="o">.</span><span class="n">decharge</span><span class="p">()</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># drops singletons, outputs neutral monoisotopic masses</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

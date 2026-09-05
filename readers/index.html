@@ -1,0 +1,2339 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing library.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/readers/">
+      
+      
+        <link rel="prev" href="../deconvolution/">
+      
+      
+        <link rel="next" href="../scoring/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Readers - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#readers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Readers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spectrum/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deconvolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#lookup-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mzmlreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MzmlReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MzmlReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-mzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from mzML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-handles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File handles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#centroidconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CentroidConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#properties_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-timstof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from timsTOF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thermoreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ThermoReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ThermoReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vendor-centroids-vs-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendor centroids vs. profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-raw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from .raw
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mgf-ms2-msp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MGF / MS2 / MSP
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MGF / MS2 / MSP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-handles_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File handles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-mgf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MGF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-ms2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MS2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-msp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MSP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leniency-and-where-it-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leniency, and where it stops
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisitiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AcquisitionType
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching & Scoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design Records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polarity, Adducts, and Isotope Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#lookup-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mzmlreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MzmlReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MzmlReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-mzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from mzML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-handles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File handles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#centroidconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CentroidConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#properties_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-timstof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from timsTOF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thermoreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ThermoReader
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ThermoReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vendor-centroids-vs-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendor centroids vs. profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-raw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from .raw
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mgf-ms2-msp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MGF / MS2 / MSP
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MGF / MS2 / MSP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-handles_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File handles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-mgf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MGF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-ms2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MS2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-populated-from-msp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata populated from MSP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leniency-and-where-it-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leniency, and where it stops
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisitiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AcquisitionType
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="readers">Readers</h1>
+<p>spxtacular provides six format-specific reader classes — <code>MzmlReader</code>, <code>DReader</code>, <code>ThermoReader</code>,
+<code>MgfReader</code>, <code>Ms2Reader</code>, and <code>MspReader</code> — plus a format-agnostic <code>Reader</code> that picks the right
+one from the file extension. All of them expose a uniform interface for iterating over
+<code>MsnSpectrum</code> objects regardless of the underlying file format.</p>
+<p>Every reader yields <code>MsnSpectrum</code> instances populated with as much instrument metadata as the format provides. All spectrum-processing methods (<code>.filter()</code>, <code>.denoise()</code>, <code>.deconvolute()</code>, etc.) are immediately available on each yielded object.</p>
+<p><code>MzmlReader</code>, <code>DReader</code>, and <code>ThermoReader</code> need an optional extra (<code>mzmlpy</code> / <code>tdfpy</code> /
+<code>fisher-py</code>); <code>MgfReader</code>, <code>Ms2Reader</code>, and <code>MspReader</code> are pure standard library and always
+available, as are the matching writers <code>write_mgf</code>, <code>write_ms2</code>, and <code>write_msp</code>.</p>
+<h2 id="lookup-objects">Lookup objects</h2>
+<p><code>.ms1</code> and <code>.ms2</code> are <strong>not</strong> generators. Each property returns a small lookup object that is both
+<strong>iterable</strong> (<code>for spec in reader.ms1:</code>) and <strong>indexable</strong> (<code>reader.ms2[42]</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Reader</th>
+<th><code>.ms1</code> type</th>
+<th><code>.ms2</code> type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MzmlReader</code></td>
+<td><code>MzmlSpectraLookup</code></td>
+<td><code>MzmlSpectraLookup</code></td>
+</tr>
+<tr>
+<td><code>DReader</code></td>
+<td><code>DReaderMs1Lookup</code></td>
+<td><code>DReaderMs2Lookup</code></td>
+</tr>
+<tr>
+<td><code>ThermoReader</code></td>
+<td><code>ThermoScanLookup</code></td>
+<td><code>ThermoScanLookup</code></td>
+</tr>
+<tr>
+<td><code>MgfReader</code> / <code>Ms2Reader</code> / <code>MspReader</code></td>
+<td><code>PeakListLookup</code> (always empty)</td>
+<td><code>PeakListLookup</code></td>
+</tr>
+<tr>
+<td><code>Reader</code></td>
+<td>whichever the detected backend provides</td>
+<td>whichever the detected backend provides</td>
+</tr>
+</tbody>
+</table>
+<p>Because they are iterables and not iterators, <code>next(reader.ms2)</code> raises <code>TypeError</code> — use
+<code>next(iter(reader.ms2))</code> to pull the first spectrum:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">first_ms2</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">))</span>
+</code></pre></div>
+<p>Index semantics differ per backend:</p>
+<table>
+<thead>
+<tr>
+<th>Expression</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MzmlReader.ms1[key]</code> / <code>.ms2[key]</code></td>
+<td>Spectrum by <strong>overall</strong> 0-based index or native ID string. No MS-level filtering is applied on random access, so <code>reader.ms2[0]</code> is the first spectrum in the file, not the first MS2 spectrum</td>
+</tr>
+<tr>
+<td><code>MzmlReader[key]</code></td>
+<td>Same as above, straight off the reader (<code>reader[0]</code>, <code>reader["scan=19"]</code>)</td>
+</tr>
+<tr>
+<td><code>DReader.ms1[frame_id]</code></td>
+<td>MS1 spectrum by tdfpy <code>frame_id</code></td>
+</tr>
+<tr>
+<td><code>DReader.ms2[precursor_id]</code></td>
+<td>MS2 spectrum by tdfpy <code>precursor_id</code> — <strong>DDA only</strong>. DIA and PRM raise <code>NotImplementedError</code> (their MS2 records are not keyed by a single id); iterate instead</td>
+</tr>
+<tr>
+<td><code>ThermoReader.ms1[scan]</code> / <code>.ms2[scan]</code></td>
+<td>Spectrum by native <strong>1-based scan number</strong>; <code>KeyError</code> if the scan does not exist or is not of that MS level. <code>ThermoReader[scan]</code> fetches any level</td>
+</tr>
+<tr>
+<td><code>MgfReader[key]</code> / <code>Ms2Reader[key]</code> / <code>MspReader[key]</code></td>
+<td>Spectrum by 0-based position in the file, or by <code>native_id</code> string (first match wins — library files repeat names across collision energies). Each lookup streams the file from the start, so it is O(n) — iterate when you want them all</td>
+</tr>
+</tbody>
+</table>
+<p><code>DReader</code> and <code>ThermoReader</code> lookups raise <code>RuntimeError</code> if the reader has not been opened.</p>
+<p><code>polarity</code>, <code>activation_type</code>, <code>im_type</code>, and <code>analyzer</code> are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as <code>"MS:1002481"</code>) — they also accept the <code>Polarity</code>, <code>ActivationType</code>, <code>IMType</code>, and <code>Analyzer</code> enums documented in <a href="../api/#metadata-enums">API reference — Metadata enums</a> if you want to set or compare them with autocomplete/typo-safety.</p>
+<hr />
+<h2 id="reader">Reader</h2>
+<p><code>Reader</code> is the format-agnostic entry point: it inspects the path suffix and delegates to <code>DReader</code>
+(<code>.d</code>), <code>MzmlReader</code> (<code>.mzml</code>), <code>ThermoReader</code> (<code>.raw</code>), <code>MgfReader</code> (<code>.mgf</code>), <code>Ms2Reader</code>
+(<code>.ms2</code>), or <code>MspReader</code> (<code>.msp</code>) — case-insensitive, and a trailing <code>.gz</code> is stripped before
+matching so <code>.mzML.gz</code>, <code>.mgf.gz</code>, <code>.ms2.gz</code>, and <code>.msp.gz</code> all dispatch correctly. Anything else
+raises <code>ValueError</code>. Usage is identical regardless of the underlying format.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Reader</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="n">centroid_config</span><span class="p">:</span> <span class="n">CentroidConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">mzml_gzip_mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"auto"</span><span class="p">,</span> <span class="s2">"extract"</span><span class="p">,</span> <span class="s2">"indexed"</span><span class="p">,</span> <span class="s2">"stream"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="n">mzml_in_memory</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="n">mzml_extract_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Reader</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="nd">@property</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DReaderMs1Lookup</span> <span class="o">|</span> <span class="n">MzmlSpectraLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="nd">@property</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DReaderMs2Lookup</span> <span class="o">|</span> <span class="n">MzmlSpectraLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="nd">@property</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">access_strategy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">Reader</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">with</span> <span class="n">Reader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span> <span class="k">as</span> <span class="n">r</span><span class="p">:</span>      <span class="c1"># or Reader("/data/sample.d")</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">r</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">with</span> <span class="n">Reader</span><span class="p">(</span><span class="s2">"/data/sample.d"</span><span class="p">)</span> <span class="k">as</span> <span class="n">r</span><span class="p">:</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">ms2</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">ms2</span><span class="p">[</span><span class="mi">42</span><span class="p">]</span>                <span class="c1"># DDA precursor_id</span>
+</code></pre></div>
+<p><code>centroid_config</code> is only meaningful for <code>.d</code> inputs. The <code>mzml_*</code> options are forwarded only to
+<code>MzmlReader</code>. <code>Reader</code> exposes <code>ms1</code>, <code>ms2</code>, <code>access_strategy</code>, <code>open</code>, and <code>close</code>.
+<code>access_strategy</code> is <code>None</code> for non-mzML inputs.</p>
+<hr />
+<h2 id="mzmlreader">MzmlReader</h2>
+<p>Reads standard <code>.mzML</code> files using <code>mzmlpy</code>. No context manager is required, but one is strongly
+recommended — see <a href="#file-handles">File handles</a> below.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MzmlReader</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">mzml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="n">gzip_mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"auto"</span><span class="p">,</span> <span class="s2">"extract"</span><span class="p">,</span> <span class="s2">"indexed"</span><span class="p">,</span> <span class="s2">"stream"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">in_memory</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="n">extract_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MzmlReader</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="nd">@property</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MzmlSpectraLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    <span class="nd">@property</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MzmlSpectraLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="nd">@property</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">access_strategy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MsnSpectrum</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>For gzipped mzML, the default <code>gzip_mode="auto"</code> checks for a self-indexed gzip file, a current
+extracted cache, and complete rapidgzip sidecars before falling back to extraction. The selected
+route is reported by <code>access_strategy</code>. Use <code>gzip_mode="stream"</code> when a service intentionally reads
+sequentially:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">with</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"large-run.mzML.gz"</span><span class="p">,</span> <span class="n">gzip_mode</span><span class="o">=</span><span class="s2">"stream"</span><span class="p">,</span> <span class="n">in_memory</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">r</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">first_ms1</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">ms1</span><span class="p">))</span>
+</code></pre></div>
+<p>The <code>"indexed"</code> mode builds a random-access gzip index and requires <code>rapidgzip</code>. Streaming avoids
+temporary extracted files, but later index lookups must scan forward from the start.</p>
+<p>Create the self-indexed format through the thin mzMLPy-backed helper:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_indexed_mzml_gzip</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">write_indexed_mzml_gzip</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">,</span> <span class="s2">"run.indexed.mzML.gz"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="properties">Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ms1</code></td>
+<td>All MS1 spectra in scan order (iteration); index/native-ID access is unfiltered</td>
+</tr>
+<tr>
+<td><code>ms2</code></td>
+<td>All MS2 spectra in scan order, including parsed precursor information (iteration); index/native-ID access is unfiltered</td>
+</tr>
+<tr>
+<td><code>access_strategy</code></td>
+<td>Concrete mzMLPy route such as <code>embedded</code>, <code>extracted</code>, <code>rapidgzip</code>, or <code>plain</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="metadata-populated-from-mzml">Metadata populated from mzML</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td>Spectrum index</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td><code>msLevel</code> CV param</td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td>Raw spectrum <code>id</code> attribute</td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td><code>scan start time</code> (converted to seconds)</td>
+</tr>
+<tr>
+<td><code>mz_range</code></td>
+<td><code>scan window lower/upper limit</code></td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td><code>positive scan</code> / <code>negative scan</code> CV params</td>
+</tr>
+<tr>
+<td><code>spectrum_type</code></td>
+<td><code>centroid spectrum</code> / <code>profile spectrum</code> CV params</td>
+</tr>
+<tr>
+<td><code>charge</code> (array)</td>
+<td>Per-peak charge array when present in the binary data</td>
+</tr>
+<tr>
+<td><code>im</code> (array)</td>
+<td>First ion mobility binary array when present</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>MS2 only: selected ion m/z, intensity, charge, and activation info</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td>MS2 only: from activation element</td>
+</tr>
+<tr>
+<td><code>activation_type</code></td>
+<td>MS2 only: from activation element</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples">Examples</h3>
+<p><strong>Iterate MS1 spectra:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">reader</span> <span class="o">=</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="c1"># MsnSpectrum(scan=0, ms_level=1, rt=1.23s, polarity=positive, n_peaks=4521)</span>
+</code></pre></div>
+<p><strong>Filter and denoise each MS1 scan:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">reader</span> <span class="o">=</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">processed</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_mz</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_mz</span><span class="o">=</span><span class="mi">1600</span><span class="p">)</span><span class="o">.</span><span class="n">denoise</span><span class="p">(</span><span class="s2">"mad"</span><span class="p">)</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Scan </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">processed</span><span class="p">)</span><span class="si">}</span><span class="s2"> peaks after denoise"</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Iterate MS2 spectra with precursor info:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">reader</span> <span class="o">=</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="k">continue</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">prec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>        <span class="sa">f</span><span class="s2">"Scan </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2"> | "</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="sa">f</span><span class="s2">"Precursor </span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> m/z, z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">charge</span><span class="si">}</span><span class="s2"> | "</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>        <span class="sa">f</span><span class="s2">"CE=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">collision_energy</span><span class="si">}</span><span class="s2"> eV"</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="p">)</span>
+</code></pre></div>
+<p><strong>Full deconvolution pipeline on MS1:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">reader</span> <span class="o">=</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">neutral</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="n">spec</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>        <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_mz</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span> <span class="n">min_intensity</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>        <span class="o">.</span><span class="n">denoise</span><span class="p">(</span><span class="s2">"mad"</span><span class="p">)</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>        <span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>        <span class="o">.</span><span class="n">decharge</span><span class="p">()</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="p">)</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="k">for</span> <span class="n">peak</span> <span class="ow">in</span> <span class="n">neutral</span><span class="o">.</span><span class="n">top_peaks</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  mass=</span><span class="si">{</span><span class="n">peak</span><span class="o">.</span><span class="n">mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> Da  intensity=</span><span class="si">{</span><span class="n">peak</span><span class="o">.</span><span class="n">intensity</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="k">break</span>  <span class="c1"># first scan only</span>
+</code></pre></div>
+<p><strong>Fetch a single spectrum by index or native ID:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">with</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">first</span> <span class="o">=</span> <span class="n">reader</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>              <span class="c1"># by overall 0-based index</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">named</span> <span class="o">=</span> <span class="n">reader</span><span class="p">[</span><span class="s2">"scan=19"</span><span class="p">]</span>      <span class="c1"># by native ID</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">first_ms2</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">))</span>   <span class="c1"># first MS2 spectrum</span>
+</code></pre></div>
+<h3 id="file-handles">File handles</h3>
+<p><code>MzmlReader.open()</code> opens a persistent <code>mzmlpy</code> handle and <code>close()</code> releases it; <code>__enter__</code> /
+<code>__exit__</code> call them, so <code>__exit__</code> is <strong>not</strong> a no-op. While a handle is open, iteration and index
+access reuse it (the fast path). Without one, every <code>.ms1</code> / <code>.ms2</code> / <code>reader[...]</code> operation opens
+and closes the file again — correct, but considerably slower. Prefer the context manager:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">with</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"run.mzML"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>        <span class="o">...</span>
+</code></pre></div>
+<hr />
+<h2 id="dreader">DReader</h2>
+<p>Reads Bruker timsTOF <code>.d</code> directories using <code>tdfpy</code>. <strong>Must be opened before use</strong> — either with
+<code>open()</code> / <code>close()</code> or (preferred) as a context manager. The underlying <code>tdfpy</code> handle is opened on
+<code>__enter__</code> and closed on <code>__exit__</code>; touching <code>.ms1</code> / <code>.ms2</code> before <code>open()</code> raises <code>RuntimeError</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DReader</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>        <span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>        <span class="n">centroid_config</span><span class="p">:</span> <span class="n">CentroidConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DReader</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    <span class="nd">@property</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DReaderMs1Lookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="nd">@property</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DReaderMs2Lookup</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>The acquisition type (DDA, DIA, PRM) is detected automatically from the <code>.d</code> directory at construction time and stored as <code>reader.acquisition_type</code> (<code>AcquisitionType</code> enum).</p>
+<h3 id="centroidconfig"><code>CentroidConfig</code></h3>
+<p>timsTOF frames arrive as raw (frame, scan) points, so <code>DReader</code> centroids them via <code>tdfpy</code>.
+<code>CentroidConfig</code> holds the parameters forwarded to that step. It is exported from the package root
+and ignored by <code>MzmlReader</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">CentroidConfig</span><span class="p">,</span> <span class="n">DReader</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">cfg</span> <span class="o">=</span> <span class="n">CentroidConfig</span><span class="p">(</span><span class="n">mz_tolerance</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">min_peaks</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">noise_filter</span><span class="o">=</span><span class="s2">"mad"</span><span class="p">)</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="k">with</span> <span class="n">DReader</span><span class="p">(</span><span class="s2">"/data/sample.d"</span><span class="p">,</span> <span class="n">centroid_config</span><span class="o">=</span><span class="n">cfg</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">...</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz_tolerance</code></td>
+<td><code>8.0</code></td>
+<td>m/z merge window</td>
+</tr>
+<tr>
+<td><code>mz_tolerance_type</code></td>
+<td><code>"ppm"</code></td>
+<td><code>"ppm"</code> or <code>"da"</code></td>
+</tr>
+<tr>
+<td><code>im_tolerance</code></td>
+<td><code>0.1</code></td>
+<td>Ion mobility merge window</td>
+</tr>
+<tr>
+<td><code>im_tolerance_type</code></td>
+<td><code>"relative"</code></td>
+<td><code>"relative"</code> or <code>"absolute"</code></td>
+</tr>
+<tr>
+<td><code>min_peaks</code></td>
+<td><code>3</code></td>
+<td>Minimum raw points required to emit a centroid</td>
+</tr>
+<tr>
+<td><code>noise_filter</code></td>
+<td><code>None</code></td>
+<td><code>"mad"</code>, <code>"percentile"</code>, <code>"histogram"</code>, <code>"baseline"</code>, <code>"iterative_median"</code>, a <code>float</code> threshold, or <code>None</code></td>
+</tr>
+</tbody>
+</table>
+<p>Passing <code>centroid_config=None</code> (the default) uses <code>CentroidConfig()</code> with the values above.</p>
+<h3 id="properties_1">Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ms1</code></td>
+<td>All MS1 frames, centroided and merged by <code>tdfpy</code>; <code>ms1[frame_id]</code> fetches one frame</td>
+</tr>
+<tr>
+<td><code>ms2</code></td>
+<td>All MS2 spectra (DDA: per-precursor; DIA: per isolation window; PRM: per transition); <code>ms2[precursor_id]</code> fetches one DDA spectrum</td>
+</tr>
+</tbody>
+</table>
+<h3 id="metadata-populated-from-timstof">Metadata populated from timsTOF</h3>
+<p><strong>MS1:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>frame_id</code></td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>1</code></td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td>Frame acquisition time (seconds)</td>
+</tr>
+<tr>
+<td><code>injection_time</code></td>
+<td>Frame accumulation time (ms)</td>
+</tr>
+<tr>
+<td><code>mz_range</code></td>
+<td>Instrument acquisition range from metadata</td>
+</tr>
+<tr>
+<td><code>im_range</code></td>
+<td>1/K0 acquisition range from metadata</td>
+</tr>
+<tr>
+<td><code>im</code> (array)</td>
+<td>Per-peak 1/K0 values</td>
+</tr>
+<tr>
+<td><code>analyzer</code></td>
+<td>Always <code>"TOF"</code></td>
+</tr>
+<tr>
+<td><code>ramp_time</code></td>
+<td>Frame ramp time (ms)</td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td>From frame polarity field</td>
+</tr>
+<tr>
+<td><code>spectrum_type</code></td>
+<td>Always <code>CENTROID</code> (timsTOF data arrives centroided)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>MS2 (DDA):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>precursor_id</code></td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td>Retention time (seconds)</td>
+</tr>
+<tr>
+<td><code>isolation_mz_range</code></td>
+<td>Precursor isolation window</td>
+</tr>
+<tr>
+<td><code>isolation_im_range</code></td>
+<td>1/K0 range of precursor</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>Single <code>Precursor</code> with monoisotopic m/z (or largest peak m/z if unavailable), intensity, charge, and 1/K0</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td>From precursor record</td>
+</tr>
+<tr>
+<td><code>activation_type</code></td>
+<td><code>"MS:1002481"</code> (PASEF)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>MS2 (DIA):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>frame_id</code></td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>"{frame_id}@w{window_index}"</code></td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td>Retention time (seconds)</td>
+</tr>
+<tr>
+<td><code>isolation_mz_range</code></td>
+<td>Isolation window m/z range</td>
+</tr>
+<tr>
+<td><code>isolation_im_range</code></td>
+<td>Isolation window 1/K0 range</td>
+</tr>
+<tr>
+<td><code>im</code> (array)</td>
+<td>Per-peak 1/K0 values</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td>From window record</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td><code>None</code> — DIA windows have no defined precursor</td>
+</tr>
+</tbody>
+</table>
+<p><strong>MS2 (PRM):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>frame_id</code></td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>"{frame_id}@t{target_id}"</code></td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td>Retention time (seconds)</td>
+</tr>
+<tr>
+<td><code>isolation_mz_range</code> / <code>isolation_im_range</code></td>
+<td>Transition isolation windows</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>Single <code>Precursor</code> built from the PRM target (monoisotopic m/z, charge, 1/K0); intensity is the summed MS2 peak intensity, since PRM targets carry no measured precursor intensity</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td>From transition record</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_1">Examples</h3>
+<p><strong>Iterate MS1 frames (DDA or DIA):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">DReader</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="k">with</span> <span class="n">DReader</span><span class="p">(</span><span class="s2">"/data/sample.d"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Acquisition type: </span><span class="si">{</span><span class="n">reader</span><span class="o">.</span><span class="n">acquisition_type</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>        <span class="c1"># MsnSpectrum(scan=1, ms_level=1, rt=0.42s, polarity=positive, n_peaks=8234)</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>        <span class="k">break</span>
+</code></pre></div>
+<p><strong>MS1 with ion mobility filtering:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">DReader</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">with</span> <span class="n">DReader</span><span class="p">(</span><span class="s2">"/data/sample.d"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>        <span class="c1"># Keep only peaks in a specific 1/K0 window</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>        <span class="n">filtered</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_im</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">max_im</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">min_intensity</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">filtered</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>            <span class="k">continue</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>        <span class="n">neutral</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>            <span class="n">filtered</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>            <span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">tolerance_type</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>            <span class="o">.</span><span class="n">decharge</span><span class="p">()</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>        <span class="p">)</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Frame </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">neutral</span><span class="p">)</span><span class="si">}</span><span class="s2"> neutral masses"</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>MS2 DDA — inspect precursors:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">DReader</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">with</span> <span class="n">DReader</span><span class="p">(</span><span class="s2">"/data/sample_dda.d"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">:</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>            <span class="k">continue</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>        <span class="n">prec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>        <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>            <span class="sa">f</span><span class="s2">"Precursor </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>            <span class="sa">f</span><span class="s2">"m/z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">, z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">charge</span><span class="si">}</span><span class="s2">, "</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>            <span class="sa">f</span><span class="s2">"1/K0=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">im</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, "</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>            <span class="sa">f</span><span class="s2">"monoisotopic=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">is_monoisotopic</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>        <span class="p">)</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>        <span class="k">break</span>
+</code></pre></div>
+<p><strong>MS2 DIA — iterate isolation windows:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">DReader</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="k">with</span> <span class="n">DReader</span><span class="p">(</span><span class="s2">"/data/sample_dia.d"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>        <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">native_id</span><span class="si">}</span><span class="s2">: "</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>            <span class="sa">f</span><span class="s2">"mz_range=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">mz_range</span><span class="si">}</span><span class="s2">, "</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>            <span class="sa">f</span><span class="s2">"CE=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">collision_energy</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>        <span class="p">)</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>        <span class="k">break</span>
+</code></pre></div>
+<hr />
+<h2 id="thermoreader">ThermoReader</h2>
+<p>Reads Thermo <code>.raw</code> files using <a href="https://github.com/ethz-institute-of-microbiology/fisher_py"><code>fisher-py</code></a>,
+which wraps Thermo's official RawFileReader .NET assemblies. <strong>Must be opened before use</strong> — either
+with <code>open()</code> / <code>close()</code> or (preferred) as a context manager; touching <code>.ms1</code> / <code>.ms2</code> before
+<code>open()</code> raises <code>RuntimeError</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>pip<span class="w"> </span>install<span class="w"> </span>spxtacular<span class="o">[</span>thermo<span class="o">]</span>
+</code></pre></div>
+<p>Beyond the Python extra, <code>.raw</code> reading needs a <strong>.NET runtime</strong> (8 or later) on the machine —
+install it from <a href="https://dotnet.microsoft.com/download">dotnet.microsoft.com/download</a> and make
+sure <code>dotnet</code> is on <code>PATH</code> (or <code>DOTNET_ROOT</code> points at it). Without one, constructing a
+<code>ThermoReader</code> raises an <code>ImportError</code> explaining exactly that; <code>import spxtacular</code> itself never
+touches the runtime. A <code>.raw</code> <strong>directory</strong> is the Waters format, not Thermo's, and is rejected
+with a <code>ValueError</code> suggesting mzML conversion.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ThermoReader</span><span class="p">:</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>        <span class="n">raw_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>        <span class="n">prefer_vendor_centroid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ThermoReader</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    <span class="nd">@property</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ThermoScanLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>    <span class="nd">@property</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ThermoScanLookup</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scan_number</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MsnSpectrum</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<h3 id="vendor-centroids-vs-profile">Vendor centroids vs. profile</h3>
+<p>Thermo FTMS scans acquired in profile mode also carry the instrument's own centroid ("label")
+stream, complete with per-peak charge annotations. By default (<code>prefer_vendor_centroid=True</code>)
+<code>ThermoReader</code> yields those centroids as a <code>CENTROID</code> spectrum with a <code>charge</code> array — Thermo's
+"charge unknown" (0) is remapped to spxtacular's unassigned marker (-1), since 0 is reserved for
+decharged spectra. Pass <code>prefer_vendor_centroid=False</code> to get scans exactly as acquired: the full
+<code>PROFILE</code> trace for profile-mode scans (centroid it yourself with <code>.centroid()</code> or deconvolute the
+vendor centroids instead). Scans acquired in centroid mode — typical for ion-trap detectors — are
+unaffected by the flag and always come back as <code>CENTROID</code> without charges.</p>
+<h3 id="metadata-populated-from-raw">Metadata populated from .raw</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_number</code></td>
+<td>Native 1-based scan number</td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>"controllerType=0 controllerNumber=1 scan=&lt;n&gt;"</code> (mzML-compatible)</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Scan filter MS order</td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td>Scan start time, converted from RawFileReader's minutes to <strong>seconds</strong></td>
+</tr>
+<tr>
+<td><code>mz_range</code></td>
+<td>Scan window from the scan header</td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td>Scan filter polarity</td>
+</tr>
+<tr>
+<td><code>analyzer</code></td>
+<td>Scan filter mass analyzer; <code>FTMS</code> resolves to <code>orbitrap</code> (or <code>ft_icr</code> on LTQ FT instruments), <code>ITMS</code> to <code>ion_trap</code>, etc.</td>
+</tr>
+<tr>
+<td><code>injection_time</code></td>
+<td>Trailer <code>Ion Injection Time (ms)</code></td>
+</tr>
+<tr>
+<td><code>resolution</code></td>
+<td>Trailer <code>Orbitrap Resolution</code> / <code>FT Resolution</code></td>
+</tr>
+<tr>
+<td><code>total_ion_current</code></td>
+<td>Scan header TIC</td>
+</tr>
+<tr>
+<td><code>charge</code> (array)</td>
+<td>Vendor centroid stream charge annotations (default mode only); 0 → -1</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>MS2+: isolation target m/z (trailer <code>Monoisotopic M/Z</code> when set, flagged <code>is_monoisotopic</code>), trailer <code>Charge State</code>; intensity is the summed product-ion intensity, since the scan records no precursor intensity</td>
+</tr>
+<tr>
+<td><code>isolation_mz_range</code></td>
+<td>Reaction isolation width (+ offset) around the target m/z</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td>Reaction collision energy</td>
+</tr>
+<tr>
+<td><code>activation_type</code></td>
+<td>Reaction activation, mapped to <code>ActivationType</code> (<code>CID</code>, <code>HCD</code>, <code>ETD</code>, …); ETD plus a supplemental-activation reaction becomes <code>EThcD</code> / <code>ETciD</code>; unrecognised vendor modes pass through as raw strings</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_2">Examples</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThermoReader</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="k">with</span> <span class="n">ThermoReader</span><span class="p">(</span><span class="s2">"run.raw"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>        <span class="n">prec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>        <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>            <span class="sa">f</span><span class="s2">"Scan </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">activation_type</span><span class="si">}</span><span class="s2"> "</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">collision_energy</span><span class="si">}</span><span class="s2"> eV | precursor </span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">charge</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>        <span class="p">)</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>    <span class="n">scan_42</span> <span class="o">=</span> <span class="n">reader</span><span class="p">[</span><span class="mi">42</span><span class="p">]</span>           <span class="c1"># any MS level, by native scan number</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>    <span class="n">ms1_scan</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms1</span><span class="p">[</span><span class="mi">41</span><span class="p">]</span>      <span class="c1"># KeyError if scan 41 is not MS1</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># The data exactly as acquired — profile scans stay profile:</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="k">with</span> <span class="n">ThermoReader</span><span class="p">(</span><span class="s2">"run.raw"</span><span class="p">,</span> <span class="n">prefer_vendor_centroid</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>    <span class="n">profile</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>        <span class="c1"># SpectrumType.PROFILE</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>    <span class="n">centroided</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">centroid</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h2 id="mgf-ms2-msp">MGF / MS2 / MSP</h2>
+<p>MGF (Mascot Generic Format), MS2, and MSP (the NIST spectral-library format) are plain-text peak
+lists. All three are handled by <code>spxtacular.peaklist</code>, which is <strong>pure standard library</strong> — no
+optional extra, nothing to install, always importable. All three formats hold fragmentation
+spectra only, so every spectrum read back is an <code>MsnSpectrum</code> with <code>ms_level=2</code> and
+<code>spectrum_type=SpectrumType.CENTROID</code>, and <code>reader.ms1</code> is a valid but always empty walk.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">MgfReader</span><span class="p">:</span>            <span class="c1"># and Ms2Reader / MspReader — identical interface</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">MsnSpectrum</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MsnSpectrum</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a>    <span class="nd">@property</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PeakListLookup</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># always empty</span>
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>
+<a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a>    <span class="nd">@property</span>
+<a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ms2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PeakListLookup</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MgfReader</span><span class="p">,</span> <span class="n">Ms2Reader</span><span class="p">,</span> <span class="n">write_mgf</span><span class="p">,</span> <span class="n">write_ms2</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="k">with</span> <span class="n">MgfReader</span><span class="p">(</span><span class="s2">"run.mgf"</span><span class="p">)</span> <span class="k">as</span> <span class="n">reader</span><span class="p">:</span>        <span class="c1"># run.mgf.gz works too</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">reader</span><span class="p">))</span>                      <span class="c1"># spectra in the file</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="k">for</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">reader</span><span class="p">:</span>                     <span class="c1"># or: for spec in reader.ms2</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>        <span class="n">prec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">charge</span><span class="si">}</span><span class="s2"> rt=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">rt</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="n">write_ms2</span><span class="p">(</span><span class="n">MgfReader</span><span class="p">(</span><span class="s2">"run.mgf"</span><span class="p">),</span> <span class="s2">"run.ms2"</span><span class="p">)</span>  <span class="c1"># readers are iterables of spectra</span>
+</code></pre></div>
+<p>Gzip is handled transparently on read — detected by magic bytes, so a compressed file works under
+any name — and on write, where a <code>.gz</code> suffix compresses the output.</p>
+<h3 id="file-handles_1">File handles</h3>
+<p>Unlike <code>MzmlReader</code>, these readers hold <strong>no</strong> handle between walks: every iteration streams a fresh
+one, so iterations are independent and may be nested. <code>open()</code> only checks the file exists (raising
+<code>FileNotFoundError</code> early) and <code>close()</code> is a no-op; the context manager is supported for symmetry
+with the other readers, not because anything needs releasing.</p>
+<p><code>len(reader)</code> makes one pass that counts record-start lines without parsing peaks, then caches the
+result.</p>
+<h3 id="metadata-populated-from-mgf">Metadata populated from MGF</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz</code> / <code>intensity</code></td>
+<td>Ion lines inside <code>BEGIN IONS</code> … <code>END IONS</code></td>
+</tr>
+<tr>
+<td><code>charge</code> (array)</td>
+<td>Optional third column on the ion lines — kept only when <strong>every</strong> peak has one</td>
+</tr>
+<tr>
+<td><code>scan_number</code></td>
+<td><code>SCANS</code> (a range such as <code>1024-1030</code> collapses to its first scan)</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>TITLE</code>, verbatim</td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td><code>RTINSECONDS</code>, or the non-standard <code>RTINMINUTES</code> × 60 when that is all the file has</td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td>Implied by the sign of <code>CHARGE</code> (<code>2+</code> → positive, <code>2-</code> → negative)</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>One <code>Precursor</code> from <code>PEPMASS</code> (m/z, optional intensity) and <code>CHARGE</code></td>
+</tr>
+<tr>
+<td><code>spectrum_type</code></td>
+<td>Always <code>CENTROID</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="metadata-populated-from-ms2">Metadata populated from MS2</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz</code> / <code>intensity</code></td>
+<td>Ion lines following an <code>S</code> record</td>
+</tr>
+<tr>
+<td><code>scan_number</code></td>
+<td>First scan field of the <code>S</code> line</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td>Synthesised as <code>"scan=&lt;scan_number&gt;"</code></td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td><code>I RTime</code> / <code>I RetTime</code> × 60 — those values are <strong>minutes</strong> in the wild, <code>rt</code> is seconds</td>
+</tr>
+<tr>
+<td><code>injection_time</code></td>
+<td><code>I IonInjectionTime</code></td>
+</tr>
+<tr>
+<td><code>total_ion_current</code></td>
+<td><code>I TIC</code></td>
+</tr>
+<tr>
+<td><code>activation_type</code></td>
+<td><code>I ActivationType</code></td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td>Implied by the sign of the <code>Z</code> charge</td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>One <code>Precursor</code>: m/z from the <code>S</code> line, charge from the first <code>Z</code> line, intensity from <code>I PrecursorInt</code></td>
+</tr>
+<tr>
+<td><code>spectrum_type</code></td>
+<td>Always <code>CENTROID</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>H</code> header lines and <code>D</code> analysis lines are read and skipped. Unmapped <code>I</code> keys are skipped too.</p>
+<h3 id="metadata-populated-from-msp">Metadata populated from MSP</h3>
+<p>MSP has no formal spec; <code>MspReader</code> handles both dialects found in the wild — NIST/SpectraST
+peptide libraries and metabolomics exports (MoNA, GNPS, MS-DIAL). Header keys are matched
+case-insensitively, ignoring spaces, underscores, and hyphens, so <code>PrecursorMZ</code>, <code>PRECURSORMZ</code>,
+and <code>Precursor_mz</code> are all the same key. A record is header lines up to <code>Num Peaks: N</code> followed by
+exactly <code>N</code> peaks — the count is both metadata and the record terminator.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source (first hit wins)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz</code> / <code>intensity</code></td>
+<td>Peak lines after <code>Num Peaks</code>; several peaks may share a line, semicolon-separated; a trailing annotation column (<code>"b2/0.001"</code>) is ignored</td>
+</tr>
+<tr>
+<td><code>native_id</code></td>
+<td><code>Name</code>, verbatim</td>
+</tr>
+<tr>
+<td><code>ms_level</code></td>
+<td>Always <code>2</code></td>
+</tr>
+<tr>
+<td><code>precursors</code></td>
+<td>One <code>Precursor</code> from <code>PrecursorMZ</code>, falling back to <code>Parent=</code> inside <code>Comment</code></td>
+</tr>
+<tr>
+<td>precursor <code>charge</code></td>
+<td><code>Charge</code> header, <code>Charge=</code> comment pair, or a trailing <code>/2</code> on a peptide <code>Name</code></td>
+</tr>
+<tr>
+<td><code>polarity</code></td>
+<td><code>Ion_mode</code> / <code>Polarity</code> (<code>P</code>/<code>N</code>/<code>Positive</code>/<code>Negative</code>), else implied by the charge sign</td>
+</tr>
+<tr>
+<td><code>rt</code></td>
+<td><code>RetentionTime</code> / <code>RT</code> header or <code>RT=</code> comment pair — <strong>verbatim, no unit conversion</strong>: MSP has no unit convention (NIST peptide libraries write seconds, most metabolomics exporters minutes), so no guess is made. Know your library</td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td><code>Collision_energy</code> header or <code>CE=</code> comment pair; the first number is used, so <code>35</code>, <code>35 eV</code>, and <code>HCD 35%</code> all parse</td>
+</tr>
+<tr>
+<td><code>spectrum_type</code></td>
+<td>Always <code>CENTROID</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>Comment:</code> is parsed as space-separated <code>Key=value</code> pairs (values optionally quoted) and the known
+keys above are extracted. Everything else — <code>Formula:</code>, <code>SMILES:</code>, <code>InChIKey:</code>, <code>Precursor_type:</code>
+adducts, <code>Synon:</code>, <code>Mods=</code> — is skipped: <code>MsnSpectrum</code> has no fields for compound identity, and
+per-peak annotation strings have no per-peak storage. Count mismatches in either direction, a
+record with no <code>Num Peaks</code> line, and unparsable numbers raise <code>ValueError</code> naming the file and
+line, in keeping with the leniency table above.</p>
+<h3 id="leniency-and-where-it-stops">Leniency, and where it stops</h3>
+<p>Real peak lists are written by a long tail of tools, so parsing is deliberately forgiving:</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unknown <code>KEY=VALUE</code> MGF headers</td>
+<td>Ignored</td>
+</tr>
+<tr>
+<td>Headers outside any <code>BEGIN IONS</code> block</td>
+<td>Ignored (global MGF headers such as <code>SEARCH=MIS</code>)</td>
+</tr>
+<tr>
+<td>Blank lines, and comments opening with <code>#</code>, <code>;</code>, <code>!</code>, or <code>/</code></td>
+<td>Skipped anywhere in the file</td>
+</tr>
+<tr>
+<td><code>CHARGE=2+ and 3+</code>, <code>CHARGE=2+,3+</code></td>
+<td><strong>First state only</strong> — <code>Precursor.charge</code> is a single value</td>
+</tr>
+<tr>
+<td>Repeated MS2 <code>Z</code> lines</td>
+<td>All parsed, first used — same reason</td>
+</tr>
+<tr>
+<td><code>SCANS=1024-1030</code>, <code>RTINSECONDS=120-130</code></td>
+<td>First number used</td>
+</tr>
+<tr>
+<td>Comma-separated MGF ion lines</td>
+<td>Accepted alongside whitespace</td>
+</tr>
+<tr>
+<td>A block with no ion lines</td>
+<td>Yields an empty spectrum (length-0 arrays), not an error</td>
+</tr>
+<tr>
+<td>Undecodable bytes</td>
+<td>Replaced, so one mangled <code>TITLE</code> cannot make a file unreadable</td>
+</tr>
+</tbody>
+</table>
+<p>Structural damage is <em>not</em> tolerated, and every such error names the file and the line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="ne">ValueError</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">mgf</span><span class="p">:</span><span class="mi">412</span><span class="p">:</span> <span class="s1">'END IONS'</span> <span class="n">without</span> <span class="n">a</span> <span class="n">matching</span> <span class="s1">'BEGIN IONS'</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="ne">ValueError</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">mgf</span><span class="p">:</span><span class="mi">87</span><span class="p">:</span> <span class="n">expected</span> <span class="s1">'mz intensity'</span> <span class="n">on</span> <span class="n">an</span> <span class="n">ion</span> <span class="n">line</span><span class="p">,</span> <span class="n">got</span> <span class="s1">'843.4102'</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="ne">ValueError</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span><span class="mi">1</span><span class="p">:</span> <span class="s1">'100.0 5.0'</span> <span class="n">appears</span> <span class="n">before</span> <span class="nb">any</span> <span class="s1">'S'</span> <span class="n">scan</span> <span class="n">line</span>
+</code></pre></div>
+<p>Unterminated blocks, nested <code>BEGIN IONS</code>, short <code>S</code>/<code>Z</code> lines, and unparsable numbers all raise
+<code>ValueError</code> the same way.</p>
+<h3 id="writing">Writing</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">write_mgf</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">write_ms2</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="n">write_msp</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span>
+</code></pre></div>
+<p>All three take an iterable of <code>Spectrum</code>/<code>MsnSpectrum</code> (a lone spectrum is accepted too) and return the
+path written. <code>mz</code> and <code>intensity</code> go out at repr precision, so a write → read round trip reproduces
+them <strong>exactly</strong>. The mapped metadata in the tables above round-trips with them.</p>
+<p>Writers build a temporary file beside the destination and replace the destination only after
+the entire iterable has been written and closed successfully. A failure preserves an existing
+file and removes the temporary output. Reading and writing the same path is supported, including
+gzip files. Neutral masses are rejected because these formats describe m/z values. Use JSON or
+NPZ to preserve a decharged spectrum.</p>
+<p>Before using an MSP library for chromatogram extraction or exporting its retention times to
+another format, convert its <code>rt</code> values to seconds according to the library's source convention.
+The reader cannot infer an MSP time unit.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Profile data is refused</td>
+<td>A <code>SpectrumType.PROFILE</code> spectrum raises <code>ValueError</code> — peak lists are centroid data. Call <code>.centroid()</code> first</td>
+</tr>
+<tr>
+<td>Polarity rides on the charge sign</td>
+<td>Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (<code>CHARGE=2-</code>, <code>Z -2</code>) and reads back with <code>charge = -2</code></td>
+</tr>
+<tr>
+<td>Missing metadata is omitted</td>
+<td>A plain <code>Spectrum</code> writes just its peaks. MS2's <code>S</code> line has no optional fields, so an absent scan number becomes the 1-based position in the input and an absent precursor m/z becomes <code>0.0</code></td>
+</tr>
+<tr>
+<td>MGF <code>TITLE</code> / MSP <code>Name</code></td>
+<td><code>native_id</code>, falling back to <code>scan=&lt;scan_number&gt;</code></td>
+</tr>
+<tr>
+<td>MS2 <code>Z</code> mass</td>
+<td>Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read</td>
+</tr>
+<tr>
+<td><code>rt</code> in MS2</td>
+<td>Written as minutes (<code>I RTime</code>), so it returns to within floating-point noise rather than bit-exact. MGF's <code>RTINSECONDS</code> is exact</td>
+</tr>
+<tr>
+<td><code>rt</code> in MSP</td>
+<td>Written verbatim under <code>RetentionTime:</code> (spxtacular's <code>rt</code> is seconds; MSP has no unit convention), so it round-trips exactly</td>
+</tr>
+<tr>
+<td>Polarity in MSP</td>
+<td>Written as an explicit <code>Ion_mode: P</code>/<code>N</code> line — MSP has its own field, so unlike MGF/MS2 the charge keeps its sign</td>
+</tr>
+</tbody>
+</table>
+<p>Things that do <strong>not</strong> survive a round trip, by design: <code>im</code>, <code>iso_score</code>, <code>mz_range</code>,
+<code>isolation_mz_range</code>, <code>collision_energy</code>, <code>resolution</code>, <code>analyzer</code>, and <code>MsnSpectrum.ms_level</code> for
+anything other than MS2 — no peak-list format has a field for them. A <code>DECONVOLUTED</code> spectrum
+written to MGF comes back as <code>CENTROID</code> with a per-peak charge array.</p>
+<hr />
+<h2 id="acquisitiontype">AcquisitionType</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcquisitionType</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>    <span class="n">DDA</span> <span class="o">=</span> <span class="s2">"DDA"</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    <span class="n">DIA</span> <span class="o">=</span> <span class="s2">"DIA"</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>    <span class="n">PRM</span> <span class="o">=</span> <span class="s2">"PRM"</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    <span class="n">UNKNOWN</span> <span class="o">=</span> <span class="s2">"UNKNOWN"</span>
+</code></pre></div>
+<p>Detected automatically by <code>DReader</code> from the <code>.d</code> directory. Accessible as <code>reader.acquisition_type</code>.
+<code>UNKNOWN</code> falls back to the DDA reader; <code>PRM</code> has its own MS2 iteration path (per transition).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
