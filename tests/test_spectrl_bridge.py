@@ -180,7 +180,7 @@ def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
 def test_token_roundtrip_plain_spectrum() -> None:
     spec = _basic_spectrum()
     token = to_spectrl_token(spec, lossless=True)
-    assert token.startswith("spectrl.v1.")
+    assert token.startswith("spectrl.v3.")
 
     restored = from_spectrl_token(token)
     np.testing.assert_allclose(restored.mz, spec.mz)
@@ -212,7 +212,7 @@ def test_token_roundtrip_msn_spectrum() -> None:
 
 def test_token_roundtrip_lossy_within_tolerance() -> None:
     spec = _basic_msn()
-    token = to_spectrl_token(spec)  # default: lossy MS-Numpress
+    token = to_spectrl_token(spec)  # default: lossy, bounded per array
     restored = from_spectrl_token(token)
     np.testing.assert_allclose(restored.mz, spec.mz, rtol=1e-5)
     np.testing.assert_allclose(restored.intensity, spec.intensity, rtol=1e-2)
@@ -391,8 +391,8 @@ def test_monoisotopic_flag_keyed_by_precursor_not_selected_ion_count() -> None:
             SpectrlPrecursor(selected_ions=[_selected_ion(700.0)]),
         ],
         user_params=[
-            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0, type="xsd:boolean"),
-            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1, type="xsd:boolean"),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1),
         ],
     )
     restored = from_decoded_spectrum(decoded)
@@ -412,8 +412,8 @@ def test_monoisotopic_flag_survives_skipped_selected_ion() -> None:
             SpectrlPrecursor(selected_ions=[_selected_ion(700.0)]),
         ],
         user_params=[
-            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0, type="xsd:boolean"),
-            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1, type="xsd:boolean"),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.0", value=0),
+            SpectrlUserParam(name=f"{_UP_PREC_MONOISOTOPIC}.1", value=1),
         ],
     )
     restored = from_decoded_spectrum(decoded)
@@ -519,7 +519,7 @@ def test_multiple_foreign_mobility_arrays_are_rejected() -> None:
 def test_url_fragment_roundtrip() -> None:
     spec = _basic_msn()
     url = to_spectrl_url(spec, "https://example.com/view", lossless=True)
-    assert url.startswith("https://example.com/view#spectrl.v1.")
+    assert url.startswith("https://example.com/view#spectrl.v3.")
     restored = from_spectrl_url(url)
     assert isinstance(restored, MsnSpectrum)
     assert restored.scan_number == 42
@@ -528,7 +528,7 @@ def test_url_fragment_roundtrip() -> None:
 def test_url_query_roundtrip() -> None:
     spec = _basic_spectrum()
     url = to_spectrl_url(spec, "https://example.com/view", mode="query", param="s", lossless=True)
-    assert "s=spectrl.v1." in url
+    assert "s=spectrl.v3." in url
     restored = from_spectrl_url(url)
     np.testing.assert_allclose(restored.mz, spec.mz)
 
@@ -536,7 +536,7 @@ def test_url_query_roundtrip() -> None:
 def test_url_data_uri_roundtrip_needs_no_base() -> None:
     spec = _basic_spectrum()
     uri = to_spectrl_url(spec, mode="data", lossless=True)
-    assert uri.startswith("data:application/vnd.spectrl;v=1,spectrl.v1.")
+    assert uri.startswith("data:application/vnd.spectrl;v=3,spectrl.v3.")
     restored = from_spectrl_url(uri)
     np.testing.assert_allclose(restored.mz, spec.mz)
 
