@@ -504,7 +504,9 @@ class TestSaveFigure:
     def test_html_round_trips(self, tmp_path) -> None:
         fig = plot_spectrum(_spectrum(4))
         out = save_figure(fig, tmp_path / "fig.html")
-        assert out.exists() and out.read_text().strip().startswith("<")
+        # plotly's HTML writer always uses utf-8; read it back explicitly so this
+        # doesn't depend on the platform's default text encoding (cp1252 on Windows).
+        assert out.exists() and out.read_text(encoding="utf-8").strip().startswith("<")
 
     def test_extensionless_path_becomes_html(self, tmp_path) -> None:
         fig = plot_spectrum(_spectrum(3))
