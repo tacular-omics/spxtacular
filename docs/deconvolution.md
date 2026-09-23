@@ -33,7 +33,7 @@ print(decon.iso_score)  # isotopic profile fit, 0–1
 [500.2573 800.2   ]
 [2 1]
 [163000. 265000.]
-[0.99834984 0.8899464 ]
+[0.99859213 0.89193358]
 ```
 
 The output has **one peak per identified cluster**, not one peak per input peak: five input peaks became two entries. A cluster of three isotope peaks at z=2 collapses to a single output entry at the monoisotopic m/z with `charge=2`, and its intensity is the sum over the cluster.

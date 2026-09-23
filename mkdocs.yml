@@ -1,30 +1,70 @@
 site_name: spxtacular
-hooks:
-  - hooks.py
-site_description: Mass spectrometry spectrum processing library.
+site_description: Mass spectrometry spectrum processing in Python.
 site_url: https://tacular-omics.github.io/spxtacular/
 repo_url: https://github.com/tacular-omics/spxtacular
 repo_name: tacular-omics/spxtacular
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; the spxtacular authors. MIT licence.
+
+# Regenerates the example plots embedded in the guides into docs/plots/ (gitignored).
+hooks:
+  - hooks.py
+
 theme:
   name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+    - search.suggest
 
 markdown_extensions:
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.superfences
-  - pymdownx.inlinehilite
-  - md_in_html
   # Without these, `!!! warning` blocks render as literal text rather than callouts.
   - admonition
   - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - md_in_html
+  - toc:
+      permalink: true
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
 
 nav:
   - Home: index.md
-  - Spectrum: spectrum.md
-  - Deconvolution: deconvolution.md
-  - Readers: readers.md
-  - Matching & Scoring: scoring.md
-  - Visualization: visualization.md
-  - API Reference: api.md
-  - Design Records:
-      - Polarity, Adducts, and Isotope Models: design/polarity-adducts-and-isotope-roadmap.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Spectrum: spectrum.md
+      - Deconvolution: deconvolution.md
+      - Readers: readers.md
+      - Matching & scoring: scoring.md
+      - Visualization: visualization.md
+  - API reference:
+      - API reference: api.md
+  - Design records:
+      - Polarity, adducts, and isotope models: design/polarity-adducts-and-isotope-roadmap.md
+  - Changelog: https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md
+  - Citation: citation.md

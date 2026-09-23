@@ -16,6 +16,7 @@ from spxtacular import (
     # Readers and peak-list writers
     Reader, DReader, MzmlReader, ThermoReader, CentroidConfig, AcquisitionType,
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
+    write_indexed_mzml_gzip,
     # Matching and scoring
     match_fragments, score, cosine, modified_cosine, entropy_similarity,
     # Isotope envelopes and average-composition models
@@ -181,8 +182,8 @@ positional mix-ups.
 | `Spectrum.from_dict(payload)` | `Spectrum` | Reconstruct `Spectrum` or `MsnSpectrum` from a payload |
 | `.to_json(indent=...)` | `str` | Encode the versioned spectrum payload as strict JSON |
 | `Spectrum.from_json(value)` | `Spectrum` | Reconstruct from JSON text or UTF-8 bytes |
-| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.v1.…` URL-safe token (requires `[spectrl]` extra) |
-| `Spectrum.from_spectrl_token(t)` | `Spectrum \| MsnSpectrum` | Decode a `spectrl.v1.…` token (classmethod) |
+| `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.…` URL-safe token (requires `[spectrl]` extra) |
+| `Spectrum.from_spectrl_token(t)` | `Spectrum \| MsnSpectrum` | Decode a `spectrl.…` token (classmethod) |
 | `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_url(url)` | `Spectrum \| MsnSpectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum \| MsnSpectrum` | Fetch via PROXI from USI (classmethod) |
@@ -496,6 +497,25 @@ Full documentation: [Readers — Writing](readers.md#writing)
 
 ---
 
+### `write_indexed_mzml_gzip`
+
+Compress an mzML file into mzMLPy's self-indexed gzip format, which `MzmlReader` can open with
+random access. Requires the `[mzml]` extra.
+
+```python
+write_indexed_mzml_gzip(
+    source: str | Path,
+    output: str | Path,
+    *,
+    compression_level: int = 6,
+)
+```
+
+Returns whatever mzMLPy's `write_indexed_gzip` returns. Full documentation:
+[Readers — MzmlReader](readers.md#mzmlreader)
+
+---
+
 ### `CentroidConfig`
 
 Dataclass of parameters forwarded to `tdfpy`'s `frame.centroid()`. Only used by `DReader` (and by
@@ -613,18 +633,18 @@ set and examples.
 ## Token serialisation (spectrl)
 
 The single supported wire format for sharing a spectrum as a string is the
-[spectrl](https://github.com/pgarrett-scripps/spectrl) token. Encodes a full
+[spectrl](https://github.com/tacular-omics/spectrl) token. Encodes a full
 spectrum (peaks, metadata, precursors) into a compact URL-safe token that
-mirrors mzML semantics, with PSI-MS CV params, a single CBOR document,
-MS-Numpress compression, and a CRC-32 integrity checksum.
+mirrors mzML semantics, with PSI-MS CV params in a single compressed CBOR
+document and an integrity checksum.
 
 Requires the optional ``[spectrl]`` extra.
 
 ```python
 from spxtacular import to_spectrl_token, from_spectrl_token, to_inline_spectrum
 
-token = spec.to_spectrl_token()                      # lossy MS-Numpress, default
-token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact float64 + zlib
+token = spec.to_spectrl_token()                      # lossy (bounded-error), default
+token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact arrays
 restored = Spectrum.from_spectrl_token(token)
 inline = to_inline_spectrum(spec)                    # → spectrl.InlineSpectrum
 ```
@@ -642,7 +662,7 @@ Via mzML-native CV params: `mz`, `intensity`, `charge` (including singletons),
 spxtacular scalar fields without an mzML CV counterpart —
 `denoised`/`normalized` provenance strings, `scan_number`, `resolution`,
 `analyzer`, `ramp_time`, `im_range`, `isolation_im_range` — are carried
-losslessly as namespaced free-text `user_params` (`spxtacular:` prefix).
+losslessly as namespaced `user_params` (`spxtacular:` prefix).
 
 ### URL sharing
 
@@ -663,9 +683,9 @@ spec = from_spectrl_url(url)                                       # extract + d
 
 | `mode` | Result | `base` |
 |---|---|---|
-| `"fragment"` (default) | `base#spectrl.v1.…` — token in the URL fragment (never sent to the server) | required |
-| `"query"` | `base?<param>=spectrl.v1.…` — token as a query parameter | required |
-| `"data"` | `data:application/vnd.spectrl;v=1,…` URI | ignored |
+| `"fragment"` (default) | `base#spectrl.…` — token in the URL fragment (never sent to the server) | required |
+| `"query"` | `base?<param>=spectrl.…` — token as a query parameter | required |
+| `"data"` | `data:application/vnd.spectrl;v=…,…` URI | ignored |
 
 `lossless` and `max_len` are forwarded to the token encoder.
 
@@ -1178,6 +1198,7 @@ Three consequences worth knowing:
 | `surface` | `(theme=None) -> str` | Chart surface (paper and plot background) |
 | `text_color` | `(level: Literal["primary","secondary","muted"] = "secondary", theme=None) -> str` | Ink. Labels never wear the series colour — identity comes from the mark |
 | `unmatched_color` | `(theme=None) -> str` | Colour for peaks carrying no annotation |
+| `marker_outline` | `(theme=None) -> str` | Hairline outline for filled marks such as mass-error bubbles; flips with the mode so bubbles stay separated on a dark surface |
 | `neutral_color` | `(theme=None) -> str` | Colour for singletons and any category past the eighth slot |
 | `template` | `(theme=None) -> go.layout.Template` | The plotly template: recessive chrome, horizontal gridlines only, m/z crosshair, autosize |
 | `apply` | `(fig: go.Figure, theme=None) -> go.Figure` | Applies that template to an existing figure in place and returns it |
@@ -1486,10 +1507,11 @@ rendering or only on data that happens to carry labels:
 
 ```text
 mz, intensity, series, color, linewidth, opacity, hover,
-label, label_size, label_font, label_color, label_yshift, label_xanchor, label_angle
+label, label_size, label_font, label_color, label_yshift, label_xanchor
 ```
 
-`intensity_abs` and `dash` are *not* required, so a table built by an older version still renders.
+`intensity_abs`, `dash`, and `label_angle` are *not* required (a missing `label_angle` draws
+horizontal labels), so a table built by an older version still renders.
 Grouping keeps NA keys (`dropna=False`): a row whose `series` or `color` came back NA — easy to
 produce with `merge` / `reindex` / `concat` on a hand-edited table — is drawn in the unmatched
 colour under the series name `"unlabelled"` instead of silently vanishing from the figure.
