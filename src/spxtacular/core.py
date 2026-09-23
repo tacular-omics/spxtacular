@@ -177,7 +177,8 @@ def _centroid_peaks(
     middle sample. Boundary runs without both flanks are not local maxima.
     """
     empty = np.empty(0, dtype=np.float64)
-    if len(intensity) < 4:
+    # An apex needs a sample on each side, so three points is the minimum.
+    if len(intensity) < 3:
         return empty, empty.copy(), empty.copy() if im is not None else None
 
     starts = np.r_[0, np.flatnonzero(intensity[1:] != intensity[:-1]) + 1]
@@ -1870,8 +1871,15 @@ class Spectrum:
 
     @classmethod
     def load(cls, path: str | Path) -> Self:
-        """Load a spectrum from a ``.npz`` file written by :meth:`save`."""
+        """Load a spectrum from a ``.npz`` file written by :meth:`save`.
+
+        ``path`` may omit the ``.npz`` extension, as it may for :meth:`save`.
+        """
         import json
+
+        path = Path(path)
+        if not path.exists() and path.suffix != ".npz":
+            path = path.with_name(path.name + ".npz")
 
         # allow_pickle=False: unpickling a file someone else wrote executes
         # whatever it contains. Metadata is a plain JSON string, so nothing here

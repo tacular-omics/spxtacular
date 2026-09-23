@@ -4,6 +4,15 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Fixed
+
+- `Spectrum.load("x")` now finds the `x.npz` that `save("x")` writes, instead of raising `FileNotFoundError`.
+- `mass_error_plot` and `facet_plot` treat `unit` case-insensitively (`"PPM"` plotted Da errors under a ppm label) and raise `ValueError` for an unknown unit.
+- Centroiding keeps a profile peak sampled at only three points instead of dropping it.
+- The missing-backend error from `write_indexed_mzml_gzip` names mzMLPy 0.9, the version actually required.
+
+### Changed
+
 - Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
 
 ## [0.7.0] (2026-09-04)

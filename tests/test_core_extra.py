@@ -88,16 +88,25 @@ def test_spectrum_rejects_non_one_dimensional_peak_arrays(field: str, kwargs: di
 # ---------------------------------------------------------------------------
 
 
-def test_centroid_peaks_fewer_than_four_points_returns_empty() -> None:
-    mz = np.array([100.0, 200.0, 300.0], dtype=np.float64)
+def test_centroid_peaks_three_point_peak_is_centroided() -> None:
+    """Three samples are enough for an apex with both flanks (a 4-point guard dropped it)."""
+    mz = np.array([100.0, 100.01, 100.02], dtype=np.float64)
     intensity = np.array([1.0, 5.0, 1.0], dtype=np.float64)
     c_mz, c_int, c_im = _centroid_peaks(mz, intensity)
+    assert c_mz.tolist() == pytest.approx([100.01])
+    assert c_int.tolist() == pytest.approx([5.0])
+    assert c_im is None
+
+
+@pytest.mark.parametrize("n", [0, 1, 2])
+def test_centroid_peaks_fewer_than_three_points_returns_empty(n: int) -> None:
+    c_mz, c_int, c_im = _centroid_peaks(np.arange(n, dtype=np.float64) + 100.0, np.ones(n))
     assert len(c_mz) == 0
     assert len(c_int) == 0
     assert c_im is None
 
 
-def test_centroid_peaks_fewer_than_four_with_im_returns_empty_im() -> None:
+def test_centroid_peaks_fewer_than_three_with_im_returns_empty_im() -> None:
     mz = np.array([100.0, 200.0], dtype=np.float64)
     intensity = np.array([1.0, 5.0], dtype=np.float64)
     im = np.array([0.9, 1.0], dtype=np.float64)

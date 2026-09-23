@@ -864,6 +864,27 @@ class TestMassErrorPlot:
         assert fig.layout.xaxis.title.text == "m/z"
         assert fig.layout.yaxis.title.text == "Error (ppm)"
 
+    @pytest.mark.parametrize("unit", ["PPM", "Da", "DA"])
+    def test_error_unit_is_case_insensitive(self, unit: str) -> None:
+        """unit="PPM" plotted Da errors under an "Error (PPM)" label."""
+        spec, frags = self._many_matches()
+        want = "ppm" if unit.lower() == "ppm" else "da"
+        ref = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=want)
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
+        assert list(fig.data[0].y) == list(ref.data[0].y)
+        assert fig.layout.yaxis.title.text == f"Error ({want})"
+        facet = facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
+        facet_ref = facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=want)
+        assert list(facet.data[-1].y) == list(facet_ref.data[-1].y)
+        assert facet.layout.yaxis2.title.text == f"Error ({want})"
+
+    def test_unknown_error_unit_raises(self) -> None:
+        spec, frags = self._many_matches()
+        with pytest.raises(ValueError, match="unit"):
+            mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit="mDa")
+        with pytest.raises(ValueError, match="unit"):
+            facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit="mDa")
+
     def test_the_empty_figure_keeps_the_error_unit(self) -> None:
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
         _, frags = self._many_matches()
