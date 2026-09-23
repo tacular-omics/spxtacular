@@ -9,7 +9,7 @@ lipidomics, glycomics, and oligonucleotide analysis. A `Spectrum` holds parallel
 chainable methods denoise, filter, centroid, deconvolute, and convert them to neutral masses.
 
 Readers load Bruker timsTOF `.d`, mzML, Thermo `.raw`, MGF, MS2, and MSP files. Fragment
-matching and PSM scoring build on [peptacular](https://github.com/tacular-omics/peptacular), and
+matching and PSM scoring build on [peptacular](https://peptacular.readthedocs.io/), and
 interactive plotly figures cover stick, mirror, annotated, mass-error, and sequence-coverage plots.
 Spectra convert to and from matchms, spectrum_utils, and URL-safe spectrl tokens.
 

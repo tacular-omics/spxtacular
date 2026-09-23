@@ -11,7 +11,7 @@ uv add spxtacular
 ```
 
 The core install processes spectra and draws plots (numpy, pandas, plotly and
-[peptacular](https://github.com/tacular-omics/peptacular) are required dependencies). File readers
+[peptacular](https://peptacular.readthedocs.io/) are required dependencies). File readers
 and integrations are optional extras:
 
 ```bash
