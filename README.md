@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tacular-omics/spxtacular/actions/workflows/python-package.yml">
-    <img src="https://github.com/tacular-omics/spxtacular/actions/workflows/python-package.yml/badge.svg" alt="CI"/>
+  <a href="https://github.com/tacular-omics/spxtacular/actions/workflows/ci.yml">
+    <img src="https://github.com/tacular-omics/spxtacular/actions/workflows/ci.yml/badge.svg" alt="CI"/>
   </a>
   <a href="https://codecov.io/gh/tacular-omics/spxtacular" > 
  <img src="https://codecov.io/gh/tacular-omics/spxtacular/graph/badge.svg?token=QbHHfY504R"/> 

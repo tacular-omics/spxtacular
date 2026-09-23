@@ -16,7 +16,7 @@ upload the same release manually, because that would create a duplicate record.
 
 1. Work from a clean branch based on the current default branch.
 2. Set the same version in `src/spxtacular/__init__.py`, `CITATION.cff`, and the heading in
-   `HISTORY.md`.
+   `CHANGELOG.md`.
 3. Confirm that the changelog date and citation metadata are correct.
 4. Review dependency updates and commit any intentional lockfile changes. Use `uv sync --locked`
    to verify the tested environment without silently refreshing the lock.
@@ -42,7 +42,7 @@ upload the same release manually, because that would create a duplicate record.
 ## Publish and archive
 
 1. Create a GitHub release whose tag is `vX.Y.Z` and whose target is the reviewed commit on `main`.
-   Use the matching `HISTORY.md` section as the release notes.
+   Use the matching `CHANGELOG.md` section as the release notes.
 2. The release workflow publishes the distributions to PyPI. Confirm the version and install it in
    a clean environment.
 3. Wait for Zenodo to finish processing the GitHub release. Verify the record title, creator and
