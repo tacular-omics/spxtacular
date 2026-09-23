@@ -1,16 +1,17 @@
 # Copilot instructions
 
-- Use an existing `just` recipe for project commands; inspect `just --list` first.
-- When no recipe exists, use `uv` for dependency management and `uv run` for Python tools.
-- Do not invoke `python`, `pip`, `pytest`, npm, yarn, gem, or another package manager directly.
-- Run `just test`, `just lint`, `just format`, and `just check` as appropriate.
-- Type production code comprehensively with Python 3.12 syntax and concrete generic types.
-- Prefer frozen slotted dataclasses and functional transformations when practical.
-- Prefer clear names and small helpers over implicit behavior or clever one-liners.
-- Keep tests focused; exhaustive typing is not required in tests.
-- Keep docstrings concise, explain non-obvious reasons, and document raised exceptions.
-- Do not repeat information already expressed by type hints.
-- Do not leave placeholder TODO comments; raise `NotImplementedError` with a reason when necessary.
-- Keep responses concise and assume the reader is proficient with Python.
+The canonical guide is [`CLAUDE.md`](../CLAUDE.md) at the repo root: commands, module map,
+public API, conventions and gotchas. Read it before non-trivial changes.
 
-Repository architecture and invariants are documented in `CLAUDE.md`.
+Hardest rules:
+
+1. Use the `just` recipes (`just test`, `just lint`, `just fmt-check`, `just check` = ty only);
+   otherwise `uv run <tool>`. Never `pip install` or call bare `python`/`pytest`.
+2. Keep `mz`, `intensity`, `charge`, `im`, `iso_score` equal-length and co-permuted; never assume
+   m/z is sorted; `charge` > 0 assigned, -1 singleton, 0 neutral (never test by truthiness).
+3. `deconvolute()` before `decharge()`; cluster finding stays in `decon/greedy.py`, scoring in
+   `decon/scored.py`; non-inplace methods must not share mutable arrays with their input.
+4. Optional backends stay optional: readers import without their extras, `fisher_py`/`matchms`/
+   `spectrum_utils` load lazily, `peaklist.py` uses only the standard library and numpy.
+5. All plot colours come from `theme.py`; validate enum-like inputs instead of silently falling
+   back; pytest treats warnings as errors.

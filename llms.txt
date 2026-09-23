@@ -1,157 +1,31 @@
-# spxtacular — compact LLM reference
+# spxtacular
 
-spxtacular is a Python 3.12+ mass-spectrometry spectrum-processing library centered on chainable, non-mutating-by-default `Spectrum` and `MsnSpectrum` objects. Consult `docs/` or the typed source for complete signatures.
+> Python 3.12+ mass-spectrum processing library: filtering, denoising, centroiding, isotope deconvolution, charge assignment, fragment matching, PSM scoring, spectrum similarity, chromatograms, raw-file readers (Bruker .d, mzML, Thermo .raw, MGF/MS2/MSP) and accessible plotly figures, all behind one chainable `Spectrum` object.
 
-## Install
+Methods on `Spectrum` / `MsnSpectrum` return a new object unless `inplace=True`, and the peak arrays (`mz`, `intensity`, `charge`, `im`, `iso_score`) always stay parallel. `charge > 0` is assigned, `-1` is an unassigned singleton, `0` is a neutral mass after `decharge()`. Call `deconvolute()` before `decharge()`. `Reader(path)` auto-detects the file format; readers for Bruker, mzML, Thermo and the interop/sharing bridges need optional extras (`pip install spxtacular[all]`).
 
-```bash
-pip install spxtacular
-pip install spxtacular[bruker]         # DReader
-pip install spxtacular[mzml]           # MzmlReader
-pip install spxtacular[thermo]         # ThermoReader; requires .NET
-pip install spxtacular[spectrl]        # spectrum tokens/URLs
-pip install spxtacular[interop]        # matchms + spectrum_utils
-pip install spxtacular[numba]          # faster deconvolution
-pip install spxtacular[all]
-```
+spxtacular is part of tacular-omics: fragments come from `peptacular`, and the Bruker and mzML readers are built on `tdfpy` and `mzmlpy`.
 
-MGF, MS2, and MSP need no extra; optional reader classes import without their backends and fail only when instantiated.
+## Docs
 
-## Core usage
+- [llms-full.txt](https://raw.githubusercontent.com/tacular-omics/spxtacular/main/llms-full.txt): self-contained usage guide with every public function and class, signatures, examples and gotchas
+- [Documentation home](https://tacular-omics.github.io/spxtacular/): overview and quick start
+- [Spectrum and MsnSpectrum](https://tacular-omics.github.io/spxtacular/spectrum/): data model and every transform
+- [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/): algorithm, parameters, isotope and ionization models
+- [Readers](https://tacular-omics.github.io/spxtacular/readers/): Bruker, mzML, Thermo, MGF/MS2/MSP, USI
+- [Matching and scoring](https://tacular-omics.github.io/spxtacular/scoring/): fragment matching, hyperscore, spectral angle
+- [Visualization](https://tacular-omics.github.io/spxtacular/visualization/): figures, plot tables, theme
+- [README](https://github.com/tacular-omics/spxtacular/blob/main/README.md): install and quick start
 
-```python
-import numpy as np
-from spxtacular import Spectrum
+## API
 
-spec = Spectrum(
-    mz=np.array([500.1, 800.2, 1200.5], dtype=np.float64),
-    intensity=np.array([1e5, 2e5, 9e4], dtype=np.float64),
-)
-result = (
-    spec.filter(min_mz=100, min_intensity=1e3)
-    .normalize()
-    .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
-    .filter(min_score=0.5)
-    .decharge()
-)
-```
+- [API reference](https://tacular-omics.github.io/spxtacular/api/): every public class and function
+- [Source: `__init__.py`](https://github.com/tacular-omics/spxtacular/blob/main/src/spxtacular/__init__.py): the exported names
+- [PyPI](https://pypi.org/project/spxtacular/): releases and extras
 
-Methods return a new object unless `inplace=True`; all peak arrays remain parallel.
+## Optional
 
-## Data model
-
-- `Spectrum`: `mz`, `intensity`, optional `charge`, `im`, `iso_score`, and processing-state metadata.
-- `MsnSpectrum`: adds scan/run metadata, precursors, collision/activation fields, ion-mobility ranges, analyzer, resolution, and timing.
-- `Peak`: frozen scalar peak record; `Precursor` adds `is_monoisotopic`.
-- `SpectrumType`: `CENTROID`, `PROFILE`, or `DECONVOLUTED`.
-- Metadata enums are open-vocabulary `StrEnum | str`: `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
-
-Charge values are significant: `> 0` is assigned, `-1` is singleton/unassigned, and `0` is neutral mass after `decharge()`; never test charge or `iso_score` by truthiness.
-
-## Deconvolution
-
-```python
-decon = spec.deconvolute(
-    charge_range=(1, 5),
-    tolerance=10,
-    tolerance_type="ppm",
-    min_score=0.4,
-    isotope_model="peptide",
-)
-neutral = decon.decharge()
-```
-
-- Built-in isotope models: `peptide`, `glycan`, `lipid`, `dna`, and `rna`; custom `IsotopeModel` values are supported.
-- Apex-aware matching expands in both directions and can infer a missing A+0 peak.
-- `max_isotopes=None` selects envelope length adaptively; candidate selection can use abundance and ion mobility.
-- `decharge()` requires `DECONVOLUTED` input and safely warns on an already-neutral spectrum.
-- `charge_range` must satisfy `1 <= min <= max`.
-
-## Matching, scoring, and similarity
-
-```python
-from peptacular import ProFormaAnnotation
-
-fragments = ProFormaAnnotation.parse("PEPTIDE").fragment(
-    ion_types=["b", "y"], charges=[1, 2]
-)
-matches = spec.match_fragments(fragments, tolerance=10, tolerance_type="ppm")
-scores = spec.score(fragments, tolerance=10, tolerance_type="ppm")
-```
-
-- Fragment matching accepts unsorted spectra and adapts to centroided, deconvoluted, and decharged states.
-- Matching/scoring default to `tolerance=0.02` and `tolerance_type="da"`.
-- `hyperscore` uses a base-10 matched-intensity sum and factorial terms per ion series. It is scale-dependent and is not numerically interchangeable with other search engines.
-- `spectral_angle` is the literature metric only with one predicted intensity per fragment.
-- Spectrum-to-spectrum functions are `cosine`, `modified_cosine`, and `entropy_similarity`; all use one-to-one peak matching.
-
-## Reading and writing
-
-```python
-from spxtacular import Reader
-
-with Reader("run.mzML") as reader:
-    for spectrum in reader.ms2:
-        ...
-```
-
-- `Reader` auto-detects Bruker `.d`, mzML, Thermo `.raw`, MGF, MS2, and MSP, including supported gzip forms.
-- mzML uses `gzip_mode="auto"` and `in_memory=False` by default. Inspect `reader.access_strategy` for the selected route.
-- `write_indexed_mzml_gzip(source, output)` creates a pyMZML-compatible self-indexed gzip through mzMLPy.
-- Reader `.ms1`/`.ms2` views are iterable and indexable but are not iterators; use `next(iter(reader.ms2))`.
-- Use a context manager or explicit `open()`/`close()`.
-- `DReader` handles DDA/DIA/PRM. `MzmlReader` provides index/native-ID access. `Reader` proxies mzML `access_strategy`.
-- `MgfReader`, `Ms2Reader`, `MspReader`, and their writers are always available and preserve only metadata representable by those formats.
-- `Spectrum.from_usi()` fetches public spectra through PROXI.
-
-## Interoperability and sharing
-
-- `to_matchms`/`from_matchms` preserve rich metadata in a namespaced payload and realign filtered peak arrays.
-- `to_spectrum_utils` requires a centroided MS2 spectrum with one selected, charged precursor and an identifier; conversion is intentionally lossy.
-- `to_spectrl_token`/`from_spectrl_token` and URL helpers require `[spectrl]`; use `lossless=True` to disable numeric compression.
-
-## Plotting
-
-```python
-import peptacular as pt
-import spxtacular as spx
-
-fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
-fig = spx.annotate_spectrum(spec, fragments, max_labels=15)
-spx.save_figure(fig, "spectrum.html")
-```
-
-Public figure functions include `plot_spectrum`, `annotate_spectrum`, `mirror_plot`, `facet_plot`, `mass_error_plot`, `sequence_coverage_plot`, `profile_centroid_plot`, `plot_chromatogram`, and `plot_xic`.
-
-- Relative intensity is the default; tooltips retain true intensity.
-- Profile spectra render as continuous traces and use min/max decimation above `max_points`.
-- Labels are vertical, capped, and collision-avoided; omitted labels remain in hover/table data.
-- `theme.py` owns all colors: ion series are categorical, charge is ordinal, and mobility/isotope score are sequential.
-- Use `build_plot_table`/`build_annot_plot_table` to edit plot data, `plot_from_table` to render, and `table_view` for accessible HTML.
-- Plot-table `intensity` is the displayed value; `intensity_abs` is the original value.
-- `sequence_coverage_plot` takes a stripped peptide sequence, not ProForma text.
-- Static figure formats require kaleido; HTML does not.
-
-## Chromatograms
-
-- `extract_chromatogram(spectra, mode="tic"|"bpc")` returns one `Chromatogram`.
-- `extract_xic(spectra, targets, ...)` returns multiple traces in one pass and supports m/z tolerance, ion-mobility windows, and sum/max aggregation.
-- Pass all targets together because an input iterable may be consumable only once.
-
-## Correctness rules
-
-- Keep `mz`, `intensity`, `charge`, `im`, and `iso_score` equal-length and co-permuted.
-- Never assume spectrum m/z is sorted.
-- Do not call `decharge()` before `deconvolute()`.
-- Do not move isotope scoring into `decon/greedy.py`; finding and scoring are separate.
-- Keep optional imports lazy and keep peak-list formats free of optional parsing dependencies.
-- Do not hardcode plot colors outside `theme.py`.
-- Do not draw profile spectra as sticks or thin them with stride sampling.
-- Validate tolerance, selection, state, and enum-like inputs instead of silently falling back.
-
-## Further reference
-
-- Repository guide: `CLAUDE.md`
-- User guide: `README.md` and `docs/`
-- API reference: `docs/api.md`
-- Changelog: `HISTORY.md`
+- [CHANGELOG](https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md): user-visible changes (0.7.0 changed hyperscore; old scores are not comparable)
+- [Design record: polarity, adducts and isotope models](https://tacular-omics.github.io/spxtacular/design/polarity-adducts-and-isotope-roadmap/)
+- [CLAUDE.md](https://github.com/tacular-omics/spxtacular/blob/main/CLAUDE.md): guide for agents developing spxtacular itself
+- [peptacular](https://github.com/tacular-omics/peptacular): peptide parsing and fragment generation used as scoring input
