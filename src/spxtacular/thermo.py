@@ -46,12 +46,20 @@ def _require_fisher() -> _FisherModules:
                 "ThermoReader requires the 'fisher-py' package, which is not installed. "
                 "Install it with: pip install spxtacular[thermo]"
             ) from exc
-        except (OSError, RuntimeError) as exc:
+        except Exception as exc:
+            # pythonnet surfaces .NET failures (missing runtime -> OSError/RuntimeError,
+            # but also e.g. System.IO.FileLoadException when the bundled RawFileReader
+            # DLL doesn't match the host's CPU architecture) as dynamically generated
+            # exception types that don't reliably subclass any particular Python
+            # exception. Treat any failure while booting the CLR backend as "fisher-py
+            # unavailable" rather than let an unrecognized .NET exception type escape
+            # this translation boundary and crash test/tool collection outright.
             raise ImportError(
                 "fisher-py is installed but could not start its .NET runtime. Thermo .raw "
                 "reading uses Thermo's RawFileReader, a .NET library: install the .NET 8 "
-                "runtime (https://dotnet.microsoft.com/download) and make sure `dotnet` is "
-                f"on PATH or DOTNET_ROOT points at it. Original error: {exc}"
+                "runtime (https://dotnet.microsoft.com/download), make sure `dotnet` is on "
+                "PATH or DOTNET_ROOT points at it, and confirm the runtime architecture "
+                f"matches this Python interpreter's. Original error: {exc}"
             ) from exc
         _fisher_modules = _FisherModules(RawFileReaderAdapter, Device)
     return _fisher_modules
