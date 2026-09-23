@@ -2,11 +2,11 @@
 
 User-visible changes only; implementation details belong in commits and pull requests.
 
-## Unreleased
+## [Unreleased]
 
 - Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
 
-## 0.7.0 (2026-09-04)
+## [0.7.0] (2026-09-04)
 
 - Required peptacular 3.3.0 and tdfpy 4.0.1. Verified position-free precursor fragment scoring and preservation of fractional-scan precursor mobility. Bruker mobility values can change because tdfpy now preserves the recorded fractional coordinate.
 - Closed HTTP-error response bodies during USI fetch failures and removed the broad resource-warning suppression from tests.
@@ -19,7 +19,7 @@ User-visible changes only; implementation details belong in commits and pull req
 - Distinguished scan-index chromatograms from retention times in seconds and rejected mixed or nonfinite time axes.
 - Added independent analytical regression fixtures and a reproducible deconvolution benchmark. Expanded CI to isolated wheels on Linux, Windows, and macOS, Python 3.12 through 3.14, lowest installable direct dependencies, strict documentation builds, and required Thermo runtime tests. Locked development installs and pinned workflow actions to commits.
 
-## 0.6.0 (2026-08-28)
+## [0.6.0] (2026-08-28)
 
 ### Added
 
@@ -36,7 +36,7 @@ User-visible changes only; implementation details belong in commits and pull req
 
 - Accepted prefixed MGF scan identifiers such as `SCANS=F1:2478` while preserving numeric range behavior.
 
-## 0.5.0 (2026-08-17)
+## [0.5.0] (2026-08-17)
 
 ### Added
 
@@ -112,7 +112,7 @@ User-visible changes only; implementation details belong in commits and pull req
 - Removed stale generated files, scripts, manifests, and workflows.
 - Strengthened deconvolution, filtering, sorting, plotting, query, and numba/Python parity tests.
 
-## 0.4.0 (2026-07-09)
+## [0.4.0] (2026-07-09)
 
 ### Breaking changes
 
@@ -139,7 +139,7 @@ User-visible changes only; implementation details belong in commits and pull req
 - Deconvolution now handles rejected clusters, invalid charge ranges, empty spectra, and all-zero normalization safely.
 - Updated dependency floors to tested Python 3.12-compatible versions.
 
-## 0.3.1 (2026-05-14)
+## [0.3.1] (2026-05-14)
 
 ### Added
 
@@ -161,13 +161,13 @@ User-visible changes only; implementation details belong in commits and pull req
 - Unified persistence implementations and retained backward compatibility for the old `score` key.
 - Supported both released and upcoming `tdfpy` centroid APIs.
 
-## 0.3.0 (2026-04-07)
+## [0.3.0] (2026-04-07)
 
 - Added Bruker PRM reading, USI loading, precursor-envelope removal, intensity scaling, and m/z rounding.
 - Added mass-error and faceted plots plus `Spectrum.annotate()`.
 - Added `da_to_ppm()` and `ppm_to_da()`.
 
-## 0.2.0 (2026-03-18)
+## [0.2.0] (2026-03-18)
 
 - Added the editable plot-table API and `Spectrum` plot-table convenience methods.
 - Added scored deconvolution, isotope scores, and score-based filtering.
@@ -177,6 +177,6 @@ User-visible changes only; implementation details belong in commits and pull req
 - Added spectrum combination, charge-aware peak merging, and unified reader auto-detection.
 - Added pandas as a runtime dependency and completed package metadata/LICENSE cleanup.
 
-## 0.1.0 (2026-01-16)
+## [0.1.0] (2026-01-16)
 
 - First PyPI release.

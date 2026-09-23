@@ -42,7 +42,7 @@ Run `just benchmark` for timing, mass accuracy, assignment checks, and Python-tr
 on the analytical fixtures. Their provenance and limitations are in `tests/reference/README.md`.
 
 Changes should include tests for new behavior and user-facing documentation when the public API
-changes. Add a concise entry to `HISTORY.md` for changes that users need to know about. Keep pull
+changes. Add a concise entry to `CHANGELOG.md` for changes that users need to know about. Keep pull
 requests focused, and explain the scientific or practical motivation as well as the implementation.
 
 Small test fixtures that can be redistributed may be committed to `tests/data`. Do not contribute

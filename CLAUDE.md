@@ -47,6 +47,6 @@ Equivalent direct commands are `uv run pytest tests/ -v`, `uv run ruff check src
 - Prefer Python 3.12 syntax and built-in generic types.
 - Choose readable helpers over clever expressions.
 - Keep docstrings brief, document non-obvious reasons, and include `Raises` when useful.
-- Add a concise `HISTORY.md` bullet only for user-visible changes.
+- Add a concise `CHANGELOG.md` bullet only for user-visible changes.
 
 Consult the relevant source, tests, and `docs/` page for API details instead of expanding this file.
