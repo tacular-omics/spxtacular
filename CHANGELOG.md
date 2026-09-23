@@ -18,6 +18,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Changed
 
+
+- Required spectrl 3 (`spectrl>=3.0.0,<4`), skipping the 2.x series entirely. Tokens are now `spectrl.v3.…`; a token produced by spectrl 1.x or 2.x cannot be decoded by this release. **Breaking for anyone storing or transmitting spectrl tokens produced by an older spxtacular.** Ported `spectrl_bridge.py` to the v3 API: `SpectrlUserParam` no longer has a separate `type` field, so spxtacular's namespaced scalar metadata (`denoised`, `normalized`, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range`, per-precursor `is_monoisotopic`) now round-trips via each value's native CBOR type instead of an `"xsd:*"` annotation. `to_spectrl_token`/`to_spectrl_url` are still lossy by default, but the default lossy profile is now a per-array size choice among several bounded-error encodings rather than a fixed MS-Numpress pass; decoded arrays reconstruct their declared numeric type (a float32 array can now decode back as float32 instead of always float64). Downstream packages that consume spectrl tokens directly (`msbit`, `pepbit`) will need the same spectrl 3 port before they can read tokens produced by this release.
 - Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
 
 ## [0.7.0] (2026-09-04)
