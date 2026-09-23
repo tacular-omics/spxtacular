@@ -7,6 +7,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    # Sibling major versions are raised by the tacular-omics overseer under the
+    # sibling pin policy (floor plus major cap).
+    ignore:
+      - dependency-name: "spectrl"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
