@@ -171,7 +171,7 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config -n 4 --dist loadscope --timeout=15"
+addopts = "-ra --strict-markers --strict-config --timeout=15"
 filterwarnings = ["error"]
 
 [tool.coverage.run]
