@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## Unreleased
 
+- Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
+
 ## 0.7.0 (2026-09-04)
 
 - Required peptacular 3.3.0 and tdfpy 4.0.1. Verified position-free precursor fragment scoring and preservation of fractional-scan precursor mobility. Bruker mobility values can change because tdfpy now preserves the recorded fractional coordinate.

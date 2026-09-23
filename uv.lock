@@ -1416,14 +1416,14 @@ wheels = [
 
 [[package]]
 name = "paftacular"
-version = "1.2.0"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tacular" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/67/1677f2596896ef3028b3c0028863c03f727b2d3939a2a1ca419598c4c2ad/paftacular-1.2.0.tar.gz", hash = "sha256:0d5ed17fd58adfba6fe084a101d01c7c2df55dcca97e89debd53e268481b9069", size = 712001, upload-time = "2026-09-04T22:42:53.883Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/87/d7b1c24f9a310a0dd7b03e3b37c325aa30fe1cfbcf6c9292d58582734994/paftacular-1.3.0.tar.gz", hash = "sha256:6ba767c0894ffeed44bdfc0d5aabbdc4ceb845d3693f63f482f5bd5a22a124a9", size = 768298, upload-time = "2026-09-05T02:05:11.982Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/37/a5deae63b3156f77332f1346328e3f0ae3fb807550baddfbb6a043a1c09e/paftacular-1.2.0-py3-none-any.whl", hash = "sha256:a776dcca20b8446b401dd6116b3667dfd6c1ef21efca4c5b94fccfbe0dfa97da", size = 34569, upload-time = "2026-09-04T22:42:52.811Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/b3/90f253c64e0a9e60d0e207801c8ab35c33922f86ec85fa2ba054df1b87ee/paftacular-1.3.0-py3-none-any.whl", hash = "sha256:36bc9ee7e73e3a7731cfcb49d8ca97622b5c10047c6f60f1c1a29ec9e9ad070d", size = 46760, upload-time = "2026-09-05T02:05:10.959Z" },
 ]
 
 [[package]]
@@ -1492,14 +1492,14 @@ wheels = [
 
 [[package]]
 name = "peptacular"
-version = "3.3.0"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tacular" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/c9/c0de8ffc372f9495315fd2c8b62e25423c5cf6ffb998d27d788ca790821e/peptacular-3.3.0.tar.gz", hash = "sha256:ffc68911a067b97bed2f6928cb9aca8bf73a2106572c7dfd6e1b3046fc1c6089", size = 1254115, upload-time = "2026-09-05T02:28:43.298Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/55/9cd616fc0d9900bf24c8216e144285891d3cd5afefefbe98b94e9f85a669/peptacular-4.0.0.tar.gz", hash = "sha256:5698bcad2af6b097600fbaee16e10e660825988adebc19a7afdeb3e8e77a48e6", size = 1266710, upload-time = "2026-09-13T08:09:29.258Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/15/8a0564f5dfbd048539413b109ef70686805e5d30bb3a4ea92e75b8e176d6/peptacular-3.3.0-py3-none-any.whl", hash = "sha256:8a2d632f70277945855533e825be5a5894813f81004ebd5d70af2c52186f6081", size = 214449, upload-time = "2026-09-05T02:28:42.216Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/16/6d081980498b5bac330ed74e5ce1165d6e35931b088a062ad97bcfd20fff/peptacular-4.0.0-py3-none-any.whl", hash = "sha256:cd08ed48bdf051f2202fa871c6cc308aa5c4b4e9f117f1113a86dcb3d8e88ba9", size = 213943, upload-time = "2026-09-13T08:09:27.734Z" },
 ]
 
 [[package]]
@@ -2250,24 +2250,24 @@ requires-dist = [
     { name = "matchms", marker = "extra == 'all'", specifier = ">=0.33.1" },
     { name = "matchms", marker = "extra == 'interop'", specifier = ">=0.33.1" },
     { name = "matchms", marker = "extra == 'matchms'", specifier = ">=0.33.1" },
-    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.9.0" },
-    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.9.0" },
-    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.9.0" },
+    { name = "mzmlpy", marker = "extra == 'all'", specifier = ">=0.9.0,<0.10" },
+    { name = "mzmlpy", marker = "extra == 'mzml'", specifier = ">=0.9.0,<0.10" },
+    { name = "mzmlpy", marker = "extra == 'readers'", specifier = ">=0.9.0,<0.10" },
     { name = "numba", marker = "extra == 'all'", specifier = ">=0.64.0" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.64.0" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "paftacular", specifier = ">=1.2.0" },
+    { name = "paftacular", specifier = ">=1.2.0,<2" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "peptacular", specifier = ">=3.3.0" },
+    { name = "peptacular", specifier = ">=3.3.0,<5" },
     { name = "plotly", specifier = ">=6.6.0" },
-    { name = "spectrl", marker = "extra == 'all'", specifier = ">=1.1.0" },
-    { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=1.1.0" },
+    { name = "spectrl", marker = "extra == 'all'", specifier = ">=1.1.0,<2" },
+    { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=1.1.0,<2" },
     { name = "spectrum-utils", marker = "extra == 'all'", specifier = ">=0.5.0" },
     { name = "spectrum-utils", marker = "extra == 'interop'", specifier = ">=0.5.0" },
     { name = "spectrum-utils", marker = "extra == 'spectrum-utils'", specifier = ">=0.5.0" },
-    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=4.0.1" },
-    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=4.0.1" },
-    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=4.0.1" },
+    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=4.0.1,<5" },
+    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=4.0.1,<5" },
+    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=4.0.1,<5" },
 ]
 provides-extras = ["all", "bruker", "interop", "matchms", "mzml", "numba", "readers", "spectrl", "spectrum-utils", "thermo"]
 
@@ -2278,16 +2278,16 @@ dev = [
     { name = "matchms", specifier = ">=0.33.1" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7.5" },
-    { name = "mzmlpy", specifier = ">=0.9.0" },
+    { name = "mzmlpy", specifier = ">=0.9.0,<0.10" },
     { name = "numba", specifier = ">=0.64.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-timeout", specifier = ">=2.4,<3" },
     { name = "pytest-xdist", specifier = ">=3.8,<4" },
     { name = "ruff", specifier = ">=0.14.11" },
-    { name = "spectrl", specifier = ">=1.1.0" },
+    { name = "spectrl", specifier = ">=1.1.0,<2" },
     { name = "spectrum-utils", specifier = ">=0.5.0" },
-    { name = "tdfpy", specifier = ">=4.0.1" },
+    { name = "tdfpy", specifier = ">=4.0.1,<5" },
     { name = "ty", specifier = ">=0.0.11" },
 ]
 
