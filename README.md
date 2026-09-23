@@ -25,16 +25,31 @@
 
 # spxtacular
 
-**spxtacular** is a Python library for general mass-spectrum processing across proteomics,
-metabolomics, lipidomics, glycomics, and oligonucleotide analysis. Its chainable `Spectrum` API
-covers denoising, isotope deconvolution, charge assignment, neutral-mass conversion, matching,
-scoring, interoperability, and interactive visualization.
+**spxtacular** is a Python library for mass-spectrum processing: denoising, isotope
+deconvolution, charge assignment, matching, scoring, and interactive visualization behind one
+chainable `Spectrum` object. It's for anyone writing proteomics, metabolomics, lipidomics,
+glycomics, or oligonucleotide analysis code who wants raw peaks in and clean, annotated results
+out without hand-rolling the signal processing.
 
 > Part of the [tacular-omics](https://github.com/tacular-omics) ecosystem alongside [peptacular](https://github.com/tacular-omics/peptacular), [paftacular](https://github.com/tacular-omics/paftacular), and [mzmlpy](https://github.com/tacular-omics/mzmlpy).
 
 <p align="center">
-  <img src="paper/figures/graphical_abstract.png" alt="Graphical abstract showing the spxtacular mass spectrometry processing workflow" width="100%"/>
+  <img src="https://raw.githubusercontent.com/tacular-omics/spxtacular/main/paper/figures/graphical_abstract.png" alt="Graphical abstract showing the spxtacular mass spectrometry processing workflow" width="100%"/>
 </p>
+
+## Why spxtacular?
+
+- **One chainable API** for the whole pipeline — denoise, deconvolute, decharge, match, score,
+  and plot — that works the same for peptides, lipids, glycans, and nucleic acids.
+- **Reads what your instrument wrote.** `Reader` auto-detects Bruker timsTOF `.d`, mzML, and
+  Thermo `.raw` from the path, including gzipped and disk-backed mzML.
+- **Accessible visualization by default** — a colour-vision-safe palette validated in light and
+  dark mode, plus an HTML `table_view()` for screen readers, not an afterthought extra.
+- **Analyte-aware deconvolution** — built-in isotope models for peptides, lipids, glycans, and
+  nucleic acids, plus adduct-aware neutral-mass conversion (`[M+H]+`, `[M-H]-`, `[M+Na]+`, custom).
+- **Plays well with the ecosystem** — lazy, optional bridges to matchms and spectrum_utils, and
+  compact URL-safe [spectrl](https://github.com/pgarrett-scripps/spectrl) tokens for sharing a
+  spectrum with no backend.
 
 ## Install
 
@@ -153,22 +168,11 @@ lipid_neutral = spec.deconvolute(
 ).decharge()
 ```
 
-Polarity and adducts are explicit while charge arrays remain positive
-magnitudes. Deconvolution records the selected carrier so `decharge()` reuses
-the same mass equation:
-
-```python
-negative = spec.deconvolute(ionization_model="[M-H]-").decharge()
-sodiated = spec.deconvolute(ionization_model="[M+Na]+").decharge()
-
-custom = spx.IonizationModel(
-    name="potassiated",
-    polarity="positive",
-    carrier_mass=38.963158,
-    carrier="K",
-)
-potassiated = spec.deconvolute(ionization_model=custom).decharge()
-```
+Polarity and adducts are explicit while charge arrays remain positive magnitudes:
+`ionization_model="[M-H]-"` or `"[M+Na]+"` covers common adducts, and a custom
+`IonizationModel` handles the rest. See
+[Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/) for the full model
+list and how to write your own.
 
 ## Visualization
 
@@ -246,8 +250,9 @@ Full documentation with API reference, guides, and interactive plots is availabl
 
 Citation metadata is available in
 [`CITATION.cff`](https://github.com/tacular-omics/spxtacular/blob/main/CITATION.cff). A
-version-specific Zenodo DOI will be added after the release is archived. Bug reports, support
-questions, and contributions are welcome; see
+version-specific Zenodo DOI will be added after the release is archived. See the
+[changelog](https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md) for release
+notes. Bug reports, support questions, and contributions are welcome; see
 [`CONTRIBUTING.md`](https://github.com/tacular-omics/spxtacular/blob/main/CONTRIBUTING.md) for the
 development workflow and community guidelines.
 
