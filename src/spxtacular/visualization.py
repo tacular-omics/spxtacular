@@ -1060,6 +1060,17 @@ def sequence_coverage_plot(
     return fig
 
 
+def _error_unit(unit: str) -> str:
+    """Normalise a mass-error unit to ``"ppm"`` or ``"da"``, rejecting anything else.
+
+    Comparing ``unit == "ppm"`` directly let ``"PPM"`` plot Da errors under a ppm label.
+    """
+    normalised = str(unit).lower()
+    if normalised not in ("ppm", "da"):
+        raise ValueError(f"Unsupported error unit {unit!r}; expected 'ppm' or 'da'")
+    return normalised
+
+
 @requires_plotly
 def mass_error_plot(
     spectrum: Spectrum,
@@ -1110,6 +1121,7 @@ def mass_error_plot(
 
     from .matching import match_fragments
 
+    unit = _error_unit(unit)
     matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
 
     if not matches:
@@ -1295,6 +1307,7 @@ def facet_plot(
     """
     from plotly.subplots import make_subplots
 
+    unit = _error_unit(unit)
     n_rows = 1
     subtitles = ["Spectrum"]
     if fragments is not None:

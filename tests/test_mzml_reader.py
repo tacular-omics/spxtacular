@@ -1,5 +1,6 @@
 import base64
 import pathlib
+import sys
 
 import numpy as np
 import pytest
@@ -341,6 +342,12 @@ def test_default_mzml_options_use_auto_disk_backed_access(monkeypatch, tmp_path)
         )
     ]
     assert reader.access_strategy == "extracted"
+
+
+def test_indexed_gzip_missing_backend_names_the_pinned_version(monkeypatch):
+    monkeypatch.setitem(sys.modules, "mzmlpy", None)
+    with pytest.raises(ImportError, match=r"mzMLPy 0\.9 or newer"):
+        write_indexed_mzml_gzip(EXAMPLE_MZML, "unused.mzML.gz")
 
 
 def test_indexed_gzip_creation_and_access_strategy(tmp_path):

@@ -48,6 +48,22 @@ def test_spectrum_save_load_arrays(tmp_path):
     np.testing.assert_array_equal(restored.intensity, spec.intensity)
 
 
+def test_spectrum_load_accepts_the_path_given_to_save(tmp_path):
+    """np.savez appends .npz, so load() must find it from the same path."""
+    spec = _basic_spectrum()
+    spec.save(tmp_path / "spec")
+    restored = Spectrum.load(tmp_path / "spec")
+    np.testing.assert_array_equal(restored.mz, spec.mz)
+    msn = _basic_msn()
+    msn.save(str(tmp_path / "msn"))
+    assert MsnSpectrum.load(str(tmp_path / "msn")).scan_number == 42
+
+
+def test_spectrum_load_missing_file_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        Spectrum.load(tmp_path / "absent")
+
+
 def test_spectrum_save_load_spectrum_type(tmp_path):
     spec = _basic_spectrum()
     spec.save(tmp_path / "spec")
