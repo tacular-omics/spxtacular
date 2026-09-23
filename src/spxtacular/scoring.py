@@ -36,7 +36,12 @@ _MIN_MATCH_PROBABILITY = 1e-12
 
 def _unique_peak_indices(matches: list[MatchedFragment]) -> list[int]:
     seen: set[int] = set()
-    return [m.peak_index for m in matches if not (m.peak_index in seen or seen.add(m.peak_index))]
+    unique: list[int] = []
+    for m in matches:
+        if m.peak_index not in seen:
+            seen.add(m.peak_index)
+            unique.append(m.peak_index)
+    return unique
 
 
 def _unique_series_positions(
@@ -378,7 +383,11 @@ def _longest_run(matches: list[MatchedFragment]) -> int:
         if isinstance(pos, int):
             prefix: tuple[int, ...] = ()
             coord = pos
-        elif isinstance(pos, tuple) and pos and all(isinstance(p, int) for p in pos):
+        elif (
+            isinstance(pos, tuple)
+            and pos  # ty: ignore[redundant-condition]  # peptacular types this tuple[int, int], but guard runtime data that isn't
+            and all(isinstance(p, int) for p in pos)
+        ):
             prefix, coord = tuple(pos[:-1]), pos[-1]
         else:
             continue
