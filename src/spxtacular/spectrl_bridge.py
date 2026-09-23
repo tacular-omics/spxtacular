@@ -5,8 +5,9 @@
 `spectrl` is a sibling library that encodes a full mass spectrum into a single
 compact, URL-safe token. Its data model is faithful to mzML (typed
 ``SpectrlCvParam`` lists with PSI-MS accessions, a single CBOR document,
-MS-Numpress peak compression, CRC-32 integrity checksum) and is well-suited for sharing
-spectra outside spxtacular — embedded in URLs, QR codes, notebooks, papers.
+quantized/byte-shuffled peak compression, CRC-32 integrity checksum) and is
+well-suited for sharing spectra outside spxtacular — embedded in URLs, QR
+codes, notebooks, papers.
 
 This module provides the four-way conversion::
 
@@ -28,8 +29,16 @@ losslessly as namespaced free-text ``user_params`` (``spxtacular:`` prefix), so
 the round-trip is faithful.
 
 Note that :func:`to_spectrl_token` / :func:`to_spectrl_url` are **lossy by
-default** (MS-Numpress peak compression); pass ``lossless=True`` for a bit-exact
-round-trip of the peak arrays.
+default**: spectrl picks the smallest of several quantized/rounded encodings
+per array, each checked against a bounded error (0.1 ppm for m/z; see the
+spectrl specification for the intensity bound). Pass ``lossless=True`` for a
+bit-exact round-trip of the peak arrays.
+
+Requires spectrl 3.x (``spectrl>=3.0.0,<4``); spxtacular skipped the 2.x
+series. spectrl 3 tokens use the ``spectrl.v3.…`` format; each array decodes
+back to its declared numeric type (e.g. a float32 array quantized then
+decoded stays float32, not float64), so code consuming decoded arrays must
+not assume a fixed dtype.
 """
 
 from __future__ import annotations
@@ -273,11 +282,19 @@ def _cv(accession: str, value=None, unit_accession: str | None = None):
     return SpectrlCvParam(accession=accession, value=value, unit_accession=unit_accession)
 
 
-def _up(name: str, value=None, type_: str | None = None):
-    """Build a SpectrlUserParam (free-text, no CV accession)."""
+def _up(name: str, value=None):
+    """Build a SpectrlUserParam (free-text, no CV accession).
+
+    spectrl 3 dropped ``SpectrlUserParam.type`` — the value's native scalar
+    type (``str``/``int``/``float``/``None``) is authoritative, so callers
+    must pass a value of the type they want restored on decode. A Python
+    ``bool`` is rejected by spectrl's own scalar validator (``type(value) in
+    (int, float)`` excludes ``bool`` even though it subclasses ``int``), so a
+    boolean-valued field must be passed as ``int(...)`` (0/1), not ``bool``.
+    """
     from spectrl.model import SpectrlUserParam
 
-    return SpectrlUserParam(name=name, value=value, type=type_)
+    return SpectrlUserParam(name=name, value=value)
 
 
 def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
@@ -436,7 +453,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         charge_arr = spec.charge.astype(np.float64, copy=False)
 
     # iso_score travels as a non-standard mzML binary array (MS:1000786),
-    # while Spectrl 1.0 carries each mobility variant under its exact PSI-MS
+    # while spectrl carries each mobility variant under its exact PSI-MS
     # accession in the same extra_arrays mapping.
     extra_arrays: dict[str, np.ndarray] = {}
     if spec.iso_score is not None:
@@ -446,46 +463,52 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
         extra_arrays[ion_mobility_type] = spec.im.astype(np.float64, copy=False)
 
     # spxtacular scalar fields with no CV term travel as namespaced user_params.
+    # spectrl 3 has no separate type annotation — the value's native scalar type
+    # (str/int/float) is authoritative, so no "xsd:*" tag is passed here. A
+    # boolean field (is_monoisotopic, below) is encoded as int 0/1: spectrl's
+    # scalar validator rejects a Python bool outright.
     user_params = []
     if spec.denoised is not None:
-        user_params.append(_up(_UP_DENOISED, spec.denoised, "xsd:string"))
+        user_params.append(_up(_UP_DENOISED, spec.denoised))
     if spec.normalized is not None:
-        user_params.append(_up(_UP_NORMALIZED, spec.normalized, "xsd:string"))
+        user_params.append(_up(_UP_NORMALIZED, spec.normalized))
     if spec.deconvolution is not None:
         provenance_json = json.dumps(spec.deconvolution.to_dict(), separators=(",", ":"))
-        user_params.append(_up(_UP_DECONVOLUTION, provenance_json, "xsd:string"))
+        user_params.append(_up(_UP_DECONVOLUTION, provenance_json))
     if msn_spec is not None:
         if msn_spec.scan_number is not None:
-            user_params.append(_up(_UP_SCAN_NUMBER, int(msn_spec.scan_number), "xsd:int"))
+            user_params.append(_up(_UP_SCAN_NUMBER, int(msn_spec.scan_number)))
         if msn_spec.resolution is not None:
-            user_params.append(_up(_UP_RESOLUTION, float(msn_spec.resolution), "xsd:float"))
+            user_params.append(_up(_UP_RESOLUTION, float(msn_spec.resolution)))
         if msn_spec.analyzer is not None:
-            user_params.append(_up(_UP_ANALYZER, msn_spec.analyzer, "xsd:string"))
+            user_params.append(_up(_UP_ANALYZER, msn_spec.analyzer))
         if msn_spec.ramp_time is not None:
-            user_params.append(_up(_UP_RAMP_TIME, float(msn_spec.ramp_time), "xsd:float"))
+            user_params.append(_up(_UP_RAMP_TIME, float(msn_spec.ramp_time)))
         if msn_spec.im_range is not None:
             lo, hi = msn_spec.im_range
-            user_params.append(_up(_UP_IM_RANGE_LO, float(lo), "xsd:float"))
-            user_params.append(_up(_UP_IM_RANGE_HI, float(hi), "xsd:float"))
+            user_params.append(_up(_UP_IM_RANGE_LO, float(lo)))
+            user_params.append(_up(_UP_IM_RANGE_HI, float(hi)))
         if msn_spec.isolation_im_range is not None:
             lo, hi = msn_spec.isolation_im_range
-            user_params.append(_up(_UP_ISOL_IM_RANGE_LO, float(lo), "xsd:float"))
-            user_params.append(_up(_UP_ISOL_IM_RANGE_HI, float(hi), "xsd:float"))
+            user_params.append(_up(_UP_ISOL_IM_RANGE_LO, float(lo)))
+            user_params.append(_up(_UP_ISOL_IM_RANGE_HI, float(hi)))
         if msn_spec.im_type is not None:
             # The CV accession (ion_mobility_type) only carries a coarse, spectrl-recognised
             # IM category; stash the exact string here so unrecognized types round-trip too.
-            user_params.append(_up(_UP_IM_TYPE, msn_spec.im_type, "xsd:string"))
+            user_params.append(_up(_UP_IM_TYPE, msn_spec.im_type))
         if msn_spec.activation_type is not None:
             # The CV accession (added to act_params above) only covers activation types in
             # _ACTIVATION_ACCESSIONS; stash the exact string here so unrecognized types
             # round-trip too instead of being dropped or crashing the encode.
-            user_params.append(_up(_UP_ACTIVATION_TYPE, msn_spec.activation_type, "xsd:string"))
+            user_params.append(_up(_UP_ACTIVATION_TYPE, msn_spec.activation_type))
         if msn_spec.precursors:
             # mzML has no term for "this selected ion is the monoisotopic peak"
             # (as opposed to the most intense one), so it rides along per index.
             for prec_index, prec in enumerate(msn_spec.precursors):
                 if prec.is_monoisotopic is not None:
-                    user_params.append(_up(_up_prec_monoisotopic(prec_index), int(prec.is_monoisotopic), "xsd:boolean"))
+                    # spectrl rejects a Python bool value (see _up's docstring);
+                    # encode as int 0/1, as spxtacular's pre-3 tokens already did.
+                    user_params.append(_up(_up_prec_monoisotopic(prec_index), int(prec.is_monoisotopic)))
 
     return InlineSpectrum(
         default_array_length=n,
@@ -502,7 +525,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
 
 
 def to_spectrl_token(spec: Spectrum, *, lossless: bool = False, max_len: int | None = None) -> str:
-    """Encode a spxtacular spectrum directly to a ``spectrl.v1.…`` token.
+    """Encode a spxtacular spectrum directly to a ``spectrl.v3.…`` token.
 
     Convenience wrapper over :func:`to_inline_spectrum` +
     :func:`spectrl.encode_spectrum`. See :func:`spectrl.encode_spectrum` for
@@ -510,11 +533,13 @@ def to_spectrl_token(spec: Spectrum, *, lossless: bool = False, max_len: int | N
 
     .. warning::
 
-       The **default encoding is lossy**: peak arrays go through MS-Numpress,
-       which round-trips ``mz`` to roughly ``3.1e-8`` relative error,
-       ``intensity`` to roughly ``1.3e-4``, and ``im`` to roughly ``6.7e-6``.
-       That is well inside instrument precision for sharing and plotting, but it
-       is not bit-exact. Pass ``lossless=True`` for a bit-exact round-trip (at
+       The **default encoding is lossy**: spectrl chooses, per array, the
+       smallest of several quantized/rounded candidates whose reconstruction
+       error is bounded (m/z is checked against a 0.1 ppm relative bound; see
+       the spectrl specification for other arrays). That is well inside
+       instrument precision for sharing and plotting, but it is not bit-exact,
+       and each array decodes back to its declared numeric type rather than
+       always float64. Pass ``lossless=True`` for a bit-exact round-trip (at
        the cost of a longer token).
     """
     _require_spectrl()
@@ -547,7 +572,7 @@ def _range_from_user_params(
 
 
 def _mobility_array(decoded: DecodedSpectrum) -> tuple[str | None, np.ndarray | None]:
-    """Return Spectrl 1.0's accession-keyed mobility column, if present.
+    """Return spectrl's accession-keyed mobility column, if present.
 
     Spectrl can carry several mobility arrays at once, whereas spxtacular has
     one ``im`` column. Refuse an ambiguous conversion rather than silently
@@ -699,7 +724,10 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
             # whose precursor carries several selected ions, or one whose
             # selected ion is skipped below for a missing m/z.
             mono_v = up.get(_up_prec_monoisotopic(prec_index))
-            is_monoisotopic = bool(int(mono_v)) if mono_v is not None else None
+            # spectrl 3 has no separate type annotation, so a foreign token may
+            # carry this as a native bool or (as spxtacular's own pre-3 tokens
+            # did) as an int 0/1; bool() handles both.
+            is_monoisotopic = bool(mono_v) if mono_v is not None else None
             for ion in sp.selected_ions:
                 mz_p = _find_param(ion.params, _SELECTED_ION_MZ)
                 if mz_p is None or mz_p.value is None:
@@ -799,7 +827,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
 
 
 def from_spectrl_token(token: str) -> Spectrum | MsnSpectrum:
-    """Decode a ``spectrl.v1.…`` token into a spxtacular
+    """Decode a ``spectrl.v3.…`` token into a spxtacular
     :class:`~spxtacular.core.Spectrum` (or :class:`~spxtacular.core.MsnSpectrum`
     when MSn metadata is present).
     """
@@ -828,20 +856,19 @@ def to_spectrl_url(
     Convenience wrapper over :func:`to_spectrl_token` + spectrl's URL binding
     helpers. ``mode`` selects the binding:
 
-    - ``"fragment"`` (default): ``base#spectrl.v1.…`` — the token rides in the URL
+    - ``"fragment"`` (default): ``base#spectrl.v3.…`` — the token rides in the URL
       fragment, which is never sent to the server (no length limits, no logs).
-    - ``"query"``: ``base?<param>=spectrl.v1.…`` — token as a query parameter.
-    - ``"data"``: a ``data:application/vnd.spectrl;v=1,…`` URI (``base`` ignored).
+    - ``"query"``: ``base?<param>=spectrl.v3.…`` — token as a query parameter.
+    - ``"data"``: a ``data:application/vnd.spectrl;v=3,…`` URI (``base`` ignored).
 
     ``base`` is required for ``"fragment"`` and ``"query"``. See
     :func:`spectrl.encode_spectrum` for ``lossless`` / ``max_len``.
 
     .. warning::
 
-       As with :func:`to_spectrl_token`, the **default encoding is lossy**:
-       ``mz`` round-trips to roughly ``3.1e-8`` relative error, ``intensity`` to
-       roughly ``1.3e-4``, and ``im`` to roughly ``6.7e-6``. Pass
-       ``lossless=True`` for a bit-exact round-trip.
+       As with :func:`to_spectrl_token`, the **default encoding is lossy**: see
+       :func:`to_spectrl_token` for the bound spectrl guarantees per array.
+       Pass ``lossless=True`` for a bit-exact round-trip.
     """
     _require_spectrl()
     from spectrl import to_data_uri, to_fragment, to_query
@@ -862,7 +889,7 @@ def to_spectrl_url(
 
 
 def from_spectrl_url(url: str) -> Spectrum | MsnSpectrum:
-    """Extract a ``spectrl.v1.…`` token from a URL fragment, query string, or
+    """Extract a ``spectrl.v3.…`` token from a URL fragment, query string, or
     ``data:`` URI and decode it into a spxtacular
     :class:`~spxtacular.core.Spectrum` / :class:`~spxtacular.core.MsnSpectrum`.
     """
