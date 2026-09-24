@@ -4,6 +4,10 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Fixed
+
+- `Spectrum.centroid` no longer returns huge apex intensities (up to ~1e36x the data) for peaks whose neighbours are near zero, and keeps single-sample peaks next to zero or negative samples instead of dropping them. Such peaks fall back to a parabola on the intensities; well-sampled peaks are unchanged.
+
 ## [0.9.0] (unreleased)
 
 Breaking release. Every rename and removal, old -> new, is in the migration guide

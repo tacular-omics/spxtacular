@@ -226,6 +226,13 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
     return result
 
 
+# A Gaussian sampled at one point per FWHM gains at most 2x between its highest
+# sample and its true apex (exp(ln 2)). A fit that claims more is extrapolating
+# from flanks too small to constrain it.
+_MAX_APEX_GAIN = 2.0
+_MAX_LOG_APEX_GAIN = float(np.log(_MAX_APEX_GAIN))
+
+
 def _centroid_peaks(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
@@ -233,6 +240,12 @@ def _centroid_peaks(
     min_intensity: float | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64] | None]:
     """Fit sharp apexes in log space and retain flat apexes at their midpoint.
+
+    A sharp apex is fitted with a parabola through the log intensities of it and
+    its two neighbours (exact for a Gaussian). When a neighbour is zero, negative
+    or so small that the fit would put the apex more than twice above its highest
+    sample, the parabola is fitted to the intensities instead. The centre always
+    lies between the two neighbours.
 
     A plateau does not identify a Gaussian height or width. Report its observed
     maximum and the midpoint of its m/z bounds, with mobility from the lower
@@ -257,25 +270,57 @@ def _centroid_peaks(
     heights = intensity[apex].copy()
 
     sharp = lo == hi
-    fit = sharp & (intensity[lo - 1] > 0) & (intensity[hi + 1] > 0)
-    # Keep the existing positive-flank requirement for Gaussian fits.
-    valid = ~sharp | fit
-    indices = np.flatnonzero(fit)
+    indices = np.flatnonzero(sharp)
     x = mz[apex[indices]]
     left = mz[lo[indices] - 1] - x
     right = mz[hi[indices] + 1] - x
     regular = (left < 0) & (right > 0) & (-left <= right * 10) & (right <= -left * 10)
+    apex_height = heights[indices]
+    left_height = intensity[lo[indices] - 1]
+    right_height = intensity[hi[indices] + 1]
+
+    # Gaussian: a parabola through the log intensities. Exact for sampled
+    # Gaussians, but a flank near zero puts log(flank) -> -inf in charge of the
+    # curvature and the fitted apex explodes (1e-30 flanks gave ~5e3x the apex).
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        log_apex = np.log(heights[indices])
-        left_slope = (np.log(intensity[lo[indices] - 1]) - log_apex) / left
-        right_slope = (np.log(intensity[hi[indices] + 1]) - log_apex) / right
+        log_apex = np.log(apex_height)
+        left_slope = (np.log(left_height) - log_apex) / left
+        right_slope = (np.log(right_height) - log_apex) / right
         quadratic = (right_slope - left_slope) / (right - left)
         linear = left_slope - quadratic * left
         offset = -linear / (2 * quadratic)
-        fitted_height = np.exp(log_apex - linear * linear / (4 * quadratic))
-    centers[indices] = x + offset
-    heights[indices] = fitted_height
-    valid[indices] = regular & (quadratic < 0) & (offset >= left) & (offset <= right)
+        log_gain = -linear * linear / (4 * quadratic)
+        fitted_height = np.exp(log_apex + np.minimum(log_gain, _MAX_LOG_APEX_GAIN))
+    gaussian = (
+        (left_height > 0)
+        & (right_height > 0)
+        & (quadratic < 0)
+        & (log_gain <= _MAX_LOG_APEX_GAIN)
+        & np.isfinite(offset)
+        & np.isfinite(fitted_height)
+    )
+
+    # Otherwise fit the parabola to the intensities themselves, flanks clipped at
+    # zero. With the apex strictly above both flanks its vertex lies between them
+    # and its height is at most (1 + R^2 / (4 (R + 1))) times the apex, R the
+    # spacing ratio (1.125x for even spacing); it is capped at the same 2x.
+    left_clip = np.maximum(left_height, 0.0)
+    right_clip = np.maximum(right_height, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        lin_left = (left_clip - apex_height) / left
+        lin_right = (right_clip - apex_height) / right
+        lin_quadratic = (lin_right - lin_left) / (right - left)
+        lin_linear = lin_left - lin_quadratic * left
+        lin_offset = -lin_linear / (2 * lin_quadratic)
+        lin_height = np.minimum(
+            apex_height - lin_linear * lin_linear / (4 * lin_quadratic), apex_height * _MAX_APEX_GAIN
+        )
+
+    offset = np.where(gaussian, offset, lin_offset)
+    centers[indices] = x + np.clip(offset, left, right)
+    heights[indices] = np.where(gaussian, fitted_height, lin_height)
+    valid = np.ones(len(lo), dtype=np.bool_)
+    valid[indices] = regular & np.isfinite(offset)
     valid &= np.isfinite(centers) & np.isfinite(heights)
     mobility = im[apex[valid]].copy() if im is not None else None
     return centers[valid], heights[valid], mobility
@@ -924,6 +969,11 @@ class Spectrum:
         A flat apex counts as one peak. Requiring a strict ``prev < curr > next``
         would discard any peak whose maximum spans two or more equal samples,
         which is routine in quantised or saturated data.
+
+        When a neighbour of an apex is zero, negative or too small to constrain
+        a Gaussian (the fit would put the apex more than twice above its highest
+        sample), the apex is fitted with a parabola on the intensities instead,
+        so a centroid never lands outside its neighbours or far above the data.
 
         An already centroided spectrum is returned unchanged (a copy, or
         ``self`` when ``inplace``).
