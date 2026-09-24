@@ -3,15 +3,56 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, cast, get_args
+
+from tacular.types import Polarity, ToleranceUnit
 
 from .errors import SpxtacularError
+
+_TOLERANCE_UNITS: tuple[str, ...] = get_args(ToleranceUnit)
+_POLARITIES: tuple[str, ...] = get_args(Polarity)
+
+
+def check_tolerance_unit(value: object, name: str = "tolerance_unit") -> ToleranceUnit:
+    """Return ``value`` if it is a :data:`tacular.types.ToleranceUnit` (``"da"`` or ``"ppm"``).
+
+    Only the lowercase strings are accepted, as in tacular; anything else raises
+    :class:`SpxtacularError` naming the parameter ``name``.
+    """
+    if isinstance(value, str) and value in _TOLERANCE_UNITS:
+        return cast("ToleranceUnit", value)
+    raise SpxtacularError(f"{name} must be 'da' or 'ppm', got {value!r}")
+
+
+IMToleranceUnit = Literal["relative", "absolute"]
+"""How an ion-mobility tolerance is read: a fraction of the peak's mobility or mobility units."""
+
+
+def check_im_tolerance_unit(value: object, name: str = "im_tolerance_unit") -> IMToleranceUnit:
+    """Return ``value`` lowercased if it is ``"relative"`` or ``"absolute"``, else raise."""
+    folded = value.lower() if isinstance(value, str) else value
+    if folded in ("relative", "absolute"):
+        return cast("IMToleranceUnit", folded)
+    raise SpxtacularError(f"{name} must be 'relative' or 'absolute', got {value!r}")
+
+
+def check_polarity(value: object, name: str = "polarity") -> Polarity | None:
+    """Return ``value`` if it is ``None`` or a :data:`tacular.types.Polarity`.
+
+    Only the lowercase strings ``"positive"`` and ``"negative"`` are accepted;
+    anything else raises :class:`SpxtacularError` naming the field ``name``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value in _POLARITIES:
+        return cast("Polarity", value)
+    raise SpxtacularError(f"{name} must be 'positive' or 'negative', got {value!r}")
 
 
 class _SpxEnum(StrEnum):
     """String enum that matches values case-insensitively and raises :class:`SpxtacularError`.
 
-    ``ToleranceType("PPM")`` is ``ToleranceType.PPM``; an unknown value raises
+    ``PeakSelection("LARGEST")`` is ``PeakSelection.LARGEST``; an unknown value raises
     ``SpxtacularError`` (a ``ValueError``) listing the accepted values.
     """
 
@@ -31,26 +72,12 @@ class _SpxEnum(StrEnum):
         raise SpxtacularError(f"{value!r} is not a valid {cls.__name__}; expected one of {accepted}")
 
 
-class ToleranceType(_SpxEnum):
-    """Unit used to interpret an m/z tolerance."""
-
-    DA = "da"
-    PPM = "ppm"
-
-
 class PeakSelection(_SpxEnum):
     """Rule for resolving multiple observed peaks near one target."""
 
     CLOSEST = "closest"
     LARGEST = "largest"
     ALL = "all"
-
-
-class Polarity(_SpxEnum):
-    """Scan polarity. Closed vocabulary (PSI-MS MS:1000130 / MS:1000129)."""
-
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
 
 
 class ActivationType(_SpxEnum):
@@ -145,9 +172,7 @@ class Analyzer(_SpxEnum):
         return _ANALYZER_NAMES.get(str(accession), str(accession))
 
 
-ToleranceLike = ToleranceType | Literal["da", "ppm"]
 PeakSelectionLike = PeakSelection | Literal["closest", "largest", "all"]
-PolarityLike = Polarity | Literal["positive", "negative"]
 # Open vocabularies: known names and accessions become members, unknown vendor
 # strings are kept as plain ``str``.
 ActivationTypeLike = ActivationType | str
@@ -155,10 +180,10 @@ AnalyzerLike = Analyzer | str
 # Closed: a string must name a member (case-insensitive, or an alias).
 IMTypeLike = IMType | str
 
-# Shared default (tolerance, tolerance_type) for fragment-matching entry points
+# Shared default (tolerance, tolerance_unit) for fragment-matching entry points
 # (Spectrum.match_fragments/score/annotate/annot_plot_table/remove_precursor_peak/
 # mass_error_plot/facet_plot and their matching.py/scoring.py/visualization.py/
 # plot_table.py counterparts). Single source of truth so the defaults can't drift
 # out of sync across entry points again.
 DEFAULT_FRAGMENT_TOLERANCE = 0.02
-DEFAULT_FRAGMENT_TOLERANCE_TYPE = ToleranceType.DA
+DEFAULT_FRAGMENT_TOLERANCE_UNIT: ToleranceUnit = "da"

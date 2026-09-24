@@ -11,10 +11,6 @@ from .enums import (
     IMTypeLike,
     PeakSelection,
     PeakSelectionLike,
-    Polarity,
-    PolarityLike,
-    ToleranceLike,
-    ToleranceType,
 )
 from .errors import SpxtacularError
 from .interop import from_matchms, from_spectrum_utils, to_matchms, to_spectrum_utils
@@ -119,12 +115,8 @@ __all__ = [
     "Spectrum",
     "MsnSpectrum",
     "SpectrumType",
-    "ToleranceType",
-    "ToleranceLike",
     "PeakSelection",
     "PeakSelectionLike",
-    "Polarity",
-    "PolarityLike",
     "ActivationType",
     "ActivationTypeLike",
     "IMType",

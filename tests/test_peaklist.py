@@ -6,6 +6,7 @@ import gzip
 
 import numpy as np
 import pytest
+from tacular.types import Polarity
 
 from spxtacular import (
     MgfReader,
@@ -18,7 +19,6 @@ from spxtacular import (
     write_mgf,
     write_ms2,
 )
-from spxtacular.enums import Polarity
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -394,17 +394,17 @@ END IONS
     )
     (spec,) = list(MgfReader(path))
     assert precursor(spec).charge == -3
-    assert spec.polarity == Polarity.NEGATIVE
+    assert spec.polarity == "negative"
 
 
 def test_mgf_writes_negative_sign_from_polarity(tmp_path):
-    spec = make_spectrum(charge=2, polarity=Polarity.NEGATIVE)
+    spec = make_spectrum(charge=2, polarity="negative")
     path = write_mgf([spec], tmp_path / "neg.mgf")
     assert "CHARGE=2-" in path.read_text()
 
     restored = next(iter(MgfReader(path)))
     assert precursor(restored).charge == -2
-    assert restored.polarity == Polarity.NEGATIVE
+    assert restored.polarity == "negative"
 
 
 def test_mgf_writes_negative_sign_from_negative_charge(tmp_path):
@@ -415,19 +415,19 @@ def test_mgf_writes_negative_sign_from_negative_charge(tmp_path):
 
 
 def test_ms2_negative_charge_round_trip(tmp_path):
-    spec = make_spectrum(charge=2, polarity=Polarity.NEGATIVE)
+    spec = make_spectrum(charge=2, polarity="negative")
     path = write_ms2([spec], tmp_path / "neg.ms2")
     assert "\nZ\t-2\t" in path.read_text()
 
     restored = next(iter(Ms2Reader(path)))
     assert precursor(restored).charge == -2
-    assert restored.polarity == Polarity.NEGATIVE
+    assert restored.polarity == "negative"
 
 
 def test_positive_charge_has_positive_polarity(tmp_path):
     path = write_mgf([make_spectrum(charge=2)], tmp_path / "pos.mgf")
     assert "CHARGE=2+" in path.read_text()
-    assert next(iter(MgfReader(path))).polarity == Polarity.POSITIVE
+    assert next(iter(MgfReader(path))).polarity == "positive"
 
 
 # ---------------------------------------------------------------------------

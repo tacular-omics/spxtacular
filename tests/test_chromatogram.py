@@ -231,8 +231,8 @@ class TestExtractXic:
 
     def test_da_and_ppm_windows_differ(self) -> None:
         run = _run()
-        tight = extract_xic(run, [500.0], tolerance=1.0, tolerance_type="ppm")[0]
-        wide = extract_xic(run, [500.0], tolerance=250.0, tolerance_type="da")[0]
+        tight = extract_xic(run, [500.0], tolerance=1.0, tolerance_unit="ppm")[0]
+        wide = extract_xic(run, [500.0], tolerance=250.0, tolerance_unit="da")[0]
         assert wide.total > tight.total
 
     def test_max_aggregate_never_exceeds_sum(self) -> None:
@@ -371,7 +371,7 @@ class TestRealRun:
 
     def test_xic_matches_brute_force_on_real_frames(self, real_dda_frames: list[Spectrum]) -> None:
         targets = [599.3262, 621.3293, 733.4002]
-        chroms = extract_xic(real_dda_frames, targets, tolerance=20, tolerance_type="ppm")
+        chroms = extract_xic(real_dda_frames, targets, tolerance=20, tolerance_unit="ppm")
         for target, chrom in zip(targets, chroms, strict=True):
             expected = np.array(
                 [float(f.intensity[np.abs(f.mz - target) <= target * 20 / 1e6].sum()) for f in real_dda_frames]

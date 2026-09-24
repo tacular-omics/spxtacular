@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 
 from spxtacular import MsnSpectrum, MspReader, Precursor, Reader, Spectrum, SpectrumType, write_msp
-from spxtacular.enums import Polarity
 
 # A NIST/SpectraST-style peptide library record: charge rides on the Name,
 # everything else hides in Comment key=value pairs, "Num peaks" is lowercase,
@@ -75,7 +74,7 @@ def test_nist_peptide_dialect(two_dialects):
     assert prec.charge == 2  # Comment Charge= (agrees with the Name suffix)
     assert spec.collision_energy == 35.0  # Comment CE=
     assert spec.rt == 1823.4  # Comment RT=, verbatim
-    assert spec.polarity == Polarity.POSITIVE  # implied by charge sign
+    assert spec.polarity == "positive"  # implied by charge sign
 
 
 def test_name_charge_suffix_is_fallback(tmp_path):
@@ -85,7 +84,7 @@ def test_name_charge_suffix_is_fallback(tmp_path):
     # No Charge header and no Comment — the /3 on the Name is the charge, but
     # with no precursor m/z anywhere there is no Precursor to attach it to.
     assert spec.precursors is None
-    assert spec.polarity == Polarity.POSITIVE
+    assert spec.polarity == "positive"
 
 
 def test_mona_metabolomics_dialect(two_dialects):
@@ -95,7 +94,7 @@ def test_mona_metabolomics_dialect(two_dialects):
     prec = spec.precursors[0]
     assert prec.precursor_mz == 181.0495
     assert prec.charge is None
-    assert spec.polarity == Polarity.POSITIVE  # IONMODE
+    assert spec.polarity == "positive"  # IONMODE
     assert spec.rt == 5.43  # verbatim — no unit guessing
     assert spec.collision_energy == 35.0  # "35 eV"
     assert len(spec) == 2
@@ -105,7 +104,7 @@ def test_negative_ion_mode(tmp_path):
     path = tmp_path / "neg.msp"
     path.write_text("Name: X\nIon_mode: N\nPrecursorMZ: 179.03\nNum Peaks: 1\n89.02 100.0\n")
     spec = MspReader(path)[0]
-    assert spec.polarity == Polarity.NEGATIVE
+    assert spec.polarity == "negative"
 
 
 def test_key_normalisation_across_spellings(tmp_path):
@@ -252,7 +251,7 @@ def _library_spectrum() -> MsnSpectrum:
         ms_level=2,
         native_id="AAAAK/2",
         rt=1823.4,
-        polarity=Polarity.POSITIVE,
+        polarity="positive",
         collision_energy=35.0,
         precursors=[Precursor(precursor_mz=216.13435678, intensity=0.0, charge=2, is_monoisotopic=None)],
     )
@@ -268,17 +267,17 @@ def test_round_trip_is_bit_exact(tmp_path):
     assert restored.precursors is not None and original.precursors is not None
     assert restored.precursors[0].precursor_mz == original.precursors[0].precursor_mz
     assert restored.precursors[0].charge == 2
-    assert restored.polarity == Polarity.POSITIVE
+    assert restored.polarity == "positive"
     assert restored.rt == original.rt
     assert restored.collision_energy == original.collision_energy
 
 
 def test_round_trip_negative_polarity(tmp_path):
     spec = _library_spectrum()
-    spec.polarity = Polarity.NEGATIVE
+    spec.polarity = "negative"
     restored = MspReader(write_msp(spec, tmp_path / "neg.msp"))[0]
     # Ion_mode carries polarity explicitly — the charge stays positive.
-    assert restored.polarity == Polarity.NEGATIVE
+    assert restored.polarity == "negative"
     assert restored.precursors is not None
     assert restored.precursors[0].charge == 2
 

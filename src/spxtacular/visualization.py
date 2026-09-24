@@ -20,10 +20,10 @@ from .chromatogram import Chromatogram
 from .core import Spectrum, SpectrumType
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceLike,
+    ToleranceUnit,
 )
 from .errors import SpxtacularError
 from .matching import FragmentInput
@@ -584,7 +584,7 @@ def annotate_spectrum(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     title: str | None = None,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
@@ -609,8 +609,8 @@ def annotate_spectrum(
         Fragment objects from peptacular to match against peaks.
     tolerance:
         Matching tolerance.
-    tolerance_type:
-        ``"Da"`` or ``"ppm"``.
+    tolerance_unit:
+        ``"da"`` or ``"ppm"``.
     title:
         Plot title.
     peak_selection:
@@ -643,7 +643,7 @@ def annotate_spectrum(
         spectrum,
         fragments,
         tolerance=tolerance,
-        tolerance_type=tolerance_type,
+        tolerance_unit=tolerance_unit,
         peak_selection=peak_selection,
         include_sequence=include_sequence,
         max_labels=max_labels,
@@ -783,7 +783,7 @@ def plot_xic(
     targets: Sequence[float] | float,
     *,
     tolerance: float = 20.0,
-    tolerance_type: ToleranceLike = "ppm",
+    tolerance_unit: ToleranceUnit = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Literal["sum", "max"] = "sum",
     title: str | None = None,
@@ -808,11 +808,11 @@ def plot_xic(
         spectra,
         targets,
         tolerance=tolerance,
-        tolerance_type=tolerance_type,
+        tolerance_unit=tolerance_unit,
         im_window=im_window,
         aggregate=aggregate,
     )
-    unit = "ppm" if str(tolerance_type).lower() == "ppm" else "Da"
+    unit = "ppm" if str(tolerance_unit).lower() == "ppm" else "Da"
     default_title = f"Extracted ion chromatogram{'s' if len(chroms) > 1 else ''} (±{tolerance:g} {unit})"
     return plot_chromatogram(chroms, title=title or default_title, theme_mode=theme_mode, **layout_kwargs)
 
@@ -936,7 +936,7 @@ def sequence_coverage_plot(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
@@ -963,7 +963,7 @@ def sequence_coverage_plot(
         brackets are not rendered -- pass the stripped sequence.
     fragments:
         Fragment objects to match, as for :func:`~spxtacular.matching.match_fragments`.
-    tolerance, tolerance_type, peak_selection:
+    tolerance, tolerance_unit, peak_selection:
         Matching parameters.
     title:
         Plot title.
@@ -986,7 +986,7 @@ def sequence_coverage_plot(
         raise SpxtacularError("peptide must contain at least one residue")
 
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
     )
 
     # A fragment of length k evidences the bond after residue k (N-terminal
@@ -1074,7 +1074,7 @@ def mass_error_plot(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     unit: str = "ppm",
     title: str | None = None,
@@ -1096,8 +1096,8 @@ def mass_error_plot(
         Fragment objects from peptacular to match against peaks.
     tolerance:
         Matching tolerance.
-    tolerance_type:
-        ``"Da"`` or ``"ppm"``.
+    tolerance_unit:
+        ``"da"`` or ``"ppm"``.
     peak_selection:
         ``"closest"``, ``"largest"``, or ``"all"``.
     unit:
@@ -1121,7 +1121,7 @@ def mass_error_plot(
 
     unit = _error_unit(unit)
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
     )
 
     if not matches:
@@ -1264,7 +1264,7 @@ def facet_plot(
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     unit: str = "ppm",
@@ -1291,8 +1291,8 @@ def facet_plot(
         Plot title.
     tolerance:
         Matching tolerance.
-    tolerance_type:
-        ``"Da"`` or ``"ppm"``.
+    tolerance_unit:
+        ``"da"`` or ``"ppm"``.
     peak_selection:
         ``"closest"``, ``"largest"``, or ``"all"``.
     include_sequence:
@@ -1332,7 +1332,7 @@ def facet_plot(
             spectrum,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
             max_labels=max_labels,
@@ -1373,7 +1373,7 @@ def facet_plot(
         from .matching import match_fragments
 
         matches = match_fragments(
-            spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
         )
         if matches:
             mzs = [m.peak_mz for m in matches]

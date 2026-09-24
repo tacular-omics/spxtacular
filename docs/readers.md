@@ -110,7 +110,7 @@ therefore raises `SpxtacularError`; use `results.sage.tsv`, which keeps the full
 
 The `ms1` / `ms2` indexing below is unchanged and still works.
 
-`polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — they also accept the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
+`polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — `activation_type`, `im_type` and `analyzer` also accept the `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
 
 ---
 
@@ -302,7 +302,7 @@ for spec in reader.ms1:
         spec
         .filter(min_mz=300, min_intensity=1000)
         .denoise(method="mad")
-        .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+        .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
         .decharge()
     )
     for peak in neutral.top_peaks(10):
@@ -382,9 +382,9 @@ with DReader("/data/sample.d", centroid_config=cfg) as reader:
 | Field | Default | Description |
 |---|---|---|
 | `mz_tolerance` | `8.0` | m/z merge window |
-| `mz_tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
+| `mz_tolerance_unit` | `"ppm"` | `"ppm"` or `"da"` |
 | `im_tolerance` | `0.1` | Ion mobility merge window |
-| `im_tolerance_type` | `"relative"` | `"relative"` or `"absolute"` |
+| `im_tolerance_unit` | `"relative"` | `"relative"` or `"absolute"` |
 | `min_peaks` | `3` | Minimum raw points required to emit a centroid |
 | `noise_filter` | `None` | `"mad"`, `"percentile"`, `"histogram"`, `"baseline"`, `"iterative_median"`, a `float` threshold, or `None` |
 
@@ -485,7 +485,7 @@ with DReader("/data/sample.d") as reader:
             continue
         neutral = (
             filtered
-            .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_type="ppm")
+            .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_unit="ppm")
             .decharge()
         )
         print(f"Frame {spec.scan_number}: {len(neutral)} neutral masses")

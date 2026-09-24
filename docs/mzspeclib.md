@@ -76,7 +76,7 @@ import peptacular as pt
 from spxtacular import LibraryEntry, match_fragments, write_mzspeclib
 
 frags = pt.fragment("PEPTIDE/2", ion_types=("b", "y"), charges=(1, 2))
-matches = match_fragments(spectrum, frags, tolerance=10, tolerance_type="ppm")
+matches = match_fragments(spectrum, frags, tolerance=10, tolerance_unit="ppm")
 entry = LibraryEntry.from_spectrum(
     spectrum,
     "PEPTIDE/2",

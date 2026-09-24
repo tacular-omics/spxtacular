@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tacular-omics.github.io/spxtacular/schemas/chromatogram-v1.schema.json",
-  "title": "Spxtacular Chromatogram v1",
+  "$id": "https://tacular-omics.github.io/spxtacular/schemas/chromatogram-v2.schema.json",
+  "title": "Spxtacular Chromatogram v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "schema_version", "kind", "arrays", "metadata"],
   "properties": {
     "schema": {"const": "spxtacular.chromatogram"},
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "kind": {"const": "chromatogram"},
     "arrays": {
       "type": "object",
@@ -21,12 +21,12 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["label", "mz", "tolerance", "tolerance_type", "meta"],
+      "required": ["label", "mz", "tolerance", "tolerance_unit", "meta"],
       "properties": {
         "label": {"type": "string"},
         "mz": {"type": ["number", "null"]},
         "tolerance": {"type": ["number", "null"]},
-        "tolerance_type": {"type": ["string", "null"]},
+        "tolerance_unit": {"enum": ["da", "ppm", null]},
         "meta": {"type": "object"}
       }
     }

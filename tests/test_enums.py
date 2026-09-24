@@ -1,25 +1,26 @@
-"""Tests for the field-level PSI-MS enums (ActivationType, IMType, Analyzer,
-Polarity) and the single-source-of-truth accession mappings that back them.
+"""Tests for the field-level PSI-MS enums (ActivationType, IMType, Analyzer), the tacular
+``Polarity`` / ``ToleranceUnit`` validators, and the single-source-of-truth accession mappings that back them.
 
 These do not require the optional ``spectrl`` extra: the accession dicts live in
 ``spectrl_bridge`` but that module imports cleanly without ``spectrl`` installed.
 """
 
 import re
+from typing import get_args
 
 import numpy as np
 import pytest
+from tacular.types import Polarity
 
 from spxtacular import (
     ActivationType,
     Analyzer,
     IMType,
     MsnSpectrum,
-    Polarity,
     Precursor,
     SpxtacularError,
-    ToleranceType,
 )
+from spxtacular.enums import check_polarity, check_tolerance_unit
 from spxtacular.spectrl_bridge import (
     _ACTIVATION_ACCESSIONS,
     _ACTIVATION_NAMES,
@@ -48,7 +49,6 @@ def test_members_are_strings_equal_to_values() -> None:
     assert ActivationType.HCD == "HCD"
     assert IMType.OOK0 == "ook0"
     assert Analyzer.TOF == "tof"
-    assert Polarity.POSITIVE == "positive"
     # StrEnum members ARE str instances, so they slot in anywhere a str is expected.
     assert isinstance(ActivationType.HCD, str)
 
@@ -63,7 +63,7 @@ def test_fields_accept_enum_members() -> None:
         activation_type=ActivationType.ETHCD,
         im_type=IMType.DRIFT_TIME_MS,
         analyzer=Analyzer.ORBITRAP,
-        polarity=Polarity.NEGATIVE,
+        polarity="negative",
     )
     assert spec.activation_type == "EThcD"
     assert spec.im_type == "drift_time_ms"
@@ -73,11 +73,11 @@ def test_fields_accept_enum_members() -> None:
 
 def test_fields_canonicalise_known_strings() -> None:
     # Known names (any case), PSI-MS accessions and aliases become members.
-    spec = _spec(activation_type="MS:1002481", analyzer="TOF", im_type="1/k0", polarity="Positive")
+    spec = _spec(activation_type="MS:1002481", analyzer="TOF", im_type="1/k0", polarity="positive")
     assert spec.activation_type is ActivationType.HCD
     assert spec.analyzer is Analyzer.TOF
     assert spec.im_type is IMType.OOK0
-    assert spec.polarity is Polarity.POSITIVE
+    assert spec.polarity == "positive"
 
 
 def test_open_vocabulary_fields_keep_unknown_strings() -> None:
@@ -92,6 +92,7 @@ def test_open_vocabulary_fields_keep_unknown_strings() -> None:
     [
         {"im_type": "banana"},
         {"polarity": "up"},
+        {"polarity": "Positive"},
         {"polarity": 1},
         {"activation_type": ""},
         {"activation_type": 3},
@@ -111,10 +112,19 @@ def test_precursor_im_type_is_validated() -> None:
         Precursor(precursor_mz=1.0, im_type=5)
 
 
-def test_enum_coercion_raises_spxtacular_error() -> None:
-    assert ToleranceType("PPM") is ToleranceType.PPM
-    with pytest.raises(SpxtacularError, match="expected one of 'da', 'ppm'"):
-        ToleranceType("ppb")
+def test_tolerance_unit_is_lowercase_only() -> None:
+    assert check_tolerance_unit("ppm") == "ppm"
+    assert check_tolerance_unit("da") == "da"
+    for bad in ("PPM", "Da", "ppb", None):
+        with pytest.raises(SpxtacularError, match="tolerance_unit must be 'da' or 'ppm'"):
+            check_tolerance_unit(bad)
+
+
+def test_polarity_is_lowercase_only() -> None:
+    assert check_polarity(None) is None
+    assert check_polarity("negative") == "negative"
+    with pytest.raises(SpxtacularError, match="polarity must be 'positive' or 'negative'"):
+        check_polarity("POSITIVE")
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +160,7 @@ def test_every_im_type_member_resolves() -> None:
 
 
 def test_polarity_covers_both_members() -> None:
-    assert set(_POLARITY_FROM_ACCESSION.values()) == set(Polarity)
+    assert set(_POLARITY_FROM_ACCESSION.values()) == set(get_args(Polarity))
 
 
 # ---------------------------------------------------------------------------

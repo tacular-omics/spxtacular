@@ -57,7 +57,7 @@ class TestRemovePrecursorPeak:
     def test_ppm_tolerance(self) -> None:
         spec = _spec()
         # 10 ppm at m/z 300 = 0.003 Da
-        result = spec.remove_precursor_peak(precursor_mz=300.0, tolerance=10, tolerance_type="ppm")
+        result = spec.remove_precursor_peak(precursor_mz=300.0, tolerance=10, tolerance_unit="ppm")
         assert 300.0 not in result.mz
 
     def test_inplace(self) -> None:
@@ -373,7 +373,7 @@ class TestMassErrorPlot:
         spec = Spectrum(mz=mz, intensity=intensity)
 
         fragments = {(IonType.B, 1): [200.001, 300.002]}
-        fig = spec.mass_error_plot(fragments, tolerance=0.01, tolerance_type="da")
+        fig = spec.mass_error_plot(fragments, tolerance=0.01, tolerance_unit="da")
         assert isinstance(fig, go.Figure)
 
     def test_returns_empty_figure_no_matches(self) -> None:
@@ -382,7 +382,7 @@ class TestMassErrorPlot:
 
         spec = _spec()
         fragments = {(IonType.B, 1): [999.0]}
-        fig = spec.mass_error_plot(fragments, tolerance=0.001, tolerance_type="da")
+        fig = spec.mass_error_plot(fragments, tolerance=0.001, tolerance_unit="da")
         assert isinstance(fig, go.Figure)
 
 
@@ -405,7 +405,7 @@ class TestFacetPlot:
 
         spec = _spec()
         fragments = {(IonType.B, 1): [200.001, 300.002]}
-        fig = spec.facet_plot(fragments=fragments, tolerance=0.01, tolerance_type="da")
+        fig = spec.facet_plot(fragments=fragments, tolerance=0.01, tolerance_unit="da")
         assert isinstance(fig, go.Figure)
 
     def test_with_mirror(self) -> None:

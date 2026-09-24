@@ -35,8 +35,8 @@ def save_or_show(fig, name: str) -> None:
 
 # ── spectra ────────────────────────────────────────────────────────────────────
 raw = EXAMPLE_SPECTRUM
-decon = raw.deconvolute(charge_range=(1, 2), tolerance=500, tolerance_type="ppm")
-decon_filtered = raw.deconvolute(charge_range=(1, 2), tolerance=500, tolerance_type="ppm", min_score=0.5)
+decon = raw.deconvolute(charge_range=(1, 2), tolerance=500, tolerance_unit="ppm")
+decon_filtered = raw.deconvolute(charge_range=(1, 2), tolerance=500, tolerance_unit="ppm", min_score=0.5)
 neutral = decon.decharge()
 neutral_filtered = decon_filtered.decharge()
 
@@ -104,16 +104,16 @@ def _simulated_ms2(frags, ppm_error=5.0, n_noise=140, seed=0):
 
 
 annot_spec = _simulated_ms2(fragments)
-annot_decon = annot_spec.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_type="ppm")
+annot_decon = annot_spec.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_unit="ppm")
 # A tolerance a real search would use, on data the peptide really explains.
-ANNOT_TOL, ANNOT_TOL_TYPE = 20, "ppm"
+ANNOT_TOL, ANNOT_TOL_UNIT = 20, "ppm"
 
 save_or_show(
     spx.annotate_spectrum(
         annot_spec,
         fragments,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
         title=f"Annotated - {PEPTIDE}",
     ),
     "annotated",
@@ -127,7 +127,7 @@ save_or_show(
         PEPTIDE,
         fragments,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
     ),
     "sequence_coverage",
 )
@@ -139,7 +139,7 @@ save_or_show(
         annot_spec,
         fragments,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
         title=f"Annotated (dark) - {PEPTIDE}",
         theme_mode="dark",
     ),
@@ -154,7 +154,7 @@ save_or_show(
         annot_spec,
         fragments,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
         title=f"Annotated, log intensity - {PEPTIDE}",
         intensity_transform="log",
     ),
@@ -168,7 +168,7 @@ save_or_show(
         annot_spec,
         fragments,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
         unit="ppm",
         title=f"Mass errors - {PEPTIDE}",
     ),
@@ -183,7 +183,7 @@ save_or_show(
         fragments=fragments,
         mirror_spectrum=annot_decon,
         tolerance=ANNOT_TOL,
-        tolerance_type=ANNOT_TOL_TYPE,
+        tolerance_unit=ANNOT_TOL_UNIT,
         title=f"Facet - {PEPTIDE}",
     ),
     "facet",

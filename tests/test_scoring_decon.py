@@ -25,7 +25,7 @@ def _raw() -> Spectrum:
 
 
 def _decon() -> Spectrum:
-    return _raw().deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm")
+    return _raw().deconvolute(charge_range=(1, 3), tolerance=50, tolerance_unit="ppm")
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def test_peak_score_is_none_for_raw_spectrum() -> None:
 
 def test_min_intensity_sentinel_string_runs_without_error() -> None:
     spec = _raw()
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm", min_intensity="min")
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_unit="ppm", min_intensity="min")
     assert decon.iso_score is not None
 
 
@@ -160,14 +160,14 @@ def test_min_intensity_sentinel_string_runs_without_error() -> None:
 
 def test_min_score_rejects_all_clusters_when_threshold_is_very_high() -> None:
     spec = _raw()
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm", min_score=0.9999)
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_unit="ppm", min_score=0.9999)
     assert decon.charge is not None
     assert np.all(decon.charge == -1), "expected all singletons with min_score=0.9999"
 
 
 def test_min_score_zero_allows_best_cluster_to_be_assigned() -> None:
     spec = _raw()
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm", min_score=0.0)
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_unit="ppm", min_score=0.0)
     assert decon.charge is not None
     assert np.any(decon.charge > 0), "expected at least one assigned cluster"
 
@@ -193,7 +193,7 @@ class TestIntensityModeValidation:
             intensity,
             charge_range=(1, 3),
             tolerance=50.0,
-            tolerance_type="ppm",
+            tolerance_unit="ppm",
             intensity_mode=intensity_mode,
         )
 

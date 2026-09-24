@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import KW_ONLY, dataclass
 from math import isfinite
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from tacular.constants import ELECTRON_MASS, PROTON_MASS
+from tacular.types import Polarity, ToleranceUnit
 
-from .enums import Polarity
+from .enums import IMToleranceUnit, check_im_tolerance_unit, check_polarity, check_tolerance_unit
 from .errors import SpxtacularError
 from .isotopes import IsotopeModel
 
@@ -30,16 +31,15 @@ class IonizationModel:
     """
 
     name: str
-    polarity: Polarity | str
+    polarity: Polarity
     carrier_mass: float
     _: KW_ONLY
     carrier: str = "custom"
 
     def __post_init__(self) -> None:
-        try:
-            polarity = Polarity(str(self.polarity).lower())
-        except ValueError as exc:
-            raise SpxtacularError(f"polarity must be 'positive' or 'negative', got {self.polarity!r}") from exc
+        polarity = check_polarity(self.polarity)
+        if polarity is None:
+            raise SpxtacularError("polarity must be 'positive' or 'negative', got None")
         mass = float(self.carrier_mass)
         if not isfinite(mass):
             raise SpxtacularError(f"carrier_mass must be finite, got {self.carrier_mass!r}")
@@ -68,7 +68,7 @@ class IonizationModel:
         """Return charge-aware adduct notation, such as ``[M+2Na]2+``."""
         z = _validated_charge_scalar(charge)
         sign = "+" if self.carrier_mass >= 0 else "-"
-        suffix = "+" if self.polarity == Polarity.POSITIVE else "-"
+        suffix = "+" if self.polarity == "positive" else "-"
         count = "" if z == 1 else str(z)
         charge_suffix = suffix if z == 1 else f"{z}{suffix}"
         return f"[M{sign}{count}{self.carrier}]{charge_suffix}"
@@ -87,7 +87,7 @@ class IonizationModel:
         """Reconstruct a model from :meth:`to_dict` output."""
         return cls(
             name=str(value["name"]),
-            polarity=str(value["polarity"]),
+            polarity=cast("Polarity", str(value["polarity"])),
             carrier_mass=float(value["carrier_mass"]),
             carrier=str(value.get("carrier", "custom")),
         )
@@ -110,10 +110,10 @@ def _validated_charge_scalar(charge: int) -> int:
     return int(charge)
 
 
-PROTONATED = IonizationModel("protonated", Polarity.POSITIVE, PROTON_MASS, carrier="H")
-DEPROTONATED = IonizationModel("deprotonated", Polarity.NEGATIVE, -PROTON_MASS, carrier="H")
-SODIATED = IonizationModel("sodiated", Polarity.POSITIVE, SODIUM_CATION_MASS, carrier="Na")
-AMMONIATED = IonizationModel("ammoniated", Polarity.POSITIVE, AMMONIUM_CATION_MASS, carrier="NH4")
+PROTONATED = IonizationModel("protonated", "positive", PROTON_MASS, carrier="H")
+DEPROTONATED = IonizationModel("deprotonated", "negative", -PROTON_MASS, carrier="H")
+SODIATED = IonizationModel("sodiated", "positive", SODIUM_CATION_MASS, carrier="Na")
+AMMONIATED = IonizationModel("ammoniated", "positive", AMMONIUM_CATION_MASS, carrier="NH4")
 
 IONIZATION_MODELS: dict[str, IonizationModel] = {
     "protonated": PROTONATED,
@@ -142,7 +142,7 @@ def resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> Ionizat
         return model
     if isinstance(model, (int, float)) and not isinstance(model, bool):
         mass = float(model)
-        polarity = Polarity.POSITIVE if mass >= 0.0 else Polarity.NEGATIVE
+        polarity = "positive" if mass >= 0.0 else "negative"
         return IonizationModel("custom", polarity, mass)
     value = str(model).strip().lower().replace(" ", "")
     value = _ALIASES.get(value, value)
@@ -157,13 +157,19 @@ def resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> Ionizat
 
 @dataclass(frozen=True, slots=True)
 class DeconvolutionProvenance:
-    """Models and parameters that determine deconvolution interpretation."""
+    """Models and parameters that determine deconvolution interpretation.
+
+    ``tolerance_unit`` is ``"da"`` or ``"ppm"``; ``im_tolerance_unit`` is
+    ``"relative"`` or ``"absolute"``. Serialized with ``schema_version`` 3; versions
+    1 and 2 (spxtacular 0.8 and earlier, keys ``tolerance_type`` and
+    ``im_tolerance_type``) still load.
+    """
 
     isotope_model: str
     ionization_model: IonizationModel
     charge_range: tuple[int, int]
     tolerance: float
-    tolerance_type: str
+    tolerance_unit: ToleranceUnit
     intensity_mode: str
     min_intensity: float
     min_score: float
@@ -174,13 +180,13 @@ class DeconvolutionProvenance:
     max_isotope_gaps: int = 0
     max_isotopes: int | None = None
     im_tolerance: float = 0.05
-    im_tolerance_type: str = "relative"
+    im_tolerance_unit: IMToleranceUnit = "relative"
 
     def to_dict(self) -> dict[str, Any]:
         """Return the versioned JSON-compatible representation."""
 
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "isotope_model": self.isotope_model,
             "isotope_model_definition": (
                 self.isotope_model_definition.to_dict() if self.isotope_model_definition is not None else None
@@ -188,7 +194,7 @@ class DeconvolutionProvenance:
             "ionization_model": self.ionization_model.to_dict(),
             "charge_range": list(self.charge_range),
             "tolerance": self.tolerance,
-            "tolerance_type": self.tolerance_type,
+            "tolerance_unit": self.tolerance_unit,
             "intensity_mode": self.intensity_mode,
             "min_intensity": self.min_intensity,
             "min_score": self.min_score,
@@ -197,18 +203,28 @@ class DeconvolutionProvenance:
             "max_isotope_gaps": self.max_isotope_gaps,
             "max_isotopes": self.max_isotopes,
             "im_tolerance": self.im_tolerance,
-            "im_tolerance_type": self.im_tolerance_type,
+            "im_tolerance_unit": self.im_tolerance_unit,
         }
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> DeconvolutionProvenance:
-        """Restore provenance written by schema version 1 or 2."""
+        """Restore provenance written by schema version 1, 2 or 3.
+
+        Versions 1 and 2 (spxtacular 0.8 and earlier) name the units
+        ``tolerance_type`` and ``im_tolerance_type`` and may spell Da ``"Da"``.
+        """
 
         schema_version = value.get("schema_version", 1)
-        if schema_version not in (1, 2):
+        if schema_version not in (1, 2, 3):
             raise SpxtacularError(f"unsupported deconvolution provenance schema: {value.get('schema_version')!r}")
         charge_range = value["charge_range"]
-        model_definition = value.get("isotope_model_definition") if schema_version == 2 else None
+        model_definition = value.get("isotope_model_definition") if schema_version >= 2 else None
+        if schema_version >= 3:
+            tolerance_unit = check_tolerance_unit(value["tolerance_unit"])
+            im_tolerance_unit = check_im_tolerance_unit(value.get("im_tolerance_unit", "relative"))
+        else:
+            tolerance_unit = check_tolerance_unit(str(value["tolerance_type"]).lower())
+            im_tolerance_unit = check_im_tolerance_unit(value.get("im_tolerance_type", "relative"))
         return cls(
             isotope_model=str(value["isotope_model"]),
             isotope_model_definition=(
@@ -217,7 +233,7 @@ class DeconvolutionProvenance:
             ionization_model=IonizationModel.from_dict(value["ionization_model"]),
             charge_range=(int(charge_range[0]), int(charge_range[1])),
             tolerance=float(value["tolerance"]),
-            tolerance_type=str(value["tolerance_type"]),
+            tolerance_unit=tolerance_unit,
             intensity_mode=str(value["intensity_mode"]),
             min_intensity=float(value["min_intensity"]),
             min_score=float(value["min_score"]),
@@ -226,7 +242,7 @@ class DeconvolutionProvenance:
             max_isotope_gaps=int(value.get("max_isotope_gaps", 0)),
             max_isotopes=(int(value["max_isotopes"]) if value.get("max_isotopes") is not None else None),
             im_tolerance=float(value.get("im_tolerance", 0.05)),
-            im_tolerance_type=str(value.get("im_tolerance_type", "relative")),
+            im_tolerance_unit=im_tolerance_unit,
         )
 
 

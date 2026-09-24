@@ -21,7 +21,7 @@ import pytest
 
 import spxtacular.thermo as thermo_module
 from spxtacular import MsnSpectrum, Reader, SpectrumType, ThermoReader
-from spxtacular.enums import ActivationType, Analyzer, Polarity
+from spxtacular.enums import ActivationType, Analyzer
 
 RAW_PATH = Path(__file__).parent / "data" / "Angiotensin_325-CID.raw"
 
@@ -168,7 +168,7 @@ def test_parse_scan_without_fisher_runtime() -> None:
     assert spec.ms_level == 2
     assert spec.spectrum_type == SpectrumType.CENTROID
     assert spec.rt == pytest.approx(75.0)
-    assert spec.polarity == Polarity.NEGATIVE
+    assert spec.polarity == "negative"
     assert spec.analyzer == Analyzer.ORBITRAP
     assert spec.activation_type == ActivationType.CID
     assert spec.collision_energy == 30.0
@@ -254,7 +254,7 @@ def test_scan_metadata(raw_spectrum: MsnSpectrum):
     spec = raw_spectrum
     assert spec.scan_number == 1
     assert spec.native_id == "controllerType=0 controllerNumber=1 scan=1"
-    assert spec.polarity == Polarity.POSITIVE
+    assert spec.polarity == "positive"
     assert spec.analyzer == Analyzer.ORBITRAP
     assert spec.mz_range == (150.0, 2000.0)
     assert spec.rt is not None and 0 < spec.rt < 60  # seconds, not minutes
