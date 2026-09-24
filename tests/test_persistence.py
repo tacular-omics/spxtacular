@@ -130,14 +130,14 @@ def test_msn_save_load_scalars(tmp_path):
 
 
 def test_msn_save_load_precursors(tmp_path):
-    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
+    precursor = Precursor(precursor_mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
     spec = _basic_msn(precursors=[precursor])
     spec.save(tmp_path / "msn")
     restored = MsnSpectrum.load(tmp_path / "msn.npz")
     assert restored.precursors is not None
     assert len(restored.precursors) == 1
     p = restored.precursors[0]
-    assert p.mz == pytest.approx(precursor.mz)
+    assert p.precursor_mz == pytest.approx(precursor.precursor_mz)
     assert p.charge == precursor.charge
     assert p.is_monoisotopic == precursor.is_monoisotopic
 
@@ -225,7 +225,7 @@ def test_save_writes_no_object_arrays(tmp_path):
 
 
 def test_msn_save_writes_no_object_arrays(tmp_path):
-    precursor = Precursor(mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
+    precursor = Precursor(precursor_mz=500.25, intensity=1e5, charge=2, im=None, iso_score=None, is_monoisotopic=True)
     _basic_msn(precursors=[precursor]).save(tmp_path / "msn")
     with np.load(tmp_path / "msn.npz", allow_pickle=False) as data:
         assert all(data[key].dtype != object for key in data.files)

@@ -1,3 +1,10 @@
+"""Unified reader API for different mass-spectrometry file formats.
+
+Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML, Thermo
+.raw files (see thermo.py), plus the MGF, MS2, and MSP peak-list formats (see
+peaklist.py).
+"""
+
 from __future__ import annotations
 
 import warnings
@@ -6,14 +13,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, Self, runtime_checkable
 
 import numpy as np
 
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
-from .peaklist import MgfReader, Ms2Reader, MspReader, PeakListLookup
-from .thermo import ThermoReader, ThermoScanLookup
+from .errors import SpxtacularError
+from .peaklist import MgfReader, Ms2Reader, MspReader
+from .thermo import ThermoReader
 
 if TYPE_CHECKING:
     from mzmlpy import Spectrum as MzmlSpectrum
@@ -39,33 +47,32 @@ except (ImportError, OSError):
     tdfpy = None
     _HAS_TDFPY = False
 
-# tdfpy's smoothing branch (post-1.2.0) reshaped Frame.centroid() — the old
-# kwargs (mz_tolerance, …, noise_filter) became `centroid=MergePeaksCentroider(…)`
-# and `noise=…`. Detect which API is available and adapt below.
-try:
-    from tdfpy import MergePeaksCentroider as _MergePeaksCentroider
+if _HAS_TDFPY:
+    assert tdfpy is not None
+    AcquisitionType = tdfpy.AcquisitionType
+else:  # pragma: no cover - exercised only without the [bruker] extra
 
-    _HAS_NEW_CENTROID_API = True
-except (ImportError, OSError):
-    _MergePeaksCentroider = None
-    _HAS_NEW_CENTROID_API = False
+    class AcquisitionType(StrEnum):  # type: ignore[no-redef]
+        """Acquisition scheme of a Bruker timsTOF run (mirror of ``tdfpy.AcquisitionType``)."""
 
-"""
-
-Unified reader API for different mass-spectrometry file formats.
-Supports DDA, DIA, and PRM data from Bruker timsTOF (.d) and mzML, Thermo
-.raw files (see thermo.py), plus the MGF, MS2, and MSP peak-list formats (see
-peaklist.py).
-"""
+        DDA = "DDA"
+        DIA = "DIA"
+        PRM = "PRM"
+        UNKNOWN = "unknown"
 
 
-class AcquisitionType(StrEnum):
-    """Acquisition scheme detected for a Bruker timsTOF run."""
+@runtime_checkable
+class SpectrumLookup(Protocol):
+    """What every reader's ``ms1`` / ``ms2`` view provides.
 
-    DDA = "DDA"
-    DIA = "DIA"
-    PRM = "PRM"
-    UNKNOWN = "UNKNOWN"
+    A lookup is iterable (a fresh walk each time) and indexable by the key its
+    format uses (Bruker frame or precursor id, mzML index or native id, Thermo
+    scan number, peak-list position). It is not an iterator and has no ``len()``.
+    """
+
+    def __iter__(self) -> Iterator[MsnSpectrum]: ...
+
+    def __getitem__(self, key: Any, /) -> MsnSpectrum: ...
 
 
 # Bruker ``Frames.MsMsType`` values that identify the acquisition scheme.
@@ -87,8 +94,8 @@ _MSMS_TYPE_UNSUPPORTED: dict[int, str] = {
 def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     """Determine a Bruker ``.d`` folder's acquisition scheme from ``analysis.tdf``.
 
-    Mirrors ``tdfpy.get_acquisition_type`` but also rejects MS/MS schemes
-    spxtacular cannot read, with a message naming the scheme.
+    Mirrors ``tdfpy.get_acquisition_type`` (and returns its enum) but also
+    rejects MS/MS schemes spxtacular cannot read, with a message naming the scheme.
 
     Raises
     ------
@@ -115,7 +122,7 @@ def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     unsupported = sorted(t for t in msms_types if t in _MSMS_TYPE_UNSUPPORTED)
     if unsupported:
         described = ", ".join(f"{t} ({_MSMS_TYPE_UNSUPPORTED[t]})" for t in unsupported)
-        raise ValueError(
+        raise SpxtacularError(
             f"Unsupported acquisition type in {Path(analysis_dir)}: the run's MS/MS frames are "
             f"MsMsType {described}. DReader supports PASEF DDA (8), DIA (9) and PRM (10). "
             "Convert the run to mzML (e.g. with msconvert) and open it with MzmlReader instead."
@@ -124,11 +131,14 @@ def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     return AcquisitionType.UNKNOWN
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CentroidConfig:
-    """Parameters forwarded to tdfpy's ``frame.centroid()`` for Bruker .d files.
+    """Parameters forwarded to tdfpy's ``Frame.centroid()`` for Bruker .d files.
 
-    Only relevant for ``DReader``; ignored by ``MzmlReader``.
+    Applies to MS1 frames, DIA windows and PRM transitions. DDA (PASEF) MS2
+    spectra ignore it: tdfpy returns them already merged across their PASEF
+    windows and mobility-collapsed. Only relevant for ``DReader``; ignored by
+    every other reader.
     """
 
     mz_tolerance: float = 8.0
@@ -156,13 +166,13 @@ class DReaderMs1Lookup:
 
     def _open_reader(self) -> Any:
         if self._dr._reader is None:
-            raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+            raise SpxtacularError("DReader must be opened before use (call open() or use as a context manager)")
         return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
         reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
-        im_range = reader.metadata.one_over_k0_acq_range
+        im_range = reader.metadata.ook0_acq_range
         for frame in reader.ms1:
             yield self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
@@ -170,7 +180,7 @@ class DReaderMs1Lookup:
         """Fetch a single MS1 spectrum by tdfpy frame_id."""
         reader = self._open_reader()
         mz_range = reader.metadata.mz_acq_range
-        im_range = reader.metadata.one_over_k0_acq_range
+        im_range = reader.metadata.ook0_acq_range
         frame = reader.ms1[frame_id]  # raises KeyError if not found
         return self._dr._parse_ms1_frame(frame, mz_range, im_range)
 
@@ -189,7 +199,7 @@ class DReaderMs2Lookup:
 
     def _open_reader(self) -> Any:
         if self._dr._reader is None:
-            raise RuntimeError("DReader must be opened before use (call open() or use as a context manager)")
+            raise SpxtacularError("DReader must be opened before use (call open() or use as a context manager)")
         return self._dr._reader
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
@@ -198,8 +208,10 @@ class DReaderMs2Lookup:
             # UNKNOWN is opened with the DDA backend (see DReader.open), so it
             # must be iterated as DDA too rather than rejected here.
             case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
-                for precursor in reader.precursors:
-                    yield DReader._parse_dda_precursor(precursor)
+                # Decodes each PASEF frame once for all the precursors it holds.
+                assert tdfpy is not None
+                for precursor, peaks in tdfpy.iter_precursor_spectra(reader.precursors):
+                    yield DReader._parse_dda_precursor(precursor, peaks)
             case AcquisitionType.DIA:
                 for window in reader.windows:
                     yield self._dr._parse_dia_window(window)
@@ -207,7 +219,7 @@ class DReaderMs2Lookup:
                 for transition in reader.transitions:
                     yield self._dr._parse_prm_transition(transition)
             case _:
-                raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
+                raise SpxtacularError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
     def __getitem__(self, precursor_id: int) -> MsnSpectrum:
         """Fetch a single MS2 spectrum by tdfpy precursor_id (DDA only)."""
@@ -216,7 +228,7 @@ class DReaderMs2Lookup:
             # UNKNOWN is opened with the DDA backend (see DReader.open).
             case AcquisitionType.DDA | AcquisitionType.UNKNOWN:
                 precursor = reader.precursors[precursor_id]  # KeyError if not found
-                return DReader._parse_dda_precursor(precursor)
+                return DReader._parse_dda_precursor(precursor, precursor.merged_peaks())
             case AcquisitionType.DIA:
                 raise NotImplementedError(
                     "DIA MS2 lookup by ID is not supported: DIA windows map to multiple frames. "
@@ -229,12 +241,23 @@ class DReaderMs2Lookup:
                     "underlying tdfpy reader.targets / reader.transitions lookups."
                 )
             case _:
-                raise ValueError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
+                raise SpxtacularError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
 
 
 # ---------------------------------------------------------------------------
 # DReader
 # ---------------------------------------------------------------------------
+
+
+def _tdf_polarity(value: str | None) -> Polarity | None:
+    """Map tdfpy's ``Polarity`` literal (``"positive"`` / ``"negative"``) to spxtacular's enum."""
+    match value:
+        case "positive":
+            return Polarity.POSITIVE
+        case "negative":
+            return Polarity.NEGATIVE
+        case _:
+            return None
 
 
 class DReader:
@@ -244,7 +267,7 @@ class DReader:
     accessing ``ms1`` or ``ms2``, preferably by using it as a context manager.
     """
 
-    def __init__(self, analysis_dir: str | Path, centroid_config: CentroidConfig | None = None) -> None:
+    def __init__(self, analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = None) -> None:
         if not _HAS_TDFPY:
             raise ImportError(
                 "DReader requires the 'tdfpy' package, which is not installed. "
@@ -270,7 +293,7 @@ class DReader:
             case AcquisitionType.PRM:
                 reader = self._tdf.PRM(str(self.analysis_dir))
             case _:
-                raise ValueError(f"Unsupported acquisition type: {self.acquisition_type}")
+                raise SpxtacularError(f"Unsupported acquisition type: {self.acquisition_type}")
         # Only publish the handle once it is genuinely open, so a failing
         # __enter__ doesn't leave a half-open reader behind.
         reader.__enter__()
@@ -299,27 +322,18 @@ class DReader:
     # ------------------------------------------------------------------
 
     def _centroid(self, obj: Any) -> np.ndarray:
-        """Centroid against either the old (<=1.2.0) or new (smoothing-branch) tdfpy API."""
+        """Centroid a tdfpy frame, DIA window or PRM transition with this reader's config."""
+        assert tdfpy is not None
         cfg = self._centroid_config
-        if _HAS_NEW_CENTROID_API:
-            assert _MergePeaksCentroider is not None
-            return obj.centroid(
-                centroid=_MergePeaksCentroider(
-                    mz_tolerance=cfg.mz_tolerance,
-                    mz_tolerance_type=cfg.mz_tolerance_type,
-                    im_tolerance=cfg.im_tolerance,
-                    im_tolerance_type=cfg.im_tolerance_type,
-                    min_peaks=cfg.min_peaks,
-                ),
-                noise=cfg.noise_filter,
-            )
         return obj.centroid(
-            mz_tolerance=cfg.mz_tolerance,
-            mz_tolerance_type=cfg.mz_tolerance_type,
-            im_tolerance=cfg.im_tolerance,
-            im_tolerance_type=cfg.im_tolerance_type,
-            min_peaks=cfg.min_peaks,
-            noise_filter=cfg.noise_filter,
+            centroid=tdfpy.MergePeaksCentroider(
+                mz_tolerance=cfg.mz_tolerance,
+                mz_tolerance_type=cfg.mz_tolerance_type,
+                im_tolerance=cfg.im_tolerance,
+                im_tolerance_type=cfg.im_tolerance_type,
+                min_peaks=cfg.min_peaks,
+            ),
+            noise=cfg.noise_filter,
         )
 
     def _parse_ms1_frame(
@@ -329,172 +343,102 @@ class DReader:
         im_range: tuple[float, float] | None,
     ) -> MsnSpectrum:
         centroided_peaks = self._centroid(frame)
-        match frame.polarity:
-            case "positive":
-                polarity = Polarity.POSITIVE
-            case "negative":
-                polarity = Polarity.NEGATIVE
-            case _:
-                polarity = None
         return MsnSpectrum(
             mz=centroided_peaks[:, 0],
             intensity=centroided_peaks[:, 1],
-            charge=None,
             im=centroided_peaks[:, 2],
             spectrum_type=SpectrumType.CENTROID,
-            denoised=None,
-            normalized=None,
             scan_number=frame.frame_id,
             ms_level=1,
-            native_id=None,
-            rt=frame.time,
+            rt=frame.rt,
             injection_time=frame.accumulation_time,
-            total_ion_current=None,
+            total_ion_current=frame.total_ion_current,
             mz_range=mz_range,
             im_range=im_range,
-            polarity=polarity,
-            resolution=None,
+            polarity=_tdf_polarity(frame.polarity),
             analyzer=Analyzer.TOF,
             ramp_time=frame.ramp_time,
-            precursors=None,
             im_type=IMType.OOK0,
         )
 
     @staticmethod
-    def _parse_dda_precursor(precursor: TdfPrecursor) -> MsnSpectrum:
-        peaks = precursor.peaks
-        match precursor.polarity:
-            case "positive":
-                polarity = Polarity.POSITIVE
-            case "negative":
-                polarity = Polarity.NEGATIVE
-            case _:
-                polarity = None
-        target_mz = precursor.monoisotopic_mz
-        is_monoisotopic = True
-        if target_mz is None:
-            target_mz = precursor.largest_peak_mz
-            is_monoisotopic = False
+    def _parse_dda_precursor(precursor: TdfPrecursor, peaks: np.ndarray) -> MsnSpectrum:
+        """Build an MS2 spectrum from a PASEF precursor and its merged ``(N, 2)`` peaks."""
         prec = Precursor(
-            mz=target_mz,
+            precursor_mz=precursor.precursor_mz,
             intensity=precursor.intensity,
             charge=precursor.charge,
             im=precursor.ook0,
-            is_monoisotopic=is_monoisotopic,
+            im_type=IMType.OOK0,
+            is_monoisotopic=precursor.monoisotopic_mz is not None,
         )
-
         return MsnSpectrum(
             mz=peaks[:, 0],
             intensity=peaks[:, 1],
-            charge=None,
-            im=None,
             spectrum_type=SpectrumType.CENTROID,
-            denoised=None,
-            normalized=None,
             scan_number=precursor.precursor_id,
             ms_level=2,
-            native_id=None,
             rt=precursor.rt,
-            injection_time=None,
-            total_ion_current=None,
-            mz_range=None,
-            im_range=None,
-            polarity=polarity,
-            resolution=None,
+            polarity=_tdf_polarity(precursor.polarity),
             analyzer=Analyzer.TOF,
-            ramp_time=None,
             precursors=[prec],
             im_type=IMType.OOK0,
-            isolation_im_range=precursor.ook0_range,
-            isolation_mz_range=precursor.mz_range,
+            isolation_ook0_range=precursor.ook0_range,
+            isolation_mz_range=precursor.isolation_mz_range,
             collision_energy=precursor.collision_energy,
             activation_type=ActivationType.PASEF,
         )
 
     def _parse_dia_window(self, window: DiaWindow) -> MsnSpectrum:
         peaks = self._centroid(window)
-        match window.polarity:
-            case "positive":
-                polarity = Polarity.POSITIVE
-            case "negative":
-                polarity = Polarity.NEGATIVE
-            case _:
-                polarity = None
-        native_id = f"{window.frame_id}@w{window.window_index}"
         return MsnSpectrum(
             mz=peaks[:, 0],
             intensity=peaks[:, 1],
-            charge=None,
             im=peaks[:, 2],
             spectrum_type=SpectrumType.CENTROID,
-            denoised=None,
-            normalized=None,
             scan_number=window.frame_id,
             ms_level=2,
-            native_id=native_id,
+            native_id=f"{window.frame_id}@w{window.window_index}",
             rt=window.rt,
-            injection_time=None,
-            total_ion_current=None,
-            mz_range=None,
-            im_range=None,
-            polarity=polarity,
-            resolution=None,
+            polarity=_tdf_polarity(window.polarity),
             analyzer=Analyzer.TOF,
             collision_energy=window.collision_energy,
             activation_type=ActivationType.PASEF,
-            ramp_time=None,
-            precursors=None,
-            isolation_mz_range=window.mz_range,
-            isolation_im_range=window.ook0_range,
+            isolation_mz_range=window.isolation_mz_range,
+            isolation_ook0_range=window.ook0_range,
             im_type=IMType.OOK0,
         )
 
     def _parse_prm_transition(self, transition: PrmTransition) -> MsnSpectrum:
         peaks = self._centroid(transition)
-        match transition.polarity:
-            case "positive":
-                polarity = Polarity.POSITIVE
-            case "negative":
-                polarity = Polarity.NEGATIVE
-            case _:
-                polarity = None
         target = transition.target
         # PRM targets are user-defined and have no measured precursor intensity;
         # use the sum of the centroided MS2 peak intensities as a proxy.
         precursor_intensity = float(peaks[:, 1].sum()) if len(peaks) else 0.0
         prec = Precursor(
-            mz=target.monoisotopic_mz,
+            precursor_mz=target.precursor_mz,
             intensity=precursor_intensity,
             charge=target.charge,
-            im=target.one_over_k0,
+            im=target.ook0,
+            im_type=IMType.OOK0 if target.ook0 is not None else None,
             is_monoisotopic=True,
         )
-        native_id = f"{transition.frame_id}@t{target.target_id}"
         return MsnSpectrum(
             mz=peaks[:, 0],
             intensity=peaks[:, 1],
-            charge=None,
             im=peaks[:, 2] if peaks.shape[1] > 2 else None,
             spectrum_type=SpectrumType.CENTROID,
-            denoised=None,
-            normalized=None,
             scan_number=transition.frame_id,
             ms_level=2,
-            native_id=native_id,
+            native_id=f"{transition.frame_id}@t{target.target_id}",
             rt=transition.rt,
-            injection_time=None,
-            total_ion_current=None,
-            mz_range=None,
-            im_range=None,
-            polarity=polarity,
-            resolution=None,
+            polarity=_tdf_polarity(transition.polarity),
             analyzer=Analyzer.TOF,
             collision_energy=transition.collision_energy,
             activation_type=ActivationType.PASEF,
-            ramp_time=None,
             precursors=[prec],
-            isolation_mz_range=transition.mz_range,
-            isolation_im_range=transition.ook0_range,
+            isolation_mz_range=transition.isolation_mz_range,
+            isolation_ook0_range=transition.ook0_range,
             im_type=IMType.OOK0,
         )
 
@@ -534,7 +478,7 @@ class MzmlSpectraLookup:
     falls back to opening the file per-operation otherwise (backward-compatible).
     """
 
-    def __init__(self, reader: MzmlReader, ms_level: int | None = None) -> None:
+    def __init__(self, reader: MzmlReader, *, ms_level: int | None = None) -> None:
         self._reader = reader
         self._ms_level = ms_level
 
@@ -623,6 +567,40 @@ def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
     return _DeconvolutionRefs(ids=ids, unreferenced=len(processes) == 1 and bool(ids))
 
 
+# Ion-mobility binary-array accessions -> the unit of the values they hold.
+_MZML_IM_TYPE_FROM_ACCESSION: dict[str, IMType] = {
+    "MS:1003008": IMType.OOK0,  # raw inverse reduced ion mobility array
+    "MS:1003006": IMType.OOK0,  # mean inverse reduced ion mobility array
+    "MS:1003155": IMType.OOK0,  # deconvoluted inverse reduced ion mobility array
+    "MS:1002816": IMType.OOK0,  # mean ion mobility array (timsTOF converters write 1/K0 here)
+    "MS:1002893": IMType.IM,  # ion mobility array
+    "MS:1003007": IMType.IM,  # raw ion mobility array
+    "MS:1003154": IMType.IM,  # deconvoluted ion mobility array
+    "MS:1003153": IMType.DRIFT_TIME_MS,  # raw ion mobility drift time array
+    "MS:1002477": IMType.DRIFT_TIME_MS,  # mean ion mobility drift time array
+    "MS:1003156": IMType.DRIFT_TIME_MS,  # deconvoluted ion mobility drift time array
+}
+
+
+def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
+    """The instrument scan number from the native id (``scan=19``), or ``None``.
+
+    Vendor ids without a ``scan`` key (Waters ``function=… process=… scan=…``
+    has one; SCIEX ``sample=… period=… cycle=…`` does not) leave it unset
+    rather than falling back to the 0-based list index.
+    """
+    try:
+        value = spec.id_dict.get("scan")
+    except (ValueError, TypeError):
+        return None
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class MzmlReader:
     """Read spectra from an mzML or gzipped mzML file.
 
@@ -635,23 +613,20 @@ class MzmlReader:
     mzml_path:
         Path to the mzML file.
     gzip_mode:
-        How mzmlpy opens gzipped input. ``"auto"`` reuses an embedded index,
-        extracted cache, or complete rapidgzip sidecars before extracting.
-        ``"stream"`` starts immediately and is well suited to sequential reads.
-        ``"indexed"`` builds a random-access gzip index and requires rapidgzip.
+        How mzmlpy opens gzipped input. ``"auto"`` reuses an embedded index or
+        complete rapidgzip sidecars, and otherwise streams. ``"stream"`` starts
+        immediately and is well suited to sequential reads. ``"indexed"``
+        builds a random-access gzip index and requires rapidgzip.
     in_memory:
         Whether mzmlpy should keep its XML index in memory.
-    extract_dir:
-        Optional directory for files produced by ``gzip_mode="extract"``.
     """
 
     def __init__(
         self,
         mzml_path: str | Path,
         *,
-        gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
         in_memory: bool = False,
-        extract_dir: str | Path | None = None,
     ) -> None:
         if not _HAS_MZMLPY:
             raise ImportError(
@@ -661,7 +636,6 @@ class MzmlReader:
         self.mzml_path = mzml_path
         self.gzip_mode = gzip_mode
         self.in_memory = in_memory
-        self.extract_dir = extract_dir
         self._mzml_handle = None
         self._last_access_strategy: str | None = None
 
@@ -672,7 +646,6 @@ class MzmlReader:
             self.mzml_path,
             gzip_mode=self.gzip_mode,
             in_memory=self.in_memory,
-            extract_dir=self.extract_dir,
         )
         strategy = getattr(handle, "access_strategy", None)
         self._last_access_strategy = str(strategy) if strategy is not None else None
@@ -693,46 +666,49 @@ class MzmlReader:
         """
         mz_array = spec.mz
         if mz_array is None:
-            raise ValueError(f"Spectrum {spec} has no m/z array")
+            raise SpxtacularError(f"Spectrum {spec} has no m/z array")
         mz_array = mz_array.astype(np.float64)
 
         int_array = spec.intensity
         if int_array is None:
-            raise ValueError(f"Spectrum {spec} has no intensity array")
+            raise SpxtacularError(f"Spectrum {spec} has no intensity array")
         int_array = int_array.astype(np.float64)
 
         if len(mz_array) != len(int_array):
-            raise ValueError(f"Spectrum {spec} has m/z and intensity arrays of different lengths")
+            raise SpxtacularError(f"Spectrum {spec} has m/z and intensity arrays of different lengths")
 
-        charge_array = spec.charge
+        charge_array = spec.charge_array
         if charge_array is not None:
             charge_array = charge_array.astype(np.int32)
             if len(charge_array) != len(mz_array):
-                raise ValueError(f"Spectrum {spec} has charge array of different length than m/z array")
+                raise SpxtacularError(f"Spectrum {spec} has charge array of different length than m/z array")
 
         im_array: np.ndarray | None = None
-        im_types = list(spec.im_types)
+        im_type: IMType | None = None
+        im_types = sorted(spec.im_types)
         if len(im_types) == 1:
             darr = spec.get_binary_array(im_types[0])
             if darr is None:
-                raise RuntimeError(f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None")
+                raise SpxtacularError(f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None")
             im_array = darr.data.astype(np.float64)
+            im_type = _MZML_IM_TYPE_FROM_ACCESSION.get(str(im_types[0]))
             if len(im_array) != len(mz_array):
-                raise ValueError(f"Spectrum {spec} has ion mobility array of different length than m/z array")
+                raise SpxtacularError(f"Spectrum {spec} has ion mobility array of different length than m/z array")
         elif len(im_types) > 1:
             warnings.warn(
                 f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
                 stacklevel=3,
             )
-            for im_type in im_types:
-                darr = spec.get_binary_array(im_type)
+            for candidate_type in im_types:
+                darr = spec.get_binary_array(candidate_type)
                 if darr is None:
-                    raise RuntimeError(
+                    raise SpxtacularError(
                         f"Spectrum {spec}: multiple IM arrays, first is not None. Array types: {im_types}"
                     )
                 candidate = darr.data.astype(np.float64)
                 if len(candidate) == len(mz_array):
                     im_array = candidate
+                    im_type = _MZML_IM_TYPE_FROM_ACCESSION.get(str(candidate_type))
                     break
             if im_array is None:
                 warnings.warn(
@@ -746,7 +722,7 @@ class MzmlReader:
             case "profile":
                 spectrum_type = SpectrumType.PROFILE
             case _:
-                raise ValueError(f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}")
+                raise SpxtacularError(f"Spectrum {spec} has unrecognized spectrum type: {spec.spectrum_type}")
 
         # A charge array alone does NOT mean the spectrum is deconvoluted: mzML
         # charge arrays are usually per-peak charge *annotations* on ordinary
@@ -761,10 +737,6 @@ class MzmlReader:
             declared_by_processing = processing_ref in decon.ids if processing_ref is not None else decon.unreferenced
             if bool(_DECONVOLUTION_ACCESSIONS & spec.accessions) or declared_by_processing:
                 spectrum_type = SpectrumType.DECONVOLUTED
-
-        mz_range = None
-        if spec.lower_mz is not None and spec.upper_mz is not None:
-            mz_range = (spec.lower_mz, spec.upper_mz)
 
         precursors: list[Precursor] = []
         collision_energies: list[float] = []
@@ -785,7 +757,7 @@ class MzmlReader:
                     stacklevel=3,
                 )
             ion = ions[0]
-            mz = ion.selected_ion_mz
+            mz = ion.mz
             if mz is None:
                 warnings.warn(
                     f"Spectrum {spec} precursor selected ion missing m/z. Precursor: {precursor}",
@@ -794,29 +766,35 @@ class MzmlReader:
                 continue
             # "peak intensity" (MS:1000042) is optional on a selectedIon. Keep the
             # precursor and read an absent value as 0.0, as the MGF reader does.
-            intensity = ion.peak_intensity if ion.peak_intensity is not None else 0.0
+            intensity = ion.intensity if ion.intensity is not None else 0.0
+            # mzmlpy keeps 1/K0 (MS:1002815) and drift time (MS:1002476) apart;
+            # Precursor.im carries whichever the file has, tagged by im_type.
+            prec_im = ion.ook0
+            prec_im_type: IMType | None = IMType.OOK0 if prec_im is not None else None
+            if prec_im is None and ion.drift_time is not None:
+                prec_im = ion.drift_time
+                prec_im_type = IMType.DRIFT_TIME_MS
             precursors.append(
-                Precursor(mz=mz, intensity=intensity, charge=ion.charge_state, im=ion.ir_im, is_monoisotopic=None)
+                Precursor(
+                    precursor_mz=mz,
+                    intensity=intensity,
+                    charge=ion.charge,
+                    im=prec_im,
+                    im_type=prec_im_type,
+                )
             )
             activation = precursor.activation
             if activation is not None:
-                if activation.ce is not None:
-                    collision_energies.append(activation.ce)
+                if activation.collision_energy is not None:
+                    collision_energies.append(activation.collision_energy)
                 if activation.activation_type is not None:
                     # mzmlpy yields the raw PSI-MS accession (as a vendor enum);
                     # normalise to spxtacular's canonical ActivationType member.
                     activation_types.append(ActivationType.from_accession(str(activation.activation_type)))
             if precursor.isolation_window is not None:
-                has_target_mz = precursor.isolation_window.target_mz is not None
-                has_lower = precursor.isolation_window.lower_offset is not None
-                has_upper = precursor.isolation_window.upper_offset is not None
-                if has_target_mz and has_lower and has_upper:
-                    isolation_ranges.append(
-                        (
-                            precursor.isolation_window.target_mz - precursor.isolation_window.lower_offset,
-                            precursor.isolation_window.target_mz + precursor.isolation_window.upper_offset,
-                        )
-                    )
+                isolation_range = precursor.isolation_window.isolation_mz_range
+                if isolation_range is not None:
+                    isolation_ranges.append(isolation_range)
         if len(set(collision_energies)) > 1:
             warnings.warn(f"Spectrum {spec} has multiple collision energies: {set(collision_energies)}", stacklevel=3)
         if len(set(activation_types)) > 1:
@@ -826,27 +804,24 @@ class MzmlReader:
                 f"Spectrum {spec} has multiple isolation window ranges: {set(isolation_ranges)}", stacklevel=3
             )
 
+        polarity = spec.polarity
         return MsnSpectrum(
             mz=mz_array,
             intensity=int_array,
             charge=charge_array,
             im=im_array,
+            im_type=im_type,
             spectrum_type=spectrum_type,
-            denoised=None,
-            normalized=None,
-            scan_number=spec.index,
+            scan_number=_mzml_scan_number(spec),
             ms_level=spec.ms_level,
             native_id=spec.id,
-            rt=spec.scan_start_time.total_seconds() if spec.scan_start_time is not None else None,
-            total_ion_current=spec.TIC,
-            mz_range=mz_range,
-            im_range=None,
-            polarity=Polarity(spec.polarity) if spec.polarity is not None else None,
-            resolution=None,
-            analyzer=None,
+            rt=spec.rt,
+            injection_time=spec.ion_injection_time,
+            total_ion_current=spec.total_ion_current,
+            mz_range=spec.mz_range,
+            polarity=Polarity(polarity) if polarity is not None else None,
             collision_energy=collision_energies[0] if collision_energies else None,
             activation_type=activation_types[0] if activation_types else None,
-            ramp_time=None,
             precursors=precursors if precursors else None,
             isolation_mz_range=isolation_ranges[0] if isolation_ranges else None,
         )
@@ -938,8 +913,6 @@ class Reader:
         default and selects the best valid random-access representation.
     mzml_in_memory:
         Whether mzmlpy should keep its XML index in memory.
-    mzml_extract_dir:
-        Optional directory for mzmlpy's extracted gzip content.
 
     Raises
     ------
@@ -957,11 +930,10 @@ class Reader:
     def __init__(
         self,
         path: str | Path,
-        centroid_config: CentroidConfig | None = None,
         *,
-        mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        centroid_config: CentroidConfig | None = None,
+        mzml_gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
         mzml_in_memory: bool = False,
-        mzml_extract_dir: str | Path | None = None,
     ) -> None:
         p = Path(path)
         suffixes = [s.lower() for s in p.suffixes]
@@ -979,7 +951,6 @@ class Reader:
                 p,
                 gzip_mode=mzml_gzip_mode,
                 in_memory=mzml_in_memory,
-                extract_dir=mzml_extract_dir,
             )
         elif suffix == ".raw":
             self._reader = ThermoReader(p)
@@ -990,18 +961,18 @@ class Reader:
         elif suffix == ".msp":
             self._reader = MspReader(p)
         else:
-            raise ValueError(
+            raise SpxtacularError(
                 f"Unsupported format {p.suffix!r}. Expected '.d', '.mzML', '.raw', '.mgf', '.ms2', or '.msp' "
                 "(the text formats optionally gzipped)."
             )
 
     @property
-    def ms1(self) -> DReaderMs1Lookup | MzmlSpectraLookup | ThermoScanLookup | PeakListLookup:
+    def ms1(self) -> SpectrumLookup:
         """MS1 spectra — supports iteration and index-based access."""
         return self._reader.ms1
 
     @property
-    def ms2(self) -> DReaderMs2Lookup | MzmlSpectraLookup | ThermoScanLookup | PeakListLookup:
+    def ms2(self) -> SpectrumLookup:
         """MS2 spectra — supports iteration and index-based access."""
         return self._reader.ms2
 

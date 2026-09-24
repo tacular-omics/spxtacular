@@ -4,6 +4,38 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.0] (unreleased)
+
+Breaking release. Every rename and removal, old -> new, is in the migration guide
+(`docs/migration.md`).
+
+### Changed
+
+- Requires tacular 2, peptacular 5, paftacular 2, and (extras) tdfpy 5 and mzmlpy 0.10. Build fragments with `ion_types=("b", "y")`: peptacular 5 reads `"by"` as one ion type.
+- `Precursor` is a standalone keyword-only dataclass (no longer a `Peak`): `mz` -> `precursor_mz`, plus a new `im_type` naming the kind of mobility in `im`. `intensity` defaults to 0.0 and `is_monoisotopic` to `None`.
+- `MsnSpectrum.isolation_im_range` -> `isolation_ook0_range`.
+- Parameters with a default are keyword-only across the public API (`spec.normalize(method="tic")`, `match_fragments(spec, frags, tolerance=10, tolerance_type="ppm")`), and so is everything after `intensity` in `Spectrum` and `Peak`.
+- Invalid input raises `SpxtacularError`, a `ValueError` subclass, so existing `except ValueError` still works. Reader lookups before `open()` raise it instead of `RuntimeError`.
+- `normalize` on a normalized spectrum rescales it; `denoise`, `centroid`, `deconvolute` and `decharge` on a spectrum already in that state return it unchanged without a warning.
+- Spectrum JSON is schema version 2 (`precursor_mz`, `im_type`, `isolation_ook0_range`; `schemas/spectrum-v2.schema.json`). Version-1 files still load.
+- `MzmlReader(extract_dir=)`, `Reader(mzml_extract_dir=)` and `gzip_mode="extract"` are removed with mzmlpy 0.10's disk extraction.
+- mzML `scan_number` is the `scan=` value of the native id, or `None`, instead of the 0-based spectrum index.
+- `AcquisitionType` is tdfpy's enum. `da_to_ppm`/`ppm_to_da` are tacular's (relative to `abs(mz)`).
+- `MatchedFragment` is frozen, slotted and keyword-only, with an `annotation` property that returns the match as a paftacular `PafAnnotation`.
+- Fragment labels come straight from paftacular 2's mzPAF writer, including negative charges.
+
+### Added
+
+- `SpxtacularError`, the `SpectrumLookup` protocol and the reader lookup types (`DReaderMs1Lookup`, `DReaderMs2Lookup`, `MzmlSpectraLookup`, `ThermoScanLookup`, `PeakListLookup`) are exported from the package root.
+- `DReader` MS1 spectra carry `total_ion_current`; precursors from `.d` and mzML files carry `im_type`.
+
+### Performance
+
+- `match_fragments` searches all fragments at once (about 2x faster for 3,000 fragments).
+- `Spectrum.merge` runs as a single greedy kernel, numba-compiled when installed (about 50x faster without ion mobility, 2x with it, on 50,000 peaks).
+- Bruker DDA MS2 reading uses tdfpy's batched per-precursor peaks (about 8x faster).
+- Label collision checks in plot tables are O(n log n).
+
 ## [0.8.0] (2026-09-23)
 
 ### Fixed

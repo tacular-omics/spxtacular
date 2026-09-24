@@ -398,7 +398,7 @@ confirm centroiding did the right thing:
 from spxtacular import profile_centroid_plot
 
 profile_centroid_plot(profile)                    # centroids computed for you
-profile_centroid_plot(profile, my_centroids)      # or supply your own
+profile_centroid_plot(profile, centroids=my_centroids)      # or supply your own
 ```
 
 A stick off the apex means a mis-assigned centre. An apex with no stick means a peak was removed by

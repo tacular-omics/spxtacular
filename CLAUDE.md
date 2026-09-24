@@ -150,7 +150,8 @@ Load-bearing rules (kept from the previous guide, all still true of the code):
   `decharge()`. Never test charge or `iso_score` by truthiness.
 - Call `deconvolute()` before `decharge()`; `SpectrumType` guards the transition
   (`decharge()` on a spectrum with no charge array raises `ValueError`; on an already-neutral
-  or all-singleton spectrum it warns and returns it unchanged).
+  spectrum it returns it unchanged silently; on an all-singleton spectrum it warns and returns
+  it unchanged).
 - Keep cluster finding in `decon/greedy.py` and isotope scoring in `decon/scored.py`.
 - Optional backends: reader classes must stay importable without their extras and fail only
   when instantiated. `tdfpy`, `mzmlpy`, `spectrl` and `numba` are imported at package import

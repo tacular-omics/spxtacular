@@ -5,6 +5,8 @@ import sqlite3
 import numpy as np
 import pytest
 
+from spxtacular.errors import SpxtacularError
+
 tdfpy = pytest.importorskip("tdfpy")
 
 from spxtacular.core import MsnSpectrum, SpectrumType  # noqa: E402
@@ -39,7 +41,7 @@ def test_dreader_detects_dda():
 def test_fractional_precursor_scan_preserves_backend_mobility():
     with tdfpy.DDA(str(HELA_D)) as reader:
         precursor = next(p for p in reader.precursors if p.scan_number != int(p.scan_number))
-        converted = DReader._parse_dda_precursor(precursor)
+        converted = DReader._parse_dda_precursor(precursor, precursor.merged_peaks())
         restored = MsnSpectrum.from_json(converted.to_json())
         assert isinstance(restored, MsnSpectrum)
         assert restored.scan_number == precursor.precursor_id
@@ -181,7 +183,7 @@ def test_ms2_has_precursor(ms2_spectrum):
 
 
 def test_ms2_precursor_mz_positive(ms2_spectrum):
-    assert ms2_spectrum.precursors[0].mz > 0
+    assert ms2_spectrum.precursors[0].precursor_mz > 0
 
 
 def test_ms2_precursor_charge_set(ms2_spectrum):
@@ -233,7 +235,7 @@ def test_ms2_lookup_invalid_id_raises():
 
 def test_lookup_outside_context_raises():
     r = DReader(str(HELA_D))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SpxtacularError, match="must be opened"):
         r.ms1[1]
 
 
@@ -297,7 +299,7 @@ def test_prm_ms2_has_precursor(prm_ms2_spectrum):
     assert len(prm_ms2_spectrum.precursors) == 1
     prec = prm_ms2_spectrum.precursors[0]
     assert prec.is_monoisotopic is True
-    assert prec.mz > 0
+    assert prec.precursor_mz > 0
     assert prec.charge is not None and prec.charge > 0
     assert prec.im is not None and prec.im > 0
 
@@ -306,7 +308,7 @@ def test_prm_ms2_isolation_window(prm_ms2_spectrum):
     assert prm_ms2_spectrum.isolation_mz_range is not None
     lo, hi = prm_ms2_spectrum.isolation_mz_range
     assert lo < hi
-    assert prm_ms2_spectrum.isolation_im_range is not None
+    assert prm_ms2_spectrum.isolation_ook0_range is not None
 
 
 def test_prm_ms2_collision_energy(prm_ms2_spectrum):
@@ -401,7 +403,7 @@ def test_dia_ms2_isolation_window(dia_ms2_spectrum):
     assert dia_ms2_spectrum.isolation_mz_range is not None
     lo, hi = dia_ms2_spectrum.isolation_mz_range
     assert lo < hi
-    assert dia_ms2_spectrum.isolation_im_range is not None
+    assert dia_ms2_spectrum.isolation_ook0_range is not None
 
 
 def test_dia_ms2_collision_energy(dia_ms2_spectrum):
@@ -429,3 +431,19 @@ def test_dia_ms2_getitem_raises():
     with DReader(str(DIA_D)) as r:
         with pytest.raises(NotImplementedError):
             r.ms2[0]
+
+
+def test_ms1_frame_carries_rt_tic_and_mobility_range(ms1_spectrum):
+    assert ms1_spectrum.rt is not None and ms1_spectrum.rt > 0
+    assert ms1_spectrum.total_ion_current is not None and ms1_spectrum.total_ion_current > 0
+    assert ms1_spectrum.im_range is not None
+    lo, hi = ms1_spectrum.im_range
+    assert 0 < lo < hi
+
+
+def test_dda_precursor_mobility_is_labelled_ook0(ms2_spectrum):
+    assert ms2_spectrum.precursors is not None
+    precursor = ms2_spectrum.precursors[0]
+    assert precursor.im is not None
+    assert precursor.im_type == "ook0"
+    assert ms2_spectrum.isolation_ook0_range is not None

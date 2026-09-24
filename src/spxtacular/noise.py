@@ -2,6 +2,8 @@ from typing import Literal
 
 import numpy as np
 
+from .errors import SpxtacularError
+
 
 def _estimate_noise_mad(intensity_array: np.ndarray) -> float:
     """Estimate noise using Median Absolute Deviation."""
@@ -85,6 +87,7 @@ def _estimate_noise_iterative_median(intensity_array: np.ndarray) -> float:
 
 def estimate_noise_level(
     intensity_array: np.ndarray,
+    *,
     method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | int = "mad",
 ) -> float:
     """
@@ -121,7 +124,7 @@ def estimate_noise_level(
     # does not depend on the input length.
     if isinstance(method, bool):
         msg = f"Unknown method: {method}. A bool is not a noise threshold."
-        raise ValueError(msg)
+        raise SpxtacularError(msg)
 
     # If a numeric value is provided, use it directly as the noise level.
     if isinstance(method, (int, float)):
@@ -149,4 +152,4 @@ def estimate_noise_level(
         return _estimate_noise_iterative_median(intensity_array)
     else:
         msg = f"Unknown method: {method}"
-        raise ValueError(msg)
+        raise SpxtacularError(msg)

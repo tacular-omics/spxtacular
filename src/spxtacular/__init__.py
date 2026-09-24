@@ -16,6 +16,7 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .errors import SpxtacularError
 from .interop import from_matchms, from_spectrum_utils, to_matchms, to_spectrum_utils
 from .ionization import (
     AMMONIATED,
@@ -41,11 +42,21 @@ from .isotopes import (
     brain_isotopic_distribution,
     resolve_isotope_model,
 )
-from .matching import match_fragments
+from .matching import MatchedFragment, match_fragments
 from .mzml import write_indexed_mzml_gzip
-from .peaklist import MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp
+from .peaklist import MgfReader, Ms2Reader, MspReader, PeakListLookup, write_mgf, write_ms2, write_msp
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
-from .reader import AcquisitionType, CentroidConfig, DReader, MzmlReader, Reader
+from .reader import (
+    AcquisitionType,
+    CentroidConfig,
+    DReader,
+    DReaderMs1Lookup,
+    DReaderMs2Lookup,
+    MzmlReader,
+    MzmlSpectraLookup,
+    Reader,
+    SpectrumLookup,
+)
 from .scoring import score
 from .serialization import get_json_schema
 from .similarity import cosine, entropy_similarity, modified_cosine
@@ -56,7 +67,7 @@ from .spectrl_bridge import (
     to_spectrl_token,
     to_spectrl_url,
 )
-from .thermo import ThermoReader
+from .thermo import ThermoReader, ThermoScanLookup
 from .usi import fetch_usi, spectrum_from_proxi_response
 from .utils import da_to_ppm, ppm_to_da
 from .visualization import (
@@ -116,6 +127,14 @@ __all__ = [
     "write_msp",
     "write_indexed_mzml_gzip",
     "Reader",
+    "SpectrumLookup",
+    "DReaderMs1Lookup",
+    "DReaderMs2Lookup",
+    "MzmlSpectraLookup",
+    "ThermoScanLookup",
+    "PeakListLookup",
+    "SpxtacularError",
+    "MatchedFragment",
     "plot_spectrum",
     "mirror_plot",
     "annotate_spectrum",

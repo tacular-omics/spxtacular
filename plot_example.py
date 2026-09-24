@@ -180,7 +180,7 @@ save_or_show(
 save_or_show(
     spx.facet_plot(
         annot_spec,
-        fragments,
+        fragments=fragments,
         mirror_spectrum=annot_decon,
         tolerance=ANNOT_TOL,
         tolerance_type=ANNOT_TOL_TYPE,

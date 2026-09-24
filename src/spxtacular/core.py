@@ -2,7 +2,7 @@
 
 import warnings
 from collections.abc import Mapping
-from dataclasses import dataclass, fields, replace
+from dataclasses import KW_ONLY, dataclass, fields, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 import numpy as np
 from numpy.typing import NDArray
 
+from ._merge import merge_peaks
 from .decon.greedy import NEUTRON_MASS
 from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
@@ -32,6 +33,7 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .errors import SpxtacularError
 from .ionization import (
     DEPROTONATED,
     PROTONATED,
@@ -43,8 +45,8 @@ from .ionization import (
 from .isotopes import IsotopeModelLike, resolve_isotope_model
 from .noise import estimate_noise_level
 from .serialization import (
-    JSON_SCHEMA_VERSION,
     SPECTRUM_SCHEMA,
+    SPECTRUM_SCHEMA_VERSION,
     require_boolean,
     require_exact_keys,
     require_integer,
@@ -92,23 +94,43 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
     }
     require_exact_keys(payload, expected, path)
     if require_integer(payload["schema_version"], f"{path}.schema_version") != 2:
-        raise ValueError(f"{path}.schema_version must be 2")
+        raise SpxtacularError(f"{path}.schema_version must be 2")
     charge_range = require_integer_array_or_none(payload["charge_range"], f"{path}.charge_range")
     if charge_range is None or len(charge_range) != 2:
-        raise ValueError(f"{path}.charge_range must contain exactly two integers")
+        raise SpxtacularError(f"{path}.charge_range must contain exactly two integers")
     require_integer(payload["max_isotope_gaps"], f"{path}.max_isotope_gaps")
     require_integer(payload["max_isotopes"], f"{path}.max_isotopes", nullable=True)
     try:
         canonical = to_json_value(DeconvolutionProvenance.from_dict(dict(payload)).to_dict(), path)
     except (KeyError, TypeError, ValueError) as error:
-        raise ValueError(f"{path} is invalid: {error}") from error
+        raise SpxtacularError(f"{path} is invalid: {error}") from error
     if canonical != to_json_value(payload, path):
-        raise ValueError(f"{path} must use canonical schema-v2 value types and fields")
+        raise SpxtacularError(f"{path} must use canonical schema-v2 value types and fields")
     return canonical
 
 
+def _upgrade_spectrum_payload_v1(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Rename the 0.8 (schema v1) MSn metadata keys to their schema-v2 names."""
+    upgraded = dict(payload)
+    metadata = dict(require_mapping(payload["metadata"], "payload.metadata"))
+    if "isolation_im_range" in metadata:
+        metadata["isolation_ook0_range"] = metadata.pop("isolation_im_range")
+    precursors = metadata.get("precursors")
+    if isinstance(precursors, list):
+        renamed = []
+        for index, value in enumerate(precursors):
+            precursor = dict(require_mapping(value, f"payload.metadata.precursors[{index}]"))
+            if "mz" in precursor:
+                precursor["precursor_mz"] = precursor.pop("mz")
+            precursor.setdefault("im_type", None)
+            renamed.append(precursor)
+        metadata["precursors"] = renamed
+    upgraded["metadata"] = metadata
+    return upgraded
+
+
 def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[str, Any]:
-    """Validate and normalize the v1 metadata object."""
+    """Validate and normalize the schema-v2 metadata object."""
     result = dict(metadata)
     result["spectrum_type"] = require_string(metadata["spectrum_type"], "payload.metadata.spectrum_type", nullable=True)
     result["denoised"] = require_string(metadata["denoised"], "payload.metadata.denoised", nullable=True)
@@ -120,9 +142,9 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
     for field in ("scan_number", "ms_level"):
         result[field] = require_integer(metadata[field], f"payload.metadata.{field}", nullable=True)
     if result["scan_number"] is not None and result["scan_number"] < 0:
-        raise ValueError("payload.metadata.scan_number must be nonnegative or null")
+        raise SpxtacularError("payload.metadata.scan_number must be nonnegative or null")
     if result["ms_level"] is not None and result["ms_level"] < 1:
-        raise ValueError("payload.metadata.ms_level must be positive or null")
+        raise SpxtacularError("payload.metadata.ms_level must be positive or null")
     for field in ("native_id", "im_type", "polarity", "analyzer", "activation_type"):
         result[field] = require_string(metadata[field], f"payload.metadata.{field}", nullable=True)
     for field in (
@@ -134,8 +156,11 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
         "collision_energy",
     ):
         result[field] = require_number(metadata[field], f"payload.metadata.{field}", nullable=True)
-    for field in ("mz_range", "im_range", "isolation_mz_range", "isolation_im_range"):
+    for field in ("mz_range", "im_range", "isolation_mz_range"):
         result[field] = require_range_or_none(metadata[field], f"payload.metadata.{field}")
+    result["isolation_ook0_range"] = require_range_or_none(
+        metadata["isolation_ook0_range"], "payload.metadata.isolation_ook0_range"
+    )
 
     precursors = metadata["precursors"]
     if precursors is None:
@@ -144,17 +169,18 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
         raise TypeError("payload.metadata.precursors must be a JSON array or null")
     else:
         result["precursors"] = []
-        precursor_fields = {"mz", "intensity", "charge", "im", "iso_score", "is_monoisotopic"}
+        precursor_fields = {"precursor_mz", "intensity", "charge", "im", "im_type", "iso_score", "is_monoisotopic"}
         for index, value in enumerate(precursors):
             path = f"payload.metadata.precursors[{index}]"
             precursor = require_mapping(value, path)
             require_exact_keys(precursor, precursor_fields, path)
             result["precursors"].append(
                 {
-                    "mz": require_number(precursor["mz"], f"{path}.mz"),
+                    "precursor_mz": require_number(precursor["precursor_mz"], f"{path}.precursor_mz"),
                     "intensity": require_number(precursor["intensity"], f"{path}.intensity"),
                     "charge": require_integer(precursor["charge"], f"{path}.charge", nullable=True),
                     "im": require_number(precursor["im"], f"{path}.im", nullable=True),
+                    "im_type": require_string(precursor["im_type"], f"{path}.im_type", nullable=True),
                     "iso_score": require_number(precursor["iso_score"], f"{path}.iso_score", nullable=True),
                     "is_monoisotopic": require_boolean(
                         precursor["is_monoisotopic"], f"{path}.is_monoisotopic", nullable=True
@@ -235,6 +261,7 @@ class Peak:
 
     mz: float
     intensity: float
+    _: KW_ONLY
     charge: int | None = None
     im: float | None = None
     iso_score: float | None = None
@@ -264,6 +291,7 @@ class Spectrum:
 
     mz: NDArray[np.float64]  # Shape: (n,)
     intensity: NDArray[np.float64]  # Shape: (n,)
+    _: KW_ONLY
     charge: NDArray[np.int32] | None = None  # Shape: (n,)
     im: NDArray[np.float64] | None = None  # Shape: (n,)
     iso_score: NDArray[np.float64] | None = None  # Shape: (n,) — isotope profile scores from scored deconvolution
@@ -306,17 +334,17 @@ class Spectrum:
             ("iso_score", self.iso_score),
         ):
             if array is not None and array.ndim != 1:
-                raise ValueError(f"{name} array must be one-dimensional; got shape {array.shape}")
+                raise SpxtacularError(f"{name} array must be one-dimensional; got shape {array.shape}")
 
         n = len(self.mz)
         if len(self.intensity) != n:
-            raise ValueError("mz and intensity must have same length")
+            raise SpxtacularError("mz and intensity must have same length")
         if self.charge is not None and len(self.charge) != n:
-            raise ValueError("charge array must match mz length")
+            raise SpxtacularError("charge array must match mz length")
         if self.im is not None and len(self.im) != n:
-            raise ValueError("im array must match mz length")
+            raise SpxtacularError("im array must match mz length")
         if self.iso_score is not None and len(self.iso_score) != n:
-            raise ValueError("score array must match mz length")
+            raise SpxtacularError("score array must match mz length")
 
     def __eq__(self, other: object) -> bool:
         """Value equality; array fields compare element-wise.
@@ -368,6 +396,7 @@ class Spectrum:
     def top_peaks(
         self,
         n: int,
+        *,
         by: Literal["intensity", "mz", "charge", "im", "score"] = "intensity",
         reverse: bool = True,
     ) -> list[Peak]:
@@ -383,7 +412,7 @@ class Spectrum:
         elif by == "score":
             sort_key = self._argsort_score
         else:
-            raise ValueError(f"Unknown sort key: {by!r}")
+            raise SpxtacularError(f"Unknown sort key: {by!r}")
 
         n = max(n, 0)
         if not reverse:
@@ -417,19 +446,19 @@ class Spectrum:
     @property
     def _argsort_charge(self) -> NDArray[np.int64]:
         if self.charge is None:
-            raise ValueError("Spectrum has no charge information")
+            raise SpxtacularError("Spectrum has no charge information")
         return np.argsort(self.charge, kind="stable")
 
     @property
     def _argsort_im(self) -> NDArray[np.int64]:
         if self.im is None:
-            raise ValueError("Spectrum has no ion mobility information")
+            raise SpxtacularError("Spectrum has no ion mobility information")
         return np.argsort(self.im, kind="stable")
 
     @property
     def _argsort_score(self) -> NDArray[np.int64]:
         if self.iso_score is None:
-            raise ValueError("Spectrum has no score information")
+            raise SpxtacularError("Spectrum has no score information")
         return np.argsort(self.iso_score, kind="stable")
 
     # -------------------------------------------------------------------------
@@ -439,6 +468,7 @@ class Spectrum:
     def has_peak(
         self,
         target_mz: float,
+        *,
         tolerance: float = 0.01,
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
@@ -452,6 +482,7 @@ class Spectrum:
     def get_peak(
         self,
         target_mz: float,
+        *,
         tolerance: float = 0.01,
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
@@ -469,7 +500,7 @@ class Spectrum:
         # (or "LARGEST") would otherwise silently change which peak you get.
         resolved = str(collision).lower()
         if resolved not in ("largest", "closest"):
-            raise ValueError(f"collision must be 'largest' or 'closest', got {collision!r}")
+            raise SpxtacularError(f"collision must be 'largest' or 'closest', got {collision!r}")
 
         if resolved == "largest":
             idx = matches[np.argmax(self.intensity[matches])]
@@ -488,6 +519,7 @@ class Spectrum:
     def get_peaks(
         self,
         target_mz: float,
+        *,
         tolerance: float = 0.01,
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
@@ -530,9 +562,9 @@ class Spectrum:
         # criterion to skip: silently ignoring it returns every m/z match and
         # reads as "the charge filter found these". Same rule as filter().
         if target_charge is not None and self.charge is None:
-            raise ValueError("Cannot filter on charge: this spectrum has no charge array")
+            raise SpxtacularError("Cannot filter on charge: this spectrum has no charge array")
         if target_im is not None and self.im is None:
-            raise ValueError("Cannot filter on im: this spectrum has no im array")
+            raise SpxtacularError("Cannot filter on im: this spectrum has no im array")
 
         # Charge filter
         if target_charge is not None and self.charge is not None:
@@ -550,6 +582,7 @@ class Spectrum:
 
     def filter(
         self,
+        *,
         min_mz: float | None = None,
         max_mz: float | None = None,
         min_intensity: float | None = None,
@@ -602,7 +635,7 @@ class Spectrum:
             ("iso_score", max_score, self.iso_score),
         ):
             if value is not None and array is None:
-                raise ValueError(f"Cannot filter on {name}: this spectrum has no {name} array")
+                raise SpxtacularError(f"Cannot filter on {name}: this spectrum has no {name} array")
 
         mask = np.ones(len(self.mz), dtype=bool)
 
@@ -628,9 +661,9 @@ class Spectrum:
             mask &= self.iso_score <= max_score
 
         if top_n is not None and top_n < 0:
-            raise ValueError(f"top_n must be >= 0; got {top_n!r}")
+            raise SpxtacularError(f"top_n must be >= 0; got {top_n!r}")
         if top_n is not None and top_n_per_window is not None:
-            raise ValueError(
+            raise SpxtacularError(
                 "top_n and top_n_per_window are mutually exclusive; applying a global cut "
                 "and a per-window cut together is ambiguous (the two orders select "
                 "different peaks). Pass exactly one."
@@ -650,9 +683,9 @@ class Spectrum:
         elif top_n_per_window is not None:
             window_n, window_width = top_n_per_window
             if window_n < 1:
-                raise ValueError(f"top_n_per_window peak count must be >= 1; got {window_n!r}")
+                raise SpxtacularError(f"top_n_per_window peak count must be >= 1; got {window_n!r}")
             if not window_width > 0:
-                raise ValueError(f"top_n_per_window window width must be > 0; got {window_width!r}")
+                raise SpxtacularError(f"top_n_per_window window width must be > 0; got {window_width!r}")
 
             valid_indices = np.where(mask)[0]
             # Fixed bins anchored at 0, so a peak belongs to [k * width, (k + 1) * width).
@@ -674,17 +707,13 @@ class Spectrum:
 
         return self._apply_mask(mask, inplace=inplace)
 
-    def normalize(self, method: Literal["max", "tic", "median"] = "max", inplace: bool = False) -> Self:
-        """Normalize intensities."""
+    def normalize(self, *, method: Literal["max", "tic", "median"] = "max", inplace: bool = False) -> Self:
+        """Normalize intensities.
 
-        # if already normalized, raise error
-        if self.normalized is not None:
-            warnings.warn(
-                f"Spectrum is already normalized with method '{self.normalized}'",
-                UserWarning,
-                stacklevel=2,
-            )
-            return self if inplace else self.copy()
+        Always rescales the current intensities, whatever ``normalized`` says, and
+        records ``method`` in ``normalized``. Normalizing twice with ``"max"`` is a
+        no-op; switching method rescales from the current values.
+        """
 
         if len(self.intensity) == 0:
             return self if inplace else self.copy()
@@ -696,7 +725,7 @@ class Spectrum:
         elif method == "median":
             norm_factor = np.median(self.intensity)
         else:
-            raise ValueError(f"Unknown normalization method: {method!r}")
+            raise SpxtacularError(f"Unknown normalization method: {method!r}")
 
         if norm_factor == 0:
             warnings.warn(
@@ -719,18 +748,17 @@ class Spectrum:
 
     def denoise(
         self,
+        *,
         method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | int = "mad",
         inplace: bool = False,
     ) -> Self:
-        """Remove low-intensity noise peaks."""
+        """Remove low-intensity noise peaks.
 
-        # if already denoised, raise error
+        A spectrum that is already denoised (``denoised`` is set) is returned
+        unchanged: a copy, or ``self`` when ``inplace``.
+        """
+
         if self.denoised is not None:
-            warnings.warn(
-                f"Spectrum is already denoised with method '{self.denoised}'",
-                UserWarning,
-                stacklevel=2,
-            )
             return self if inplace else self.copy()
 
         if len(self.intensity) == 0:
@@ -743,6 +771,7 @@ class Spectrum:
 
     def merge(
         self,
+        *,
         mz_tolerance: float = 0.01,
         mz_tolerance_type: ToleranceLike = ToleranceType.DA,
         im_tolerance: float = 0.05,
@@ -777,147 +806,28 @@ class Spectrum:
         Self
             The merged spectrum.
         """
-        # Ensure arrays are sorted by m/z for efficient searching
-        sort_idx = np.argsort(self.mz)
-        mz = self.mz[sort_idx]
-        intensity = self.intensity[sort_idx]
-        im = self.im[sort_idx] if self.im is not None else None
-        charge = self.charge[sort_idx] if self.charge is not None else None
-        iso_score = self.iso_score[sort_idx] if self.iso_score is not None else None
-
-        # Sort by intensity descending for greedy clustering order
-        # We need the original indices relative to the SORTED arrays
-        intensity_order = np.argsort(intensity)[::-1]
-
-        used_mask = np.zeros(len(mz), dtype=bool)
-
-        new_mz_list = []
-        new_intensity_list = []
-        new_im_list = []
-        new_charge_list = []
-        new_score_list = []
-
         try:
             is_ppm = _is_ppm(mz_tolerance_type)
         except ValueError as exc:
-            raise ValueError(f"mz_tolerance_type must be 'ppm' or 'da'; got {mz_tolerance_type!r}") from exc
+            raise SpxtacularError(f"mz_tolerance_type must be 'ppm' or 'da'; got {mz_tolerance_type!r}") from exc
 
         im_tol_type = im_tolerance_type.lower()
         if im_tol_type not in ("relative", "absolute"):
-            raise ValueError("im_tolerance_type must be 'relative' or 'absolute'")
+            raise SpxtacularError("im_tolerance_type must be 'relative' or 'absolute'")
 
-        if not is_ppm:
-            # Constant tolerance
-            mz_tol_abs = mz_tolerance
-
-        for idx in intensity_order:
-            if used_mask[idx]:
-                continue
-
-            current_mz = mz[idx]
-            current_charge = charge[idx] if charge is not None else None
-
-            # Calculate tolerance
-            if is_ppm:
-                delta = current_mz * mz_tolerance / 1e6
-            else:
-                delta = mz_tol_abs
-
-            # Find range
-            min_mz = current_mz - delta
-            max_mz = current_mz + delta
-
-            # Binary search in sorted mz array
-            left_idx = np.searchsorted(mz, min_mz, side="left")
-            right_idx = np.searchsorted(mz, max_mz, side="right")
-
-            # Identify candidates in window
-            window_indices = np.arange(left_idx, right_idx)
-
-            # Filter out already used
-            keep = ~used_mask[window_indices]
-
-            # Additional Charge filtering if charges are present
-            if charge is not None and current_charge is not None:
-                # We can only merge if charges match the charge of the primary peak
-                # (which is current_charge)
-                keep &= charge[window_indices] == current_charge
-
-            # Additional Ion Mobility filtering if IMs are present
-            if im is not None:
-                current_im = im[idx]
-
-                if im_tol_type == "relative":
-                    im_delta = current_im * im_tolerance
-                else:
-                    # absolute
-                    im_delta = im_tolerance
-
-                keep &= np.abs(im[window_indices] - current_im) <= im_delta
-
-            # The seed always belongs to its own cluster, whatever the windows
-            # say: im=NaN compares False even against itself, and without this
-            # the seed would be dropped rather than merged — a merge must never
-            # lose a peak. A NaN m/z sorts outside every window including its
-            # own, so it is emitted on its own.
-            if left_idx <= idx < right_idx:
-                keep[idx - left_idx] = True
-                valid_indices = window_indices[keep]
-            else:
-                valid_indices = np.array([idx])
-
-            window_mz = mz[valid_indices]
-            window_int = intensity[valid_indices]
-
-            total_intensity = np.sum(window_int)
-            if total_intensity > 0:
-                # np.dot rather than np.average: the latter is a Python wrapper
-                # that validates and reshapes, and at one call per merged peak it
-                # accounted for ~44% of this method's runtime.
-                avg_mz = float(np.dot(window_mz, window_int) / total_intensity)
-            else:
-                avg_mz = np.mean(window_mz)
-
-            new_mz_list.append(avg_mz)
-            new_intensity_list.append(total_intensity)
-
-            if charge is not None:
-                new_charge_list.append(current_charge)
-
-            if iso_score is not None:
-                # Keep the strongest isotopic evidence in the merged group; the
-                # merged peak is the same feature, so the best-fitting cluster's
-                # score is the one that still describes it.
-                new_score_list.append(float(np.max(iso_score[valid_indices])))
-
-            if im is not None:
-                window_im = im[valid_indices]
-                if total_intensity > 0:
-                    avg_im = float(np.dot(window_im, window_int) / total_intensity)
-                else:
-                    avg_im = np.mean(window_im)
-                new_im_list.append(avg_im)
-
-            # Mark as used
-            used_mask[valid_indices] = True
-
-        # Convert back to arrays
-        new_mz = np.array(new_mz_list, dtype=np.float64)
-        new_intensity = np.array(new_intensity_list, dtype=np.float64)
-        new_im = np.array(new_im_list, dtype=np.float64) if im is not None else None
-        new_charge = np.array(new_charge_list, dtype=np.int32) if charge is not None else None
-        new_score = np.array(new_score_list, dtype=np.float64) if iso_score is not None else None
-
-        # Sort result by m/z
-        final_sort = np.argsort(new_mz)
-        new_mz = new_mz[final_sort]
-        new_intensity = new_intensity[final_sort]
-        if new_im is not None:
-            new_im = new_im[final_sort]
-        if new_charge is not None:
-            new_charge = new_charge[final_sort]
-        if new_score is not None:
-            new_score = new_score[final_sort]
+        # The seed always belongs to its own cluster: im=NaN compares False even
+        # against itself, and a merge must never lose a peak (see _merge.py).
+        new_mz, new_intensity, new_charge, new_im, new_score = merge_peaks(
+            self.mz,
+            self.intensity,
+            self.charge,
+            self.im,
+            self.iso_score,
+            mz_tolerance=float(mz_tolerance),
+            is_ppm=is_ppm,
+            im_tolerance=float(im_tolerance),
+            im_relative=im_tol_type == "relative",
+        )
 
         # Merging sums intensities, so any prior normalisation no longer holds;
         # clearing the flag lets normalize() run again instead of warning and
@@ -943,6 +853,7 @@ class Spectrum:
 
     def centroid(
         self,
+        *,
         min_intensity: float | Literal["noise"] | None = None,
         inplace: bool = False,
     ) -> Self:
@@ -973,17 +884,15 @@ class Spectrum:
         A flat apex counts as one peak. Requiring a strict ``prev < curr > next``
         would discard any peak whose maximum spans two or more equal samples,
         which is routine in quantised or saturated data.
+
+        An already centroided spectrum is returned unchanged (a copy, or
+        ``self`` when ``inplace``).
         """
         if self.spectrum_type == SpectrumType.CENTROID:
-            warnings.warn(
-                "Spectrum is already centroided",
-                UserWarning,
-                stacklevel=2,
-            )
             return self if inplace else self.copy()
 
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
-            raise ValueError("centroid() requires profile data; a deconvoluted spectrum has no profile to fit")
+            raise SpxtacularError("centroid() requires profile data; a deconvoluted spectrum has no profile to fit")
 
         if min_intensity == "noise":
             floor = estimate_noise_level(self.intensity, method="mad") if len(self.intensity) else None
@@ -1035,6 +944,7 @@ class Spectrum:
 
     def sort(
         self,
+        *,
         by: Literal["mz", "intensity", "charge", "im", "score"] = "mz",
         reverse: bool = False,
         inplace: bool = False,
@@ -1055,7 +965,7 @@ class Spectrum:
         elif by == "score":
             order = self._argsort_score
         else:
-            raise ValueError(f"Unknown sort key: {by!r}")
+            raise SpxtacularError(f"Unknown sort key: {by!r}")
 
         if reverse:
             # ``order[::-1]`` would flip every tie. Stably sort the reversed keys
@@ -1110,19 +1020,19 @@ class Spectrum:
             If spectra is empty.
         """
         if not spectra:
-            raise ValueError("combine() requires at least one Spectrum")
+            raise SpxtacularError("combine() requires at least one Spectrum")
 
         # Empty inputs contribute no measurements and must not erase state.
         spectra = [s for s in spectra if len(s)] or spectra
         neutral = [s.is_decharged for s in spectra]
         if any(neutral) and not all(neutral):
-            raise ValueError("combine() cannot mix neutral masses and m/z. Decharge inputs separately first.")
+            raise SpxtacularError("combine() cannot mix neutral masses and m/z. Decharge inputs separately first.")
         for spec in spectra:
             if spec.charge is not None and np.any(spec.charge == 0) and not spec.is_decharged:
-                raise ValueError("combine() cannot accept mixed neutral and charged peaks")
+                raise SpxtacularError("combine() cannot accept mixed neutral and charged peaks")
         records = {s.deconvolution for s in spectra}
         if not all(neutral) and any(s.charge is not None for s in spectra) and len(records) > 1:
-            raise ValueError(
+            raise SpxtacularError(
                 "combine() cannot discard differing deconvolution records for charged spectra. "
                 "Decharge inputs separately before combining."
             )
@@ -1132,7 +1042,7 @@ class Spectrum:
             and any(s.charge is not None for s in spectra)
             and any(s.deconvolution is None and s._resolve_ionization_model(None) != PROTONATED for s in spectra)
         ):
-            raise ValueError("combine() would lose scan polarity. Decharge inputs separately first.")
+            raise SpxtacularError("combine() would lose scan polarity. Decharge inputs separately first.")
 
         combined_mz = np.concatenate([s.mz for s in spectra])
         combined_intensity = np.concatenate([s.intensity for s in spectra])
@@ -1210,7 +1120,7 @@ class Spectrum:
             iso_score=self.iso_score[idx] if self.iso_score is not None else None,
         )
 
-    def update(self, inplace: bool = False, **kwargs) -> Self:
+    def update(self, *, inplace: bool = False, **kwargs) -> Self:
         """Create new spectrum with updated fields.
 
         The returned spectrum never shares an array buffer with this one: any
@@ -1245,8 +1155,8 @@ class Spectrum:
 
     def plot(
         self,
-        title: str | None = None,
         *,
+        title: str | None = None,
         color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
         show_charges: bool | None = None,
@@ -1281,9 +1191,9 @@ class Spectrum:
 
     def plot_table(
         self,
+        *,
         show_charges: bool | None = None,
         show_scores: bool = True,
-        *,
         color: "Literal['charge'] | None" = "charge",
     ) -> "pd.DataFrame":
         """Return an editable plot table (one row per peak) for this spectrum.
@@ -1326,6 +1236,7 @@ class Spectrum:
     def annot_plot_table(
         self,
         fragments: "FragmentInput",
+        *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -1355,11 +1266,19 @@ class Spectrum:
         """
         from .plot_table import build_annot_plot_table
 
-        return build_annot_plot_table(self, fragments, tolerance, tolerance_type, peak_selection, include_sequence)
+        return build_annot_plot_table(
+            self,
+            fragments,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            include_sequence=include_sequence,
+        )
 
     def annotate(
         self,
         fragments: "FragmentInput",
+        *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         title: str | None = None,
@@ -1409,6 +1328,7 @@ class Spectrum:
 
     def deconvolute(
         self,
+        *,
         tolerance: float = 50,
         tolerance_type: ToleranceLike = ToleranceType.PPM,
         charge_range: tuple[int, int] = (1, 3),
@@ -1475,25 +1395,20 @@ class Spectrum:
             If the charge range is invalid or the spectrum contains profile
             data. Profile data must be centroided first.
 
-        Warns
+        Notes
         -----
-        UserWarning
-            If the spectrum is already deconvoluted.
+        An already deconvoluted spectrum is returned unchanged (a copy, or
+        ``self`` when ``inplace``).
         """
         min_charge, max_charge = charge_range
         if min_charge < 1 or max_charge < min_charge:
-            raise ValueError(f"charge_range must be a (min, max) tuple with 1 <= min <= max; got {charge_range!r}")
+            raise SpxtacularError(f"charge_range must be a (min, max) tuple with 1 <= min <= max; got {charge_range!r}")
         if self.spectrum_type == SpectrumType.DECONVOLUTED:
-            warnings.warn(
-                "Spectrum is already deconvoluted",
-                UserWarning,
-                stacklevel=2,
-            )
             return self if inplace else self.copy()
         if self.spectrum_type == SpectrumType.PROFILE:
             # Every profile sample is a "peak" to the cluster finder, so the
             # isotope spacings it reports are shoulders of one ion, not ions.
-            raise ValueError("deconvolute() requires centroid data; call .centroid() first")
+            raise SpxtacularError("deconvolute() requires centroid data; call .centroid() first")
 
         is_ppm = _is_ppm(tolerance_type)
         if min_intensity == "min":
@@ -1576,13 +1491,13 @@ class Spectrum:
 
         spectrum_polarity = getattr(self, "polarity", None)
         if explicit and spectrum_polarity is not None and str(spectrum_polarity).lower() != str(resolved.polarity):
-            raise ValueError(
+            raise SpxtacularError(
                 f"ionization model {resolved.name!r} has {resolved.polarity} polarity, "
                 f"but the spectrum polarity is {spectrum_polarity!r}"
             )
         return resolved
 
-    def decharge(self, inplace: bool = False, *, ionization_model: IonizationModelLike | None = None) -> Self:
+    def decharge(self, *, inplace: bool = False, ionization_model: IonizationModelLike | None = None) -> Self:
         """
         Decharge spectrum by converting m/z to neutral mass using charge information.
 
@@ -1597,22 +1512,19 @@ class Spectrum:
                 spectrum is returned unchanged instead of being emptied.
 
         Returns a new Spectrum with m/z values as neutral masses, sorted ascending.
+        An already decharged spectrum is returned unchanged (a copy, or ``self``
+        when ``inplace``).
         """
         if self.charge is None:
-            raise ValueError("Cannot decharge a spectrum with no charge array; call deconvolute() first.")
+            raise SpxtacularError("Cannot decharge a spectrum with no charge array; call deconvolute() first.")
         if self.spectrum_type != SpectrumType.DECONVOLUTED:
-            raise ValueError("Cannot decharge a non-deconvoluted spectrum; call deconvolute() first.")
+            raise SpxtacularError("Cannot decharge a non-deconvoluted spectrum; call deconvolute() first.")
 
         if self.is_decharged:
-            warnings.warn(
-                "Spectrum is already decharged",
-                UserWarning,
-                stacklevel=2,
-            )
             return self if inplace else self.copy()
 
         if np.any(self.charge == 0):
-            raise ValueError("Cannot decharge a mixture of neutral masses and charged m/z values")
+            raise SpxtacularError("Cannot decharge a mixture of neutral masses and charged m/z values")
 
         # charge > 0, not != -1: a charge of 0 means "already decharged", and
         # multiplying by it would collapse the peak to a neutral mass of 0.0.
@@ -1681,8 +1593,8 @@ class Spectrum:
 
     def to_spectrl_url(
         self,
-        base: str | None = None,
         *,
+        base: str | None = None,
         mode: str = "fragment",
         param: str = "d",
         lossless: bool = False,
@@ -1695,7 +1607,7 @@ class Spectrum:
         """
         from .spectrl_bridge import to_spectrl_url
 
-        return to_spectrl_url(self, base, mode=mode, param=param, lossless=lossless, max_len=max_len)
+        return to_spectrl_url(self, base=base, mode=mode, param=param, lossless=lossless, max_len=max_len)
 
     @classmethod
     def from_spectrl_url(cls, url: str) -> "Spectrum | MsnSpectrum":
@@ -1712,6 +1624,7 @@ class Spectrum:
     def from_usi(
         cls,
         usi: str,
+        *,
         backend: str = "aggregator",
         timeout: float = 30,
     ) -> "Spectrum | MsnSpectrum":
@@ -1763,7 +1676,7 @@ class Spectrum:
         }
         return {
             "schema": SPECTRUM_SCHEMA,
-            "schema_version": JSON_SCHEMA_VERSION,
+            "schema_version": SPECTRUM_SCHEMA_VERSION,
             "kind": kind,
             "arrays": to_json_value(arrays, "arrays"),
             "metadata": to_json_value(self._meta_dict(), "metadata"),
@@ -1778,17 +1691,21 @@ class Spectrum:
         requires an MSn payload.
         """
         data = require_mapping(payload, "payload")
-        kind = require_schema(data, SPECTRUM_SCHEMA, {"spectrum", "msn_spectrum"})
+        kind = require_schema(
+            data, SPECTRUM_SCHEMA, {"spectrum", "msn_spectrum"}, versions=(1, SPECTRUM_SCHEMA_VERSION)
+        )
+        if data["schema_version"] == 1 and kind == "msn_spectrum":
+            data = _upgrade_spectrum_payload_v1(data)
 
         if cls is Spectrum:
             target_cls: Any = MsnSpectrum if kind == "msn_spectrum" else Spectrum
         elif issubclass(cls, MsnSpectrum):
             if kind != "msn_spectrum":
-                raise ValueError("MsnSpectrum.from_dict requires kind='msn_spectrum'")
+                raise SpxtacularError("MsnSpectrum.from_dict requires kind='msn_spectrum'")
             target_cls = cls
         else:
             if kind != "spectrum":
-                raise ValueError(f"{cls.__name__}.from_dict requires kind='spectrum'")
+                raise SpxtacularError(f"{cls.__name__}.from_dict requires kind='spectrum'")
             target_cls = cls
 
         arrays = require_mapping(data["arrays"], "payload.arrays")
@@ -1796,7 +1713,7 @@ class Spectrum:
         mz = require_number_array_or_none(arrays["mz"], "payload.arrays.mz")
         intensity = require_number_array_or_none(arrays["intensity"], "payload.arrays.intensity")
         if mz is None or intensity is None:
-            raise ValueError("payload.arrays.mz and payload.arrays.intensity cannot be null")
+            raise SpxtacularError("payload.arrays.mz and payload.arrays.intensity cannot be null")
 
         metadata = require_mapping(data["metadata"], "payload.metadata")
         require_exact_keys(metadata, set(target_cls._JSON_META_FIELDS), "payload.metadata")
@@ -1913,7 +1830,7 @@ class Spectrum:
             try:
                 meta_raw = data["meta"]
             except ValueError as exc:
-                raise ValueError(
+                raise SpxtacularError(
                     f"{path} stores its metadata as a pickled object array (written by spxtacular < 0.5.0). "
                     "Re-save it with a current version; it cannot be loaded without allow_pickle."
                 ) from exc
@@ -1946,6 +1863,7 @@ class Spectrum:
     def match_fragments(
         self,
         fragments: "FragmentInput",
+        *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -1971,6 +1889,7 @@ class Spectrum:
     def score(
         self,
         fragments: "FragmentInput",
+        *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -1997,6 +1916,7 @@ class Spectrum:
 
     def remove_precursor_peak(
         self,
+        *,
         precursor_mz: float | None = None,
         precursor_charge: int | None = None,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
@@ -2075,7 +1995,9 @@ class Spectrum:
 
         # -- guard: profile spectra -------------------------------------------
         if self.spectrum_type == SpectrumType.PROFILE:
-            raise ValueError("remove_precursor_peak() requires centroid or deconvoluted data; call .centroid() first")
+            raise SpxtacularError(
+                "remove_precursor_peak() requires centroid or deconvoluted data; call .centroid() first"
+            )
 
         # -- resolve precursor list -------------------------------------------
         precursors: list[tuple[float, int | None]]  # (mz, charge)
@@ -2083,9 +2005,9 @@ class Spectrum:
         if precursor_mz is not None:
             precursors = [(precursor_mz, precursor_charge)]
         elif isinstance(self, MsnSpectrum) and self.precursors:
-            precursors = [(p.mz, p.charge) for p in self.precursors]
+            precursors = [(p.precursor_mz, p.charge) for p in self.precursors]
         else:
-            raise ValueError("precursor_mz is required when the spectrum has no precursor information")
+            raise SpxtacularError("precursor_mz is required when the spectrum has no precursor information")
 
         # -- detect spectrum state --------------------------------------------
         is_decharged = self.is_decharged
@@ -2167,6 +2089,7 @@ class Spectrum:
 
     def scale_intensity(
         self,
+        *,
         method: Literal["root", "log", "rank"] = "root",
         degree: int = 2,
         base: float = 2.0,
@@ -2198,18 +2121,18 @@ class Spectrum:
         """
         if method == "root":
             if degree <= 0:
-                raise ValueError("degree must be positive for the 'root' scaling method")
+                raise SpxtacularError("degree must be positive for the 'root' scaling method")
             scaled = np.power(self.intensity, 1.0 / degree)
         elif method == "log":
             if not np.isfinite(base) or base <= 0.0 or base == 1.0:
-                raise ValueError("base must be finite, positive, and not equal to 1 for the 'log' scaling method")
+                raise SpxtacularError("base must be finite, positive, and not equal to 1 for the 'log' scaling method")
             scaled = np.log1p(self.intensity) / np.log(base)
         elif method == "rank":
             # argsort of argsort gives ranks (0-based); add 1 for 1-based
             order = np.argsort(np.argsort(self.intensity))
             scaled = (order + 1).astype(np.float64)
         else:
-            raise ValueError(f"Unknown scaling method: {method!r}")
+            raise SpxtacularError(f"Unknown scaling method: {method!r}")
 
         # Scaling changes the intensity distribution, so any prior normalisation
         # no longer holds. Clearing the flag lets normalize() run again instead
@@ -2222,6 +2145,7 @@ class Spectrum:
 
     def round_mz(
         self,
+        *,
         decimals: int = 0,
         combine: Literal["sum", "max"] = "sum",
         inplace: bool = False,
@@ -2254,7 +2178,7 @@ class Spectrum:
             new_intensity = np.full(len(unique_mz), -np.inf, dtype=np.float64)
             np.maximum.at(new_intensity, inverse, self.intensity)
         else:
-            raise ValueError(f"Unknown combine method: {combine!r}")
+            raise SpxtacularError(f"Unknown combine method: {combine!r}")
 
         return self.update(
             mz=unique_mz,
@@ -2281,6 +2205,7 @@ class Spectrum:
     def mass_error_plot(
         self,
         fragments: "FragmentInput",
+        *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
         tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -2322,6 +2247,7 @@ class Spectrum:
 
     def facet_plot(
         self,
+        *,
         fragments: "FragmentInput | None" = None,
         mirror_spectrum: "Spectrum | None" = None,
         title: str | None = None,
@@ -2371,10 +2297,54 @@ class Spectrum:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Precursor(Peak):
-    """Represents a target ion for MS2 fragmentation."""
+class Precursor:
+    """A precursor ion selected for MSn fragmentation.
 
-    is_monoisotopic: bool | None
+    Parameters
+    ----------
+    precursor_mz
+        Selected-ion m/z (monoisotopic when the source reports it).
+    intensity
+        Selected-ion intensity; ``0.0`` when the source does not report one.
+    charge
+        Signed precursor charge, or ``None`` when unknown.
+    im
+        Precursor ion-mobility value in the unit given by ``im_type``.
+    im_type
+        Ion-mobility unit of ``im`` (``"ook0"``, ``"drift_time_ms"``, ...), or ``None``.
+    iso_score
+        Isotope-envelope score, when a deconvolution step produced one.
+    is_monoisotopic
+        Whether ``precursor_mz`` is known to be monoisotopic; ``None`` when unknown.
+    """
+
+    precursor_mz: float
+    intensity: float = 0.0
+    charge: int | None = None
+    im: float | None = None
+    im_type: IMTypeLike | None = None
+    iso_score: float | None = None
+    is_monoisotopic: bool | None = None
+
+    def __repr__(self) -> str:
+        parts = [f"precursor_mz={self.precursor_mz:.4f}", f"int={self.intensity:.2e}"]
+        if self.charge is not None:
+            parts.append(f"z={self.charge}")
+        if self.im is not None:
+            parts.append(f"im={self.im:.3f}" + (f" ({self.im_type})" if self.im_type is not None else ""))
+        if self.iso_score is not None:
+            parts.append(f"score={self.iso_score:.3f}")
+        if self.is_monoisotopic is not None:
+            parts.append(f"mono={self.is_monoisotopic}")
+        return f"Precursor({', '.join(parts)})"
+
+
+def _precursor_from_meta(meta: Mapping[str, Any]) -> Precursor:
+    """Build a :class:`Precursor` from saved metadata, accepting the pre-0.9 ``mz`` key."""
+    values = dict(meta)
+    if "precursor_mz" not in values and "mz" in values:
+        values["precursor_mz"] = values.pop("mz")
+    return Precursor(**values)
 
 
 @dataclass(slots=True, kw_only=True, eq=False)
@@ -2421,7 +2391,7 @@ class MsnSpectrum(Spectrum):
     precursors: list[Precursor] | None = None  # For MS2/MSn, list of precursor peaks
 
     isolation_mz_range: tuple[float, float] | None = None  # Isolation window (min_mz, max_mz) for MS2
-    isolation_im_range: tuple[float, float] | None = None  # Isolation window for ion mobility (if applicable)
+    isolation_ook0_range: tuple[float, float] | None = None  # 1/K0 isolation window (timsTOF), (low, high)
 
     def __post_init__(self) -> None:
         Spectrum.__post_init__(self)
@@ -2447,7 +2417,7 @@ class MsnSpectrum(Spectrum):
             "mz_range",
             "im_range",
             "isolation_mz_range",
-            "isolation_im_range",
+            "isolation_ook0_range",
             "precursors",
         }
     )
@@ -2481,7 +2451,7 @@ class MsnSpectrum(Spectrum):
         "mz_range",
         "im_range",
         "isolation_mz_range",
-        "isolation_im_range",
+        "isolation_ook0_range",
     )
 
     def _meta_dict(self) -> dict:
@@ -2497,10 +2467,11 @@ class MsnSpectrum(Spectrum):
         meta["precursors"] = (
             [
                 {
-                    "mz": p.mz,
+                    "precursor_mz": p.precursor_mz,
                     "intensity": p.intensity,
                     "charge": p.charge,
                     "im": p.im,
+                    "im_type": str(p.im_type) if p.im_type is not None else None,
                     "iso_score": p.iso_score,
                     "is_monoisotopic": p.is_monoisotopic,
                 }
@@ -2520,7 +2491,10 @@ class MsnSpectrum(Spectrum):
         for field in cls._MSN_TUPLE_META_FIELDS:
             val = meta.get(field)
             kwargs[field] = tuple(val) if val is not None else None
+        if kwargs.get("isolation_ook0_range") is None and meta.get("isolation_im_range") is not None:
+            # Files written before 0.9.0 used the old field name.
+            kwargs["isolation_ook0_range"] = tuple(meta["isolation_im_range"])
         kwargs["precursors"] = (
-            [Precursor(**p) for p in meta["precursors"]] if meta.get("precursors") is not None else None
+            [_precursor_from_meta(p) for p in meta["precursors"]] if meta.get("precursors") is not None else None
         )
         return kwargs

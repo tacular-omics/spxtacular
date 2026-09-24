@@ -22,6 +22,7 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .errors import SpxtacularError
 from .matching import FragmentInput, MatchedFragment, match_fragments
 
 # Floor for the per-peak random-match probability used by ``_probability_score``.
@@ -273,7 +274,9 @@ def _spectral_angle_predicted(
         )
     frag_list = list(fragments)
     if len(predicted) != len(frag_list):
-        raise ValueError(f"predicted_intensities has {len(predicted)} entries but there are {len(frag_list)} fragments")
+        raise SpxtacularError(
+            f"predicted_intensities has {len(predicted)} entries but there are {len(frag_list)} fragments"
+        )
 
     # Collapse to unique ions; a fragment appearing twice keeps its first prediction.
     order: dict[tuple, int] = {}
@@ -414,6 +417,7 @@ def _longest_run(matches: list[MatchedFragment]) -> int:
 def score(
     spectrum: Spectrum,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -467,7 +471,9 @@ def score(
     # another to _probability_score, and so typos raise here rather than silently
     # falling back to Da.
     tol_type = ToleranceType(str(tolerance_type).lower())
-    matches = match_fragments(spectrum, fragments, tolerance, tol_type, peak_selection)
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_type=tol_type, peak_selection=peak_selection
+    )
     n_unique = _count_unique_ions(fragments)
 
     return {

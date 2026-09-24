@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tacular-omics.github.io/spxtacular/schemas/spectrum-v1.schema.json",
-  "title": "Spxtacular Spectrum v1",
+  "$id": "https://tacular-omics.github.io/spxtacular/schemas/spectrum-v2.schema.json",
+  "title": "Spxtacular Spectrum v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "schema_version", "kind", "arrays", "metadata"],
   "properties": {
     "schema": {"const": "spxtacular.spectrum"},
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "kind": {"enum": ["spectrum", "msn_spectrum"]},
     "arrays": {"$ref": "#/$defs/arrays"},
     "metadata": {"type": "object"}
@@ -167,12 +167,13 @@
     "precursor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mz", "intensity", "charge", "im", "iso_score", "is_monoisotopic"],
+      "required": ["precursor_mz", "intensity", "charge", "im", "im_type", "iso_score", "is_monoisotopic"],
       "properties": {
-        "mz": {"type": "number"},
+        "precursor_mz": {"type": "number"},
         "intensity": {"type": "number"},
         "charge": {"type": ["integer", "null"]},
         "im": {"$ref": "#/$defs/nullableNumber"},
+        "im_type": {"$ref": "#/$defs/nullableString"},
         "iso_score": {"$ref": "#/$defs/nullableNumber"},
         "is_monoisotopic": {"type": ["boolean", "null"]}
       }
@@ -201,7 +202,7 @@
         "mz_range",
         "im_range",
         "isolation_mz_range",
-        "isolation_im_range",
+        "isolation_ook0_range",
         "precursors"
       ],
       "properties": {
@@ -227,7 +228,7 @@
         "mz_range": {"$ref": "#/$defs/nullableRange"},
         "im_range": {"$ref": "#/$defs/nullableRange"},
         "isolation_mz_range": {"$ref": "#/$defs/nullableRange"},
-        "isolation_im_range": {"$ref": "#/$defs/nullableRange"},
+        "isolation_ook0_range": {"$ref": "#/$defs/nullableRange"},
         "precursors": {
           "oneOf": [
             {"type": "null"},

@@ -549,7 +549,7 @@ class TestSpectralAngleWithPrediction:
 
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[order])
-        as_dict = pt.ProFormaAnnotation.parse("PEPTIDEK").fast_fragment(ion_types="by", charges=[1])
+        as_dict = pt.ProFormaAnnotation.parse("PEPTIDEK").fast_fragment(ion_types=("b", "y"), charges=[1])
         with pytest.raises(TypeError, match="Sequence"):
             score(spec, as_dict, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
 

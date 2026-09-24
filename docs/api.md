@@ -184,7 +184,7 @@ positional mix-ups.
 | `Spectrum.from_json(value)` | `Spectrum` | Reconstruct from JSON text or UTF-8 bytes |
 | `.to_spectrl_token(...)` | `str` | Encode as a `spectrl.…` URL-safe token (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_token(t)` | `Spectrum \| MsnSpectrum` | Decode a `spectrl.…` token (classmethod) |
-| `.to_spectrl_url(base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
+| `.to_spectrl_url(*, base, mode, ...)` | `str` | Encode as a shareable URL or `data:` URI (requires `[spectrl]` extra) |
 | `Spectrum.from_spectrl_url(url)` | `Spectrum \| MsnSpectrum` | Decode a token from a URL fragment, query, or `data:` URI (classmethod) |
 | `Spectrum.from_usi(usi, ...)` | `Spectrum \| MsnSpectrum` | Fetch via PROXI from USI (classmethod) |
 | `.save(path)` | `None` | Serialise to `.npz` |
@@ -193,7 +193,7 @@ positional mix-ups.
 | `.plot(title, color, show_scores, ...)` | `go.Figure` | Stick or profile plot, selected from spectrum type (requires plotly) |
 | `.annotate(fragments, ...)` | `go.Figure` | Plot with fragment annotations |
 | `.mass_error_plot(fragments, ...)` | `go.Figure` | Bubble chart of fragment mass errors |
-| `.facet_plot(fragments, mirror_spectrum, ...)` | `go.Figure` | Multi-panel facet plot |
+| `.facet_plot(*, fragments, mirror_spectrum, ...)` | `go.Figure` | Multi-panel facet plot |
 | `.plot_table(show_scores, *, color)` | `pd.DataFrame` | Build an editable plot table (one row per peak) |
 | `.annot_plot_table(fragments, ...)` | `pd.DataFrame` | Build an editable annotated plot table with fragment labels |
 
@@ -218,7 +218,7 @@ Extends `Spectrum` with instrument metadata fields. Returned by every reader.
 | `mz_range` | `tuple[float, float] \| None` | Acquisition m/z window |
 | `im_range` | `tuple[float, float] \| None` | Ion mobility acquisition window |
 | `isolation_mz_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (m/z) |
-| `isolation_im_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (ion mobility) |
+| `isolation_ook0_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (ion mobility) |
 | `im_type` | `IMType \| str \| None` | Ion mobility unit (open vocabulary) |
 | `polarity` | `Polarity \| "positive" \| "negative" \| None` | Scan polarity (closed vocabulary) |
 | `resolution` | `float \| None` | Instrument resolution |
@@ -298,13 +298,24 @@ Peak(mz: float, intensity: float, charge: int | None = None, im: float | None = 
 
 ### `Precursor`
 
-Frozen dataclass, subclass of `Peak`, representing a selected precursor ion. Exported from the package root: `from spxtacular import Precursor`.
+Frozen, slotted, keyword-only dataclass for a selected precursor ion (no longer a `Peak`
+subclass). Exported from the package root: `from spxtacular import Precursor`.
 
 ```python
-# mz, intensity, charge, im, iso_score are inherited from Peak (positional-or-keyword);
-# is_monoisotopic is keyword-only (kw_only=True) and has no default
-Precursor(mz=..., intensity=..., charge=..., im=..., iso_score=..., is_monoisotopic=...)
+Precursor(
+    *,
+    precursor_mz: float,
+    intensity: float = 0.0,
+    charge: int | None = None,
+    im: float | None = None,
+    im_type: IMTypeLike | None = None,   # unit of `im`: "ook0", "drift_time_ms", ...
+    iso_score: float | None = None,
+    is_monoisotopic: bool | None = None,
+)
 ```
+
+`im` holds whatever mobility value the source recorded; `im_type` says which kind it is
+(Bruker and most mzML files give 1/K0, some mzML files give drift time).
 
 ---
 
@@ -341,11 +352,10 @@ Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (The
 ```python
 Reader(
     path: str | Path,
-    centroid_config: CentroidConfig | None = None,
     *,
-    mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+    centroid_config: CentroidConfig | None = None,
+    mzml_gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
     mzml_in_memory: bool = False,
-    mzml_extract_dir: str | Path | None = None,
 )
 ```
 
@@ -377,14 +387,13 @@ instead of reopening the file per operation.
 MzmlReader(
     mzml_path: str | Path,
     *,
-    gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+    gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
     in_memory: bool = False,
-    extract_dir: str | Path | None = None,
 )
 ```
 
-The default `"auto"` mode selects a self-indexed gzip file, a current extraction, or complete
-rapidgzip sidecars before extracting. For intentional sequential reads, use `gzip_mode="stream"`.
+The default `"auto"` mode uses a self-indexed gzip file, else rapidgzip in place, else an
+in-memory decompression; it never writes next to the input. For intentional sequential reads, use `gzip_mode="stream"`.
 
 | Property / Method | Type | Description |
 |---|---|---|
@@ -406,7 +415,7 @@ Full documentation: [Readers — MzmlReader](readers.md#mzmlreader)
 Reads Bruker timsTOF `.d` directories. **Must be opened before use** — via `open()`/`close()` or, preferably, as a context manager.
 
 ```python
-DReader(analysis_dir: str | Path, centroid_config: CentroidConfig | None = None)
+DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = None)
 ```
 
 | Property / Attribute | Type | Description |
@@ -525,6 +534,7 @@ Dataclass of parameters forwarded to `tdfpy`'s `frame.centroid()`. Only used by 
 from spxtacular import CentroidConfig
 
 CentroidConfig(
+    *,
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
     im_tolerance: float = 0.1,
@@ -661,7 +671,7 @@ Via mzML-native CV params: `mz`, `intensity`, `charge` (including singletons),
 
 spxtacular scalar fields without an mzML CV counterpart —
 `denoised`/`normalized` provenance strings, `scan_number`, `resolution`,
-`analyzer`, `ramp_time`, `im_range`, `isolation_im_range` — are carried
+`analyzer`, `ramp_time`, `im_range`, `isolation_ook0_range` — are carried
 losslessly as namespaced `user_params` (`spxtacular:` prefix).
 
 ### URL sharing
@@ -673,8 +683,8 @@ decode one back). Also available as `Spectrum.to_spectrl_url` /
 ```python
 from spxtacular import to_spectrl_url, from_spectrl_url
 
-url  = to_spectrl_url(spec, "https://example.com/view")            # fragment (default)
-url  = to_spectrl_url(spec, "https://example.com/view", mode="query", param="d")
+url  = to_spectrl_url(spec, base="https://example.com/view")            # fragment (default)
+url  = to_spectrl_url(spec, base="https://example.com/view", mode="query", param="d")
 uri  = to_spectrl_url(spec, mode="data")                          # data: URI, no base
 spec = from_spectrl_url(url)                                       # extract + decode
 ```
@@ -751,7 +761,7 @@ isotope score, and processing provenance.
 The JSON Schema documents are packaged as:
 
 ```text
-spxtacular/schemas/spectrum-v1.schema.json
+spxtacular/schemas/spectrum-v2.schema.json
 spxtacular/schemas/chromatogram-v1.schema.json
 ```
 

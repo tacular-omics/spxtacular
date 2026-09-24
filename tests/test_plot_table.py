@@ -309,7 +309,7 @@ def _paftacular_labels_side_chain_ions() -> bool:
     import paftacular as pft
 
     try:
-        pft.to_mzpaf(_real_frag(300.0, ion_type="d", position=3), include_annotation=False)
+        pft.to_mzpaf(_real_frag(300.0, ion_type="d", position=3), include_sequence=False)
     except ValueError:
         return False
     return True

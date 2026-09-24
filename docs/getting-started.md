@@ -101,7 +101,7 @@ with Reader("tests/data/example.mzML") as reader:
 MsnSpectrum(scan=0, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
 MsnSpectrum(scan=2, ms_level=1, rt=None, polarity=positive, n_peaks=0)
 MsnSpectrum(scan=3, ms_level=1, rt=42.05s, polarity=positive, n_peaks=15)
-[Precursor(mz=445.34, intensity=120053.0, charge=2, im=None, iso_score=None, is_monoisotopic=None)]
+[Precursor(precursor_mz=445.3400, int=1.20e+05, z=2, mono=None)]
 ```
 
 A Bruker timsTOF `.d` directory works the same way (`Reader("run.d")` or `DReader("run.d")`, with

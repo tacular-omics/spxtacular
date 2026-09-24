@@ -42,7 +42,7 @@ def make_spectrum(
     if precursor_mz is not None:
         precursors = [
             Precursor(
-                mz=precursor_mz,
+                precursor_mz=precursor_mz,
                 intensity=precursor_intensity,
                 charge=charge,
                 im=None,
@@ -98,7 +98,7 @@ def test_mgf_round_trip_preserves_peaks_and_metadata(tmp_path):
         assert restored.scan_number == original.scan_number
         assert restored.rt == original.rt
         assert restored.precursors is not None
-        assert precursor(restored).mz == precursor(original).mz
+        assert precursor(restored).precursor_mz == precursor(original).precursor_mz
         assert precursor(restored).charge == precursor(original).charge
 
     # TITLE falls back to scan=N when the spectrum has no native_id.
@@ -145,7 +145,7 @@ def test_ms2_round_trip_preserves_peaks_and_metadata(tmp_path):
         assert restored.native_id == f"scan={original.scan_number}"
         # rt goes out as minutes, so it returns to within floating-point noise.
         assert restored.rt == pytest.approx(original.rt)
-        assert precursor(restored).mz == precursor(original).mz
+        assert precursor(restored).precursor_mz == precursor(original).precursor_mz
         assert precursor(restored).charge == precursor(original).charge
 
 
@@ -207,7 +207,7 @@ def test_plain_spectrum_writes_without_metadata(tmp_path):
     restored = next(iter(Ms2Reader(ms2)))
     # An S line needs both: the position stands in for the scan, 0.0 for the m/z.
     assert restored.scan_number == 1
-    assert precursor(restored).mz == 0.0
+    assert precursor(restored).precursor_mz == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ END IONS
     (spec,) = list(MgfReader(path))
 
     assert spec.native_id == "weird title with = signs and spaces"
-    assert precursor(spec).mz == 445.1234
+    assert precursor(spec).precursor_mz == 445.1234
     assert precursor(spec).intensity == 8000.0
     # Multi-charge values collapse to the first state.
     assert precursor(spec).charge == 2
@@ -309,7 +309,7 @@ Z	3	1333.35
     (spec,) = list(Ms2Reader(path))
 
     assert spec.scan_number == 1024
-    assert precursor(spec).mz == 445.1234
+    assert precursor(spec).precursor_mz == 445.1234
     # Several Z lines: the first charge state wins, the rest do not crash the parse.
     assert precursor(spec).charge == 2
     assert spec.rt == pytest.approx(630.0)  # RTime is minutes
@@ -417,7 +417,7 @@ END IONS
     assert len(spec) == 0
     assert spec.mz.dtype == np.float64
     assert spec.charge is None
-    assert precursor(spec).mz == 400.0
+    assert precursor(spec).precursor_mz == 400.0
 
 
 def test_ms2_empty_scan_yields_empty_spectrum(tmp_path):
@@ -433,7 +433,7 @@ Z	2	999.0
     )
     first, second = list(Ms2Reader(path))
     assert len(first) == 0
-    assert precursor(first).mz == 400.0
+    assert precursor(first).precursor_mz == 400.0
     assert len(second) == 1
 
 

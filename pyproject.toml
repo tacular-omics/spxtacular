@@ -18,8 +18,9 @@ keywords = [
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
-    "peptacular>=4.2,<5",
-    "paftacular>=1.4,<2",
+    "peptacular>=5,<6",
+    "tacular>=2,<3",
+    "paftacular>=2,<3",
     "plotly>=6.6.0",
 ]
 authors = [
@@ -73,20 +74,20 @@ only-include = [
 
 [project.optional-dependencies]
 numba = ["numba>=0.64.0"]
-bruker = ["tdfpy>=4.1,<5"]
-mzml = ["mzmlpy>=0.9,<0.10"]
+bruker = ["tdfpy>=5,<6"]
+mzml = ["mzmlpy>=0.10,<0.11"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.0"]
-readers = ["tdfpy>=4.1,<5", "mzmlpy>=0.9,<0.10", "fisher-py>=2.0.0"]
+readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.0"]
 spectrl = ["spectrl>=3.0,<4"]
 matchms = ["matchms>=0.33.1"]
 spectrum-utils = ["spectrum-utils>=0.5.0"]
 interop = ["matchms>=0.33.1", "spectrum-utils>=0.5.0"]
 all = [
     "numba>=0.64.0",
-    "tdfpy>=4.1,<5",
-    "mzmlpy>=0.9,<0.10",
+    "tdfpy>=5,<6",
+    "mzmlpy>=0.10,<0.11",
     "fisher-py>=2.0.0",
     "spectrl>=3.0,<4",
     "matchms>=0.33.1",
@@ -101,7 +102,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "matchms>=0.33.1",
-    "mzmlpy>=0.9,<0.10",
+    "mzmlpy>=0.10,<0.11",
     "numba>=0.64.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -110,7 +111,7 @@ dev = [
     "ruff>=0.16.8",
     "spectrl>=3.0,<4",
     "spectrum-utils>=0.5.0",
-    "tdfpy>=4.1,<5",
+    "tdfpy>=5,<6",
     "ty>=0.0.83",
 ]
 

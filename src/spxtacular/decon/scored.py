@@ -21,6 +21,7 @@ import warnings
 import numpy as np
 from numpy.typing import NDArray
 
+from ..errors import SpxtacularError
 from ..isotopes import IsotopeModelLike, resolve_isotope_model
 from .greedy import NEUTRON_MASS, PROTON_MASS, _has_isotope_neighbor, _match_apex_cluster
 
@@ -224,29 +225,29 @@ def _deconvolve_spectrum(
     # depend on how many peaks came in.
     mode = str(intensity_mode).lower()
     if mode not in _INTENSITY_MODES:
-        raise ValueError(f"intensity_mode must be one of {_INTENSITY_MODES}, got {intensity_mode!r}")
+        raise SpxtacularError(f"intensity_mode must be one of {_INTENSITY_MODES}, got {intensity_mode!r}")
 
     resolved_model = resolve_isotope_model(isotope_model)
     carrier_mass = float(carrier_mass)
     if not np.isfinite(carrier_mass):
-        raise ValueError(f"carrier_mass must be finite, got {carrier_mass!r}")
+        raise SpxtacularError(f"carrier_mass must be finite, got {carrier_mass!r}")
     if not np.isfinite(min_isotope_abundance) or not 0.0 < min_isotope_abundance <= 1.0:
-        raise ValueError(f"min_isotope_abundance must be in (0, 1], got {min_isotope_abundance!r}")
+        raise SpxtacularError(f"min_isotope_abundance must be in (0, 1], got {min_isotope_abundance!r}")
     if not np.isfinite(max_isotope_fold_error) or max_isotope_fold_error < 1.0:
-        raise ValueError(f"max_isotope_fold_error must be finite and at least 1, got {max_isotope_fold_error!r}")
+        raise SpxtacularError(f"max_isotope_fold_error must be finite and at least 1, got {max_isotope_fold_error!r}")
     if isinstance(max_isotope_gaps, bool) or not isinstance(max_isotope_gaps, int) or max_isotope_gaps < 0:
-        raise ValueError(f"max_isotope_gaps must be a non-negative integer, got {max_isotope_gaps!r}")
+        raise SpxtacularError(f"max_isotope_gaps must be a non-negative integer, got {max_isotope_gaps!r}")
     if max_isotopes is not None and (
         isinstance(max_isotopes, bool) or not isinstance(max_isotopes, int) or max_isotopes < 1
     ):
-        raise ValueError(f"max_isotopes must be a positive integer or None, got {max_isotopes!r}")
+        raise SpxtacularError(f"max_isotopes must be a positive integer or None, got {max_isotopes!r}")
     if not np.isfinite(im_tolerance) or im_tolerance < 0.0:
-        raise ValueError(f"im_tolerance must be finite and non-negative, got {im_tolerance!r}")
+        raise SpxtacularError(f"im_tolerance must be finite and non-negative, got {im_tolerance!r}")
     resolved_im_tolerance_type = str(im_tolerance_type).lower()
     if resolved_im_tolerance_type not in ("relative", "absolute"):
-        raise ValueError(f"im_tolerance_type must be 'relative' or 'absolute', got {im_tolerance_type!r}")
+        raise SpxtacularError(f"im_tolerance_type must be 'relative' or 'absolute', got {im_tolerance_type!r}")
     if ion_mobility is not None and len(ion_mobility) != len(mz):
-        raise ValueError(f"ion_mobility must have the same length as mz, got {len(ion_mobility)} and {len(mz)}")
+        raise SpxtacularError(f"ion_mobility must have the same length as mz, got {len(ion_mobility)} and {len(mz)}")
 
     if len(mz) == 0:
         empty = np.empty(0, dtype=np.float64)
@@ -254,9 +255,9 @@ def _deconvolve_spectrum(
 
     min_charge, max_charge = charge_range
     if min_charge < 1 or max_charge < 1:
-        raise ValueError(f"charge_range must contain positive charges, got {charge_range}")
+        raise SpxtacularError(f"charge_range must contain positive charges, got {charge_range}")
     if min_charge > max_charge:
-        raise ValueError(f"charge_range must be (min, max) with min <= max, got {charge_range}")
+        raise SpxtacularError(f"charge_range must be (min, max) with min <= max, got {charge_range}")
 
     mz64 = np.ascontiguousarray(mz, dtype=np.float64)
     int64 = np.ascontiguousarray(intensity, dtype=np.float64)

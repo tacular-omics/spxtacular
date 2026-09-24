@@ -275,8 +275,8 @@ Scales all intensities so that the chosen reference equals 1.0.
 | `"tic"` | Total ion current (sum of all intensities) |
 | `"median"` | Median intensity |
 
-Calling `normalize` on an already-normalized spectrum emits a `UserWarning` and leaves its data
-unchanged. The default non-inplace path returns an independent copy.
+Calling `normalize` on an already-normalized spectrum rescales it again with the requested method
+(normalizing is idempotent for a given method, so this is safe).
 
 Removing peaks, replacing intensities, rounding peaks, or combining multiple nonempty spectra
 clears the normalization marker. Normalize again after those operations when the resulting
@@ -284,7 +284,7 @@ spectrum needs a unit reference.
 
 ```python
 norm = spec.normalize()            # max normalization
-norm = spec.normalize("tic")       # TIC normalization
+norm = spec.normalize(method="tic")       # TIC normalization
 ```
 
 #### `denoise`
@@ -309,12 +309,12 @@ Removes peaks below an estimated noise threshold. Peaks at or above the threshol
 | `"iterative_median"` | Iteratively refines median/MAD estimate over 3 passes |
 | `float` or `int` | Used directly as the absolute threshold |
 
-Calling `denoise` on an already-denoised spectrum emits a `UserWarning` and leaves its data
-unchanged. The default non-inplace path returns an independent copy.
+Calling `denoise` on an already-denoised spectrum is a silent no-op: it returns an independent
+copy (or the spectrum itself with `inplace=True`).
 
 ```python
 spec.denoise()                       # MAD (robust, recommended for most spectra)
-spec.denoise("histogram")            # histogram mode estimate
+spec.denoise(method="histogram")            # histogram mode estimate
 spec.denoise(5000.0)                 # fixed absolute threshold
 ```
 
@@ -335,8 +335,8 @@ Ion mobility is taken from the apex sample, or the lower middle sample of a plat
 `min_intensity="noise"` uses the MAD noise estimate. A number applies an absolute floor,
 and `None` applies no intensity floor. Boundary peaks without both flanks are excluded.
 
-Calling this on an already-centroided spectrum emits a `UserWarning` and leaves its data unchanged.
-The default non-inplace path returns an independent copy.
+Calling this on an already-centroided spectrum is a silent no-op: it returns an independent copy
+(or the spectrum itself with `inplace=True`).
 
 ```python
 centroided = profile_spec.centroid()
@@ -558,7 +558,7 @@ token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact arrays
 restored = Spectrum.from_spectrl_token(token)
 ```
 
-The round-trip is faithful — every spxtacular field is carried. Ion mobility rides in spectrl's `extra_arrays` slot under its exact PSI-MS array accession; `iso_score` uses the same slot as a non-standard mzML binary array (`MS:1000786`) under the descriptor name `"iso_score"`. Scalar fields without an mzML CV counterpart — `denoised`/`normalized` provenance, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_im_range` — are carried losslessly as namespaced `user_params` (`spxtacular:` prefix).
+The round-trip is faithful — every spxtacular field is carried. Ion mobility rides in spectrl's `extra_arrays` slot under its exact PSI-MS array accession; `iso_score` uses the same slot as a non-standard mzML binary array (`MS:1000786`) under the descriptor name `"iso_score"`. Scalar fields without an mzML CV counterpart — `denoised`/`normalized` provenance, `scan_number`, `resolution`, `analyzer`, `ramp_time`, `im_range`, `isolation_ook0_range` — are carried losslessly as namespaced `user_params` (`spxtacular:` prefix).
 
 #### `to_spectrl_url` / `Spectrum.from_spectrl_url`
 
@@ -965,12 +965,12 @@ class MsnSpectrum(Spectrum):
 
     # MS2 precursor isolation windows
     isolation_mz_range: tuple[float, float] | None = None
-    isolation_im_range: tuple[float, float] | None = None
+    isolation_ook0_range: tuple[float, float] | None = None
 ```
 
 All fields are keyword-only (`kw_only=True`), including the inherited `Spectrum` fields.
 `mz_range` / `im_range` describe the **acquisition** window of the scan; `isolation_mz_range` /
-`isolation_im_range` describe the **precursor isolation** window used to select ions for MS2.
+`isolation_ook0_range` describe the **precursor isolation** window used to select ions for MS2.
 
 `im_type`, `analyzer`, and `activation_type` are **open vocabulary**: an enum member gives autocomplete and typo-safety, but raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through untouched. `polarity` is **closed vocabulary** — only `Polarity.POSITIVE`/`Polarity.NEGATIVE` or the literal strings `"positive"`/`"negative"` are valid. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
 
@@ -994,7 +994,7 @@ for spec in reader.ms2:
     print(f"Scan {spec.scan_number}, RT={spec.rt:.1f}s, CE={spec.collision_energy}")
     if spec.precursors:
         prec = spec.precursors[0]
-        print(f"  Precursor: {prec.mz:.4f} m/z, z={prec.charge}")
+        print(f"  Precursor: {prec.precursor_mz:.4f} m/z, z={prec.charge}")
     break
 ```
 

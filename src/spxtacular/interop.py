@@ -24,6 +24,7 @@ from numpy.typing import NDArray
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
+from .errors import SpxtacularError
 
 __all__ = ["from_matchms", "from_spectrum_utils", "to_matchms", "to_spectrum_utils"]
 
@@ -135,7 +136,7 @@ def _standard_matchms_metadata(spectrum: Spectrum) -> dict[str, object]:
 
     if spectrum.precursors:
         precursor = spectrum.precursors[0]
-        metadata["precursor_mz"] = float(precursor.mz)
+        metadata["precursor_mz"] = float(precursor.precursor_mz)
         metadata["precursor_intensity"] = float(precursor.intensity)
         if precursor.charge is not None:
             metadata["charge"] = int(precursor.charge)
@@ -253,11 +254,11 @@ def _from_matchms_payload(
     try:
         payload = json.loads(payload_text)
     except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("matchms spectrum has invalid spxtacular_metadata JSON") from exc
+        raise SpxtacularError("matchms spectrum has invalid spxtacular_metadata JSON") from exc
     if not isinstance(payload, dict):
-        raise ValueError("matchms spxtacular_metadata JSON must contain an object")
+        raise SpxtacularError("matchms spxtacular_metadata JSON must contain an object")
     if payload.get("schema_version") != _MATCHMS_PAYLOAD_VERSION:
-        raise ValueError(f"unsupported spxtacular_metadata schema version: {payload.get('schema_version')!r}")
+        raise SpxtacularError(f"unsupported spxtacular_metadata schema version: {payload.get('schema_version')!r}")
 
     original_mz = np.asarray(payload.get("peak_mz", []), dtype=np.float64)
     indices = _payload_peak_indices(mz, original_mz)
@@ -277,12 +278,12 @@ def _from_matchms_payload(
             if values is not None:
                 stored = np.asarray(values, dtype=dtype)
                 if len(stored) != len(original_mz):
-                    raise ValueError(f"spxtacular_metadata {key!r} array does not match its stored peak array")
+                    raise SpxtacularError(f"spxtacular_metadata {key!r} array does not match its stored peak array")
                 extension_arrays[key] = stored[indices]
 
     meta = payload.get("meta")
     if not isinstance(meta, dict):
-        raise ValueError("spxtacular_metadata is missing its metadata object")
+        raise SpxtacularError("spxtacular_metadata is missing its metadata object")
     charge = cast(NDArray[np.int32] | None, extension_arrays["charge"])
     im = cast(NDArray[np.float64] | None, extension_arrays["im"])
     iso_score = cast(NDArray[np.float64] | None, extension_arrays["iso_score"])
@@ -323,7 +324,7 @@ def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -
     payload = metadata.get(_MATCHMS_PAYLOAD_KEY)
     if prefer_spxtacular_metadata and payload is not None:
         if not isinstance(payload, str):
-            raise ValueError("matchms spxtacular_metadata must be a JSON string")
+            raise SpxtacularError("matchms spxtacular_metadata must be a JSON string")
         return _from_matchms_payload(mz, intensity, payload)
 
     precursor_mz = _precursor_mz(metadata)
@@ -354,7 +355,7 @@ def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -
     if precursor_mz is not None:
         precursor = [
             Precursor(
-                mz=precursor_mz,
+                precursor_mz=precursor_mz,
                 intensity=_optional_float(metadata.get("precursor_intensity")) or 0.0,
                 charge=_optional_int(metadata.get("charge")),
                 is_monoisotopic=None,
@@ -391,7 +392,7 @@ def _spectrum_utils_identifier(spectrum: MsnSpectrum, identifier: str | None) ->
         return spectrum.native_id
     if spectrum.scan_number is not None:
         return f"scan={spectrum.scan_number}"
-    raise ValueError("spectrum_utils conversion requires an identifier, native_id, or scan_number")
+    raise SpxtacularError("spectrum_utils conversion requires an identifier, native_id, or scan_number")
 
 
 def _warn_spectrum_utils_loss(spectrum: MsnSpectrum, precursor_index: int, identifier: str) -> None:
@@ -414,7 +415,7 @@ def _warn_spectrum_utils_loss(spectrum: MsnSpectrum, precursor_index: int, ident
         "mz_range",
         "im_range",
         "isolation_mz_range",
-        "isolation_im_range",
+        "isolation_ook0_range",
     ):
         if getattr(spectrum, field) is not None:
             dropped.append(field)
@@ -460,18 +461,18 @@ def to_spectrum_utils(
     if not isinstance(spectrum, MsnSpectrum):
         raise TypeError("spectrum_utils conversion requires an MsnSpectrum")
     if spectrum.spectrum_type == SpectrumType.PROFILE or spectrum.spectrum_type == "profile":
-        raise ValueError("spectrum_utils.MsmsSpectrum requires centroided fragment peaks, not profile data")
+        raise SpxtacularError("spectrum_utils.MsmsSpectrum requires centroided fragment peaks, not profile data")
     if not spectrum.precursors:
-        raise ValueError("spectrum_utils conversion requires at least one precursor")
+        raise SpxtacularError("spectrum_utils conversion requires at least one precursor")
     try:
         precursor = spectrum.precursors[precursor_index]
     except IndexError:
         message = f"precursor_index {precursor_index} is out of range for {len(spectrum.precursors)} precursors"
         raise IndexError(message) from None
     if precursor.charge is None:
-        raise ValueError("spectrum_utils conversion requires a precursor charge")
+        raise SpxtacularError("spectrum_utils conversion requires a precursor charge")
     if not -128 <= precursor.charge <= 127:
-        raise ValueError("spectrum_utils precursor charge must fit in a signed 8-bit integer")
+        raise SpxtacularError("spectrum_utils precursor charge must fit in a signed 8-bit integer")
     resolved_identifier = _spectrum_utils_identifier(spectrum, identifier)
     if warn_on_loss:
         _warn_spectrum_utils_loss(spectrum, precursor_index, resolved_identifier)
@@ -480,7 +481,7 @@ def to_spectrum_utils(
     order = _sorted_order(spectrum.mz)
     return MsmsSpectrum(
         resolved_identifier,
-        float(precursor.mz),
+        float(precursor.precursor_mz),
         int(precursor.charge),
         np.asarray(spectrum.mz[order], dtype=np.float64),
         np.asarray(spectrum.intensity[order], dtype=np.float64),
@@ -520,7 +521,7 @@ def from_spectrum_utils(spectrum: object, *, warn_on_loss: bool = True) -> MsnSp
         rt=rt,
         precursors=[
             Precursor(
-                mz=float(source.precursor_mz),
+                precursor_mz=float(source.precursor_mz),
                 intensity=0.0,
                 charge=int(source.precursor_charge),
                 is_monoisotopic=None,

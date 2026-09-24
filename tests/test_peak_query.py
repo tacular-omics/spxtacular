@@ -108,7 +108,7 @@ class TestTolerance:
         """An unrecognised unit must raise, not silently mean "Da"."""
         spec = _query_spec()
         with pytest.raises(ValueError, match="ToleranceType"):
-            getattr(spec, method)(100.0, 0.01, cast(Any, "bogus"))
+            getattr(spec, method)(100.0, tolerance=0.01, tolerance_type=cast(Any, "bogus"))
 
 
 class TestToleranceBoundary:

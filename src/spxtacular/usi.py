@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
+from .errors import SpxtacularError
+
 if TYPE_CHECKING:
     from .core import MsnSpectrum, Spectrum
 
@@ -107,11 +109,11 @@ def parse_usi(usi: str) -> ParsedUsi:
         ``mzspec:<collection>:<run>:<scan|index|nativeId|trace>:<n>[:<interpretation>]``.
     """
     if not isinstance(usi, str) or not usi.strip():
-        raise ValueError("USI must be a non-empty string")
+        raise SpxtacularError("USI must be a non-empty string")
 
     parts = usi.strip().split(":", 5)
     if len(parts) < 5:
-        raise ValueError(
+        raise SpxtacularError(
             f"Invalid USI: {usi!r}. Expected "
             "'mzspec:<collection>:<run>:<scan|index|nativeId|trace>:<n>[:<interpretation>]'"
         )
@@ -120,27 +122,29 @@ def parse_usi(usi: str) -> ParsedUsi:
     interpretation = parts[5] if len(parts) > 5 and parts[5] else None
 
     if prefix != "mzspec":
-        raise ValueError(f"Invalid USI: {usi!r}. Must start with the 'mzspec' prefix, got {prefix!r}")
+        raise SpxtacularError(f"Invalid USI: {usi!r}. Must start with the 'mzspec' prefix, got {prefix!r}")
     if not collection:
-        raise ValueError(f"Invalid USI: {usi!r}. Collection identifier is empty")
+        raise SpxtacularError(f"Invalid USI: {usi!r}. Collection identifier is empty")
     if not run:
-        raise ValueError(f"Invalid USI: {usi!r}. Run identifier is empty")
+        raise SpxtacularError(f"Invalid USI: {usi!r}. Run identifier is empty")
 
     canonical_flag = _INDEX_FLAGS.get(index_flag.lower())
     if canonical_flag is None:
-        raise ValueError(
+        raise SpxtacularError(
             f"Invalid USI: {usi!r}. Unknown index flag {index_flag!r}; "
             f"expected one of {', '.join(_INDEX_FLAGS.values())}"
         )
     if not index:
-        raise ValueError(f"Invalid USI: {usi!r}. Index value is empty")
+        raise SpxtacularError(f"Invalid USI: {usi!r}. Index value is empty")
     if canonical_flag in ("scan", "index"):
         try:
             value = int(index)
         except ValueError as e:
-            raise ValueError(f"Invalid USI: {usi!r}. {canonical_flag} index must be an integer, got {index!r}") from e
+            raise SpxtacularError(
+                f"Invalid USI: {usi!r}. {canonical_flag} index must be an integer, got {index!r}"
+            ) from e
         if value < 0:
-            raise ValueError(f"Invalid USI: {usi!r}. {canonical_flag} index must be non-negative, got {index!r}")
+            raise SpxtacularError(f"Invalid USI: {usi!r}. {canonical_flag} index must be non-negative, got {index!r}")
 
     return ParsedUsi(
         collection=collection,
@@ -156,7 +160,7 @@ def _as_float(value: Any, accession: str, usi: str) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
-        raise ValueError(f"PROXI attribute {accession} has non-numeric value {value!r} for USI: {usi}") from None
+        raise SpxtacularError(f"PROXI attribute {accession} has non-numeric value {value!r} for USI: {usi}") from None
 
 
 def _as_int(value: Any, accession: str, usi: str) -> int:
@@ -164,7 +168,7 @@ def _as_int(value: Any, accession: str, usi: str) -> int:
     try:
         return int(float(value))
     except (TypeError, ValueError):
-        raise ValueError(f"PROXI attribute {accession} has non-integer value {value!r} for USI: {usi}") from None
+        raise SpxtacularError(f"PROXI attribute {accession} has non-integer value {value!r} for USI: {usi}") from None
 
 
 def _peak_arrays(entry: Any) -> tuple[Any, Any] | None:
@@ -194,16 +198,16 @@ def _parse_proxi_response(
 ) -> dict[str, Any]:
     """Extract peaks and spectrum metadata from a PROXI response."""
     if isinstance(data, dict):
-        raise ValueError(
+        raise SpxtacularError(
             f"Unexpected PROXI response for USI: {usi}. Expected a list of spectra, got a JSON object with keys: "
             f"{', '.join(sorted(map(str, data)))}"
         )
     if not isinstance(data, list):
-        raise ValueError(
+        raise SpxtacularError(
             f"Unexpected PROXI response for USI: {usi}. Expected a list of spectra, got {type(data).__name__}"
         )
     if not data:
-        raise ValueError(f"Empty PROXI response for USI: {usi}")
+        raise SpxtacularError(f"Empty PROXI response for USI: {usi}")
 
     # Not necessarily ``data[0]``: an aggregator that queries several repositories
     # can lead with a stub or error entry for the ones that missed and carry the
@@ -219,14 +223,14 @@ def _parse_proxi_response(
     if found is None:
         first = data[0]
         if not isinstance(first, dict):
-            raise ValueError(
+            raise SpxtacularError(
                 f"Unexpected PROXI response for USI: {usi}. Expected a spectrum object, got {type(first).__name__}"
             )
-        raise ValueError(f"PROXI response missing m/z or intensity data for USI: {usi}")
+        raise SpxtacularError(f"PROXI response missing m/z or intensity data for USI: {usi}")
 
     spectrum, mzs, intensities = found
     if len(mzs) != len(intensities):
-        raise ValueError(
+        raise SpxtacularError(
             f"PROXI response has {len(mzs)} m/z values but {len(intensities)} intensity values for USI: {usi}"
         )
 
@@ -291,7 +295,7 @@ def _parse_proxi_response(
 
     spectrum_types = explicit_spectrum_types or generic_spectrum_types
     if len(spectrum_types) > 1:
-        raise ValueError(f"PROXI response has conflicting spectrum representations for USI: {usi}")
+        raise SpxtacularError(f"PROXI response has conflicting spectrum representations for USI: {usi}")
     if spectrum_types:
         result["spectrum_type"] = next(iter(spectrum_types))
     else:
@@ -307,7 +311,7 @@ def _parse_proxi_response(
 
     polarities = explicit_polarities or generic_polarities
     if len(polarities) > 1:
-        raise ValueError(f"PROXI response has conflicting scan polarities for USI: {usi}")
+        raise SpxtacularError(f"PROXI response has conflicting scan polarities for USI: {usi}")
     if polarities:
         result["polarity"] = next(iter(polarities))
 
@@ -339,7 +343,7 @@ def spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum:
     precursor = None
     if prec_mz is not None:
         precursor = Precursor(
-            mz=prec_mz,
+            precursor_mz=prec_mz,
             # PROXI responses rarely carry a precursor intensity; 0.0 marks it
             # as unmeasured rather than genuinely zero.
             intensity=prec_intensity if prec_intensity is not None else 0.0,
@@ -367,6 +371,7 @@ def spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum:
 
 def fetch_usi(
     usi: str,
+    *,
     backend: str = "aggregator",
     timeout: float = 30,
 ) -> Spectrum | MsnSpectrum:
@@ -409,7 +414,7 @@ def fetch_usi(
     elif backend.startswith(("http://", "https://")):
         base_url = backend
     else:
-        raise ValueError(f"Unknown backend: {backend!r}. Available: {', '.join(_PROXI_BACKENDS)}")
+        raise SpxtacularError(f"Unknown backend: {backend!r}. Available: {', '.join(_PROXI_BACKENDS)}")
 
     encoded_usi = urllib.parse.quote_plus(usi)
     # A custom backend URL may already carry a query string (an API key, say), in
@@ -424,21 +429,21 @@ def fetch_usi(
             data = json.loads(raw)
     except urllib.error.HTTPError as e:
         e.close()
-        raise ValueError(f"HTTP {e.code} error fetching USI: {usi}. {e.reason}") from e
+        raise SpxtacularError(f"HTTP {e.code} error fetching USI: {usi}. {e.reason}") from e
     except urllib.error.URLError as e:
-        raise ValueError(f"Network error fetching USI: {usi}. {e.reason}") from e
+        raise SpxtacularError(f"Network error fetching USI: {usi}. {e.reason}") from e
     except TimeoutError as e:
         # socket.timeout has been an alias of TimeoutError since 3.10, and a read
         # that overruns ``timeout`` raises it directly rather than via URLError.
-        raise ValueError(f"Timeout fetching USI: {usi}. {e}") from e
+        raise SpxtacularError(f"Timeout fetching USI: {usi}. {e}") from e
     except http.client.HTTPException as e:
         # IncompleteRead and friends come out of response.read() and are not
         # OSErrors, so without this they would escape the documented ValueError.
-        raise ValueError(f"Malformed HTTP response for USI: {usi}. {e}") from e
+        raise SpxtacularError(f"Malformed HTTP response for USI: {usi}. {e}") from e
     except OSError as e:
         # A connection reset or a DNS failure is not a timeout; say what it was.
-        raise ValueError(f"Network error fetching USI: {usi}. {e}") from e
+        raise SpxtacularError(f"Network error fetching USI: {usi}. {e}") from e
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON response for USI: {usi}. {e}") from e
+        raise SpxtacularError(f"Invalid JSON response for USI: {usi}. {e}") from e
 
     return spectrum_from_proxi_response(data, usi)

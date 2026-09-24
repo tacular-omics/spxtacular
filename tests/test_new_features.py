@@ -100,7 +100,7 @@ class TestRemovePrecursorPeak:
         spec = MsnSpectrum(
             mz=mz,
             intensity=np.ones(4, dtype=np.float64),
-            precursors=[Precursor(mz=prec_mz, intensity=1.0, charge=prec_z, is_monoisotopic=True)],
+            precursors=[Precursor(precursor_mz=prec_mz, intensity=1.0, charge=prec_z, is_monoisotopic=True)],
         )
         result = spec.remove_precursor_peak(tolerance=0.01)
         # Only the fragment peak at 250.0 should survive
@@ -200,8 +200,8 @@ class TestRemovePrecursorPeak:
             mz=mz,
             intensity=np.ones(3, dtype=np.float64),
             precursors=[
-                Precursor(mz=prec1_mz, intensity=1.0, charge=prec1_z, is_monoisotopic=True),
-                Precursor(mz=prec2_mz, intensity=1.0, charge=prec2_z, is_monoisotopic=True),
+                Precursor(precursor_mz=prec1_mz, intensity=1.0, charge=prec1_z, is_monoisotopic=True),
+                Precursor(precursor_mz=prec2_mz, intensity=1.0, charge=prec2_z, is_monoisotopic=True),
             ],
         )
         result = spec.remove_precursor_peak(tolerance=0.01, isotopes=0)
@@ -213,7 +213,7 @@ class TestRemovePrecursorPeak:
         spec = MsnSpectrum(
             mz=np.array([300.0, 500.0], dtype=np.float64),
             intensity=np.ones(2, dtype=np.float64),
-            precursors=[Precursor(mz=300.0, intensity=1.0, charge=2, is_monoisotopic=True)],
+            precursors=[Precursor(precursor_mz=300.0, intensity=1.0, charge=2, is_monoisotopic=True)],
         )
         # Only remove 500.0 (not 300.0 from precursors)
         result = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=0.01, isotopes=0)
@@ -513,7 +513,7 @@ class TestFetchUsi:
         assert isinstance(result, MsnSpectrum)
         assert len(result.mz) == 3
         assert result.precursors is not None
-        assert result.precursors[0].mz == 500.0
+        assert result.precursors[0].precursor_mz == 500.0
         assert result.precursors[0].charge == 2
 
     def test_returns_base_spectrum_without_precursor(self) -> None:

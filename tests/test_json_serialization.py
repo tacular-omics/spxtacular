@@ -79,7 +79,7 @@ def _msn_spectrum() -> MsnSpectrum:
         activation_type="vendor:future-activation",
         precursors=[
             Precursor(
-                mz=523.2764,
+                precursor_mz=523.2764,
                 intensity=321.0,
                 charge=2,
                 im=1.04,
@@ -87,7 +87,7 @@ def _msn_spectrum() -> MsnSpectrum:
                 is_monoisotopic=True,
             ),
             Precursor(
-                mz=617.3201,
+                precursor_mz=617.3201,
                 intensity=0.0,
                 charge=None,
                 im=None,
@@ -96,7 +96,7 @@ def _msn_spectrum() -> MsnSpectrum:
             ),
         ],
         isolation_mz_range=(522.8, 523.8),
-        isolation_im_range=(0.95, 1.1),
+        isolation_ook0_range=(0.95, 1.1),
     )
 
 
@@ -108,7 +108,7 @@ class TestSpectrumDictionary:
         restored = Spectrum.from_dict(payload)
 
         assert payload["schema"] == "spxtacular.spectrum"
-        assert payload["schema_version"] == 1
+        assert payload["schema_version"] == 2
         assert payload["kind"] == "spectrum"
         assert type(restored) is Spectrum
         assert restored == spectrum
@@ -160,6 +160,40 @@ class TestSpectrumDictionary:
         Spectrum.from_dict(payload)
 
         assert payload == original
+
+
+class TestSchemaV1Upgrade:
+    """0.8 wrote schema v1 (precursor ``mz``, ``isolation_im_range``); 0.9 still reads it."""
+
+    @staticmethod
+    def _as_v1(spectrum: MsnSpectrum) -> dict:
+        payload = spectrum.to_dict()
+        payload["schema_version"] = 1
+        metadata = payload["metadata"]
+        metadata["isolation_im_range"] = metadata.pop("isolation_ook0_range")
+        for precursor in metadata["precursors"]:
+            precursor["mz"] = precursor.pop("precursor_mz")
+            del precursor["im_type"]
+        return payload
+
+    def test_v1_msn_payload_is_upgraded(self) -> None:
+        spectrum = _msn_spectrum()
+        restored = MsnSpectrum.from_dict(self._as_v1(spectrum))
+        assert isinstance(restored, MsnSpectrum)
+        assert restored == spectrum
+        assert restored.precursors is not None
+        assert restored.precursors[0].precursor_mz == pytest.approx(523.2764)
+        assert restored.isolation_ook0_range == (0.95, 1.1)
+
+    def test_v1_plain_payload_is_read(self) -> None:
+        payload = _plain_spectrum().to_dict()
+        payload["schema_version"] = 1
+        assert Spectrum.from_dict(payload) == _plain_spectrum()
+
+    def test_writer_emits_v2(self) -> None:
+        payload = _msn_spectrum().to_dict()
+        assert payload["schema_version"] == 2
+        assert "precursor_mz" in payload["metadata"]["precursors"][0]
 
 
 class TestSpectrumJson:
@@ -237,9 +271,9 @@ class TestSpectrumJson:
 class TestSpectrumValidation:
     def test_unsupported_version_is_rejected(self) -> None:
         payload = _plain_spectrum().to_dict()
-        payload["schema_version"] = 2
+        payload["schema_version"] = 3
 
-        with pytest.raises(ValueError, match=r"Unsupported spxtacular\.spectrum schema version 2"):
+        with pytest.raises(ValueError, match=r"Unsupported spxtacular\.spectrum schema version 3"):
             Spectrum.from_dict(payload)
 
     def test_boolean_version_is_rejected(self) -> None:
@@ -534,11 +568,11 @@ class TestReaderAndPersistenceCompatibility:
 
 def test_packaged_json_schemas_are_valid_json() -> None:
     schema_package = files("spxtacular.schemas")
-    spectrum_schema = json.loads(schema_package.joinpath("spectrum-v1.schema.json").read_text())
+    spectrum_schema = json.loads(schema_package.joinpath("spectrum-v2.schema.json").read_text())
     chromatogram_schema = json.loads(schema_package.joinpath("chromatogram-v1.schema.json").read_text())
 
     assert spectrum_schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert spectrum_schema["properties"]["schema_version"] == {"const": 1}
+    assert spectrum_schema["properties"]["schema_version"] == {"const": 2}
     assert chromatogram_schema["properties"]["schema_version"] == {"const": 1}
     Draft202012Validator.check_schema(spectrum_schema)
     Draft202012Validator.check_schema(chromatogram_schema)

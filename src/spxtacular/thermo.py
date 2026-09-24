@@ -20,6 +20,7 @@ import numpy as np
 
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, AnalyzerLike, Polarity
+from .errors import SpxtacularError
 
 # ---------------------------------------------------------------------------
 # Lazy fisher-py loading
@@ -155,7 +156,7 @@ class ThermoScanLookup:
     not exist or is not of the lookup's MS level.
     """
 
-    def __init__(self, reader: ThermoReader, ms_level: int | None = None) -> None:
+    def __init__(self, reader: ThermoReader, *, ms_level: int | None = None) -> None:
         self._reader = reader
         self._ms_level = ms_level
 
@@ -206,11 +207,11 @@ class ThermoReader:
         trap detectors) are unaffected. Default ``True``.
     """
 
-    def __init__(self, raw_path: str | Path, prefer_vendor_centroid: bool = True) -> None:
+    def __init__(self, raw_path: str | Path, *, prefer_vendor_centroid: bool = True) -> None:
         _require_fisher()
         path = Path(raw_path)
         if path.is_dir():
-            raise ValueError(
+            raise SpxtacularError(
                 f"{path} is a directory. Thermo .raw is a single file; a .raw *directory* is "
                 "the Waters format, which spxtacular does not support — convert it to mzML "
                 "(e.g. with msconvert) and use MzmlReader instead."
@@ -256,7 +257,7 @@ class ThermoReader:
 
     def _open_raw(self) -> Any:
         if self._raw is None:
-            raise RuntimeError("ThermoReader must be opened before use (call open() or use as a context manager)")
+            raise SpxtacularError("ThermoReader must be opened before use (call open() or use as a context manager)")
         return self._raw
 
     # ------------------------------------------------------------------
@@ -358,7 +359,7 @@ class ThermoReader:
                 # the summed product-ion intensity stands in as a proxy.
                 precursors = [
                     Precursor(
-                        mz=target_mz,
+                        precursor_mz=target_mz,
                         intensity=float(intensity.sum()) if len(intensity) else 0.0,
                         charge=int(charge_state) if charge_state is not None else None,
                         im=None,

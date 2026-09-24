@@ -119,17 +119,17 @@ def test_gaussian_fit_has_no_symmetric_peak_bias() -> None:
 @pytest.mark.parametrize("method", ["max", "tic", "median"])
 @pytest.mark.parametrize("inplace", [False, True])
 def test_filter_then_normalize_recomputes(method, inplace: bool) -> None:
-    original = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([3.0, 1.0])).normalize(method)
+    original = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([3.0, 1.0])).normalize(method=method)
     filtered = original.filter(min_mz=150.0, inplace=inplace)
     assert filtered.normalized is None
-    np.testing.assert_allclose(filtered.normalize(method).intensity, [1.0])
+    np.testing.assert_allclose(filtered.normalize(method=method).intensity, [1.0])
 
 
 def test_combine_then_normalize_recomputes_tic() -> None:
-    first = Spectrum(mz=np.array([100.0]), intensity=np.ones(1)).normalize("tic")
+    first = Spectrum(mz=np.array([100.0]), intensity=np.ones(1)).normalize(method="tic")
     combined = Spectrum.combine([first, first.copy()])
     assert combined.normalized is None
-    assert combined.normalize("tic").intensity.sum() == pytest.approx(1.0)
+    assert combined.normalize(method="tic").intensity.sum() == pytest.approx(1.0)
 
 
 @pytest.mark.parametrize("inplace", [False, True])
@@ -144,13 +144,12 @@ def test_rounding_neutral_masses_preserves_axis_through_transport() -> None:
     neutral = _sodium_spectrum().decharge().round_mz()
     restored = Spectrum.from_json(neutral.to_json())
     assert restored.is_decharged
-    with pytest.warns(UserWarning, match="already decharged"):
-        np.testing.assert_allclose(restored.decharge().mz, [1000.0])
+    np.testing.assert_allclose(restored.decharge().mz, [1000.0])
 
 
 @pytest.mark.parametrize("operation", ["copy", "filter", "sort", "normalize", "merge", "round_mz", "update"])
 def test_transforms_own_their_precursor_list(operation: str) -> None:
-    precursor = Precursor(mz=500.0, intensity=1.0, charge=2, is_monoisotopic=True)
+    precursor = Precursor(precursor_mz=500.0, intensity=1.0, charge=2, is_monoisotopic=True)
     supplied = [precursor]
     original = MsnSpectrum(mz=np.array([100.0]), intensity=np.ones(1), precursors=supplied)
     result = getattr(original, operation)()

@@ -149,8 +149,8 @@ latter two by keyword.
 | `im_tolerance_type` | `"relative"` | Scale the mobility tolerance by the seed value or use it as an absolute difference |
 | `ionization_model` | `None` | Adduct preset/alias, custom model, or signed carrier mass. Negative scans use `[M-H]-`, and other scans use `[M+H]+` |
 
-Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum emits a `UserWarning` and leaves its
-data unchanged. The default non-inplace path still returns an independent copy.
+Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum is a silent no-op: it returns an
+independent copy (or the spectrum itself with `inplace=True`).
 
 ### Isotope models
 

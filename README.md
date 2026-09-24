@@ -117,7 +117,7 @@ Reading raw files works the same for every format — `Reader` picks `DReader`, 
 
 ```python
 with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx.Reader("run.raw")
-    print(reader.access_strategy)         # embedded, extracted, rapidgzip, plain, or None
+    print(reader.access_strategy)         # embedded, rapidgzip, memory, stream, plain, or None
     for spec in reader.ms1:              # .ms1/.ms2 are iterable *and* indexable
         ...
 ```

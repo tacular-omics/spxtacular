@@ -28,7 +28,7 @@ def _msn(**kwargs: Any) -> MsnSpectrum:
         "native_id": "scan=42",
         "ms_level": 2,
         "rt": 125.5,
-        "precursors": [Precursor(mz=500.25, intensity=0.0, charge=2, is_monoisotopic=None)],
+        "precursors": [Precursor(precursor_mz=500.25, intensity=0.0, charge=2, is_monoisotopic=None)],
     }
     values.update(kwargs)
     return MsnSpectrum(**values)
@@ -55,7 +55,7 @@ def test_spectrum_utils_round_trip_maps_supported_fields() -> None:
     assert restored.ms_level == 2
     assert restored.rt == pytest.approx(125.5)
     assert restored.precursors is not None
-    assert restored.precursors[0].mz == pytest.approx(500.25)
+    assert restored.precursors[0].precursor_mz == pytest.approx(500.25)
     assert restored.precursors[0].charge == 2
 
 
@@ -65,8 +65,8 @@ def test_to_spectrum_utils_warns_about_rich_fields_and_extra_precursors() -> Non
         im=np.array([1.3, 1.1, 1.2]),
         collision_energy=28.0,
         precursors=[
-            Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True),
-            Precursor(mz=600.25, intensity=4000.0, charge=3, is_monoisotopic=False),
+            Precursor(precursor_mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True),
+            Precursor(precursor_mz=600.25, intensity=4000.0, charge=3, is_monoisotopic=False),
         ],
     )
     with pytest.warns(
@@ -89,7 +89,9 @@ def test_to_spectrum_utils_rejects_plain_profile_or_missing_precursor_data() -> 
         to_spectrum_utils(_msn(precursors=None))
 
     with pytest.raises(ValueError, match="precursor charge"):
-        to_spectrum_utils(_msn(precursors=[Precursor(mz=500.25, intensity=1.0, charge=None, is_monoisotopic=None)]))
+        to_spectrum_utils(
+            _msn(precursors=[Precursor(precursor_mz=500.25, intensity=1.0, charge=None, is_monoisotopic=None)])
+        )
 
 
 def test_identifier_can_be_explicit_or_derived_from_scan_number() -> None:

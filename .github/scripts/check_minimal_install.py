@@ -67,7 +67,7 @@ def main() -> int:
                     mz=np.array([100.0]),
                     intensity=np.array([1.0]),
                     native_id="scan=1",
-                    precursors=[Precursor(mz=500.0, intensity=0.0, charge=2, is_monoisotopic=None)],
+                    precursors=[Precursor(precursor_mz=500.0, intensity=0.0, charge=2, is_monoisotopic=None)],
                 )
             ),
         ),
