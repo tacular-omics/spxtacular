@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.8.0] (2026-09-23)
+
 ### Fixed
 
 - `Spectrum.load("x")` now finds the `x.npz` that `save("x")` writes, instead of raising `FileNotFoundError`.
@@ -22,7 +24,7 @@ User-visible changes only; implementation details belong in commits and pull req
 ### Changed
 
 - Required spectrl 3 (`spectrl>=3.0,<4`). **Breaking for stored or shared tokens:** `to_spectrl_token`/`to_spectrl_url` now write `spectrl.v3.…` tokens, and `from_spectrl_token`/`from_spectrl_url` reject the `spectrl.v1` tokens earlier spxtacular releases wrote. Every spxtacular field still round-trips. The default lossy profile now picks the smallest bounded-error encoding per array (m/z within 0.1 ppm), so token bytes differ from before; `lossless=True` stays bit-exact. Decoding applies spectrl's default untrusted-input limits (1,000,000 peaks, 64 MiB of arrays). Downstream packages that read spxtacular tokens (`msbit`, `pepbit`) need spectrl 3 too.
-- Capped the sibling requirements (peptacular, paftacular, tdfpy, mzmlpy) at their next breaking version, so installs no longer pick up a new major release before spxtacular is tested against it.
+- Capped the sibling requirements (peptacular, paftacular, tdfpy, mzmlpy) at their next breaking version, so installs no longer pick up a new major release before spxtacular is tested against it. Raised the minimums to peptacular 4.2, paftacular 1.4 and tdfpy 4.1 (`[bruker]`).
 - Fragment labels in annotated plots and plot tables follow paftacular 1.4's mzPAF output: peptacular z fragments are labelled `z3-H` instead of `z3`, and d, v and w ions (including `da`/`db`/`wa`/`wb` and side-chain variants such as `d-valine`) get labels such as `d3^2` instead of raising `ValueError`.
 
 ### Deprecated
