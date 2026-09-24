@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
-from tacular import ELEMENT_LOOKUP, ISOBARIC_TAG_LOOKUP, IsobaricTagInfo
+from tacular import ELEMENT_LOOKUP, ISOBARIC_TAG_LOOKUP, IsobaricTagInfo, tolerance_window
 from tacular.types import ToleranceUnit
 
 from .errors import SpxtacularError
@@ -67,10 +67,15 @@ _ISOTOPE_SHIFT: dict[str, float] = {
     "15N": ELEMENT_LOOKUP.get_mass("15N") - ELEMENT_LOOKUP.get_mass("N"),
     "18O": ELEMENT_LOOKUP.get_mass("18O") - ELEMENT_LOOKUP.get_mass("O"),
 }
-# An impurity lands on the channel nearest its shifted m/z, if one is this close (Da).
-# Channels are >= 1 Da apart nominally and N/C pairs 6.3 mDa apart, so 0.02 Da picks
-# the right nominal channel and "nearest" picks N vs C.
-_TARGET_TOLERANCE = 0.02
+# An impurity lands on the channel nearest its shifted m/z, if one is within
+# min(0.02 Da, half the plex's smallest channel spacing). For TMT6 and iTRAQ (channels
+# ~1 Da apart) that is 0.02 Da, the nominal mapping of the lot sheets; for TMT10/11 and
+# TMTpro (N/C pairs 6.32 mDa apart) it is ~3.2 mDa, so an impurity counts only on a
+# channel it actually overlaps, as in OpenMS. A shift that lands 6.32 mDa beside a
+# channel (e.g. TMT10 130C +13C at the 131C position) is outside that channel's picking
+# window and is lost signal.
+_MAX_TARGET_TOLERANCE = 0.02
+_MAIN_PEAK_LABELS = frozenset({"0", "+0", "-0", "main", "reporter", "reporter ion", "monoisotopic"})
 _SHIFT_TOKEN = re.compile(r"([+-])\s*(?:(\d+)\s*[xX*]\s*)?(13C|15N|18O)", re.IGNORECASE)
 
 
@@ -100,17 +105,30 @@ def _windows(
     if not math.isfinite(tolerance) or tolerance < 0:
         raise SpxtacularError(f"tolerance must be a finite number >= 0, got {tolerance!r}.")
     ref = np.asarray(info.reporter_mzs, dtype=np.float64)
-    half = ref * tolerance * 1e-6 if tolerance_unit == "ppm" else np.full_like(ref, float(tolerance))
-    lo, hi = ref - half, ref + half
+    bounds = np.array([tolerance_window(float(mz), float(tolerance), tolerance_unit=tolerance_unit) for mz in ref])
+    lo, hi = bounds[:, 0].copy(), bounds[:, 1].copy()
     order = np.argsort(ref)
     overlap = np.flatnonzero(hi[order][:-1] >= lo[order][1:])
     if overlap.size:
         a, b = order[overlap[0]], order[overlap[0] + 1]
+        sorted_ref = ref[order]
+        gaps = np.diff(sorted_ref)
+        if tolerance_unit == "ppm":
+            limit = float(np.min(gaps / (sorted_ref[:-1] + sorted_ref[1:]))) * 1e6
+        else:
+            limit = float(np.min(gaps)) / 2
         raise SpxtacularError(
             f"{info.name} channels {info.channels[a]} and {info.channels[b]} are "
-            f"{ref[b] - ref[a]:.5f} Da apart; a {tolerance:g} {tolerance_unit} tolerance makes their windows overlap."
+            f"{ref[b] - ref[a]:.5f} Da apart; a {tolerance:g} {tolerance_unit} tolerance makes their windows "
+            f"overlap. Use a tolerance below {limit:.4g} {tolerance_unit}."
         )
     return ref, lo, hi
+
+
+def _target_tolerance(ref: NDArray[np.float64]) -> float:
+    """How close a shifted impurity must land to a channel to count as that channel."""
+    gaps = np.diff(np.sort(ref))
+    return min(_MAX_TARGET_TOLERANCE, float(gaps.min()) / 2) if gaps.size else _MAX_TARGET_TOLERANCE
 
 
 def _check_normalize(normalize: object) -> None:
@@ -136,9 +154,10 @@ def _normalize_rows(values: NDArray[np.float64], normalize: ReporterNormalize | 
 def _shift_mass(shift: object) -> float:
     """Mass offset of a lot-sheet column label.
 
-    Numbers and ``"-2"``/``"-1"``/``"+1"``/``"+2"`` are that many 13C (the TMT and
-    iTRAQ lot-sheet convention); labels like ``"-13C"``, ``"+2x13C"``, ``"-15N"`` or
-    ``"-13C-15N"`` name the substitutions explicitly.
+    Numbers and ``"-2"``/``"-1"``/``"+1"``/``"+2"`` are that many 13C, never 15N;
+    labels like ``"-13C"``, ``"+2x13C"``, ``"-15N"`` or ``"-13C-15N"`` name the
+    substitutions explicitly. A main-peak column (``"0"``, ``"main"``, ``"reporter"``,
+    ``"monoisotopic"``) is 0.0 and is ignored by the caller.
     """
     if isinstance(shift, bool):
         raise SpxtacularError(f"Unrecognised impurity shift {shift!r}.")
@@ -147,6 +166,8 @@ def _shift_mass(shift: object) -> float:
     if not isinstance(shift, str):
         raise SpxtacularError(f"Unrecognised impurity shift {shift!r}.")
     text = shift.strip()
+    if text.lower() in _MAIN_PEAK_LABELS:
+        return 0.0
     try:
         return float(text) * _ISOTOPE_SHIFT["13C"]
     except ValueError:
@@ -196,19 +217,30 @@ def isotope_correction_matrix(
     impurities:
         Per-channel impurity percentages, the shape of a TMT/iTRAQ lot sheet:
         ``{"126": {"-2": 0, "-1": 0, "+1": 7.1, "+2": 0.2}, ...}`` or a DataFrame with
-        channels as the index and shifts as columns. Column labels are 13C counts
-        (``-2``, ``-1``, ``+1``, ``+2``) or explicit substitutions (``"-13C"``,
-        ``"+2x13C"``, ``"-15N"``, ``"+13C+15N"``, ``"-18O"``). ``None``/NaN cells are 0.
-        Channels left out are taken as pure.
+        channels as the index and shifts as columns. ``None``/NaN cells are 0. Channels
+        left out are taken as pure.
+
+        Column labels are either numbers (``-2``, ``-1``, ``+1``, ``+2``), which always
+        mean that many **13C**, or explicit substitutions (``"-13C"``, ``"+2x13C"``,
+        ``"-15N"``, ``"+13C+15N"``, ``"-18O"``). For TMT10/11 and TMTpro N channels a
+        -1 impurity from a missing 15N is ``"-15N"``, not ``-1``: newer Thermo sheets
+        that list 15N and 13C separately need the explicit labels, or those impurities
+        are placed at the wrong m/z. A main-peak column (a zero shift, ``"0"``,
+        ``"main"``, ``"reporter"``, ``"monoisotopic"``) is ignored: the main peak is
+        always ``100 - sum(impurities)``.
 
     Returns
     -------
     numpy.ndarray
         Square ``(plex, plex)`` matrix. A reagent keeps ``100 - sum(its impurities)``
         percent in its own channel (the OpenMS convention). Each impurity is assigned to
-        the channel whose m/z is nearest the shifted reporter m/z, within 0.02 Da (so a
-        -1 of TMT 128C goes to 127C and of 128N to 127N); an impurity that falls on no
-        channel of this plex is lost signal and only lowers the diagonal.
+        the channel nearest the shifted reporter m/z if it lies within
+        ``min(0.02 Da, half the plex's smallest channel spacing)``: 0.02 Da for TMT6 and
+        iTRAQ (nominal mapping), about 3.2 mDa for TMT10/11 and TMTpro, whose N/C pairs
+        are 6.32 mDa apart. So a -1 (13C) of TMT 128C goes to 127C and of 128N to 127N,
+        while a -1 (13C) of 127N or a +1 of TMT10's 130C (which lands on the 131C
+        position) matches no channel. An impurity that matches no channel of this plex
+        is lost signal and only lowers the diagonal, as in OpenMS.
 
     Raises
     ------
@@ -219,6 +251,7 @@ def isotope_correction_matrix(
     info = _resolve_plex(plex)
     ref = np.asarray(info.reporter_mzs, dtype=np.float64)
     n = len(ref)
+    target_tolerance = _target_tolerance(ref)
     matrix = np.eye(n)
     for channel, row in _impurity_rows(impurities).items():
         ion = info.query_reporter(channel)
@@ -228,13 +261,13 @@ def isotope_correction_matrix(
         total = 0.0
         for shift, value in row.items():
             percent = _percent(value, channel, shift)
-            if percent == 0.0:
-                _shift_mass(shift)  # still reject a bad label
+            shift_mass = _shift_mass(shift)  # rejects a bad label even when its value is 0
+            if percent == 0.0 or shift_mass == 0.0:  # a main-peak column is not an impurity
                 continue
             total += percent
-            distance = np.abs(ref - (ref[j] + _shift_mass(shift)))
+            distance = np.abs(ref - (ref[j] + shift_mass))
             i = int(np.argmin(distance))
-            if i != j and distance[i] <= _TARGET_TOLERANCE:
+            if i != j and distance[i] <= target_tolerance:
                 matrix[i, j] += percent / 100.0
         if total > 100.0:
             raise SpxtacularError(f"Impurities for channel {channel!r} sum to {total:g} %, more than 100 %.")
@@ -286,6 +319,7 @@ def _nnls(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]
 def correct_isotope_impurities(
     intensities: "NDArray[np.float64] | Iterable[float] | Iterable[Iterable[float]]",
     correction: "NDArray[np.float64] | ImpurityTable | pd.DataFrame",
+    *,
     plex: "str | IsobaricTagInfo | None" = None,
 ) -> NDArray[np.float64]:
     """Undo reagent isotope impurities: solve ``observed = M @ true`` for ``true >= 0``.
@@ -436,6 +470,8 @@ def _pick(
     if spectrum.is_decharged:
         raise SpxtacularError("Reporter ions need m/z values; this spectrum is decharged to neutral masses.")
     mz, intensity = spectrum.mz, spectrum.intensity
+    if not np.isfinite(intensity).all():
+        raise SpxtacularError("Reporter ions need finite intensities; this spectrum has NaN or inf intensities.")
     order = np.argsort(mz, kind="stable")  # m/z is not assumed sorted (timsTOF)
     smz, sint = mz[order], intensity[order]
     left = np.searchsorted(smz, lo, side="left")
@@ -488,8 +524,8 @@ def extract_reporter_ions(
     Raises
     ------
     SpxtacularError
-        Unknown plex, bad tolerance or unit, overlapping windows, a bad impurity table, or
-        a decharged spectrum.
+        Unknown plex, bad tolerance or unit, overlapping windows, a bad impurity table, a
+        decharged spectrum, or NaN/inf intensities.
     """
     info = _resolve_plex(plex)
     ref, lo, hi = _windows(info, tolerance, tolerance_unit)
@@ -525,9 +561,11 @@ def reporter_ion_table(
     Parameters
     ----------
     spectra:
-        Any iterable of spectra (a list, ``reader.ms2``, a generator), or a reader with an
-        ``ms2`` view (:class:`~spxtacular.Reader` and the format readers), which reads its MS2
-        spectra. For SPS-MS3 data pass the MS3 spectra instead (and ``ms_level=3``).
+        Any iterable of spectra (a list, ``reader.ms2``, a generator). An object with an
+        ``ms2`` attribute (:class:`~spxtacular.Reader` and the format readers) is always
+        read through ``spectra.ms2``, even if it is itself iterable, so passing a reader
+        gives its MS2 spectra, not every level. For SPS-MS3 data pass an iterable of the MS3
+        spectra (e.g. ``iter(reader)``, which has no ``ms2`` attribute) and ``ms_level=3``.
     plex, tolerance, tolerance_unit, impurities, normalize:
         As in :func:`extract_reporter_ions`; correction and normalization are applied to
         every row at once.
@@ -551,13 +589,12 @@ def reporter_ion_table(
     ref, lo, hi = _windows(info, tolerance, tolerance_unit)
     _check_normalize(normalize)
     matrix = None if impurities is None else _as_matrix(impurities, info, len(ref))
-    if not isinstance(spectra, Iterable) and hasattr(spectra, "ms2"):
-        spectra = spectra.ms2
+    source: Iterable[Any] = getattr(spectra, "ms2", spectra)  # a reader: always its MS2 view
 
     meta: list[dict[str, Any]] = []
     raw_rows: list[NDArray[np.float64]] = []
     mz_rows: list[NDArray[np.float64]] = []
-    for position, spectrum in enumerate(spectra):
+    for position, spectrum in enumerate(source):
         level = getattr(spectrum, "ms_level", None)
         if ms_level is not None and level != ms_level:
             continue

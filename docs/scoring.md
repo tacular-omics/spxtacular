@@ -251,16 +251,19 @@ ones.
 | Tolerance | `tolerance=20.0, tolerance_unit="ppm"` by default (`"da"` also accepted). The closest channels, the TMT/TMTpro N/C pairs, are 6.32 mDa (about 47-50 ppm) apart, so +/-20 ppm windows never overlap. A tolerance that makes two windows overlap raises `SpxtacularError`. |
 | Several peaks in a window | The most intense peak is used (ties: lowest m/z). |
 | No peak in a window | Intensity `0.0`; `observed_mz` and the error are `NaN`; `found` is `False`. Zero keeps sums, ratios and the impurity correction well defined, and NaN in the error columns keeps "not found" visible. |
-| Input | Centroided spectra in m/z; the m/z array need not be sorted. A decharged spectrum (neutral masses) raises. |
+| Tolerance limit | The overlap error names the largest tolerance that fits, e.g. "Use a tolerance below 24.28 ppm" for TMT10. |
+| Input | Centroided spectra in m/z; the m/z array need not be sorted. A decharged spectrum (neutral masses) or NaN/inf intensities raise `SpxtacularError`. |
 
 ### Many spectra
 
 `reporter_ion_table(spectra, plex, ...)` takes any iterable of spectra (a list, a generator,
-`reader.ms2`) or a reader with an `ms2` view, which it reads. It returns one row per spectrum:
+`reader.ms2`). Any object with an `ms2` attribute (every spxtacular reader) is read through
+`.ms2`, even if it is iterable itself, so a reader gives its MS2 spectra. It returns one row per spectrum:
 `spectrum_index` (position in the input), `scan_number`, `native_id`, `ms_level`, `rt`
 (`None` for a plain `Spectrum`), one float column per channel, and with
 `include_errors=True` a `<channel>_ppm_error` column per channel. `ms_level=` keeps only
-spectra of that level; for SPS-MS3 data pass the MS3 spectra with `ms_level=3`.
+spectra of that level; for SPS-MS3 data pass an iterable of the MS3 spectra (e.g.
+`iter(reader)`) with `ms_level=3`.
 
 ### Isotope impurity correction
 
@@ -281,23 +284,36 @@ ions.intensity       # corrected
 table = spx.reporter_ion_table(reader, "TMT10", impurities=lot, normalize="sum")
 ```
 
-A `pandas.DataFrame` with channels as the index and shifts as columns works as well. Column
-labels are counts of 13C (`-2`, `-1`, `+1`, `+2`, the lot-sheet convention) or explicit
-substitutions (`"-13C"`, `"+2x13C"`, `"-15N"`, `"+13C+15N"`, `"-18O"`). Empty cells
-(`None`, NaN) are 0.
+A `pandas.DataFrame` with channels as the index and shifts as columns works as well. Empty
+cells (`None`, NaN) are 0. Column labels are:
+
+- **Numbers** (`-2`, `-1`, `+1`, `+2`): always that many **13C**, never 15N.
+- **Explicit substitutions**: `"-13C"`, `"+2x13C"`, `"-15N"`, `"+13C+15N"`, `"-18O"`.
+- **A main-peak column** (`0`, `"0"`, `"main"`, `"reporter"`, `"monoisotopic"`, any case):
+  ignored, because the main peak is always `100 - sum(impurities)`.
+
+TMT10/11 and TMTpro N channels carry a 15N, and a reagent missing it loses 0.997 Da, not
+the 1.003 Da of a 13C. The two land 6.3 mDa apart, on different channels. If your sheet lists
+15N and 13C impurities of N channels separately (newer Thermo TMTpro sheets do), label the
+15N columns `"-15N"`/`"+15N"`; a numeric `-1` there is read as 13C and placed on the wrong
+m/z.
 
 `isotope_correction_matrix(plex, lot)` returns the matrix `M` that is solved,
 `observed = M @ true`. `M[i, j]` is the fraction of reagent `j`'s signal seen in channel `i`:
 
 - A reagent keeps `100 - sum(its impurities)` percent in its own channel.
-- Each impurity goes to the channel whose m/z is nearest the shifted reporter m/z (within
-  0.02 Da). So the -1 of TMT `128C` goes to `127C` and of `128N` to `127N`, since they differ
-  by one 13C. The -1 of `127N` goes to `126`, the only channel 1 Da below it.
+- Each impurity goes to the channel nearest the shifted reporter m/z, if it is within
+  `min(0.02 Da, half the plex's smallest channel spacing)`, as in OpenMS. That is 0.02 Da
+  for TMT6 and iTRAQ, whose channels are about 1 Da apart, and about 3.2 mDa for TMT10/11
+  and TMTpro, whose N/C pairs are 6.32 mDa apart. So the -1 of TMT `128C` goes to `127C`
+  and of `128N` to `127N`, since they differ by one 13C.
 - An impurity that lands on no channel of the plex is lost signal and only lowers the
-  diagonal.
+  diagonal. In TMT10 the -1 (13C) of `127N` lands 6.3 mDa below `126` and the +1 of `130C`
+  lands on the `131C` position, 6.3 mDa above `131N`: neither is inside a picking window,
+  so neither is counted. In TMT11 the +1 of `130C` goes to `131C`.
 
 You can also pass a precomputed square matrix as `impurities=`, or call
-`correct_isotope_impurities(intensities, matrix_or_lot, plex)` on your own arrays (one
+`correct_isotope_impurities(intensities, matrix_or_lot, plex=...)` (`plex` is keyword-only) on your own arrays (one
 spectrum or a 2-D array of many).
 
 **Non-negativity.** Each spectrum is first solved exactly. With noise, the exact solution can

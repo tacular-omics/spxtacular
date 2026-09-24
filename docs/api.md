@@ -1456,15 +1456,16 @@ reporter_ion_table(
 ) -> pd.DataFrame
 
 isotope_correction_matrix(plex, impurities) -> NDArray          # observed = M @ true
-correct_isotope_impurities(intensities, correction, plex=None) -> NDArray
+correct_isotope_impurities(intensities, correction, *, plex=None) -> NDArray
 ```
 
 `ReporterIons` (frozen, read-only arrays in channel order): `plex`, `channels`, `reporter_mz`,
 `intensity`, `raw_intensity`, `observed_mz`, `corrected`, `normalize`, and the properties
 `found`, `mz_error` (Da), `ppm_error`; `ions["127N"]` gives one channel; `to_dict()`.
 The most intense peak in each window is used; a missing channel is intensity 0.0 and
-`observed_mz` NaN. A bad plex, unit, tolerance (overlapping windows) or impurity table raises
-`SpxtacularError`.
+`observed_mz` NaN. A bad plex, unit, tolerance (overlapping windows) or impurity table, a
+decharged spectrum, or NaN/inf intensities raise `SpxtacularError`. Numeric impurity shifts
+are 13C counts; label 15N impurities `"-15N"`. See [Scoring](scoring.md#isotope-impurity-correction).
 
 ---
 

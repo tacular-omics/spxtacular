@@ -52,6 +52,7 @@ from .ionization import (
 )
 from .isotopes import IsotopeModelLike, resolve_isotope_model
 from .noise import estimate_noise_level
+from .reporter import DEFAULT_REPORTER_TOLERANCE, DEFAULT_REPORTER_TOLERANCE_UNIT
 from .serialization import (
     SPECTRUM_SCHEMA,
     SPECTRUM_SCHEMA_VERSION,
@@ -1946,8 +1947,8 @@ class Spectrum:
         self,
         plex: "str | IsobaricTagInfo",
         *,
-        tolerance: float = 20.0,
-        tolerance_unit: "ToleranceUnit" = "ppm",
+        tolerance: float = DEFAULT_REPORTER_TOLERANCE,
+        tolerance_unit: "ToleranceUnit" = DEFAULT_REPORTER_TOLERANCE_UNIT,
         impurities: "ImpurityTable | pd.DataFrame | NDArray[np.float64] | None" = None,
         normalize: "Literal['sum', 'max'] | None" = None,
     ) -> "ReporterIons":

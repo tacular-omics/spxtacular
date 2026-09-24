@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from tacular import ISOBARIC_TAG_LOOKUP
+from tacular import ELEMENT_LOOKUP, ISOBARIC_TAG_LOOKUP
 
 from spxtacular import (
     MsnSpectrum,
@@ -23,7 +23,10 @@ from spxtacular import (
 )
 
 TMT10 = ISOBARIC_TAG_LOOKUP["TMT10"]
+TMT11 = ISOBARIC_TAG_LOOKUP["TMT11"]
 TMT18 = ISOBARIC_TAG_LOOKUP["TMT18"]
+C13 = ELEMENT_LOOKUP.get_mass("13C") - ELEMENT_LOOKUP.get_mass("C")
+N15 = ELEMENT_LOOKUP.get_mass("15N") - ELEMENT_LOOKUP.get_mass("N")
 
 
 def _spectrum(mzs: list[float], intensities: list[float], *, shuffle: bool = False) -> Spectrum:
@@ -155,10 +158,13 @@ def test_correction_matrix_targets_by_isotope() -> None:
     assert m[ch("127N"), ch("126")] == 0.0
     assert m[ch("128C"), ch("126")] == pytest.approx(0.002)
     assert m[ch("126"), ch("126")] == pytest.approx(1 - 0.072)
-    # -1 of 128C -> 127C, of 128N -> 127N; -1 of 127N has only 126 nominally below it.
+    # -1 of 128C -> 127C, of 128N -> 127N.
     assert m[ch("127C"), ch("128C")] == pytest.approx(0.015)
     assert m[ch("127N"), ch("128N")] == pytest.approx(0.01)
-    assert m[ch("126"), ch("127N")] == pytest.approx(0.004)
+    # -1 (13C) of 127N lands 6.3 mDa below 126: outside the 3.2 mDa target tolerance, so
+    # it is lost signal that only lowers the diagonal.
+    assert m[ch("126"), ch("127N")] == 0.0
+    assert m[:, ch("127N")].sum() == pytest.approx(1 - 0.004)
     # Channels absent from the sheet are pure.
     assert m[ch("131N"), ch("131N")] == 1.0
     # Explicit labels and a DataFrame give the same matrix.
@@ -173,13 +179,87 @@ def test_correction_recovers_true_intensities() -> None:
     true = np.array([1000.0, 0.0, 500.0, 2000.0, 50.0, 800.0, 0.0, 300.0, 1200.0, 700.0])
     observed = m @ true
     np.testing.assert_allclose(correct_isotope_impurities(observed, m), true, atol=1e-9)
-    np.testing.assert_allclose(correct_isotope_impurities(observed, LOT_SHEET, "TMT10"), true, atol=1e-9)
+    np.testing.assert_allclose(correct_isotope_impurities(observed, LOT_SHEET, plex="TMT10"), true, atol=1e-9)
 
     spectrum = _spectrum(list(TMT10.reporter_mzs), list(observed))
     ions = extract_reporter_ions(spectrum, "TMT10", impurities=LOT_SHEET)
     assert ions.corrected
     np.testing.assert_allclose(ions.intensity, true, atol=1e-6)
     np.testing.assert_allclose(ions.raw_intensity, observed)
+
+
+def test_target_tolerance_follows_channel_spacing() -> None:
+    # +1 (13C) of 130C lands exactly on 131C: a channel in TMT11, 6.3 mDa beside 131N in TMT10.
+    sheet = {"130C": {"+1": 3.0}}
+    m10 = isotope_correction_matrix("TMT10", sheet)
+    assert m10[TMT10.channels.index("131N"), TMT10.channels.index("130C")] == 0.0
+    assert m10[:, TMT10.channels.index("130C")].sum() == pytest.approx(0.97)
+    m11 = isotope_correction_matrix("TMT11", sheet)
+    assert m11[TMT11.channels.index("131C"), TMT11.channels.index("130C")] == pytest.approx(0.03)
+    assert m11[TMT11.channels.index("131N"), TMT11.channels.index("130C")] == 0.0
+    # TMT6 channels are ~1 Da apart, so the 0.02 Da nominal rule applies: 127N -1 -> 126.
+    m6 = isotope_correction_matrix("TMT6", {"127N": {"-1": 0.5}})
+    assert m6[0, 1] == pytest.approx(0.005)
+
+
+def test_explicit_15n_label_for_n_channels() -> None:
+    # An N channel carries a 15N: losing it (-0.997 Da) lands on the C channel one nominal
+    # mass down, losing a 13C (-1.003 Da) on the N channel. A numeric -1 means 13C only.
+    ch = TMT18.channels.index
+    explicit = isotope_correction_matrix("TMT18", {"128N": {"-15N": 1.2, "-13C": 0.5}})
+    assert explicit[ch("127C"), ch("128N")] == pytest.approx(0.012)  # 128N - 15N = 127C
+    assert explicit[ch("127N"), ch("128N")] == pytest.approx(0.005)  # 128N - 13C = 127N
+    assert explicit[ch("128N"), ch("128N")] == pytest.approx(1 - 0.017)
+    numeric = isotope_correction_matrix("TMT18", {"128N": {"-1": 1.2}})
+    assert numeric[ch("127N"), ch("128N")] == pytest.approx(0.012)
+    assert numeric[ch("127C"), ch("128N")] == 0.0
+
+
+def test_main_peak_column_is_ignored() -> None:
+    base = isotope_correction_matrix("TMT10", LOT_SHEET)
+    for label in ("0", "+0", "Reporter", "main", "Monoisotopic"):
+        sheet = {ch: {**row, label: 100.0 - sum(row.values())} for ch, row in LOT_SHEET.items()}
+        np.testing.assert_allclose(isotope_correction_matrix("TMT10", sheet), base)
+    frame = pd.DataFrame(LOT_SHEET).T
+    frame[0] = 92.8
+    np.testing.assert_allclose(isotope_correction_matrix("TMT10", frame), base)
+
+
+def _impure_spectrum(info, true: np.ndarray, sheet: dict[str, dict[str, float]]) -> Spectrum:
+    """Every reagent's main peak plus its impurity peaks at their physical m/z."""
+    shift = {"-2": -2 * C13, "-1": -C13, "+1": C13, "+2": 2 * C13, "-15N": -N15, "+15N": N15}
+    peaks: dict[float, float] = {}
+    for j, (channel, mz) in enumerate(zip(info.channels, info.reporter_mzs, strict=True)):
+        row = sheet.get(channel, {})
+        signal = {mz: true[j] * (1 - sum(row.values()) / 100)}
+        signal |= {mz + shift[label]: true[j] * pct / 100 for label, pct in row.items()}
+        for at, value in signal.items():
+            key = round(at, 5)  # impurities that land on the same m/z are one peak
+            peaks[key] = peaks.get(key, 0.0) + value
+    return _spectrum(list(peaks), list(peaks.values()), shuffle=True)
+
+
+def test_end_to_end_tmt10_physical_impurity_peaks() -> None:
+    sheet = {**LOT_SHEET, "130C": {"-1": 0.6, "+1": 4.0}, "131N": {"-1": 0.7, "+1": 3.5}}
+    true = np.array([1000.0, 300.0, 500.0, 2000.0, 50.0, 800.0, 100.0, 300.0, 1200.0, 700.0])
+    spectrum = _impure_spectrum(TMT10, true, sheet)
+    ions = extract_reporter_ions(spectrum, "TMT10", impurities=sheet)
+    # 130C's +1 sits at 131C, outside 131N's 20 ppm window: nothing is picked there.
+    assert ions.observed_mz[-1] == pytest.approx(TMT10.reporter_mzs[-1])
+    np.testing.assert_allclose(ions.intensity, true, rtol=1e-9)
+
+
+def test_end_to_end_tmtpro18_physical_impurity_peaks() -> None:
+    sheet: dict[str, dict[str, float]] = {}
+    for channel in TMT18.channels:
+        row = {"-2": 0.1, "-1": 0.8, "+1": 5.0, "+2": 0.2}
+        if channel.endswith("N"):
+            row["-15N"] = 0.4
+        sheet[channel] = row
+    true = np.linspace(200.0, 3000.0, 18)
+    ions = extract_reporter_ions(_impure_spectrum(TMT18, true, sheet), "TMTpro18", impurities=sheet)
+    assert ions.found.all()
+    np.testing.assert_allclose(ions.intensity, true, rtol=1e-9)
 
 
 def test_correction_is_non_negative() -> None:
@@ -209,6 +289,23 @@ def test_bad_impurities_raise() -> None:
         correct_isotope_impurities(np.ones(10), np.eye(6))
     with pytest.raises(SpxtacularError, match="needs plex"):
         correct_isotope_impurities(np.ones(10), LOT_SHEET)
+    with pytest.raises(TypeError):
+        correct_isotope_impurities(np.ones(10), LOT_SHEET, "TMT10")  # ty: ignore[too-many-positional-arguments]
+
+
+def test_overlap_error_suggests_tolerance() -> None:
+    with pytest.raises(SpxtacularError, match=r"below 24\.\d+ ppm"):
+        extract_reporter_ions(_reporter_spectrum(), "TMT10", tolerance=30.0)
+    with pytest.raises(SpxtacularError, match=r"below 0\.00316\d* da"):
+        extract_reporter_ions(_reporter_spectrum(), "TMT10", tolerance=0.004, tolerance_unit="da")
+    assert extract_reporter_ions(_reporter_spectrum(), "TMT10", tolerance=24.0).found.all()
+
+
+def test_non_finite_intensity_raises() -> None:
+    for bad in (np.nan, np.inf):
+        spectrum = _spectrum([TMT10.reporter_mzs[0], 500.0], [bad, 1.0])
+        with pytest.raises(SpxtacularError, match="finite"):
+            extract_reporter_ions(spectrum, "TMT10")
 
 
 # ---------------------------------------------------------------------------
@@ -259,3 +356,12 @@ def test_reader_like_object_reads_ms2() -> None:
 
     table = reporter_ion_table(FakeReader(), "TMT10")
     assert len(table) == 1
+
+    class IterableReader(FakeReader):
+        def __iter__(self):
+            yield MsnSpectrum(np.array([100.0]), np.array([1.0]), ms_level=1)
+            yield from self.ms2
+
+    table = reporter_ion_table(IterableReader(), "TMT10")
+    assert len(table) == 1
+    assert list(table["ms_level"]) == [2]

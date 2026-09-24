@@ -421,18 +421,21 @@ extract_reporter_ions(spectrum, plex, *, tolerance=20.0, tolerance_unit="ppm",
 reporter_ion_table(spectra_or_reader, plex, *, tolerance=20.0, tolerance_unit="ppm", impurities=None,
                    normalize=None, ms_level=None, include_errors=False) -> pd.DataFrame
 isotope_correction_matrix(plex, impurities) -> NDArray   # M, observed = M @ true
-correct_isotope_impurities(intensities, matrix_or_lot, plex=None) -> NDArray   # NNLS, never negative
+correct_isotope_impurities(intensities, matrix_or_lot, *, plex=None) -> NDArray   # NNLS, never negative
 ```
 - Per channel the most intense peak within the window is used; missing channels are intensity
-  0.0 with `observed_mz`/errors NaN. Windows that would overlap raise `SpxtacularError`.
+  0.0 with `observed_mz`/errors NaN. Windows that would overlap, NaN/inf intensities and
+  decharged spectra raise `SpxtacularError`.
 - `ReporterIons`: `plex`, `channels`, `reporter_mz`, `intensity`, `raw_intensity`, `observed_mz`,
   `found`, `mz_error`, `ppm_error`, `ions["127N"]`, `to_dict()`.
 - Table columns: `spectrum_index`, `scan_number`, `native_id`, `ms_level`, `rt`, one per channel
-  (`"126"`, `"127N"`, ...), plus `<channel>_ppm_error` with `include_errors=True`. A reader
-  object is read through its `.ms2`; for SPS-MS3 pass MS3 spectra with `ms_level=3`.
+  (`"126"`, `"127N"`, ...), plus `<channel>_ppm_error` with `include_errors=True`. Any object
+  with `.ms2` (a reader) is read through `.ms2`; for SPS-MS3 pass `iter(reader)` with `ms_level=3`.
 - `impurities=` is the lot sheet `{"126": {"-2": 0, "-1": 0, "+1": 7.0, "+2": 0.2}, ...}` (or a
-  DataFrame, channels x shifts; shifts are 13C counts or labels like "-13C", "+15N"), in
-  percent, or a square matrix. `normalize="sum"|"max"` is applied after correction.
+  DataFrame, channels x shifts), in percent, or a square matrix. Numeric shifts are always 13C
+  counts; 15N impurities of N channels need "-15N"/"+15N" labels. A main-peak column ("0",
+  "main", "reporter") is ignored. An impurity counts on a channel within min(0.02 Da, half the
+  smallest channel spacing), ~3.2 mDa for TMT10/11/TMTpro, else it only lowers the diagonal. `normalize="sum"|"max"` is applied after correction.
 
 Unit helpers: `da_to_ppm(delta_mz, mz) -> float`, `ppm_to_da(delta_ppm, mz) -> float`
 (`da_to_ppm(0.001, 1000.0) == 1.0`).
