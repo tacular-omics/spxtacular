@@ -13,8 +13,7 @@ Dittwald et al. (2014), BRAIN 2.0, doi:10.1007/s13361-013-0796-5.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import KW_ONLY, dataclass, field
 from functools import cache, lru_cache
 from math import ceil, floor, sqrt
 from types import MappingProxyType
@@ -22,6 +21,9 @@ from typing import Any, Final
 
 import numpy as np
 from numpy.typing import NDArray
+
+from .enums import _SpxEnum
+from .errors import SpxtacularError
 
 MAX_ISOTOPE_PEAKS: Final[int] = 32
 
@@ -46,7 +48,7 @@ NATURAL_ISOTOPE_ABUNDANCES: Final[dict[str, tuple[tuple[int, float], ...]]] = {
 }
 
 
-class IsotopeModelType(StrEnum):
+class IsotopeModelType(_SpxEnum):
     """Built-in average-composition models."""
 
     PEPTIDE = "peptide"
@@ -69,27 +71,29 @@ def _canonical_abundances(
     for raw_element, raw_pattern in abundances.items():
         element = str(raw_element)
         if not raw_pattern:
-            raise ValueError(f"isotope_abundances[{element!r}] cannot be empty")
+            raise SpxtacularError(f"isotope_abundances[{element!r}] cannot be empty")
 
         pattern: list[tuple[int, float]] = []
         for raw_offset, raw_abundance in raw_pattern.items():
             offset = int(raw_offset)
             abundance = float(raw_abundance)
             if offset < 0:
-                raise ValueError(f"isotope offsets must be non-negative, got {offset} for {element}")
+                raise SpxtacularError(f"isotope offsets must be non-negative, got {offset} for {element}")
             if abundance < 0.0 or not np.isfinite(abundance):
-                raise ValueError(f"isotope abundances must be finite and non-negative, got {abundance} for {element}")
+                raise SpxtacularError(
+                    f"isotope abundances must be finite and non-negative, got {abundance} for {element}"
+                )
             if abundance > 0.0:
                 pattern.append((offset, abundance))
 
         total = sum(abundance for _, abundance in pattern)
         if total <= 0.0:
-            raise ValueError(f"isotope_abundances[{element!r}] must contain a positive abundance")
+            raise SpxtacularError(f"isotope_abundances[{element!r}] must contain a positive abundance")
         merged: dict[int, float] = {}
         for offset, abundance in pattern:
             merged[offset] = merged.get(offset, 0.0) + abundance / total
         if merged.get(0, 0.0) <= 0.0:
-            raise ValueError(f"isotope_abundances[{element!r}] must include a positive offset-0 isotope")
+            raise SpxtacularError(f"isotope_abundances[{element!r}] must include a positive offset-0 isotope")
         canonical.append((element, tuple(sorted(merged.items()))))
     return tuple(sorted(canonical))
 
@@ -100,9 +104,9 @@ def _canonical_counts(values: Mapping[str, int | float], *, integer: bool) -> tu
         element = str(raw_element)
         count = int(raw_count) if integer else float(raw_count)
         if not np.isfinite(count) or count < 0:
-            raise ValueError(f"element counts must be finite and non-negative, got {raw_count!r} for {element}")
+            raise SpxtacularError(f"element counts must be finite and non-negative, got {raw_count!r} for {element}")
         if integer and count != raw_count:
-            raise ValueError(f"fixed composition counts must be integers, got {raw_count!r} for {element}")
+            raise SpxtacularError(f"fixed composition counts must be integers, got {raw_count!r} for {element}")
         if count:
             canonical.append((element, count))
     return tuple(sorted(canonical))
@@ -121,7 +125,7 @@ def _element_log_coefficients(pattern: tuple[tuple[int, float], ...], max_isotop
     """Compile one element polynomial into BRAIN recurrence coefficients."""
     base = dict(pattern).get(0, 0.0)
     if base <= 0.0:
-        raise ValueError("the offset-0 isotope abundance must be positive")
+        raise SpxtacularError("the offset-0 isotope abundance must be positive")
 
     ratio = np.zeros(max_isotopes, dtype=np.float64)
     ratio[0] = 1.0
@@ -140,6 +144,7 @@ def _element_log_coefficients(pattern: tuple[tuple[int, float], ...], max_isotop
 
 def brain_isotopic_distribution(
     composition: Mapping[str, int],
+    *,
     max_isotopes: int = MAX_ISOTOPE_PEAKS,
     isotope_abundances: IsotopeAbundances | None = None,
 ) -> NDArray[np.float64]:
@@ -149,7 +154,7 @@ def brain_isotopic_distribution(
     sum to one over the requested window.
     """
     if max_isotopes < 1:
-        raise ValueError(f"max_isotopes must be positive, got {max_isotopes}")
+        raise SpxtacularError(f"max_isotopes must be positive, got {max_isotopes}")
     counts = _canonical_counts(composition, integer=True)
     abundance_signature = _canonical_abundances(isotope_abundances)
     return np.asarray(_brain_distribution_cached(counts, abundance_signature, max_isotopes), dtype=np.float64)
@@ -168,7 +173,7 @@ def _brain_distribution_cached(
         try:
             pattern = patterns[element]
         except KeyError as exc:
-            raise ValueError(
+            raise SpxtacularError(
                 f"no isotope abundances are available for {element!r}; provide isotope_abundances for that element"
             ) from exc
         aggregate_log += count * np.asarray(_element_log_coefficients(pattern, max_isotopes))
@@ -200,6 +205,7 @@ class IsotopeModel:
     """
 
     atoms_per_da: Mapping[str, float]
+    _: KW_ONLY
     fixed_composition: Mapping[str, int] = field(default_factory=dict)
     isotope_abundances: IsotopeAbundances | None = None
     name: str = "custom"
@@ -216,12 +222,12 @@ class IsotopeModel:
         known = _patterns_for_signature(abundances)
         for element, _ in (*rates, *fixed):
             if element not in known:
-                raise ValueError(
+                raise SpxtacularError(
                     f"no isotope abundances are available for {element!r}; provide isotope_abundances for that element"
                 )
         for element, _ in fixed:
             if element not in _MONOISOTOPIC_MASS:
-                raise ValueError(f"no monoisotopic mass is available for fixed element {element!r}")
+                raise SpxtacularError(f"no monoisotopic mass is available for fixed element {element!r}")
 
         object.__setattr__(self, "atoms_per_da", MappingProxyType(dict(rates)))
         object.__setattr__(self, "fixed_composition", MappingProxyType(dict(fixed)))
@@ -241,7 +247,7 @@ class IsotopeModel:
         """Estimate an integer elemental composition for ``neutral_mass``."""
         mass = float(neutral_mass)
         if not np.isfinite(mass) or mass < 0.0:
-            raise ValueError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
+            raise SpxtacularError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
         scalable_mass = max(0.0, mass - self.fixed_mass)
         composition = {element: floor(rate * scalable_mass + 0.5) for element, rate in self.atoms_per_da.items()}
         for element, count in self.fixed_composition.items():
@@ -252,15 +258,16 @@ class IsotopeModel:
         """Return the cached envelope for the nearest integer Dalton."""
         mass = float(neutral_mass)
         if not np.isfinite(mass) or mass < 0.0:
-            raise ValueError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
+            raise SpxtacularError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
         if max_isotopes < 1:
-            raise ValueError(f"max_isotopes must be positive, got {max_isotopes}")
+            raise SpxtacularError(f"max_isotopes must be positive, got {max_isotopes}")
         nominal_mass = floor(mass + 0.5)
         return np.asarray(_model_distribution_cached(self._signature, nominal_mass, max_isotopes), dtype=np.float64)
 
     def adaptive_distribution(
         self,
         neutral_mass: float,
+        *,
         min_relative_abundance: float = 0.01,
         max_isotopes: int | None = None,
     ) -> NDArray[np.float64]:
@@ -273,12 +280,12 @@ class IsotopeModel:
         """
         mass = float(neutral_mass)
         if not np.isfinite(mass) or mass < 0.0:
-            raise ValueError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
+            raise SpxtacularError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
         threshold = float(min_relative_abundance)
         if not np.isfinite(threshold) or not 0.0 < threshold <= 1.0:
-            raise ValueError(f"min_relative_abundance must be in (0, 1], got {min_relative_abundance!r}")
+            raise SpxtacularError(f"min_relative_abundance must be in (0, 1], got {min_relative_abundance!r}")
         if max_isotopes is not None and max_isotopes < 1:
-            raise ValueError(f"max_isotopes must be positive or None, got {max_isotopes}")
+            raise SpxtacularError(f"max_isotopes must be positive or None, got {max_isotopes}")
         nominal_mass = floor(mass + 0.5)
         return np.asarray(
             _adaptive_model_distribution_cached(self._signature, nominal_mass, threshold, max_isotopes),
@@ -486,7 +493,7 @@ def resolve_isotope_model(model: IsotopeModelLike = IsotopeModelType.PEPTIDE) ->
         return ISOTOPE_MODELS[IsotopeModelType(value)]
     except ValueError as exc:
         valid = ", ".join(item.value for item in IsotopeModelType)
-        raise ValueError(f"unknown isotope model {model!r}; expected one of {valid}, or an IsotopeModel") from exc
+        raise SpxtacularError(f"unknown isotope model {model!r}; expected one of {valid}, or an IsotopeModel") from exc
 
 
 __all__ = [

@@ -24,7 +24,7 @@ under the key ``"iso_score"`` (encoded as a non-standard mzML binary array,
 ``MS:1000786``). spxtacular-specific scalar fields without an mzML
 counterpart — ``denoised``/``normalized`` provenance strings,
 ``scan_number``, ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-``isolation_im_range``, and each precursor's ``is_monoisotopic`` — are carried
+``isolation_ook0_range``, and each precursor's ``is_monoisotopic`` — are carried
 losslessly as namespaced free-text ``user_params`` (``spxtacular:`` prefix), so
 the round-trip is faithful.
 
@@ -51,6 +51,7 @@ import numpy as np
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
+from .errors import SpxtacularError
 from .ionization import DeconvolutionProvenance
 
 if TYPE_CHECKING:
@@ -169,6 +170,7 @@ _ANALYZER_ACCESSIONS: dict[str, str] = {
     Analyzer.MAGNETIC_SECTOR: "MS:1000080",
     Analyzer.ELECTROSTATIC_ENERGY_ANALYZER: "MS:1000254",
 }
+_ANALYZER_NAMES: dict[str, Analyzer] = {v: Analyzer(k) for k, v in _ANALYZER_ACCESSIONS.items()}
 
 # Ion-mobility array accessions recognized by spectrl's generated CV registry.
 # Keyed by :class:`spxtacular.enums.IMType` members where one exists; the extra
@@ -188,7 +190,7 @@ _IM_TYPE_ACCESSIONS: dict[str, str] = {
 # Reverse lookup for decoding (covers raw/mean/deconvoluted variants). Note that
 # MS:1003007 is the *generic* raw ion mobility array, not CCS — a foreign token
 # carrying it says nothing about the units beyond "ion mobility".
-_IM_TYPE_FROM_ACCESSION: dict[str, str] = {
+_IM_TYPE_FROM_ACCESSION: dict[str, IMType] = {
     "MS:1003008": IMType.OOK0,  # raw inverse reduced ion mobility (1/K0)
     "MS:1003006": IMType.OOK0,  # mean inverse reduced ion mobility
     "MS:1003155": IMType.OOK0,  # deconvoluted inverse reduced ion mobility
@@ -206,6 +208,16 @@ _IM_TYPE_FROM_ACCESSION: dict[str, str] = {
 _PRECURSOR_IM_ACCESSIONS: frozenset[str] = frozenset(
     {_SELECTED_ION_OOK0, _SELECTED_ION_DRIFT_TIME} | set(_IM_TYPE_FROM_ACCESSION)
 )
+
+
+def _precursor_im_type(accession: str) -> IMType | None:
+    """Ion-mobility unit implied by a selected-ion (or legacy array) accession."""
+    if accession == _SELECTED_ION_OOK0:
+        return IMType.OOK0
+    if accession == _SELECTED_ION_DRIFT_TIME:
+        return IMType.DRIFT_TIME_MS
+    return _IM_TYPE_FROM_ACCESSION.get(accession)
+
 
 _POLARITY_FROM_ACCESSION: dict[str, Polarity] = {
     _POSITIVE: Polarity.POSITIVE,
@@ -312,7 +324,7 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     spxtacular scalar fields without an mzML CV counterpart —
     ``denoised``/``normalized`` provenance strings, ``scan_number``,
     ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-    ``isolation_im_range``, and each precursor's ``is_monoisotopic`` — are
+    ``isolation_ook0_range``, and each precursor's ``is_monoisotopic`` — are
     carried losslessly as namespaced free-text ``user_params`` (see the
     ``spxtacular:`` prefixed names above).
     """
@@ -411,13 +423,21 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
                     ]
                 )
 
-            ion_params = [_cv(_SELECTED_ION_MZ, value=float(prec.mz))]
+            ion_params = [_cv(_SELECTED_ION_MZ, value=float(prec.precursor_mz))]
             if prec.charge is not None:
                 ion_params.append(_cv(_CHARGE_STATE, value=int(prec.charge)))
             if prec.intensity is not None and prec.intensity != 0.0:
                 ion_params.append(_cv(_PEAK_INTENSITY, value=float(prec.intensity)))
             if prec.im is not None:
-                ion_params.append(_cv(precursor_im_accession, value=float(prec.im)))
+                accession = precursor_im_accession
+                if prec.im_type is not None:
+                    prec_im_key = str(prec.im_type).lower()
+                    accession = (
+                        _SELECTED_ION_DRIFT_TIME
+                        if prec_im_key in ("drift_time", IMType.DRIFT_TIME_MS)
+                        else _SELECTED_ION_OOK0
+                    )
+                ion_params.append(_cv(accession, value=float(prec.im)))
             selected_ion = SpectrlSelectedIon(params=ion_params)
 
             activation: SpectrlActivation | None = None
@@ -487,8 +507,8 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             lo, hi = msn_spec.im_range
             user_params.append(_up(_UP_IM_RANGE_LO, float(lo)))
             user_params.append(_up(_UP_IM_RANGE_HI, float(hi)))
-        if msn_spec.isolation_im_range is not None:
-            lo, hi = msn_spec.isolation_im_range
+        if msn_spec.isolation_ook0_range is not None:
+            lo, hi = msn_spec.isolation_ook0_range
             user_params.append(_up(_UP_ISOL_IM_RANGE_LO, float(lo)))
             user_params.append(_up(_UP_ISOL_IM_RANGE_HI, float(hi)))
         if msn_spec.im_type is not None:
@@ -581,7 +601,7 @@ def _mobility_array(decoded: DecodedSpectrum) -> tuple[str | None, np.ndarray | 
     if len(mobility_arrays) > 1:
         accessions = ", ".join(sorted(mobility_arrays))
         message = "cannot convert multiple spectrl ion-mobility arrays to one spxtacular im array"
-        raise ValueError(f"{message}: {accessions}")
+        raise SpxtacularError(f"{message}: {accessions}")
     if not mobility_arrays:
         return None, None
     accession, values = next(iter(mobility_arrays.items()))
@@ -603,7 +623,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
     spxtacular scalar fields carried as namespaced ``user_params`` —
     ``denoised``/``normalized`` (also restored on a plain :class:`Spectrum`),
     ``scan_number``, ``resolution``, ``analyzer``, ``ramp_time``, ``im_range``,
-    ``isolation_im_range``, per-precursor ``is_monoisotopic`` — are restored
+    ``isolation_ook0_range``, per-precursor ``is_monoisotopic`` — are restored
     too; the MSn-only ones force an :class:`MsnSpectrum` even when no other MSn
     metadata is present.
     """
@@ -647,7 +667,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
                 raise TypeError("expected a JSON object")
             deconvolution = DeconvolutionProvenance.from_dict(deconvolution_data)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ValueError("invalid spxtacular deconvolution provenance in spectrl token") from exc
+            raise SpxtacularError("invalid spxtacular deconvolution provenance in spectrl token") from exc
 
     # Detect whether any MSn metadata is present
     ms_level_p = _find_param(decoded.params, _MS_LEVEL)
@@ -736,16 +756,19 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
                 )
                 prec_charge = int(charge_p.value) if charge_p is not None and charge_p.value is not None else None
                 prec_im: float | None = None
+                prec_im_type: IMType | None = None
                 for p in ion.params:
                     if p.accession in _PRECURSOR_IM_ACCESSIONS and p.value is not None:
                         prec_im = float(p.value)
+                        prec_im_type = _precursor_im_type(p.accession)
                         break
                 precursors.append(
                     Precursor(
-                        mz=float(mz_p.value),
+                        precursor_mz=float(mz_p.value),
                         intensity=prec_intensity,
                         charge=prec_charge,
                         im=prec_im,
+                        im_type=prec_im_type,
                         is_monoisotopic=is_monoisotopic,
                     )
                 )
@@ -790,7 +813,11 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
     ramp_time_v = up.get(_UP_RAMP_TIME)
     ramp_time = float(ramp_time_v) if ramp_time_v is not None else None
     im_range = _range_from_user_params(up, _UP_IM_RANGE_LO, _UP_IM_RANGE_HI)
-    isolation_im_range = _range_from_user_params(up, _UP_ISOL_IM_RANGE_LO, _UP_ISOL_IM_RANGE_HI)
+    isolation_ook0_range = _range_from_user_params(up, _UP_ISOL_IM_RANGE_LO, _UP_ISOL_IM_RANGE_HI)
+    if isolation_ook0_range is not None:
+        # Tokens from 0.8 carry Bruker windows as (high, low); 0.9 uses (low, high).
+        lo, hi = sorted(isolation_ook0_range)
+        isolation_ook0_range = (lo, hi)
 
     return MsnSpectrum(
         mz=mz,
@@ -819,7 +846,7 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
         analyzer=analyzer,
         ramp_time=ramp_time,
         im_range=im_range,
-        isolation_im_range=isolation_im_range,
+        isolation_ook0_range=isolation_ook0_range,
     )
 
 
@@ -841,8 +868,8 @@ def from_spectrl_token(token: str) -> Spectrum | MsnSpectrum:
 
 def to_spectrl_url(
     spec: Spectrum,
-    base: str | None = None,
     *,
+    base: str | None = None,
     mode: str = "fragment",
     param: str = "d",
     lossless: bool = False,
@@ -872,9 +899,9 @@ def to_spectrl_url(
 
     # Validate before the (potentially expensive) encode so bad args fail fast.
     if mode not in ("fragment", "query", "data"):
-        raise ValueError(f"unknown mode {mode!r}; expected 'fragment', 'query', or 'data'")
+        raise SpxtacularError(f"unknown mode {mode!r}; expected 'fragment', 'query', or 'data'")
     if mode != "data" and base is None:
-        raise ValueError(f"base URL is required for mode={mode!r}")
+        raise SpxtacularError(f"base URL is required for mode={mode!r}")
 
     token = to_spectrl_token(spec, lossless=lossless, max_len=max_len)
     if mode == "data":

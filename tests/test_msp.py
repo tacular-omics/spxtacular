@@ -71,7 +71,7 @@ def test_nist_peptide_dialect(two_dialects):
     np.testing.assert_array_equal(spec.intensity, [1200.5, 8000.0, 950.25])
     assert spec.precursors is not None
     prec = spec.precursors[0]
-    assert prec.mz == 216.1343  # Comment Parent=
+    assert prec.precursor_mz == 216.1343  # Comment Parent=
     assert prec.charge == 2  # Comment Charge= (agrees with the Name suffix)
     assert spec.collision_energy == 35.0  # Comment CE=
     assert spec.rt == 1823.4  # Comment RT=, verbatim
@@ -93,7 +93,7 @@ def test_mona_metabolomics_dialect(two_dialects):
     assert spec.native_id == "Aspirin"
     assert spec.precursors is not None
     prec = spec.precursors[0]
-    assert prec.mz == 181.0495
+    assert prec.precursor_mz == 181.0495
     assert prec.charge is None
     assert spec.polarity == Polarity.POSITIVE  # IONMODE
     assert spec.rt == 5.43  # verbatim — no unit guessing
@@ -114,7 +114,7 @@ def test_key_normalisation_across_spellings(tmp_path):
     path.write_text("Name: X\nPrecursor_mz: 100.5\nRetention_Time: 12.0\nnum peaks: 1\n50.0 1.0\n")
     spec = MspReader(path)[0]
     assert spec.precursors is not None
-    assert spec.precursors[0].mz == 100.5
+    assert spec.precursors[0].precursor_mz == 100.5
     assert spec.rt == 12.0
 
 
@@ -254,7 +254,7 @@ def _library_spectrum() -> MsnSpectrum:
         rt=1823.4,
         polarity=Polarity.POSITIVE,
         collision_energy=35.0,
-        precursors=[Precursor(mz=216.13435678, intensity=0.0, charge=2, is_monoisotopic=None)],
+        precursors=[Precursor(precursor_mz=216.13435678, intensity=0.0, charge=2, is_monoisotopic=None)],
     )
 
 
@@ -266,7 +266,7 @@ def test_round_trip_is_bit_exact(tmp_path):
     np.testing.assert_array_equal(restored.intensity, original.intensity)
     assert restored.native_id == original.native_id
     assert restored.precursors is not None and original.precursors is not None
-    assert restored.precursors[0].mz == original.precursors[0].mz
+    assert restored.precursors[0].precursor_mz == original.precursors[0].precursor_mz
     assert restored.precursors[0].charge == 2
     assert restored.polarity == Polarity.POSITIVE
     assert restored.rt == original.rt

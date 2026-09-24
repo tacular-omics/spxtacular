@@ -372,7 +372,7 @@ class TestSequenceCoverage:
     def _matched(self, peptide: str):
         import peptacular as pt
 
-        frags = pt.fragment(peptide, ion_types="by", charges=[1])
+        frags = pt.fragment(peptide, ion_types=("b", "y"), charges=[1])
         mz = np.sort(np.array([f.mz for f in frags]))
         spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
         return spec, frags
@@ -411,7 +411,7 @@ class TestPrecursorMarker:
             mz=np.array([100.0, 200.0, 300.0]),
             intensity=np.array([1e4, 5e4, 2e4]),
             ms_level=2,
-            precursors=[Precursor(mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+            precursors=[Precursor(precursor_mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
             isolation_mz_range=(248.0, 252.0),
         )
 
@@ -435,7 +435,7 @@ class TestPrecursorMarker:
             mz=np.array([100.0, 200.0]),
             intensity=np.array([1.0, 2.0]),
             polarity="negative",
-            precursors=[Precursor(mz=250.0, intensity=1e6, charge=-2, is_monoisotopic=True)],
+            precursors=[Precursor(precursor_mz=250.0, intensity=1e6, charge=-2, is_monoisotopic=True)],
         )
 
         fig = plot_spectrum(spec)
@@ -468,7 +468,7 @@ class TestTableViewAndTexture:
     def test_texture_gives_each_ion_series_its_own_dash(self) -> None:
         import peptacular as pt
 
-        frags = pt.fragment("PEPTIDEK", ion_types="by", charges=[1])
+        frags = pt.fragment("PEPTIDEK", ion_types=("b", "y"), charges=[1])
         mz = np.sort(np.array([f.mz for f in frags]))
         spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
         table = build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_type="da", texture=True)
@@ -550,7 +550,7 @@ class TestDegenerateInputs:
     def test_all_zero_intensity_does_not_raise(self) -> None:
         import peptacular as pt
 
-        frags = pt.fragment("PEPTIDE", ion_types="by", charges=[1])
+        frags = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=[1])
         spec = Spectrum(
             mz=np.sort(np.array([f.mz for f in frags])),
             intensity=np.zeros(len(frags)),
@@ -684,13 +684,13 @@ class TestProfileCentroidOverlay:
     def test_centroids_are_computed_when_not_supplied(self) -> None:
         spec = _profile()
         auto = profile_centroid_plot(spec)
-        explicit = profile_centroid_plot(spec, spec.centroid())
+        explicit = profile_centroid_plot(spec, centroids=spec.centroid())
         assert auto.layout.title.text == explicit.layout.title.text
 
     def test_supplied_centroids_are_used_verbatim(self) -> None:
         spec = _profile()
         picked = spec.centroid().filter(min_intensity=5e3)
-        fig = profile_centroid_plot(spec, picked)
+        fig = profile_centroid_plot(spec, centroids=picked)
         stick = next(t for t in fig.data if t.name == "centroids")
         # Three coordinates per stick (base, tip, separator).
         assert len(stick.x) == 3 * len(picked)
@@ -792,7 +792,7 @@ class TestImColouring:
             intensity=np.array([1e4, 5e4, 2e4]),
             im=np.array([0.8, 1.0, 1.2]),
             ms_level=2,
-            precursors=[Precursor(mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+            precursors=[Precursor(precursor_mz=250.0, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
             isolation_mz_range=(248.0, 252.0),
         )
         fig = plot_spectrum(spec, color="im")
@@ -814,7 +814,7 @@ class TestMassErrorPlot:
 
         frags = []
         for pep in ("PEPTIDEKPEPTIDEK", "SAMPLERSAMPLERAK", "ELVISLIVESKELVIS")[: max(1, n_peptides // 6)]:
-            frags += pt.fragment(pep, ion_types="by", charges=[1, 2])
+            frags += pt.fragment(pep, ion_types=("b", "y"), charges=[1, 2])
         mz = np.sort(np.array([f.mz for f in frags]))
         spec = Spectrum(mz=mz, intensity=np.linspace(1e3, 1e5, len(mz)))
         return spec, frags
@@ -873,8 +873,8 @@ class TestMassErrorPlot:
         fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
         assert list(fig.data[0].y) == list(ref.data[0].y)
         assert fig.layout.yaxis.title.text == f"Error ({want})"
-        facet = facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
-        facet_ref = facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=want)
+        facet = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=unit)
+        facet_ref = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=want)
         assert list(facet.data[-1].y) == list(facet_ref.data[-1].y)
         assert facet.layout.yaxis2.title.text == f"Error ({want})"
 
@@ -883,7 +883,7 @@ class TestMassErrorPlot:
         with pytest.raises(ValueError, match="unit"):
             mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit="mDa")
         with pytest.raises(ValueError, match="unit"):
-            facet_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit="mDa")
+            facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit="mDa")
 
     def test_the_empty_figure_keeps_the_error_unit(self) -> None:
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))

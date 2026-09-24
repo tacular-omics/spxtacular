@@ -68,7 +68,7 @@ def _basic_msn() -> MsnSpectrum:
         collision_energy=28.0,
         activation_type="HCD",
         total_ion_current=1.234e6,
-        precursors=[Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True)],
+        precursors=[Precursor(precursor_mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True)],
         isolation_mz_range=(498.75, 501.75),
     )
 
@@ -138,12 +138,14 @@ def test_to_inline_activation_raw_accession_emitted_as_cv() -> None:
         intensity=np.array([10.0, 20.0], dtype=np.float64),
         ms_level=2,
         activation_type="MS:1002481",  # beam-type CID (Bruker PASEF), as DReader writes
-        precursors=[Precursor(mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
+        precursors=[Precursor(precursor_mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
     )
     inline = to_inline_spectrum(msn)
     activation = inline.precursors[0].activation
     assert activation is not None
-    assert "MS:1002481" in {p.accession for p in activation.params}
+    # The accession is canonicalised to ActivationType.HCD, written as its CV term.
+    assert msn.activation_type == "HCD"
+    assert {"MS:1002481", "MS:1000422"} & {p.accession for p in activation.params}
 
 
 def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
@@ -155,7 +157,7 @@ def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:
         ms_level=2,
         collision_energy=25.0,
         activation_type="MyCustomActivation",
-        precursors=[Precursor(mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
+        precursors=[Precursor(precursor_mz=500.0, intensity=8000.0, charge=2, is_monoisotopic=True)],
     )
     inline = to_inline_spectrum(msn)
     activation = inline.precursors[0].activation
@@ -205,7 +207,7 @@ def test_token_roundtrip_msn_spectrum() -> None:
     assert restored.isolation_mz_range == pytest.approx((498.75, 501.75))
     assert restored.precursors is not None and len(restored.precursors) == 1
     prec = restored.precursors[0]
-    assert prec.mz == pytest.approx(500.25)
+    assert prec.precursor_mz == pytest.approx(500.25)
     assert prec.charge == 2
     assert prec.intensity == pytest.approx(8000.0)
 
@@ -214,7 +216,7 @@ def test_token_roundtrip_msn_spectrum() -> None:
 def test_monoisotopic_flag_written_as_int_and_roundtrips(flag: bool) -> None:
     """spectrl 3 rejects boolean parameter values, so the flag travels as 0/1."""
     spec = _basic_msn()
-    spec.precursors = [Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=flag)]
+    spec.precursors = [Precursor(precursor_mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=flag)]
     inline = to_inline_spectrum(spec)
     [param] = [p for p in inline.user_params if p.name == f"{_UP_PREC_MONOISOTOPIC}.0"]
     assert type(param.value) is int and param.value == int(flag)
@@ -354,7 +356,7 @@ def test_msn_scalar_fields_roundtrip_via_user_params() -> None:
         analyzer="FTMS",
         ramp_time=100.0,
         im_range=(0.6, 1.4),
-        isolation_im_range=(0.9, 1.1),
+        isolation_ook0_range=(0.9, 1.1),
         denoised="mad",
         normalized="tic",
     )
@@ -365,7 +367,7 @@ def test_msn_scalar_fields_roundtrip_via_user_params() -> None:
     assert restored.analyzer == "FTMS"
     assert restored.ramp_time == pytest.approx(100.0)
     assert restored.im_range == pytest.approx((0.6, 1.4))
-    assert restored.isolation_im_range == pytest.approx((0.9, 1.1))
+    assert restored.isolation_ook0_range == pytest.approx((0.9, 1.1))
     assert restored.denoised == "mad"
     assert restored.normalized == "tic"
 
@@ -420,7 +422,7 @@ def test_monoisotopic_flag_keyed_by_precursor_not_selected_ion_count() -> None:
     assert isinstance(restored, MsnSpectrum)
     assert restored.precursors is not None
     # both ions of precursor 0 take precursor 0's flag; precursor 1 keeps its own
-    assert [p.mz for p in restored.precursors] == [500.0, 501.0, 700.0]
+    assert [p.precursor_mz for p in restored.precursors] == [500.0, 501.0, 700.0]
     assert [p.is_monoisotopic for p in restored.precursors] == [False, False, True]
 
 
@@ -440,7 +442,7 @@ def test_monoisotopic_flag_survives_skipped_selected_ion() -> None:
     restored = from_decoded_spectrum(decoded)
     assert isinstance(restored, MsnSpectrum)
     assert restored.precursors is not None and len(restored.precursors) == 1
-    assert restored.precursors[0].mz == pytest.approx(700.0)
+    assert restored.precursors[0].precursor_mz == pytest.approx(700.0)
     assert restored.precursors[0].is_monoisotopic is True
 
 
@@ -448,8 +450,8 @@ def test_monoisotopic_flag_roundtrips_for_own_tokens() -> None:
     """The precursor-index keying must leave spxtacular's own round-trip intact."""
     spec = _basic_msn()
     spec.precursors = [
-        Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True),
-        Precursor(mz=700.5, intensity=4000.0, charge=3, is_monoisotopic=False),
+        Precursor(precursor_mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=True),
+        Precursor(precursor_mz=700.5, intensity=4000.0, charge=3, is_monoisotopic=False),
     ]
     restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
     assert isinstance(restored, MsnSpectrum)
@@ -539,7 +541,7 @@ def test_multiple_foreign_mobility_arrays_are_rejected() -> None:
 
 def test_url_fragment_roundtrip() -> None:
     spec = _basic_msn()
-    url = to_spectrl_url(spec, "https://example.com/view", lossless=True)
+    url = to_spectrl_url(spec, base="https://example.com/view", lossless=True)
     assert url.startswith("https://example.com/view#spectrl.v3.")
     restored = from_spectrl_url(url)
     assert isinstance(restored, MsnSpectrum)
@@ -548,7 +550,7 @@ def test_url_fragment_roundtrip() -> None:
 
 def test_url_query_roundtrip() -> None:
     spec = _basic_spectrum()
-    url = to_spectrl_url(spec, "https://example.com/view", mode="query", param="s", lossless=True)
+    url = to_spectrl_url(spec, base="https://example.com/view", mode="query", param="s", lossless=True)
     assert "s=spectrl.v3." in url
     restored = from_spectrl_url(url)
     np.testing.assert_allclose(restored.mz, spec.mz)
@@ -572,4 +574,4 @@ def test_url_requires_base_for_fragment_and_query() -> None:
 
 def test_url_rejects_unknown_mode() -> None:
     with pytest.raises(ValueError):
-        to_spectrl_url(_basic_spectrum(), "https://example.com", mode="bogus")
+        to_spectrl_url(_basic_spectrum(), base="https://example.com", mode="bogus")

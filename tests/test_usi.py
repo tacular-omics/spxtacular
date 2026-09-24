@@ -235,7 +235,7 @@ class TestFetchUsi:
             result = fetch_usi(USI)
         assert isinstance(result, MsnSpectrum)
         assert result.precursors is not None
-        assert result.precursors[0].mz == pytest.approx(500.25)
+        assert result.precursors[0].precursor_mz == pytest.approx(500.25)
         assert result.scan_number == 1
 
     def test_without_precursor_information_a_plain_spectrum_comes_back(self) -> None:

@@ -8,6 +8,7 @@ These do not require the optional ``spectrl`` extra: the accession dicts live in
 import re
 
 import numpy as np
+import pytest
 
 from spxtacular import (
     ActivationType,
@@ -15,6 +16,9 @@ from spxtacular import (
     IMType,
     MsnSpectrum,
     Polarity,
+    Precursor,
+    SpxtacularError,
+    ToleranceType,
 )
 from spxtacular.spectrl_bridge import (
     _ACTIVATION_ACCESSIONS,
@@ -67,12 +71,50 @@ def test_fields_accept_enum_members() -> None:
     assert spec.polarity == "negative"
 
 
-def test_fields_still_accept_raw_strings() -> None:
-    # Raw accessions (as DReader emits) and vendor shorthands must pass through.
-    spec = _spec(activation_type="MS:1002481", analyzer="TOF", im_type="1/k0")
-    assert spec.activation_type == "MS:1002481"
-    assert spec.analyzer == "TOF"
-    assert spec.im_type == "1/k0"
+def test_fields_canonicalise_known_strings() -> None:
+    # Known names (any case), PSI-MS accessions and aliases become members.
+    spec = _spec(activation_type="MS:1002481", analyzer="TOF", im_type="1/k0", polarity="Positive")
+    assert spec.activation_type is ActivationType.HCD
+    assert spec.analyzer is Analyzer.TOF
+    assert spec.im_type is IMType.OOK0
+    assert spec.polarity is Polarity.POSITIVE
+
+
+def test_open_vocabulary_fields_keep_unknown_strings() -> None:
+    # activation_type and analyzer are open: vendor terms pass through.
+    spec = _spec(activation_type="MS:1999999", analyzer="FTMS")
+    assert spec.activation_type == "MS:1999999"
+    assert spec.analyzer == "FTMS"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"im_type": "banana"},
+        {"polarity": "up"},
+        {"polarity": 1},
+        {"activation_type": ""},
+        {"activation_type": 3},
+        {"analyzer": "  "},
+    ],
+)
+def test_invalid_enum_like_fields_raise(kwargs) -> None:
+    with pytest.raises(SpxtacularError):
+        _spec(**kwargs)
+
+
+def test_precursor_im_type_is_validated() -> None:
+    assert Precursor(precursor_mz=1.0, im_type="OOK0").im_type is IMType.OOK0
+    with pytest.raises(SpxtacularError, match=r"Precursor\.im_type"):
+        Precursor(precursor_mz=1.0, im_type="banana")
+    with pytest.raises(SpxtacularError):
+        Precursor(precursor_mz=1.0, im_type=5)
+
+
+def test_enum_coercion_raises_spxtacular_error() -> None:
+    assert ToleranceType("PPM") is ToleranceType.PPM
+    with pytest.raises(SpxtacularError, match="expected one of 'da', 'ppm'"):
+        ToleranceType("ppb")
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +133,15 @@ def test_every_activation_member_has_accession() -> None:
 
 def test_every_analyzer_member_has_accession() -> None:
     assert set(_ANALYZER_ACCESSIONS) == set(Analyzer)
+
+
+def test_analyzer_accessions_map_to_members() -> None:
+    for member, accession in _ANALYZER_ACCESSIONS.items():
+        assert Analyzer.from_accession(accession) is member
+        assert _spec(analyzer=accession).analyzer is member
+    assert _spec(analyzer="MS:1000484").analyzer is Analyzer.ORBITRAP
+    # an accession without a member stays as given
+    assert Analyzer.from_accession("MS:9999999") == "MS:9999999"
 
 
 def test_every_im_type_member_resolves() -> None:

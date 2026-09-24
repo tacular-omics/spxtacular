@@ -42,7 +42,7 @@ def make_spectrum(
     if precursor_mz is not None:
         precursors = [
             Precursor(
-                mz=precursor_mz,
+                precursor_mz=precursor_mz,
                 intensity=precursor_intensity,
                 charge=charge,
                 im=None,
@@ -98,7 +98,7 @@ def test_mgf_round_trip_preserves_peaks_and_metadata(tmp_path):
         assert restored.scan_number == original.scan_number
         assert restored.rt == original.rt
         assert restored.precursors is not None
-        assert precursor(restored).mz == precursor(original).mz
+        assert precursor(restored).precursor_mz == precursor(original).precursor_mz
         assert precursor(restored).charge == precursor(original).charge
 
     # TITLE falls back to scan=N when the spectrum has no native_id.
@@ -145,8 +145,40 @@ def test_ms2_round_trip_preserves_peaks_and_metadata(tmp_path):
         assert restored.native_id == f"scan={original.scan_number}"
         # rt goes out as minutes, so it returns to within floating-point noise.
         assert restored.rt == pytest.approx(original.rt)
-        assert precursor(restored).mz == precursor(original).mz
+        assert precursor(restored).precursor_mz == precursor(original).precursor_mz
         assert precursor(restored).charge == precursor(original).charge
+
+
+def test_spectra_without_scan_number_use_position_and_keep_native_id(tmp_path):
+    """mzML ids such as Bruker frame= carry no unique scan number."""
+    native_ids = ["merged=1015 frame=1016 scanStart=655 scanEnd=679", "merged=1020 frame=1021"]
+    spectra = [make_spectrum(scan=None, native_id=native_id) for native_id in native_ids]
+
+    mgf = write_mgf(spectra, tmp_path / "out.mgf")
+    text = mgf.read_text()
+    assert "SCANS=" not in text
+    assert f"TITLE={native_ids[0]}\n" in text
+    read = list(MgfReader(mgf))
+    assert [s.scan_number for s in read] == [None, None]
+    assert [s.native_id for s in read] == native_ids
+
+    ms2 = write_ms2(spectra, tmp_path / "out.ms2")
+    assert f"I\tNativeID\t{native_ids[1]}\n" in ms2.read_text()
+    read = list(Ms2Reader(ms2))
+    assert [s.scan_number for s in read] == [1, 2]
+    assert [s.native_id for s in read] == native_ids
+
+
+def test_mgf_scans_only_for_real_scan_numbers(tmp_path):
+    """A position must not stand in for SCANS: it can collide with a real scan number."""
+    spectra = [
+        make_spectrum(scan=2),
+        make_spectrum(scan=None, native_id="merged=1015 frame=1016"),
+        Spectrum(mz=np.array([100.0]), intensity=np.array([1.0])),
+    ]
+    mgf = write_mgf(spectra, tmp_path / "mixed.mgf")
+    assert mgf.read_text().count("SCANS=") == 1
+    assert [s.scan_number for s in MgfReader(mgf)] == [2, None, None]
 
 
 def test_ms2_round_trip_optional_info_values(tmp_path):
@@ -207,7 +239,7 @@ def test_plain_spectrum_writes_without_metadata(tmp_path):
     restored = next(iter(Ms2Reader(ms2)))
     # An S line needs both: the position stands in for the scan, 0.0 for the m/z.
     assert restored.scan_number == 1
-    assert precursor(restored).mz == 0.0
+    assert precursor(restored).precursor_mz == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +275,7 @@ END IONS
     (spec,) = list(MgfReader(path))
 
     assert spec.native_id == "weird title with = signs and spaces"
-    assert precursor(spec).mz == 445.1234
+    assert precursor(spec).precursor_mz == 445.1234
     assert precursor(spec).intensity == 8000.0
     # Multi-charge values collapse to the first state.
     assert precursor(spec).charge == 2
@@ -309,7 +341,7 @@ Z	3	1333.35
     (spec,) = list(Ms2Reader(path))
 
     assert spec.scan_number == 1024
-    assert precursor(spec).mz == 445.1234
+    assert precursor(spec).precursor_mz == 445.1234
     # Several Z lines: the first charge state wins, the rest do not crash the parse.
     assert precursor(spec).charge == 2
     assert spec.rt == pytest.approx(630.0)  # RTime is minutes
@@ -417,7 +449,7 @@ END IONS
     assert len(spec) == 0
     assert spec.mz.dtype == np.float64
     assert spec.charge is None
-    assert precursor(spec).mz == 400.0
+    assert precursor(spec).precursor_mz == 400.0
 
 
 def test_ms2_empty_scan_yields_empty_spectrum(tmp_path):
@@ -433,7 +465,7 @@ Z	2	999.0
     )
     first, second = list(Ms2Reader(path))
     assert len(first) == 0
-    assert precursor(first).mz == 400.0
+    assert precursor(first).precursor_mz == 400.0
     assert len(second) == 1
 
 

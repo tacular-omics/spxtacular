@@ -2,7 +2,6 @@
 Additional coverage tests for spxtacular.core.
 """
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -500,14 +499,12 @@ def test_normalize_unknown_method_raises() -> None:
         spec.normalize(method=bad)
 
 
-def test_normalize_already_normalized_emits_warning() -> None:
+def test_normalize_twice_rescales_without_warning() -> None:
     spec = _spec()
     normed = spec.normalize(method="max")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        normed.normalize(method="max")
-        assert len(w) == 1
-        assert "already normalized" in str(w[0].message)
+    again = normed.normalize(method="tic")
+    assert again.normalized == "tic"
+    assert float(again.intensity.sum()) == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -515,14 +512,12 @@ def test_normalize_already_normalized_emits_warning() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_denoise_already_denoised_emits_warning() -> None:
+def test_denoise_already_denoised_is_a_silent_no_op() -> None:
     spec = _spec()
     denoised = spec.denoise(method="mad")
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        denoised.denoise(method="mad")
-        assert len(w) == 1
-        assert "already denoised" in str(w[0].message)
+    again = denoised.denoise(method="mad")  # filterwarnings=error: no warning
+    assert again is not denoised
+    np.testing.assert_array_equal(again.intensity, denoised.intensity)
 
 
 # ---------------------------------------------------------------------------
@@ -562,17 +557,14 @@ def test_centroid_clears_the_normalized_flag() -> None:
     assert float(renormalized.intensity.max()) == pytest.approx(1.0)
 
 
-def test_centroid_already_centroided_emits_warning() -> None:
+def test_centroid_already_centroided_is_a_silent_no_op() -> None:
     spec = Spectrum(
         mz=np.array([100.0, 200.0], dtype=np.float64),
         intensity=np.array([10.0, 20.0], dtype=np.float64),
         spectrum_type=SpectrumType.CENTROID,
     )
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        spec.centroid()
-        assert len(w) == 1
-        assert "already centroided" in str(w[0].message)
+    assert spec.centroid(inplace=True) is spec
+    np.testing.assert_array_equal(spec.centroid().mz, spec.mz)
 
 
 # ---------------------------------------------------------------------------

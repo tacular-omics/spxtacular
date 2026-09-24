@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import KW_ONLY, dataclass, field
 from typing import Any, Literal, Self
 
 import numpy as np
@@ -36,6 +36,7 @@ from numpy.typing import NDArray
 
 from .core import Spectrum
 from .enums import ToleranceLike, ToleranceType
+from .errors import SpxtacularError
 from .serialization import (
     CHROMATOGRAM_SCHEMA,
     JSON_SCHEMA_VERSION,
@@ -74,6 +75,7 @@ class Chromatogram:
 
     rt: NDArray[np.float64]
     intensity: NDArray[np.float64]
+    _: KW_ONLY
     label: str = ""
     mz: float | None = None
     tolerance: float | None = None
@@ -85,11 +87,11 @@ class Chromatogram:
         self.rt = np.asarray(self.rt, dtype=np.float64)
         self.intensity = np.asarray(self.intensity, dtype=np.float64)
         if self.rt.ndim != 1:
-            raise ValueError(f"rt array must be one-dimensional; got shape {self.rt.shape}")
+            raise SpxtacularError(f"rt array must be one-dimensional; got shape {self.rt.shape}")
         if self.intensity.ndim != 1:
-            raise ValueError(f"intensity array must be one-dimensional; got shape {self.intensity.shape}")
+            raise SpxtacularError(f"intensity array must be one-dimensional; got shape {self.intensity.shape}")
         if len(self.rt) != len(self.intensity):
-            raise ValueError("rt and intensity must have the same length")
+            raise SpxtacularError("rt and intensity must have the same length")
 
     def __len__(self) -> int:
         return len(self.rt)
@@ -124,7 +126,7 @@ class Chromatogram:
         rt = require_number_array_or_none(arrays["rt"], "payload.arrays.rt")
         intensity = require_number_array_or_none(arrays["intensity"], "payload.arrays.intensity")
         if rt is None or intensity is None:
-            raise ValueError("payload.arrays.rt and payload.arrays.intensity cannot be null")
+            raise SpxtacularError("payload.arrays.rt and payload.arrays.intensity cannot be null")
 
         metadata = require_mapping(data["metadata"], "payload.metadata")
         require_exact_keys(
@@ -175,14 +177,14 @@ def _rt_of(spectrum: Spectrum, index: int) -> float:
     rt = getattr(spectrum, "rt", None)
     value = float(rt) if rt is not None else float(index)
     if not np.isfinite(value):
-        raise ValueError(f"Spectrum {index} has a nonfinite retention time")
+        raise SpxtacularError(f"Spectrum {index} has a nonfinite retention time")
     return value
 
 
 def _time_metadata(present: list[bool]) -> dict[str, str]:
     """Keep missing-time scan indices distinct from retention times in seconds."""
     if any(present) and not all(present):
-        raise ValueError("Cannot mix retention times and scan indices. Supply retention times for every spectrum.")
+        raise SpxtacularError("Cannot mix retention times and scan indices. Supply retention times for every spectrum.")
     return {"rt_unit": "s" if all(present) else "scan_index"}
 
 
@@ -201,6 +203,7 @@ def _sorted_view(mz: NDArray[np.float64], *arrays: NDArray[np.float64] | None):
 
 def extract_chromatogram(
     spectra: Iterable[Spectrum],
+    *,
     mode: Literal["tic", "bpc"] = "tic",
     mz_range: tuple[float, float] | None = None,
 ) -> Chromatogram:
@@ -220,7 +223,7 @@ def extract_chromatogram(
     :class:`Chromatogram`
     """
     if mode not in ("tic", "bpc"):
-        raise ValueError(f"mode must be 'tic' or 'bpc', got {mode!r}")
+        raise SpxtacularError(f"mode must be 'tic' or 'bpc', got {mode!r}")
 
     rts: list[float] = []
     rt_present: list[bool] = []
@@ -253,6 +256,7 @@ def extract_chromatogram(
 def extract_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
+    *,
     tolerance: float = 20.0,
     tolerance_type: ToleranceLike = ToleranceType.PPM,
     im_window: tuple[float, float] | None = None,
@@ -289,7 +293,7 @@ def extract_xic(
     """
     tol_type = ToleranceType(str(tolerance_type).lower())
     if aggregate not in ("sum", "max"):
-        raise ValueError(f"aggregate must be 'sum' or 'max', got {aggregate!r}")
+        raise SpxtacularError(f"aggregate must be 'sum' or 'max', got {aggregate!r}")
 
     single = np.isscalar(targets)
     target_arr = np.atleast_1d(np.asarray(targets, dtype=np.float64))

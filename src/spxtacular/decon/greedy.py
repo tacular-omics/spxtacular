@@ -8,8 +8,8 @@ Falls back to pure NumPy when not available.
 from __future__ import annotations
 
 import numpy as np
-import peptacular as pt
 from numpy.typing import NDArray
+from tacular.constants import C13_C12_MASS_DIFF, PROTON_MASS
 
 try:
     from numba import njit as _njit
@@ -25,11 +25,10 @@ except ImportError:
 
     _HAS_NUMBA = False
 
-# Isotope peak spacing: m(13C) - m(12C) from AME2020 (Wang et al., Chinese Phys. C
-# 45, 030003), with m(12C) = 12 exactly. peptacular's C13_NEUTRON_MASS is rounded to
-# 1.003350, which puts a mass decharged from an A+n apex off by n * 4.8e-6 Da.
-NEUTRON_MASS: float = 13.00335483507 - 12.0
-PROTON_MASS: float = pt.PROTON_MASS
+# Isotope peak spacing: the 13C-12C mass difference (1.00335483507 Da), not the free
+# neutron mass. The name is kept for the decon kernels; the value is tacular's.
+NEUTRON_MASS: float = C13_C12_MASS_DIFF
+__all__ = ["NEUTRON_MASS", "PROTON_MASS"]
 
 
 @_njit(cache=True)

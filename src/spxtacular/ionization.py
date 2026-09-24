@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from math import isfinite
 from typing import Any
 
 import numpy as np
-import peptacular as pt
 from numpy.typing import ArrayLike, NDArray
+from tacular.constants import ELECTRON_MASS, PROTON_MASS
 
 from .enums import Polarity
+from .errors import SpxtacularError
 from .isotopes import IsotopeModel
 
 # Monoisotopic ion masses. Sodium is the neutral atom less one electron;
 # ammonium is 14N + 4(1H) less one electron.
-SODIUM_CATION_MASS = 22.9897692820 - pt.ELECTRON_MASS
-AMMONIUM_CATION_MASS = 14.00307400443 + 4 * 1.00782503223 - pt.ELECTRON_MASS
+SODIUM_CATION_MASS = 22.9897692820 - ELECTRON_MASS
+AMMONIUM_CATION_MASS = 14.00307400443 + 4 * 1.00782503223 - ELECTRON_MASS
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,18 +32,19 @@ class IonizationModel:
     name: str
     polarity: Polarity | str
     carrier_mass: float
+    _: KW_ONLY
     carrier: str = "custom"
 
     def __post_init__(self) -> None:
         try:
             polarity = Polarity(str(self.polarity).lower())
         except ValueError as exc:
-            raise ValueError(f"polarity must be 'positive' or 'negative', got {self.polarity!r}") from exc
+            raise SpxtacularError(f"polarity must be 'positive' or 'negative', got {self.polarity!r}") from exc
         mass = float(self.carrier_mass)
         if not isfinite(mass):
-            raise ValueError(f"carrier_mass must be finite, got {self.carrier_mass!r}")
+            raise SpxtacularError(f"carrier_mass must be finite, got {self.carrier_mass!r}")
         if not str(self.name).strip():
-            raise ValueError("ionization model name cannot be empty")
+            raise SpxtacularError("ionization model name cannot be empty")
         object.__setattr__(self, "polarity", polarity)
         object.__setattr__(self, "carrier_mass", mass)
 
@@ -51,7 +53,7 @@ class IonizationModel:
         mass, z, scalar = _validated_inputs(neutral_mass, charge, value_name="neutral_mass")
         result = (mass + z * self.carrier_mass) / z
         if np.any(result <= 0.0):
-            raise ValueError("ionization model produced a non-positive m/z")
+            raise SpxtacularError("ionization model produced a non-positive m/z")
         return float(result) if scalar else result
 
     def neutral_mass(self, mz: ArrayLike, charge: ArrayLike) -> float | NDArray[np.float64]:
@@ -59,7 +61,7 @@ class IonizationModel:
         observed, z, scalar = _validated_inputs(mz, charge, value_name="mz")
         result = observed * z - z * self.carrier_mass
         if np.any(result < 0.0):
-            raise ValueError("ionization model produced a negative neutral mass")
+            raise SpxtacularError("ionization model produced a negative neutral mass")
         return float(result) if scalar else result
 
     def notation(self, charge: int = 1) -> str:
@@ -96,22 +98,22 @@ def _validated_inputs(value: ArrayLike, charge: ArrayLike, *, value_name: str):
     charges = np.asarray(charge)
     scalar = values.ndim == 0 and charges.ndim == 0
     if np.any(~np.isfinite(values)) or np.any(values < 0.0):
-        raise ValueError(f"{value_name} must be finite and non-negative")
+        raise SpxtacularError(f"{value_name} must be finite and non-negative")
     if np.any(charges != np.floor(charges)) or np.any(charges <= 0):
-        raise ValueError("charge must contain positive integer magnitudes")
+        raise SpxtacularError("charge must contain positive integer magnitudes")
     return values, charges.astype(np.float64, copy=False), scalar
 
 
 def _validated_charge_scalar(charge: int) -> int:
     if isinstance(charge, bool) or int(charge) != charge or charge < 1:
-        raise ValueError(f"charge must be a positive integer, got {charge!r}")
+        raise SpxtacularError(f"charge must be a positive integer, got {charge!r}")
     return int(charge)
 
 
-PROTONATED = IonizationModel("protonated", Polarity.POSITIVE, pt.PROTON_MASS, "H")
-DEPROTONATED = IonizationModel("deprotonated", Polarity.NEGATIVE, -pt.PROTON_MASS, "H")
-SODIATED = IonizationModel("sodiated", Polarity.POSITIVE, SODIUM_CATION_MASS, "Na")
-AMMONIATED = IonizationModel("ammoniated", Polarity.POSITIVE, AMMONIUM_CATION_MASS, "NH4")
+PROTONATED = IonizationModel("protonated", Polarity.POSITIVE, PROTON_MASS, carrier="H")
+DEPROTONATED = IonizationModel("deprotonated", Polarity.NEGATIVE, -PROTON_MASS, carrier="H")
+SODIATED = IonizationModel("sodiated", Polarity.POSITIVE, SODIUM_CATION_MASS, carrier="Na")
+AMMONIATED = IonizationModel("ammoniated", Polarity.POSITIVE, AMMONIUM_CATION_MASS, carrier="NH4")
 
 IONIZATION_MODELS: dict[str, IonizationModel] = {
     "protonated": PROTONATED,
@@ -148,7 +150,7 @@ def resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> Ionizat
         return IONIZATION_MODELS[value]
     except KeyError as exc:
         valid = ", ".join(IONIZATION_MODELS)
-        raise ValueError(
+        raise SpxtacularError(
             f"unknown ionization model {model!r}; expected {valid}, an adduct alias, or a custom model"
         ) from exc
 
@@ -165,6 +167,7 @@ class DeconvolutionProvenance:
     intensity_mode: str
     min_intensity: float
     min_score: float
+    _: KW_ONLY
     isotope_model_definition: IsotopeModel | None = None
     min_isotope_abundance: float = 0.01
     max_isotope_fold_error: float = 2.0
@@ -203,7 +206,7 @@ class DeconvolutionProvenance:
 
         schema_version = value.get("schema_version", 1)
         if schema_version not in (1, 2):
-            raise ValueError(f"unsupported deconvolution provenance schema: {value.get('schema_version')!r}")
+            raise SpxtacularError(f"unsupported deconvolution provenance schema: {value.get('schema_version')!r}")
         charge_range = value["charge_range"]
         model_definition = value.get("isotope_model_definition") if schema_version == 2 else None
         return cls(

@@ -160,7 +160,7 @@ def test_ms2_has_precursor(ms2_spectrum):
 
 
 def test_ms2_precursor_mz_positive(ms2_spectrum):
-    assert ms2_spectrum.precursors[0].mz > 0
+    assert ms2_spectrum.precursors[0].precursor_mz > 0
 
 
 def test_ms2_precursor_charge_set(ms2_spectrum):
@@ -318,12 +318,12 @@ def test_mzml_options_apply_without_persistent_handle(monkeypatch):
     assert calls == [
         (
             EXAMPLE_MZML_GZ,
-            {"gzip_mode": "stream", "in_memory": False, "extract_dir": None},
+            {"gzip_mode": "stream", "in_memory": False},
         )
     ]
 
 
-def test_default_mzml_options_use_auto_disk_backed_access(monkeypatch, tmp_path):
+def test_default_mzml_options_use_auto_disk_backed_access(monkeypatch):
     calls = []
     real_mzml = mzp.Mzml
 
@@ -332,21 +332,21 @@ def test_default_mzml_options_use_auto_disk_backed_access(monkeypatch, tmp_path)
         return real_mzml(path, **kwargs)
 
     monkeypatch.setattr(mzp, "Mzml", recording_mzml)
-    reader = MzmlReader(EXAMPLE_MZML_GZ, extract_dir=tmp_path)
+    reader = MzmlReader(EXAMPLE_MZML_GZ)
     next(iter(reader.ms1))
 
     assert calls == [
         (
             EXAMPLE_MZML_GZ,
-            {"gzip_mode": "auto", "in_memory": False, "extract_dir": tmp_path},
+            {"gzip_mode": "auto", "in_memory": False},
         )
     ]
-    assert reader.access_strategy == "extracted"
+    assert reader.access_strategy is not None
 
 
 def test_indexed_gzip_missing_backend_names_the_pinned_version(monkeypatch):
     monkeypatch.setitem(sys.modules, "mzmlpy", None)
-    with pytest.raises(ImportError, match=r"mzMLPy 0\.9 or newer"):
+    with pytest.raises(ImportError, match=r"mzMLPy 0\.10 or newer"):
         write_indexed_mzml_gzip(EXAMPLE_MZML, "unused.mzML.gz")
 
 
@@ -481,8 +481,70 @@ def test_precursor_without_peak_intensity_is_kept(tmp_path):
 
     assert spectrum.precursors is not None
     precursor = spectrum.precursors[0]
-    assert precursor.mz == pytest.approx(445.34)
+    assert precursor.precursor_mz == pytest.approx(445.34)
     assert precursor.charge == 2
     # An absent intensity reads as 0.0, the same convention as the MGF reader.
     assert precursor.intensity == 0.0
     assert spectrum.collision_energy == pytest.approx(35.0)
+
+
+def test_scan_number_comes_from_the_native_id_scan_key():
+    reader = MzmlReader(EXAMPLE_MZML)
+    spectrum = next(iter(reader.ms1))
+    assert spectrum.native_id == "scan=19"
+    assert spectrum.scan_number == 19
+
+
+@pytest.mark.parametrize(
+    ("id_dict", "expected"),
+    [
+        ({"scan": 19}, 19),
+        ({"controllerType": 0, "controllerNumber": 1, "scan": 19}, 19),
+        ({"index": 5}, 5),
+        ({"spectrum": 7}, 7),
+        # the scan value repeats across frames / functions, so it is not an identifier
+        ({"frame": 1016, "scan": 1}, None),
+        ({"function": 2, "process": 0, "scan": 3}, None),
+        ({"sample": 1, "period": 1, "cycle": 4, "experiment": 2}, None),
+        ({"scan": "abc"}, None),
+        ({}, None),
+    ],
+)
+def test_scan_number_only_when_the_native_id_is_unique(id_dict, expected):
+    from types import SimpleNamespace
+
+    from spxtacular.reader import _mzml_scan_number
+
+    assert _mzml_scan_number(SimpleNamespace(id_dict=id_dict)) == expected  # ty: ignore[invalid-argument-type]
+
+
+def test_malformed_mzml_raises_spxtacular_error(tmp_path):
+    import warnings
+
+    from spxtacular.errors import SpxtacularError
+
+    path = tmp_path / "bad.mzML"
+    path.write_text("garbage, not XML")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reader = MzmlReader(str(path))
+        with pytest.raises(SpxtacularError) as info:
+            reader.open()
+    assert isinstance(info.value.__cause__, mzp.MzmlError)
+
+
+def test_truncated_mzml_raises_spxtacular_error_while_iterating(tmp_path):
+    import warnings
+
+    from spxtacular.errors import SpxtacularError
+
+    path = tmp_path / "bad.mzML"
+    path.write_text(
+        '<?xml version="1.0"?><mzML><run><spectrumList count="1">'
+        '<spectrum index="0" id="x" defaultArrayLength="1"></spectrumList></run></mzML>'
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(SpxtacularError) as info:
+            list(MzmlReader(str(path)).ms2)
+    assert isinstance(info.value.__cause__, mzp.MzmlError)

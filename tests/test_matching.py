@@ -467,3 +467,44 @@ def test_annotate_rejects_string() -> None:
     spec = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))
     with pytest.raises(TypeError, match="not str 'PEPTIDE/2'"):
         spec.annotate("PEPTIDE/2")  # ty: ignore[invalid-argument-type]
+
+
+# ---------------------------------------------------------------------------
+# MatchedFragment dataclass behaviour
+# ---------------------------------------------------------------------------
+
+
+def _real_match() -> MatchedFragment:
+    from peptacular import IonType
+    from peptacular.annotation.frag import Fragment
+
+    fragment = Fragment(ion_type=IonType("b"), position=2, mass=227.1026, monoisotopic=True, charge_state=1)
+    spec = Spectrum(mz=np.array([227.1030]), intensity=np.array([100.0]))
+    (match,) = match_fragments(spec, [fragment], tolerance=0.01)
+    return match
+
+
+def test_annotation_cache_is_not_a_field() -> None:
+    import dataclasses
+
+    match = _real_match()
+    first = match.annotation
+    assert match.annotation is first  # cached
+    assert "_annotation" not in dataclasses.asdict(match)
+    assert "_annotation" not in {f.name for f in dataclasses.fields(match)}
+    assert "_annotation" not in repr(match)
+    assert not hasattr(match, "__dict__")
+
+
+def test_matched_fragment_is_frozen_and_pickles() -> None:
+    import dataclasses
+    import pickle
+
+    match = _real_match()
+    _ = match.annotation
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        match.peak_mz = 1.0  # type: ignore[misc]  # ty: ignore[invalid-assignment]
+    restored = pickle.loads(pickle.dumps(match))
+    assert restored == match
+    assert restored.annotation.serialize() == match.annotation.serialize()
+    assert dataclasses.replace(match, peak_mz=1.0).peak_mz == 1.0

@@ -25,6 +25,7 @@ from numpy.typing import NDArray
 
 from .core import Spectrum
 from .enums import DEFAULT_FRAGMENT_TOLERANCE, DEFAULT_FRAGMENT_TOLERANCE_TYPE, ToleranceLike, ToleranceType
+from .errors import SpxtacularError
 
 IntensityTransform = Literal["sqrt", "linear", "log"]
 
@@ -49,7 +50,7 @@ def _prepared(
     elif transform == "log":
         inten = np.log1p(inten)
     elif transform != "linear":
-        raise ValueError(f"transform must be 'sqrt', 'linear' or 'log', got {transform!r}")
+        raise SpxtacularError(f"transform must be 'sqrt', 'linear' or 'log', got {transform!r}")
 
     norm = float(np.linalg.norm(inten))
     if norm > 0:
@@ -105,6 +106,7 @@ def _greedy_align(
 def cosine(
     query: Spectrum,
     reference: Spectrum,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     transform: IntensityTransform = "sqrt",
@@ -148,6 +150,7 @@ def modified_cosine(
     reference: Spectrum,
     query_precursor_mz: float,
     reference_precursor_mz: float,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     transform: IntensityTransform = "sqrt",
@@ -199,6 +202,7 @@ def _spectral_entropy(intensity: NDArray[np.float64]) -> float:
 def entropy_similarity(
     query: Spectrum,
     reference: Spectrum,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
 ) -> float:

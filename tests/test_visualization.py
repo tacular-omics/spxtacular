@@ -7,6 +7,7 @@ Fragment objects (from peptacular) are used instead of mocks for that function.
 
 import numpy as np
 import plotly.graph_objects as go
+import pytest
 from peptacular import IonType
 from peptacular.annotation.frag import Fragment
 
@@ -70,14 +71,10 @@ def test_plot_spectrum_show_charges_false_returns_figure() -> None:
     assert isinstance(fig, go.Figure)
 
 
-def test_plot_spectrum_show_charges_deprecated_alias() -> None:
-    import warnings
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        fig = plot_spectrum(_decon(), show_charges=False)
-    assert isinstance(fig, go.Figure)
-    assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+def test_plot_spectrum_show_charges_removed() -> None:
+    # Unknown keywords go to fig.update_layout, which plotly rejects.
+    with pytest.raises(ValueError, match="Invalid property"):
+        plot_spectrum(_decon(), show_charges=False)
 
 
 def test_plot_spectrum_show_scores_false_returns_figure() -> None:

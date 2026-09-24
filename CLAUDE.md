@@ -129,8 +129,8 @@ add them to both the import block and `__all__`.
   (`:class:`, `:meth:`). Keep them brief; explain non-obvious reasons; include `Raises` when useful.
   Do not restate what type hints say. `docstring-code-format` is off on purpose (it would
   reformat the `>>>` examples in `core.py` / `reader.py`).
-- **Errors:** coerce and validate enum-like inputs and raise `ValueError` rather than silently
-  picking a fallback. No placeholder TODOs; raise `NotImplementedError` with a reason.
+- **Errors:** coerce and validate enum-like inputs and raise `SpxtacularError` (a `ValueError`
+  subclass, from `spxtacular.errors`) rather than silently picking a fallback. No placeholder TODOs; raise `NotImplementedError` with a reason.
 - **Warnings:** pytest runs with `filterwarnings = ["error"]`, so any `UserWarning` the code
   emits on a test path fails the test unless the test expects it (`pytest.warns`).
 - **Tests:** `tests/test_<area>.py`; `--timeout=15` per test. Keep tests focused.
@@ -150,7 +150,8 @@ Load-bearing rules (kept from the previous guide, all still true of the code):
   `decharge()`. Never test charge or `iso_score` by truthiness.
 - Call `deconvolute()` before `decharge()`; `SpectrumType` guards the transition
   (`decharge()` on a spectrum with no charge array raises `ValueError`; on an already-neutral
-  or all-singleton spectrum it warns and returns it unchanged).
+  spectrum it returns it unchanged silently; on an all-singleton spectrum it warns and returns
+  it unchanged).
 - Keep cluster finding in `decon/greedy.py` and isotope scoring in `decon/scored.py`.
 - Optional backends: reader classes must stay importable without their extras and fail only
   when instantiated. `tdfpy`, `mzmlpy`, `spectrl` and `numba` are imported at package import

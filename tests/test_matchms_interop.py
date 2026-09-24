@@ -34,7 +34,7 @@ def _rich_msn() -> MsnSpectrum:
         analyzer="orbitrap",
         collision_energy=28.0,
         activation_type="HCD",
-        precursors=[Precursor(mz=500.25, intensity=8000.0, charge=2, im=1.05, is_monoisotopic=True)],
+        precursors=[Precursor(precursor_mz=500.25, intensity=8000.0, charge=2, im=1.05, is_monoisotopic=True)],
         isolation_mz_range=(499.0, 501.0),
     )
 
@@ -65,7 +65,7 @@ def test_matchms_round_trip_preserves_rich_spectrum() -> None:
     assert restored.rt == pytest.approx(125.5)
     assert restored.im_range == pytest.approx((0.5, 1.5))
     assert restored.precursors is not None
-    assert restored.precursors[0].mz == pytest.approx(500.25)
+    assert restored.precursors[0].precursor_mz == pytest.approx(500.25)
     assert restored.precursors[0].is_monoisotopic is True
 
 
@@ -139,7 +139,7 @@ def test_foreign_matchms_pepmass_sequence_maps_to_precursor() -> None:
     converted = from_matchms(foreign)
     assert isinstance(converted, MsnSpectrum)
     assert converted.precursors is not None
-    assert converted.precursors[0].mz == pytest.approx(500.2)
+    assert converted.precursors[0].precursor_mz == pytest.approx(500.2)
     assert converted.precursors[0].charge == 2
 
 
@@ -160,4 +160,4 @@ def test_payload_can_be_ignored() -> None:
     assert isinstance(restored, MsnSpectrum)
     assert restored.charge is None
     assert restored.precursors is not None
-    assert restored.precursors[0].mz == pytest.approx(500.25)
+    assert restored.precursors[0].precursor_mz == pytest.approx(500.25)

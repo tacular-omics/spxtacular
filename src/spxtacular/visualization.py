@@ -5,7 +5,6 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
-import warnings
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -26,6 +25,7 @@ from .enums import (
     PeakSelectionLike,
     ToleranceLike,
 )
+from .errors import SpxtacularError
 from .matching import FragmentInput
 from .plot_table import (
     _HIT_TARGET_SIZE,
@@ -76,7 +76,7 @@ def _add_precursor_marker(
             )
 
     for prec in precursors:
-        mz_val = getattr(prec, "mz", None)
+        mz_val = getattr(prec, "precursor_mz", None)
         if mz_val is None:
             continue
         charge = getattr(prec, "charge", None)
@@ -93,7 +93,7 @@ def _add_precursor_marker(
         )
 
 
-def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) -> Path:
+def save_figure(fig: go.Figure, path: str | Path, *, scale: float = 2.0, **kwargs) -> Path:
     """Write a figure to disk, choosing the writer from the file extension.
 
     ``.html`` always works. Static formats (``.png``, ``.svg``, ``.pdf``,
@@ -127,7 +127,7 @@ def save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) 
 
     static = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp")
     if suffix not in static:
-        raise ValueError(f"unsupported figure format {suffix!r}; expected .html or one of {', '.join(static)}")
+        raise SpxtacularError(f"unsupported figure format {suffix!r}; expected .html or one of {', '.join(static)}")
 
     try:
         import importlib
@@ -298,11 +298,10 @@ def _plot_spectrum_im(
 @requires_plotly
 def plot_spectrum(
     spectrum: Spectrum,
-    title: str | None = None,
     *,
+    title: str | None = None,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
-    show_charges: bool | None = None,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
@@ -333,8 +332,6 @@ def plot_spectrum(
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
-    show_charges:
-        Deprecated. Use ``color="charge"`` or ``color=None`` instead.
     intensity_scale:
         ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
         raw intensities on the y-axis.
@@ -364,14 +361,6 @@ def plot_spectrum(
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
-    if show_charges is not None:
-        warnings.warn(
-            "show_charges is deprecated; use color='charge' or color=None instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        color = "charge" if show_charges else None
-
     if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
         # The type check has to come *first*. The im path only knows how to draw
         # sticks, so routing to it before asking what kind of spectrum this is
@@ -383,7 +372,7 @@ def plot_spectrum(
             else ("profile" if spectrum.spectrum_type == SpectrumType.PROFILE else "sticks")
         )
         if resolved == "profile":
-            raise ValueError(
+            raise SpxtacularError(
                 "color='im' draws sticks, which discards the peak shape of a profile spectrum. "
                 "Centroid it first (spectrum.centroid()), or pass render='sticks' to draw every "
                 "sample as a stick anyway."
@@ -427,6 +416,7 @@ def plot_spectrum(
 def mirror_plot(
     raw: Spectrum,
     deconvoluted: Spectrum,
+    *,
     title: str | None = None,
     normalize: bool = True,
     show_charges: bool = True,
@@ -592,6 +582,7 @@ def mirror_plot(
 def annotate_spectrum(
     spectrum: Spectrum,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     title: str | None = None,
@@ -651,10 +642,10 @@ def annotate_spectrum(
     table = build_annot_plot_table(
         spectrum,
         fragments,
-        tolerance,
-        tolerance_type,
-        peak_selection,
-        include_sequence,
+        tolerance=tolerance,
+        tolerance_type=tolerance_type,
+        peak_selection=peak_selection,
+        include_sequence=include_sequence,
         max_labels=max_labels,
         theme_mode=theme_mode,
         intensity_scale=intensity_scale,
@@ -670,6 +661,7 @@ def annotate_spectrum(
 @requires_plotly
 def plot_chromatogram(
     chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
+    *,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
     show_apex: bool = True,
@@ -725,10 +717,10 @@ def plot_chromatogram(
 
     units = {chrom.meta.get("rt_unit", "s") for chrom in traces_in if len(chrom)}
     if len(units) > 1:
-        raise ValueError("Cannot plot retention times and scan indices on the same axis")
+        raise SpxtacularError("Cannot plot retention times and scan indices on the same axis")
     unit = next(iter(units), "s")
     if unit not in ("s", "scan_index"):
-        raise ValueError(f"Unsupported chromatogram time unit: {unit!r}")
+        raise SpxtacularError(f"Unsupported chromatogram time unit: {unit!r}")
     axis_title = "Scan index" if unit == "scan_index" else "Retention time (s)"
     time_label = "Scan index" if unit == "scan_index" else "RT"
     time_suffix = "" if unit == "scan_index" else " s"
@@ -789,6 +781,7 @@ def plot_chromatogram(
 def plot_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
+    *,
     tolerance: float = 20.0,
     tolerance_type: ToleranceLike = "ppm",
     im_window: tuple[float, float] | None = None,
@@ -827,6 +820,7 @@ def plot_xic(
 @requires_plotly
 def profile_centroid_plot(
     profile: Spectrum,
+    *,
     centroids: Spectrum | None = None,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
@@ -940,6 +934,7 @@ def sequence_coverage_plot(
     spectrum: Spectrum,
     peptide: str,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -988,9 +983,11 @@ def sequence_coverage_plot(
     residues = list(peptide)
     n_res = len(residues)
     if n_res == 0:
-        raise ValueError("peptide must contain at least one residue")
+        raise SpxtacularError("peptide must contain at least one residue")
 
-    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+    )
 
     # A fragment of length k evidences the bond after residue k (N-terminal
     # series) or before residue n-k (C-terminal series).
@@ -1067,7 +1064,7 @@ def _error_unit(unit: str) -> str:
     """
     normalised = str(unit).lower()
     if normalised not in ("ppm", "da"):
-        raise ValueError(f"Unsupported error unit {unit!r}; expected 'ppm' or 'da'")
+        raise SpxtacularError(f"Unsupported error unit {unit!r}; expected 'ppm' or 'da'")
     return normalised
 
 
@@ -1075,6 +1072,7 @@ def _error_unit(unit: str) -> str:
 def mass_error_plot(
     spectrum: Spectrum,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -1122,7 +1120,9 @@ def mass_error_plot(
     from .matching import match_fragments
 
     unit = _error_unit(unit)
-    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+    )
 
     if not matches:
         # The empty case is still a figure someone looks at: without the template
@@ -1259,6 +1259,7 @@ def _add_stick_traces(
 @requires_plotly
 def facet_plot(
     spectrum: Spectrum,
+    *,
     fragments: FragmentInput | None = None,
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
@@ -1330,10 +1331,10 @@ def facet_plot(
         table = build_annot_plot_table(
             spectrum,
             fragments,
-            tolerance,
-            tolerance_type,
-            peak_selection,
-            include_sequence,
+            tolerance=tolerance,
+            tolerance_type=tolerance_type,
+            peak_selection=peak_selection,
+            include_sequence=include_sequence,
             max_labels=max_labels,
             theme_mode=theme_mode,
         )
@@ -1371,7 +1372,9 @@ def facet_plot(
     if fragments is not None:
         from .matching import match_fragments
 
-        matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+        matches = match_fragments(
+            spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        )
         if matches:
             mzs = [m.peak_mz for m in matches]
             errors = [m.ppm_error if unit == "ppm" else m.da_error for m in matches]

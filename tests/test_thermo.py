@@ -178,7 +178,7 @@ def test_parse_scan_without_fisher_runtime() -> None:
     np.testing.assert_array_equal(spec.mz, [150.0, 250.0])
     np.testing.assert_array_equal(spec.charge, [-1, 2])
     assert spec.precursors is not None
-    assert spec.precursors[0].mz == 499.9
+    assert spec.precursors[0].precursor_mz == 499.9
     assert spec.precursors[0].charge == 2
 
 
@@ -273,7 +273,7 @@ def test_precursor_metadata(raw_spectrum: MsnSpectrum):
     assert spec.isolation_mz_range == (324.0, 326.0)
     assert spec.precursors is not None and len(spec.precursors) == 1
     prec = spec.precursors[0]
-    assert prec.mz == 325.0
+    assert prec.precursor_mz == 325.0
     assert prec.charge == 1
     # Trailer "Monoisotopic M/Z" is -1 (unset) in this file, so the isolation
     # target is used and not claimed to be monoisotopic.
@@ -302,7 +302,7 @@ def test_profile_mode_returns_profile_trace(profile_spectrum: MsnSpectrum, raw_s
     # Same scan, same metadata either way.
     assert profile.rt == centroid.rt
     assert profile.precursors is not None and centroid.precursors is not None
-    assert profile.precursors[0].mz == centroid.precursors[0].mz
+    assert profile.precursors[0].precursor_mz == centroid.precursors[0].precursor_mz
 
 
 @needs_fisher

@@ -6,6 +6,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from tacular.tolerance import da_to_ppm, ppm_to_da
+
+__all__ = [
+    "da_to_ppm",
+    "format_precursor_charge",
+    "ppm_to_da",
+    "precursor_charge_magnitude",
+    "signed_precursor_charge",
+]
+
 
 def precursor_charge_magnitude(charge: int | None) -> int | None:
     """Positive magnitude of a known precursor charge, regardless of polarity."""
@@ -30,46 +40,3 @@ def format_precursor_charge(charge: int | None, polarity: Any = None) -> str | N
     if signed is None:
         return None
     return f"{abs(signed)}{'-' if signed < 0 else '+'}"
-
-
-def da_to_ppm(delta_mz: float, mz: float) -> float:
-    """Convert a mass difference from Dalton to ppm.
-
-    Parameters
-    ----------
-    delta_mz:
-        Mass difference in Dalton.
-    mz:
-        Reference m/z value.
-
-    Returns
-    -------
-    float
-        Mass difference in ppm.
-
-    Raises
-    ------
-    ValueError
-        If ``mz`` is zero -- a relative error has no meaning without a reference.
-    """
-    if mz == 0.0:
-        raise ValueError("mz must be non-zero to express a mass difference in ppm")
-    return delta_mz / mz * 1e6
-
-
-def ppm_to_da(delta_ppm: float, mz: float) -> float:
-    """Convert a mass difference from ppm to Dalton.
-
-    Parameters
-    ----------
-    delta_ppm:
-        Mass difference in ppm.
-    mz:
-        Reference m/z value.
-
-    Returns
-    -------
-    float
-        Mass difference in Dalton.
-    """
-    return delta_ppm * mz / 1e6

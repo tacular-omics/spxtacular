@@ -104,7 +104,7 @@ with spx.Reader("run.mzML") as reader:
 ### 4.1 `Peak`
 
 ```python
-Peak(mz: float, intensity: float, charge: int | None = None,
+Peak(mz: float, intensity: float, *, charge: int | None = None,
      im: float | None = None, iso_score: float | None = None)
 ```
 Frozen scalar record for one peak. Returned by `Spectrum.peaks`, `top_peaks`, `get_peak(s)`.
@@ -112,11 +112,12 @@ Frozen scalar record for one peak. Returned by `Spectrum.peaks`, `top_peaks`, `g
 ### 4.2 `Precursor`
 
 ```python
-Precursor(mz: float, intensity: float, charge: int | None = None, im: float | None = None,
-          iso_score: float | None = None, *, is_monoisotopic: bool | None)
+Precursor(*, precursor_mz: float, intensity: float = 0.0, charge: int | None = None,
+          im: float | None = None, im_type: IMTypeLike | None = None,
+          iso_score: float | None = None, is_monoisotopic: bool | None = None)
 ```
-A `Peak` for an MS2 target ion. `is_monoisotopic` is keyword-only and required (use `None`
-if unknown). mzML precursors read with `is_monoisotopic=None`; Bruker DDA precursors with
+An MS2 target ion (keyword-only; not a `Peak` subclass). `im_type` names the unit of `im`
+(1/K0 or drift time). mzML precursors read with `is_monoisotopic=None`; Bruker DDA precursors with
 `True`.
 
 ### 4.3 `SpectrumType`
@@ -129,6 +130,7 @@ if unknown). mzML precursors read with `is_monoisotopic=None`; Bruker DDA precur
 Spectrum(
     mz: NDArray[float64],
     intensity: NDArray[float64],
+    *,                                    # everything after intensity is keyword-only
     charge: NDArray[int32] | None = None,
     im: NDArray[float64] | None = None,
     iso_score: NDArray[float64] | None = None,
@@ -147,11 +149,11 @@ Properties:
 Peak access:
 - `top_peaks(n: int, by: "intensity"|"mz"|"charge"|"im"|"score" = "intensity", reverse: bool = True) -> list[Peak]`
   — top N peaks by an attribute.
-- `has_peak(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01) -> bool`
+- `has_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> bool`
   — is there a peak matching the criteria.
-- `get_peak(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01, collision: "largest"|"closest" = "largest") -> Peak | None`
-  — one matching peak; `collision` picks between several.
-- `get_peaks(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01) -> list[Peak]`
+- `get_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01, peak_selection: "largest"|"closest" = "largest") -> Peak | None`
+  — one matching peak; `peak_selection` picks between several.
+- `get_peaks(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> list[Peak]`
   — all matching peaks.
 
 Transforms (all return a new spectrum unless `inplace=True`):
@@ -197,11 +199,11 @@ Matching and scoring (thin wrappers over the module functions in section 6):
 - `score(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", predicted_intensities=None) -> dict[str, float]`
 
 Plotting (need plotly, which is a core dependency):
-- `plot(title=None, *, color: "charge"|"im"|None = "charge", show_scores=True, show_charges=None, **layout_kwargs) -> go.Figure`
+- `plot(*, title=None, color: "charge"|"im"|None = "charge", show_scores=True, **layout_kwargs) -> go.Figure`
 - `annotate(fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
 - `mass_error_plot(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
 - `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
-- `plot_table(show_charges=None, show_scores=True, *, color: "charge"|None = "charge") -> pd.DataFrame` (`show_charges` is deprecated; use `color`)
+- `plot_table(*, show_scores=True, color: "charge"|None = "charge") -> pd.DataFrame`
 - `annot_plot_table(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
 
 Serialization and sharing:
@@ -235,7 +237,7 @@ MsnSpectrum(mz, intensity, charge=None, im=None, iso_score=None, spectrum_type=N
             activation_type: ActivationType | str | None,
             precursors: list[Precursor] | None,
             isolation_mz_range: tuple[float, float] | None,
-            isolation_im_range: tuple[float, float] | None)
+            isolation_ook0_range: tuple[float, float] | None)
 ```
 All `Spectrum` methods are available and preserve the metadata. `rt` should be in seconds
 (readers supply seconds; the field itself does not enforce a unit).
@@ -248,14 +250,13 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 | `PeakSelection` | `closest`, `largest`, `all` | `PeakSelectionLike` |
 | `Polarity` (closed) | `positive`, `negative` | `PolarityLike` |
 | `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
-| `IMType` | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or any `str` |
+| `IMType` (closed) | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or its `str` value |
 | `Analyzer` | `orbitrap`, `ft_icr`, `tof`, `quadrupole`, `ion_trap`, `linear_ion_trap`, `quadrupole_ion_trap`, `magnetic_sector`, `electrostatic_energy_analyzer` | `AnalyzerLike` = enum or any `str` |
 | `SpectrumType` | `centroid`, `profile`, `deconvoluted` | — |
 | `AcquisitionType` | `DDA`, `DIA`, `PRM`, `UNKNOWN` | — (Bruker runs) |
 | `IsotopeModelType` | `peptide`, `glycan`, `lipid`, `dna`, `rna` | — |
 
-`ActivationType`, `IMType` and `Analyzer` are open vocabularies: unknown strings are kept as
-plain strings.
+`IMType` and `Polarity` are closed: a string must name a member (case-insensitive; `IMType` also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
 
 ---------------------------------------------------------------------------------------------
 
@@ -301,7 +302,7 @@ Collapses isotope envelopes into one peak per cluster and assigns charge magnitu
 Isotope models:
 
 ```python
-IsotopeModel(atoms_per_da: Mapping[str, float], fixed_composition: Mapping[str, int] = {},
+IsotopeModel(atoms_per_da: Mapping[str, float], *, fixed_composition: Mapping[str, int] = {},
              isotope_abundances: IsotopeAbundances | None = None, name: str = "custom")
 ```
 Average elemental composition per Dalton used to predict isotope envelopes.
@@ -321,7 +322,7 @@ Built-ins: `PEPTIDE_ISOTOPE_MODEL` (averagine), `GLYCAN_ISOTOPE_MODEL`, `LIPID_I
 Ionization models:
 
 ```python
-IonizationModel(name: str, polarity: Polarity | str, carrier_mass: float, carrier: str = "custom")
+IonizationModel(name: str, polarity: Polarity | str, carrier_mass: float, *, carrier: str = "custom")
 ```
 A repeated charge carrier.
 - `ion_mz(neutral_mass, charge)` — neutral mass to m/z (positive charge magnitudes).
@@ -336,7 +337,7 @@ Presets: `PROTONATED` (`[M+H]+`, default), `DEPROTONATED` (`[M-H]-`), `SODIATED`
 - `resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> IonizationModel`.
 
 `DeconvolutionProvenance(isotope_model, ionization_model, charge_range, tolerance,
-tolerance_type, intensity_mode, min_intensity, min_score, isotope_model_definition=None,
+tolerance_type, intensity_mode, min_intensity, min_score, *, isotope_model_definition=None,
 min_isotope_abundance=0.01, max_isotope_fold_error=2.0, max_isotope_gaps=0,
 max_isotopes=None, im_tolerance=0.05, im_tolerance_type="relative")` — the parameters a
 deconvolution ran with; stored on `Spectrum.deconvolution`, serialized with the spectrum
@@ -421,9 +422,8 @@ Unit helpers: `da_to_ppm(delta_mz, mz) -> float`, `ppm_to_da(delta_ppm, mz) -> f
 ### 7.1 `Reader` — auto-detect
 
 ```python
-Reader(path: str | Path, centroid_config: CentroidConfig | None = None, *,
-       mzml_gzip_mode: "auto"|"extract"|"indexed"|"stream" = "auto",
-       mzml_in_memory: bool = False, mzml_extract_dir: str | Path | None = None)
+Reader(path: str | Path, *, centroid_config: CentroidConfig | None = None,
+       mzml_gzip_mode: "auto"|"indexed"|"stream" = "auto", mzml_in_memory: bool = False)
 ```
 Detects Bruker `.d`, `.mzML` / `.mzML.gz`, Thermo `.raw`, and `.mgf`, `.ms2`, `.msp` (each
 optionally `.gz`) from the path and delegates to the matching reader.
@@ -438,13 +438,13 @@ with spx.Reader("run.mzML") as reader:
 - `ms1`, `ms2` — lazy views, iterable and indexable. They have no `len()` and are not
   iterators: `next(reader.ms2)` raises `TypeError`.
 - `open()` / `close()` or use as a context manager.
-- `access_strategy` — concrete mzML route (`"plain"`, `"extracted"`, `"embedded"`,
-  `"rapidgzip"`, ...) or `None`.
+- `access_strategy` — concrete mzML route (`"plain"`, `"embedded"`, `"rapidgzip"`,
+  `"memory"`, `"stream"`) or `None`.
 
 ### 7.2 Format-specific readers
 
 ```python
-DReader(analysis_dir: str | Path, centroid_config: CentroidConfig | None = None)
+DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = None)
 ```
 Bruker timsTOF `.d` via tdfpy (`[bruker]`). Detects `reader.acquisition_type`
 (`AcquisitionType.DDA|DIA|PRM|UNKNOWN`). `ms1` supports iteration and `ms1[frame_id]`;
@@ -453,15 +453,16 @@ Bruker timsTOF `.d` via tdfpy (`[bruker]`). Detects `reader.acquisition_type`
 have `precursors=None`. Spectra are centroided on read and carry `im` (1/K0).
 
 ```python
-CentroidConfig(mz_tolerance: float = 8.0, mz_tolerance_type: "ppm"|"da" = "ppm",
+CentroidConfig(*, mz_tolerance: float = 8.0, mz_tolerance_type: "ppm"|"da" = "ppm",
                im_tolerance: float = 0.1, im_tolerance_type: "relative"|"absolute" = "relative",
                min_peaks: int = 3, noise_filter: str | float | None = None)
 ```
-Parameters forwarded to tdfpy's frame centroiding for `.d` files.
+Parameters forwarded to tdfpy's frame centroiding for `.d` MS1, DIA and PRM spectra. DDA MS2
+spectra come from tdfpy's per-precursor merged peaks and ignore it.
 
 ```python
-MzmlReader(mzml_path: str | Path, *, gzip_mode: "auto"|"extract"|"indexed"|"stream" = "auto",
-           in_memory: bool = False, extract_dir: str | Path | None = None)
+MzmlReader(mzml_path: str | Path, *, gzip_mode: "auto"|"indexed"|"stream" = "auto",
+           in_memory: bool = False)
 ```
 mzML and gzipped mzML via mzmlpy (`[mzml]`). `ms1`/`ms2` support iteration, integer index
 and native-ID lookup (`reader.ms2["scan=19"]`). `gzip_mode="auto"` prefers a self-indexed
@@ -515,7 +516,7 @@ full `http(s)://` PROXI base URL. `Spectrum.from_usi` is the same call.
 ## 8. Chromatograms
 
 ```python
-Chromatogram(rt: NDArray, intensity: NDArray, label: str = "", mz: float | None = None,
+Chromatogram(rt: NDArray, intensity: NDArray, *, label: str = "", mz: float | None = None,
              tolerance: float | None = None, tolerance_type: str | None = None, meta: dict = {})
 ```
 Intensity against retention time. `apex_rt` (property, `None` if empty), `total` (sum of
@@ -550,7 +551,7 @@ passed to `fig.update_layout`. `theme_mode` is `"light"`, `"dark"` or `None` (gl
 
 ```python
 plot_spectrum(spectrum, title=None, *, color: "charge"|"im"|None = "charge", show_scores=True,
-              show_charges=None, max_labels=60, theme_mode=None,
+              max_labels=60, theme_mode=None,
               intensity_scale: "absolute"|"relative" = "relative",
               intensity_transform: "sqrt"|"log"|None = None, show_precursor=True,
               render: "sticks"|"profile"|None = None, max_points=4000, **layout_kwargs)
@@ -659,7 +660,7 @@ spec = spx.MsnSpectrum(
     intensity=np.linspace(1e4, 6e4, len(mzs)),
     ms_level=2,
     scan_number=1,
-    precursors=[spx.Precursor(mz=400.19, intensity=1e5, charge=2, is_monoisotopic=True)],
+    precursors=[spx.Precursor(precursor_mz=400.19, intensity=1e5, charge=2, is_monoisotopic=True)],
 )
 matches = spec.match_fragments(fragments, tolerance=10, tolerance_type="ppm")   # 6 matches
 scores = spec.score(fragments)            # dict with hyperscore, matched_fraction, ...
@@ -710,8 +711,8 @@ out = spec.deconvolute(isotope_model=custom)
 ## 12. Gotchas
 
 - Do not call `decharge()` before `deconvolute()`: it raises `ValueError`. Calling it on an
-  already-neutral or all-singleton spectrum warns (`UserWarning`) and returns it unchanged —
-  under `pytest -W error` that warning fails the test.
+  already-neutral spectrum returns it unchanged without a warning; an all-singleton spectrum
+  warns (`UserWarning`) and returns it unchanged — under `pytest -W error` that fails the test.
 - A toy spectrum of unrelated peaks deconvolutes to singletons (`charge == -1`,
   `iso_score` 0); `.filter(min_score=0.5)` then removes everything. Test with a real isotope
   envelope (section 3).

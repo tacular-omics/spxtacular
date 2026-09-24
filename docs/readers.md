@@ -42,7 +42,7 @@ Index semantics differ per backend:
 | `ThermoReader.ms1[scan]` / `.ms2[scan]` | Spectrum by native **1-based scan number**; `KeyError` if the scan does not exist or is not of that MS level. `ThermoReader[scan]` fetches any level |
 | `MgfReader[key]` / `Ms2Reader[key]` / `MspReader[key]` | Spectrum by 0-based position in the file, or by `native_id` string (first match wins — library files repeat names across collision energies). Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
-`DReader` and `ThermoReader` lookups raise `RuntimeError` if the reader has not been opened.
+`DReader` and `ThermoReader` lookups raise `SpxtacularError` if the reader has not been opened.
 
 `polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — they also accept the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
 
@@ -61,11 +61,10 @@ class Reader:
     def __init__(
         self,
         path: str | Path,
-        centroid_config: CentroidConfig | None = None,
         *,
-        mzml_gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        centroid_config: CentroidConfig | None = None,
+        mzml_gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
         mzml_in_memory: bool = False,
-        mzml_extract_dir: str | Path | None = None,
     ): ...
 
     def open(self) -> None: ...
@@ -111,9 +110,8 @@ class MzmlReader:
         self,
         mzml_path: str | Path,
         *,
-        gzip_mode: Literal["auto", "extract", "indexed", "stream"] = "auto",
+        gzip_mode: Literal["auto", "indexed", "stream"] = "auto",
         in_memory: bool = False,
-        extract_dir: str | Path | None = None,
     ): ...
 
     def open(self) -> None: ...
@@ -133,8 +131,9 @@ class MzmlReader:
     def __getitem__(self, key: int | str) -> MsnSpectrum: ...
 ```
 
-For gzipped mzML, the default `gzip_mode="auto"` checks for a self-indexed gzip file, a current
-extracted cache, and complete rapidgzip sidecars before falling back to extraction. The selected
+For gzipped mzML, the default `gzip_mode="auto"` uses a self-indexed gzip file when there is one,
+else reads the compressed file in place through rapidgzip (reusing complete sidecars, never
+writing new ones), else decompresses into memory. It never writes next to your file. The selected
 route is reported by `access_strategy`. Use `gzip_mode="stream"` when a service intentionally reads
 sequentially:
 
@@ -144,7 +143,7 @@ with MzmlReader("large-run.mzML.gz", gzip_mode="stream", in_memory=False) as r:
 ```
 
 The `"indexed"` mode builds a random-access gzip index and requires `rapidgzip`. Streaming avoids
-temporary extracted files, but later index lookups must scan forward from the start.
+an index, but later index lookups must scan forward from the start.
 
 Create the self-indexed format through the thin mzMLPy-backed helper:
 
@@ -160,13 +159,13 @@ write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")
 |---|---|
 | `ms1` | All MS1 spectra in scan order (iteration); index/native-ID access is unfiltered |
 | `ms2` | All MS2 spectra in scan order, including parsed precursor information (iteration); index/native-ID access is unfiltered |
-| `access_strategy` | Concrete mzMLPy route such as `embedded`, `extracted`, `rapidgzip`, or `plain` |
+| `access_strategy` | Concrete mzMLPy route such as `embedded`, `rapidgzip`, `memory`, `stream`, or `plain` |
 
 ### Metadata populated from mzML
 
 | Field | Source |
 |---|---|
-| `scan_number` | Spectrum index |
+| `scan_number` | The number in the native id when it identifies the spectrum on its own: `scan=19` or Thermo `controllerType=0 controllerNumber=1 scan=19` -> `19`; `index=5` / `spectrum=5` -> `5`. `None` for every other id (Bruker `frame=… scan=…`, Waters `function=… scan=…`, SCIEX `cycle=…`), whose `scan` value repeats or is missing; `native_id` keeps the full id |
 | `ms_level` | `msLevel` CV param |
 | `native_id` | Raw spectrum `id` attribute |
 | `rt` | `scan start time` (converted to seconds) |
@@ -199,7 +198,7 @@ from spxtacular import MzmlReader
 
 reader = MzmlReader("run.mzML")
 for spec in reader.ms1:
-    processed = spec.filter(min_mz=200, max_mz=1600).denoise("mad")
+    processed = spec.filter(min_mz=200, max_mz=1600).denoise(method="mad")
     print(f"Scan {spec.scan_number}: {len(processed)} peaks after denoise")
 ```
 
@@ -215,7 +214,7 @@ for spec in reader.ms2:
     prec = spec.precursors[0]
     print(
         f"Scan {spec.scan_number} | "
-        f"Precursor {prec.mz:.4f} m/z, z={prec.charge} | "
+        f"Precursor {prec.precursor_mz:.4f} m/z, z={prec.charge} | "
         f"CE={spec.collision_energy} eV"
     )
 ```
@@ -230,7 +229,7 @@ for spec in reader.ms1:
     neutral = (
         spec
         .filter(min_mz=300, min_intensity=1000)
-        .denoise("mad")
+        .denoise(method="mad")
         .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
         .decharge()
     )
@@ -269,7 +268,7 @@ with MzmlReader("run.mzML") as reader:
 
 Reads Bruker timsTOF `.d` directories using `tdfpy`. **Must be opened before use** — either with
 `open()` / `close()` or (preferred) as a context manager. The underlying `tdfpy` handle is opened on
-`__enter__` and closed on `__exit__`; touching `.ms1` / `.ms2` before `open()` raises `RuntimeError`.
+`__enter__` and closed on `__exit__`; touching `.ms1` / `.ms2` before `open()` raises `SpxtacularError`.
 
 ```python
 class DReader:
@@ -296,8 +295,9 @@ The acquisition type (DDA, DIA, PRM) is detected automatically from the `.d` dir
 ### `CentroidConfig`
 
 timsTOF frames arrive as raw (frame, scan) points, so `DReader` centroids them via `tdfpy`.
-`CentroidConfig` holds the parameters forwarded to that step. It is exported from the package root
-and ignored by `MzmlReader`.
+`CentroidConfig` holds the parameters forwarded to that step for MS1, DIA and PRM spectra. DDA MS2
+spectra use tdfpy's per-precursor merged peaks and ignore it, as does `MzmlReader`. All fields
+are keyword-only.
 
 ```python
 from spxtacular import CentroidConfig, DReader
@@ -335,6 +335,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | `ms_level` | Always `1` |
 | `rt` | Frame acquisition time (seconds) |
 | `injection_time` | Frame accumulation time (ms) |
+| `total_ion_current` | Frame summed intensity |
 | `mz_range` | Instrument acquisition range from metadata |
 | `im_range` | 1/K0 acquisition range from metadata |
 | `im` (array) | Per-peak 1/K0 values |
@@ -351,8 +352,8 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | `ms_level` | Always `2` |
 | `rt` | Retention time (seconds) |
 | `isolation_mz_range` | Precursor isolation window |
-| `isolation_im_range` | 1/K0 range of precursor |
-| `precursors` | Single `Precursor` with monoisotopic m/z (or largest peak m/z if unavailable), intensity, charge, and 1/K0 |
+| `isolation_ook0_range` | 1/K0 range of precursor |
+| `precursors` | Single `Precursor` with monoisotopic m/z (or largest peak m/z if unavailable), intensity, charge, and 1/K0 (`im_type="ook0"`) |
 | `collision_energy` | From precursor record |
 | `activation_type` | `"MS:1002481"` (PASEF) |
 
@@ -365,7 +366,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | `ms_level` | Always `2` |
 | `rt` | Retention time (seconds) |
 | `isolation_mz_range` | Isolation window m/z range |
-| `isolation_im_range` | Isolation window 1/K0 range |
+| `isolation_ook0_range` | Isolation window 1/K0 range |
 | `im` (array) | Per-peak 1/K0 values |
 | `collision_energy` | From window record |
 | `precursors` | `None` — DIA windows have no defined precursor |
@@ -378,7 +379,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | `native_id` | `"{frame_id}@t{target_id}"` |
 | `ms_level` | Always `2` |
 | `rt` | Retention time (seconds) |
-| `isolation_mz_range` / `isolation_im_range` | Transition isolation windows |
+| `isolation_mz_range` / `isolation_ook0_range` | Transition isolation windows |
 | `precursors` | Single `Precursor` built from the PRM target (monoisotopic m/z, charge, 1/K0); intensity is the summed MS2 peak intensity, since PRM targets carry no measured precursor intensity |
 | `collision_energy` | From transition record |
 
@@ -428,7 +429,7 @@ with DReader("/data/sample_dda.d") as reader:
         prec = spec.precursors[0]
         print(
             f"Precursor {spec.scan_number}: "
-            f"m/z={prec.mz:.4f}, z={prec.charge}, "
+            f"m/z={prec.precursor_mz:.4f}, z={prec.charge}, "
             f"1/K0={prec.im:.3f}, "
             f"monoisotopic={prec.is_monoisotopic}"
         )
@@ -457,7 +458,7 @@ with DReader("/data/sample_dia.d") as reader:
 Reads Thermo `.raw` files using [`fisher-py`](https://github.com/ethz-institute-of-microbiology/fisher_py),
 which wraps Thermo's official RawFileReader .NET assemblies. **Must be opened before use** — either
 with `open()` / `close()` or (preferred) as a context manager; touching `.ms1` / `.ms2` before
-`open()` raises `RuntimeError`.
+`open()` raises `SpxtacularError`.
 
 ```bash
 pip install spxtacular[thermo]
@@ -533,7 +534,7 @@ with ThermoReader("run.raw") as reader:
         prec = spec.precursors[0]
         print(
             f"Scan {spec.scan_number} | {spec.activation_type} "
-            f"{spec.collision_energy} eV | precursor {prec.mz:.4f} z={prec.charge}"
+            f"{spec.collision_energy} eV | precursor {prec.precursor_mz:.4f} z={prec.charge}"
         )
 
     scan_42 = reader[42]           # any MS level, by native scan number
@@ -584,7 +585,7 @@ with MgfReader("run.mgf") as reader:        # run.mgf.gz works too
     print(len(reader))                      # spectra in the file
     for spec in reader:                     # or: for spec in reader.ms2
         prec = spec.precursors[0]
-        print(f"{spec.scan_number}: {prec.mz:.4f} z={prec.charge} rt={spec.rt}")
+        print(f"{spec.scan_number}: {prec.precursor_mz:.4f} z={prec.charge} rt={spec.rt}")
 
 write_ms2(MgfReader("run.mgf"), "run.ms2")  # readers are iterables of spectra
 ```
@@ -623,7 +624,7 @@ result.
 | `mz` / `intensity` | Ion lines following an `S` record |
 | `scan_number` | First scan field of the `S` line |
 | `ms_level` | Always `2` |
-| `native_id` | Synthesised as `"scan=<scan_number>"` |
+| `native_id` | `I NativeID` when present (spxtacular writes it for ids that are not `scan=<n>`), else synthesised as `"scan=<scan_number>"` |
 | `rt` | `I RTime` / `I RetTime` × 60 — those values are **minutes** in the wild, `rt` is seconds |
 | `injection_time` | `I IonInjectionTime` |
 | `total_ion_current` | `I TIC` |
@@ -714,7 +715,8 @@ The reader cannot infer an MSP time unit.
 |---|---|
 | Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
 | Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
-| Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent scan number becomes the 1-based position in the input and an absent precursor m/z becomes `0.0` |
+| Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent precursor m/z becomes `0.0` |
+| Missing scan number | An absent `scan_number` (a plain `Spectrum`, or mzML ids such as Bruker `frame=…` that carry no unique one) leaves MGF `SCANS` out, so a position never collides with a real scan number. MS2's `S` line needs one, so there it is the 1-based position in the input. The native id still goes out as MGF `TITLE` and as an MS2 `I NativeID` line |
 | MGF `TITLE` / MSP `Name` | `native_id`, falling back to `scan=<scan_number>` |
 | MS2 `Z` mass | Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read |
 | `rt` in MS2 | Written as minutes (`I RTime`), so it returns to within floating-point noise rather than bit-exact. MGF's `RTINSECONDS` is exact |

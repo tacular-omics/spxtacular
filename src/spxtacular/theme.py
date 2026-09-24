@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from .errors import SpxtacularError
+
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
@@ -206,12 +208,12 @@ def set_palette(
             continue
         missing = {"light", "dark"} - set(value)
         if missing:
-            raise ValueError(f"{name} palette must define both modes; missing {sorted(missing)}")
+            raise SpxtacularError(f"{name} palette must define both modes; missing {sorted(missing)}")
 
     if categorical is not None:
         for mode, hues in categorical.items():
             if len(hues) < len(_ION_SLOTS):
-                raise ValueError(
+                raise SpxtacularError(
                     f"categorical palette for {mode!r} needs at least {len(_ION_SLOTS)} hues, got {len(hues)}"
                 )
         _CATEGORICAL.update(categorical)
@@ -241,7 +243,7 @@ def set_plot_theme(mode: ThemeMode) -> None:
     """
     global _DEFAULT_MODE
     if mode not in ("light", "dark"):
-        raise ValueError(f"theme must be 'light' or 'dark', got {mode!r}")
+        raise SpxtacularError(f"theme must be 'light' or 'dark', got {mode!r}")
     _DEFAULT_MODE = mode
 
 

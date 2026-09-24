@@ -73,9 +73,6 @@ score values label the strongest scored peaks.
 On an `MsnSpectrum` carrying precursor information, the precursor m/z and its isolation window are
 drawn as recessive reference chrome behind the peaks. Pass `show_precursor=False` to suppress them.
 
-The legacy `show_charges=True/False` keyword is still accepted as a deprecated alias mapping to
-`color="charge"` / `color=None`.
-
 `Spectrum.plot()` is a convenience wrapper around this function:
 
 ```python
@@ -398,7 +395,7 @@ confirm centroiding did the right thing:
 from spxtacular import profile_centroid_plot
 
 profile_centroid_plot(profile)                    # centroids computed for you
-profile_centroid_plot(profile, my_centroids)      # or supply your own
+profile_centroid_plot(profile, centroids=my_centroids)      # or supply your own
 ```
 
 A stick off the apex means a mis-assigned centre. An apex with no stick means a peak was removed by

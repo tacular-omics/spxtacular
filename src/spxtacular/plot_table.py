@@ -26,6 +26,7 @@ plot_from_table         -- DataFrame → plotly Figure
 
 from __future__ import annotations
 
+import bisect
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -42,6 +43,7 @@ from .enums import (
     PeakSelectionLike,
     ToleranceLike,
 )
+from .errors import SpxtacularError
 from .matching import FragmentInput, match_fragments
 
 if TYPE_CHECKING:
@@ -128,7 +130,7 @@ def _scaled_intensity(
             values = values / peak * 100.0
         label = "Relative intensity (%)"
     elif scale != "absolute":
-        raise ValueError(f"intensity_scale must be 'absolute' or 'relative', got {scale!r}")
+        raise SpxtacularError(f"intensity_scale must be 'absolute' or 'relative', got {scale!r}")
 
     if transform == "sqrt":
         values = np.sqrt(np.clip(values, 0.0, None))
@@ -137,7 +139,7 @@ def _scaled_intensity(
         values = np.log10(np.clip(values, 0.0, None) + 1.0)
         label = f"log₁₀ {label[0].lower()}{label[1:]}"
     elif transform is not None:
-        raise ValueError(f"intensity_transform must be None, 'sqrt' or 'log', got {transform!r}")
+        raise SpxtacularError(f"intensity_transform must be None, 'sqrt' or 'log', got {transform!r}")
 
     return values, label
 
@@ -230,13 +232,22 @@ def _cap_labels(
         span = float(np.nanmax(mz)) - float(np.nanmin(mz))
         min_sep = span * _LABEL_MIN_SEPARATION
         if min_sep > 0:
+            # ``placed`` stays sorted, so only the two neighbours of a candidate
+            # can be closer than ``min_sep`` (O(n log n) instead of O(n^2)).
             placed: list[float] = []
             survivors: list[int] = []
             for i in idx:
                 x = float(mz[i])
-                if all(abs(x - p) >= min_sep for p in placed):
-                    placed.append(x)
+                if x != x:  # NaN m/z: every comparison is False, so it never collides
                     survivors.append(i)
+                    continue
+                pos = bisect.bisect_left(placed, x)
+                if pos > 0 and abs(x - placed[pos - 1]) < min_sep:
+                    continue
+                if pos < len(placed) and abs(placed[pos] - x) < min_sep:
+                    continue
+                placed.insert(pos, x)
+                survivors.append(i)
             idx = survivors
 
     if max_labels is not None:
@@ -266,6 +277,7 @@ def _im_value(im_col: list[float], im_arr: NDArray[np.float64] | None, i: int) -
 
 def build_plot_table(
     spectrum: Spectrum,
+    *,
     show_charges: bool = True,
     show_scores: bool = True,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
@@ -411,29 +423,16 @@ def _ion_priority(ion_type: str) -> int:
 
 
 def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
-    import copy
-
+    """Return the fragment's mzPAF label (no mass error; signed charge for negative ions)."""
     import paftacular as pft
 
-    if fragment.charge_state >= 1:
-        return pft.to_mzpaf(fragment, include_annotation=include_sequence).serialize()
-
-    # mzPAF currently rejects negative charge values. Build its otherwise
-    # canonical label from a temporary positive-magnitude copy, then restore
-    # the polarity in the rendered charge suffix.
-    label_fragment = copy.copy(fragment)
-    magnitude = abs(fragment.charge_state)
-    label_fragment.charge_state = magnitude
-    label_fragment.external_charge = magnitude
-    label = pft.to_mzpaf(label_fragment, include_annotation=include_sequence).serialize()
-    if magnitude == 1:
-        return f"{label}^-1"
-    return f"{label.removesuffix(f'^{magnitude}')}^-{magnitude}"
+    return pft.to_mzpaf(fragment, include_sequence=include_sequence).serialize()
 
 
 def build_annot_plot_table(
     spectrum: Spectrum,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -481,7 +480,9 @@ def build_annot_plot_table(
     -------
     pd.DataFrame with the same columns as :func:`build_plot_table`.
     """
-    matches = match_fragments(spectrum, fragments, tolerance, tolerance_type, peak_selection)
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+    )
 
     # Group matches by peak index
     peak_frags: dict[int, list[Fragment]] = {}
@@ -615,6 +616,7 @@ def _sticks(
 
 def table_view(
     table: pd.DataFrame,
+    *,
     max_rows: int | None = None,
     annotated_only: bool = False,
 ) -> str:
@@ -739,6 +741,7 @@ def _rgba(hex_color: str, alpha: float) -> str:
 
 def plot_from_table(
     table: pd.DataFrame,
+    *,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
     render: Literal["sticks", "profile"] | None = None,
@@ -779,11 +782,11 @@ def plot_from_table(
 
     missing = [c for c in _REQUIRED_COLUMNS if c not in table.columns]
     if missing:
-        raise ValueError(f"plot table is missing required column(s): {', '.join(missing)}")
+        raise SpxtacularError(f"plot table is missing required column(s): {', '.join(missing)}")
 
     mode = render if render is not None else table.attrs.get("render", "sticks")
     if mode not in ("sticks", "profile"):
-        raise ValueError(f"render must be 'sticks' or 'profile', got {mode!r}")
+        raise SpxtacularError(f"render must be 'sticks' or 'profile', got {mode!r}")
 
     if mode == "profile":
         return _plot_profile_trace(table, title, theme_mode, max_points, **layout_kwargs)

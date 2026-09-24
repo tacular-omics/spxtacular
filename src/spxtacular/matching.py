@@ -4,14 +4,13 @@ Fragment-to-peak matching.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
-from typing import cast
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, fields
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from peptacular import IonType
-from peptacular.annotation.frag import Fragment
+from peptacular import Fragment, IonType
 
 from .core import Spectrum
 from .enums import (
@@ -22,27 +21,86 @@ from .enums import (
     ToleranceLike,
     ToleranceType,
 )
+from .errors import SpxtacularError
 from .utils import da_to_ppm
+
+if TYPE_CHECKING:
+    from paftacular import PafAnnotation
 
 FragmentInput = Sequence[Fragment] | dict[tuple[IonType, int], list[float]]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class MatchedFragment:
-    """A confirmed fragment-to-peak match, carrying both the fragment and peak metadata."""
+    """A confirmed fragment-to-peak match, carrying both the fragment and peak metadata.
+
+    Attributes
+    ----------
+    fragment
+        The matched peptacular :class:`~peptacular.Fragment`.
+    peak_index
+        Index of the matched peak in the spectrum passed to :func:`match_fragments`.
+    peak_mz
+        Observed m/z (or neutral mass, for a decharged spectrum).
+    peak_intensity
+        Observed intensity.
+    intensity_pct
+        ``peak_intensity`` as a percentage of the spectrum's total intensity.
+    ppm_error
+        Signed error ``(peak_mz - theoretical) / |theoretical| * 1e6``.
+    da_error
+        Signed error ``peak_mz - theoretical``.
+    """
+
+    # Hand-written slots, so the ``annotation`` cache is a slot but not a dataclass
+    # field: it stays out of ``fields()``, ``asdict()``, ``repr`` and ``==``.
+    __slots__ = (
+        "_annotation",
+        "da_error",
+        "fragment",
+        "intensity_pct",
+        "peak_index",
+        "peak_intensity",
+        "peak_mz",
+        "ppm_error",
+    )
 
     fragment: Fragment
     peak_index: int
     peak_mz: float
     peak_intensity: float
-    intensity_pct: float  # peak_intensity / total_spectrum_intensity * 100
-    ppm_error: float  # signed: (peak_mz - theoretical_mz) / theoretical_mz * 1e6
-    da_error: float  # signed: peak_mz - theoretical_mz
+    intensity_pct: float
+    ppm_error: float
+    da_error: float
+
+    def __getstate__(self) -> tuple[object, ...]:
+        # Frozen and slotted: the default pickle protocol would setattr on load.
+        return tuple(getattr(self, f.name) for f in fields(self))
+
+    def __setstate__(self, state: tuple[object, ...]) -> None:
+        for f, value in zip(fields(self), state, strict=True):
+            object.__setattr__(self, f.name, value)
+
+    @property
+    def annotation(self) -> PafAnnotation:
+        """The match as an mzPAF :class:`~paftacular.PafAnnotation` (built once, then cached).
+
+        It carries the fragment's own sequence and the ppm mass error of this match.
+        ``annotation.serialize()`` gives the mzPAF string.
+        """
+        cached: PafAnnotation | None = getattr(self, "_annotation", None)
+        if cached is None:
+            from paftacular import to_mzpaf
+
+            cached = to_mzpaf(self.fragment, mass_error=self.ppm_error, include_sequence=True)
+            object.__setattr__(self, "_annotation", cached)
+        return cached
 
 
 def match_fragments(
     spectrum: Spectrum,
     fragments: FragmentInput,
+    *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
@@ -130,7 +188,6 @@ def match_fragments(
     intensity = spectrum.intensity
     charge = spectrum.charge  # None for raw/centroid spectra
     total_intensity = float(intensity.sum())
-    results: list[MatchedFragment] = []
 
     # Every lookup below goes through np.searchsorted, which returns meaningless
     # positions on unsorted input -- silently missing or wrong matches rather than
@@ -153,102 +210,10 @@ def match_fragments(
     # (all singletons) — every peak is then a wildcard and falls back to m/z.
     is_decharged = spectrum.is_decharged
 
-    def _target(frag: Fragment) -> float:
-        return float(frag.neutral_mass) if is_decharged else float(frag.mz)
-
-    def _charge_ok(peak_idx: int, frag_charge: int) -> bool:
-        if charge is None or is_decharged:
-            return True
-        pc = int(charge[peak_idx])
-        # Deconvolution records a charge magnitude; fragment polarity is carried
-        # by the sign of charge_state. Compare magnitudes so negative-mode
-        # fragments match their deconvoluted peaks. -1 remains the unknown-charge
-        # sentinel and therefore acts as a wildcard.
-        return pc == -1 or abs(pc) == abs(frag_charge)
-
-    def _ppm_err(delta: float, target_mz: float) -> float:
-        return da_to_ppm(delta, target_mz) if target_mz != 0.0 else 0.0
-
-    def _err(delta: float, target_mz: float) -> float:
-        """``delta`` (always in Da) expressed in the active tolerance unit."""
-        return _ppm_err(delta, target_mz) if tol_type is ToleranceType.PPM else delta
-
-    def _build_matched(peak_idx: int, frag: Fragment) -> MatchedFragment:
-        p_mz = float(mz[peak_idx])
-        p_int = float(intensity[peak_idx])
-        theoretical_mz = _target(frag)
-        da_err = p_mz - theoretical_mz
-        ppm_err = _ppm_err(da_err, theoretical_mz)
-        pct = p_int / total_intensity * 100.0 if total_intensity > 0.0 else 0.0
-        return MatchedFragment(
-            fragment=frag,
-            peak_index=peak_idx,
-            peak_mz=p_mz,
-            peak_intensity=p_int,
-            intensity_pct=pct,
-            ppm_error=ppm_err,
-            da_error=da_err,
-        )
-
-    def _search(target_mz: float, frag_charge: int) -> list[tuple[int, float]]:
-        """Return (peak_idx, abs_delta) candidates within tolerance."""
-        idx = int(np.searchsorted(mz, target_mz))
-        candidates: list[tuple[int, float]] = []
-
-        if selection is PeakSelection.CLOSEST:
-            # Walk outward from the insertion point on both sides. |delta| grows
-            # monotonically away from `idx`, so the first charge-compatible peak on
-            # each side is the nearest one there. Only the tolerance may stop a walk:
-            # breaking on a charge mismatch would hide a compatible peak that sits
-            # just beyond an incompatible immediate neighbour.
-            for start, step in ((idx - 1, -1), (idx, 1)):
-                i = start
-                while 0 <= i < len(mz):
-                    delta = abs(float(mz[i]) - target_mz)
-                    if _err(delta, target_mz) > tolerance:
-                        break
-                    if _charge_ok(i, frag_charge):
-                        candidates.append((i, delta))
-                        break
-                    i += step
-        else:
-            for i in range(idx - 1, -1, -1):
-                delta = abs(float(mz[i]) - target_mz)
-                if _err(delta, target_mz) > tolerance:
-                    break
-                if _charge_ok(i, frag_charge):
-                    candidates.append((i, delta))
-            for i in range(idx, len(mz)):
-                delta = abs(float(mz[i]) - target_mz)
-                if _err(delta, target_mz) > tolerance:
-                    break
-                if _charge_ok(i, frag_charge):
-                    candidates.append((i, delta))
-
-        return candidates
-
-    def _emit(candidates: list[tuple[int, float]], frag: Fragment) -> None:
-        if not candidates:
-            return
-        if selection is PeakSelection.CLOSEST:
-            best_i = min(candidates, key=lambda c: c[1])[0]
-            results.append(_build_matched(best_i, frag))
-        elif selection is PeakSelection.LARGEST:
-            best_i = max(candidates, key=lambda c: float(intensity[c[0]]))[0]
-            results.append(_build_matched(best_i, frag))
-        else:  # "all"
-            for i, _ in candidates:
-                results.append(_build_matched(i, frag))
-
     def _make_frag(ion_type: IonType, pos: int, charge_state: int, mz_val: float) -> Fragment:
         # Fragment.mz is ``mass / abs(charge_state)``, so the round trip from an
         # m/z back to a mass has to use the magnitude of the charge: a negative
         # charge_state would otherwise flip the sign of every derived m/z.
-        if charge_state == 0:
-            raise ValueError(
-                f"fragment dict key ({ion_type!r}, 0) has charge_state == 0; "
-                "an m/z cannot be converted to a fragment mass without a charge"
-            )
         return Fragment(
             ion_type=ion_type,
             position=pos,
@@ -257,40 +222,157 @@ def match_fragments(
             charge_state=charge_state,
         )
 
+    # Flatten the input into parallel target / charge arrays. Fragments from a
+    # dict are only built for targets that match, unless the spectrum is
+    # decharged (the neutral-mass target needs the Fragment).
+    frag_list: list[Fragment | None]
+    dict_keys: list[tuple[IonType, int, int, float]] | None = None
     if isinstance(fragments, dict):
         frag_dict = cast(dict[tuple[IonType, int], list[float]], fragments)
+        dict_keys = []
         for (ion_type, charge_state), masses in frag_dict.items():
             # Validate up front so the error does not depend on whether a peak
-            # happened to match (Fragment construction is deferred below).
+            # happened to match.
             if charge_state == 0:
-                raise ValueError(
+                raise SpxtacularError(
                     f"fragment dict key ({ion_type!r}, 0) has charge_state == 0; "
                     "an m/z cannot be converted to a fragment mass without a charge"
                 )
-            for pos, mz_val in enumerate(masses, start=1):
-                # Only decharged spectra need the neutral-mass target, which requires
-                # building the Fragment up front; otherwise defer construction until
-                # a match is actually found (mz_val is already the search target).
-                if is_decharged:
-                    frag: Fragment | None = _make_frag(ion_type, pos, charge_state, mz_val)
-                    target = _target(frag)
-                else:
-                    frag = None
-                    target = mz_val
-                candidates = _search(target, charge_state)
-                if candidates:
-                    if frag is None:
-                        frag = _make_frag(ion_type, pos, charge_state, mz_val)
-                    _emit(candidates, frag)
+            dict_keys.extend((ion_type, charge_state, pos, float(v)) for pos, v in enumerate(masses, start=1))
+        if is_decharged:
+            frag_list = [_make_frag(it, pos, cs, v) for it, cs, pos, v in dict_keys]
+            targets = np.array([cast(Fragment, f).neutral_mass for f in frag_list], dtype=np.float64)
+        else:
+            frag_list = [None] * len(dict_keys)
+            targets = np.array([k[3] for k in dict_keys], dtype=np.float64)
+        frag_charges = np.array([k[1] for k in dict_keys], dtype=np.int64)
     else:
-        for frag in fragments:
-            candidates = _search(_target(frag), frag.charge_state)
-            _emit(candidates, frag)
+        given = list(cast(Iterable[Fragment], fragments))
+        attr = "neutral_mass" if is_decharged else "mz"
+        targets = np.array([getattr(f, attr) for f in given], dtype=np.float64)
+        frag_charges = np.array([f.charge_state for f in given], dtype=np.int64)
+        frag_list = list(given)
 
-    if unsort is not None:
-        # Indices currently refer to the sorted working copy; translate them back
-        # to positions in the caller's array.
-        results = [replace(m, peak_index=int(unsort[m.peak_index])) for m in results]
+    frag_idx, peak_idx, _ = _search(
+        mz,
+        targets,
+        frag_charges,
+        None if is_decharged else charge,
+        intensity,
+        tolerance=float(tolerance),
+        ppm=tol_type is ToleranceType.PPM,
+        selection=selection,
+    )
+    if frag_idx.size == 0:
+        return []
 
-    results.sort(key=lambda m: m.peak_index)
+    # Signed errors, and the order the caller sees: by peak index in the caller's
+    # array, then by fragment input order.
+    signed_da = mz[peak_idx] - targets[frag_idx]
+    out_peak = unsort[peak_idx] if unsort is not None else peak_idx
+    order = np.lexsort((frag_idx, out_peak))
+
+    results: list[MatchedFragment] = []
+    for k in order.tolist():
+        fi = int(frag_idx[k])
+        pi = int(peak_idx[k])
+        frag = frag_list[fi]
+        if frag is None:
+            assert dict_keys is not None
+            it, cs, pos, v = dict_keys[fi]
+            frag = _make_frag(it, pos, cs, v)
+            frag_list[fi] = frag
+        target = float(targets[fi])
+        da_err = float(signed_da[k])
+        p_int = float(intensity[pi])
+        results.append(
+            MatchedFragment(
+                fragment=frag,
+                peak_index=int(out_peak[k]),
+                peak_mz=float(mz[pi]),
+                peak_intensity=p_int,
+                intensity_pct=p_int / total_intensity * 100.0 if total_intensity > 0.0 else 0.0,
+                ppm_error=da_to_ppm(da_err, target) if target != 0.0 else 0.0,
+                da_error=da_err,
+            )
+        )
     return results
+
+
+def _search(
+    mz: NDArray[np.float64],
+    targets: NDArray[np.float64],
+    frag_charges: NDArray[np.int64],
+    charge: NDArray[np.int32] | None,
+    intensity: NDArray[np.float64],
+    *,
+    tolerance: float,
+    ppm: bool,
+    selection: PeakSelection,
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.float64]]:
+    """Vectorised window search over an m/z-sorted peak array.
+
+    Returns parallel ``(fragment_index, peak_index, abs_delta)`` arrays of the
+    selected matches. ``charge`` is ``None`` when charge is no constraint.
+
+    A peak is in tolerance when its error (``|delta|`` in Da, or
+    ``|delta| / |target| * 1e6`` in ppm; 0 for a zero target) is at most
+    ``tolerance``. Ties resolve as the previous per-fragment walk did: the peak
+    below the target wins over the one above, and among equal m/z values the
+    one nearest the insertion point wins.
+    """
+    empty = (np.empty(0, np.intp), np.empty(0, np.intp), np.empty(0, np.float64))
+    n_frag = targets.size
+    if n_frag == 0 or mz.size == 0:
+        return empty
+
+    abs_t = np.abs(targets)
+    if ppm:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            half = np.where(abs_t != 0.0, tolerance * abs_t / 1e6, np.inf)
+    else:
+        half = np.full(n_frag, tolerance)
+    # Pad the window a little and apply the exact test below, so rounding in
+    # the bound never drops a peak the exact test would keep.
+    pad = half * 1e-9 + 1e-12
+    lo = np.searchsorted(mz, targets - half - pad, side="left")
+    hi = np.searchsorted(mz, targets + half + pad, side="right")
+    counts = hi - lo
+    total = int(counts.sum())
+    if total == 0:
+        return empty
+
+    fi = np.repeat(np.arange(n_frag, dtype=np.intp), counts)
+    starts = np.repeat(lo - np.concatenate(([0], np.cumsum(counts)[:-1])), counts)
+    pi = (np.arange(total, dtype=np.intp) + starts).astype(np.intp)
+
+    t = targets[fi]
+    delta = np.abs(mz[pi] - t)
+    if ppm:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            err = np.where(t != 0.0, delta / np.abs(t) * 1e6, 0.0)
+    else:
+        err = delta
+    keep = err <= tolerance
+    if charge is not None:
+        pc = charge[pi].astype(np.int64)
+        keep &= (pc == -1) | (np.abs(pc) == np.abs(frag_charges[fi]))
+    if not keep.all():
+        fi, pi, delta, t = fi[keep], pi[keep], delta[keep], t[keep]
+    if fi.size == 0:
+        return empty
+    if selection is PeakSelection.ALL:
+        return fi, pi, delta
+
+    # Side of the target (0 = below, searched first) and nearness to the
+    # insertion point within a side, reproducing the walk's tie-breaking.
+    below = mz[pi] < t
+    side = np.where(below, 0, 1)
+    nearness = np.where(below, -pi, pi)
+    primary = delta if selection is PeakSelection.CLOSEST else -intensity[pi]
+    order = np.lexsort((nearness, side, primary, fi))
+    fi_sorted = fi[order]
+    first = np.ones(fi_sorted.size, dtype=bool)
+    first[1:] = fi_sorted[1:] != fi_sorted[:-1]
+    chosen = order[first]
+    return fi[chosen], pi[chosen], delta[chosen]

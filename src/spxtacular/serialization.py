@@ -10,21 +10,24 @@ from typing import Any, Literal, overload
 
 import numpy as np
 
+from .errors import SpxtacularError
+
 SPECTRUM_SCHEMA = "spxtacular.spectrum"
 CHROMATOGRAM_SCHEMA = "spxtacular.chromatogram"
 JSON_SCHEMA_VERSION = 1
+SPECTRUM_SCHEMA_VERSION = 2
 
 
 def get_json_schema(kind: Literal["spectrum", "chromatogram"]) -> dict[str, Any]:
-    """Return a fresh copy of a packaged v1 JSON Schema document."""
+    """Return a fresh copy of the packaged JSON Schema document (spectrum v2, chromatogram v1)."""
     schema_files = {
-        "spectrum": "spectrum-v1.schema.json",
+        "spectrum": "spectrum-v2.schema.json",
         "chromatogram": "chromatogram-v1.schema.json",
     }
     try:
         filename = schema_files[kind]
     except KeyError as error:
-        raise ValueError(f"Unknown JSON Schema kind {kind!r}. Expected 'spectrum' or 'chromatogram'") from error
+        raise SpxtacularError(f"Unknown JSON Schema kind {kind!r}. Expected 'spectrum' or 'chromatogram'") from error
     value = json.loads(files("spxtacular.schemas").joinpath(filename).read_text(encoding="utf-8"))
     return dict(require_mapping(value, f"packaged schema {filename}"))
 
@@ -47,7 +50,7 @@ def to_json_value(value: Any, path: str = "value") -> Any:
     if isinstance(value, (float, np.floating)):
         number = float(value)
         if not math.isfinite(number):
-            raise ValueError(f"{path} must be finite for JSON serialization")
+            raise SpxtacularError(f"{path} must be finite for JSON serialization")
         return number
     if isinstance(value, np.ndarray):
         return [to_json_value(item, f"{path}[{index}]") for index, item in enumerate(value.tolist())]
@@ -77,29 +80,29 @@ def strict_json_loads(value: str | bytes | bytearray) -> Any:
         raise TypeError(f"JSON input must be str, bytes, or bytearray, got {type(value).__name__}")
 
     def reject_constant(constant: str) -> None:
-        raise ValueError(f"JSON input contains non-standard numeric constant {constant}")
+        raise SpxtacularError(f"JSON input contains non-standard numeric constant {constant}")
 
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise ValueError(f"JSON input contains duplicate object key {key!r}")
+                raise SpxtacularError(f"JSON input contains duplicate object key {key!r}")
             result[key] = item
         return result
 
     try:
         return json.loads(value, parse_constant=reject_constant, object_pairs_hook=reject_duplicates)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise ValueError(f"Invalid JSON: {error}") from error
+        raise SpxtacularError(f"Invalid JSON: {error}") from error
 
 
 def require_mapping(value: Any, path: str) -> Mapping[str, Any]:
     """Require a JSON object at ``path``."""
     if not isinstance(value, Mapping):
-        raise TypeError(f"{path} must be a JSON object")
+        raise SpxtacularError(f"{path} must be a JSON object")
     for key in value:
         if not isinstance(key, str):
-            raise TypeError(f"{path} keys must be strings, got {type(key).__name__}")
+            raise SpxtacularError(f"{path} keys must be strings, got {type(key).__name__}")
     return value
 
 
@@ -109,9 +112,9 @@ def require_exact_keys(value: Mapping[str, Any], expected: set[str], path: str) 
     missing = sorted(expected - actual)
     unknown = sorted(actual - expected)
     if missing:
-        raise ValueError(f"{path} is missing required field(s): {', '.join(missing)}")
+        raise SpxtacularError(f"{path} is missing required field(s): {', '.join(missing)}")
     if unknown:
-        raise ValueError(f"{path} contains unknown field(s): {', '.join(unknown)}")
+        raise SpxtacularError(f"{path} contains unknown field(s): {', '.join(unknown)}")
 
 
 def require_array_or_none(value: Any, path: str) -> list[Any] | None:
@@ -119,7 +122,7 @@ def require_array_or_none(value: Any, path: str) -> list[Any] | None:
     if value is None:
         return None
     if not isinstance(value, list):
-        raise TypeError(f"{path} must be a JSON array or null")
+        raise SpxtacularError(f"{path} must be a JSON array or null")
     return value.copy()
 
 
@@ -136,10 +139,10 @@ def require_number(value: Any, path: str, *, nullable: bool = False) -> int | fl
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a number")
+        raise SpxtacularError(f"{path} must be a number")
     if isinstance(value, bool) or not isinstance(value, (int, float, np.integer, np.floating)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a number{suffix}")
+        raise SpxtacularError(f"{path} must be a number{suffix}")
     number = to_json_value(value, path)
     return number
 
@@ -157,10 +160,10 @@ def require_integer(value: Any, path: str, *, nullable: bool = False) -> int | N
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be an integer")
+        raise SpxtacularError(f"{path} must be an integer")
     if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be an integer{suffix}")
+        raise SpxtacularError(f"{path} must be an integer{suffix}")
     return int(value)
 
 
@@ -177,10 +180,10 @@ def require_string(value: Any, path: str, *, nullable: bool = False) -> str | No
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a string")
+        raise SpxtacularError(f"{path} must be a string")
     if not isinstance(value, str):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a string{suffix}")
+        raise SpxtacularError(f"{path} must be a string{suffix}")
     return str(value)
 
 
@@ -197,10 +200,10 @@ def require_boolean(value: Any, path: str, *, nullable: bool = False) -> bool | 
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a boolean")
+        raise SpxtacularError(f"{path} must be a boolean")
     if not isinstance(value, (bool, np.bool_)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a boolean{suffix}")
+        raise SpxtacularError(f"{path} must be a boolean{suffix}")
     return bool(value)
 
 
@@ -224,7 +227,7 @@ def require_range_or_none(value: Any, path: str) -> list[int | float] | None:
     """Require a two-number JSON array or null."""
     array = require_number_array_or_none(value, path)
     if array is not None and len(array) != 2:
-        raise ValueError(f"{path} must contain exactly two numbers")
+        raise SpxtacularError(f"{path} must contain exactly two numbers")
     return array
 
 
@@ -232,18 +235,21 @@ def require_schema(
     payload: Mapping[str, Any],
     schema: str,
     kinds: set[str],
+    *,
+    versions: tuple[int, ...] = (JSON_SCHEMA_VERSION,),
 ) -> str:
     """Validate the common transport envelope and return its kind."""
     require_exact_keys(payload, {"schema", "schema_version", "kind", "arrays", "metadata"}, "payload")
     if not isinstance(payload["schema"], str) or payload["schema"] != schema:
-        raise ValueError(f"Expected schema {schema!r}, got {payload['schema']!r}")
-    if type(payload["schema_version"]) is not int or payload["schema_version"] != JSON_SCHEMA_VERSION:
-        raise ValueError(
+        raise SpxtacularError(f"Expected schema {schema!r}, got {payload['schema']!r}")
+    if type(payload["schema_version"]) is not int or payload["schema_version"] not in versions:
+        supported = ", ".join(str(v) for v in versions)
+        raise SpxtacularError(
             f"Unsupported {schema} schema version {payload['schema_version']!r}. "
-            f"This release supports version {JSON_SCHEMA_VERSION}"
+            f"This release supports version {supported}"
         )
     kind = payload["kind"]
     if not isinstance(kind, str) or kind not in kinds:
         expected = ", ".join(sorted(kinds))
-        raise ValueError(f"payload.kind must be one of {expected}, got {kind!r}")
+        raise SpxtacularError(f"payload.kind must be one of {expected}, got {kind!r}")
     return str(kind)

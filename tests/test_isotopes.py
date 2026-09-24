@@ -233,7 +233,7 @@ def test_high_mass_envelope_recovers_monoisotopic_anchor() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        is_ppm=True,
+        tolerance_type="ppm",
         isotope_model="peptide",
     )
 
@@ -248,7 +248,7 @@ def test_high_mass_envelope_recovers_monoisotopic_anchor() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        is_ppm=True,
+        tolerance_type="ppm",
         intensity_mode="base",
     )
     assert base_intensity[0] == 0.0
@@ -277,7 +277,7 @@ def test_near_apex_alignment_handles_observed_maximum_shift() -> None:
         intensity,
         charge_range=(1, 10),
         tolerance=10.0,
-        is_ppm=True,
+        tolerance_type="ppm",
         isotope_model="peptide",
     )
 
@@ -335,7 +335,7 @@ def test_candidate_score_can_prefer_abundance_over_closest_mz() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=10.0,
-        is_ppm=True,
+        tolerance_type="ppm",
     )
 
     cluster = int(np.flatnonzero(out_charge == charge)[0])
@@ -445,7 +445,7 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        is_ppm=True,
+        tolerance_type="ppm",
     )
     clean_cluster = int(np.flatnonzero(clean_charge == charge)[0])
     intensity[2] *= 3.0  # Outside the default twofold gate, but still below the apex.
@@ -455,7 +455,7 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        is_ppm=True,
+        tolerance_type="ppm",
     )
 
     first_cluster = int(np.argmin(np.abs(out_mz - mono_mz)))

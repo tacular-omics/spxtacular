@@ -15,7 +15,7 @@ Reading::
 
     with MgfReader("run.mgf") as reader:      # .mgf.gz works too
         for spec in reader:
-            print(spec.precursors[0].mz, len(spec))
+            print(spec.precursors[0].precursor_mz, len(spec))
 
 Writing::
 
@@ -41,10 +41,11 @@ from types import TracebackType
 from typing import IO, Self
 
 import numpy as np
-import peptacular as pt
+from tacular.constants import PROTON_MASS
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
+from .errors import SpxtacularError
 from .utils import format_precursor_charge, signed_precursor_charge
 
 __all__ = ["MgfReader", "Ms2Reader", "MspReader", "PeakListLookup", "write_mgf", "write_ms2", "write_msp"]
@@ -117,14 +118,14 @@ def _parse_float(text: str, *, field_name: str, path: Path, line_no: int) -> flo
     try:
         return float(text)
     except ValueError:
-        raise ValueError(f"{path}:{line_no}: could not parse {field_name} from {text!r}") from None
+        raise SpxtacularError(f"{path}:{line_no}: could not parse {field_name} from {text!r}") from None
 
 
 def _first_float(text: str, *, field_name: str, path: Path, line_no: int) -> float:
     """Leading float of a value, tolerating ranges such as ``"120.5-130.5"``."""
     match = _FLOAT_RE.match(text.strip())
     if match is None:
-        raise ValueError(f"{path}:{line_no}: could not parse {field_name} from {text!r}")
+        raise SpxtacularError(f"{path}:{line_no}: could not parse {field_name} from {text!r}")
     return float(match.group())
 
 
@@ -132,7 +133,7 @@ def _first_int(text: str, *, field_name: str, path: Path, line_no: int) -> int:
     """Leading integer of a value, tolerating ranges such as ``"1024-1030"``."""
     match = _INT_RE.match(text.strip())
     if match is None:
-        raise ValueError(f"{path}:{line_no}: could not parse {field_name} from {text!r}")
+        raise SpxtacularError(f"{path}:{line_no}: could not parse {field_name} from {text!r}")
     return int(match.group())
 
 
@@ -150,7 +151,7 @@ def _scan_int(text: str, *, path: Path, line_no: int) -> int:
     matches = list(_INT_RE.finditer(token))
     if matches:
         return int(matches[-1].group())
-    raise ValueError(f"{path}:{line_no}: could not parse SCANS from {text!r}")
+    raise SpxtacularError(f"{path}:{line_no}: could not parse SCANS from {text!r}")
 
 
 def _parse_charge(text: str, *, path: Path, line_no: int) -> int:
@@ -163,7 +164,7 @@ def _parse_charge(text: str, *, path: Path, line_no: int) -> int:
     token = text.strip()
     match = _CHARGE_RE.match(token)
     if match is None:
-        raise ValueError(f"{path}:{line_no}: could not parse charge from {text!r}")
+        raise SpxtacularError(f"{path}:{line_no}: could not parse charge from {text!r}")
     lead, digits, trail = match.groups()
     sign = trail or lead or "+"
     return -int(digits) if sign == "-" else int(digits)
@@ -217,7 +218,7 @@ def _iter_mgf(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
         upper = line.upper()
         if upper == "BEGIN IONS":
             if block is not None:
-                raise ValueError(
+                raise SpxtacularError(
                     f"{path}:{line_no}: 'BEGIN IONS' inside the spectrum block opened at "
                     f"line {block.begin_line} (missing 'END IONS')"
                 )
@@ -226,7 +227,7 @@ def _iter_mgf(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
 
         if upper == "END IONS":
             if block is None:
-                raise ValueError(f"{path}:{line_no}: 'END IONS' without a matching 'BEGIN IONS'")
+                raise SpxtacularError(f"{path}:{line_no}: 'END IONS' without a matching 'BEGIN IONS'")
             yield _mgf_spectrum(block, path=path)
             block = None
             continue
@@ -243,14 +244,14 @@ def _iter_mgf(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
 
         parts = _PEAK_SPLIT_RE.split(line)
         if len(parts) < 2:
-            raise ValueError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
+            raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
         block.mz.append(_parse_float(parts[0], field_name="peak m/z", path=path, line_no=line_no))
         block.intensity.append(_parse_float(parts[1], field_name="peak intensity", path=path, line_no=line_no))
         # A third column is an optional per-peak charge (``100.0 25.0 1+``).
         block.charge.append(_parse_charge(parts[2], path=path, line_no=line_no) if len(parts) > 2 else None)
 
     if block is not None:
-        raise ValueError(f"{path}:{block.begin_line}: unterminated spectrum block (missing 'END IONS')")
+        raise SpxtacularError(f"{path}:{block.begin_line}: unterminated spectrum block (missing 'END IONS')")
 
 
 def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
@@ -263,7 +264,7 @@ def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
         value, line_no = headers["PEPMASS"]
         parts = _PEAK_SPLIT_RE.split(value.strip())
         if not parts or not parts[0]:
-            raise ValueError(f"{path}:{line_no}: PEPMASS has no m/z value")
+            raise SpxtacularError(f"{path}:{line_no}: PEPMASS has no m/z value")
         precursor_mz = _parse_float(parts[0], field_name="PEPMASS m/z", path=path, line_no=line_no)
         if len(parts) > 1 and parts[1]:
             precursor_intensity = _parse_float(parts[1], field_name="PEPMASS intensity", path=path, line_no=line_no)
@@ -294,7 +295,7 @@ def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
     if precursor_mz is not None:
         precursors = [
             Precursor(
-                mz=precursor_mz,
+                precursor_mz=precursor_mz,
                 intensity=precursor_intensity,
                 charge=charge,
                 im=None,
@@ -346,6 +347,7 @@ class _Ms2Block:
     injection_time: float | None = None
     total_ion_current: float | None = None
     activation_type: str | None = None
+    native_id: str | None = None
     mz: list[float] = field(default_factory=list)
     intensity: list[float] = field(default_factory=list)
 
@@ -371,7 +373,7 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
             if block is not None:
                 yield _ms2_spectrum(block)
             if len(fields) < 4:
-                raise ValueError(
+                raise SpxtacularError(
                     f"{path}:{line_no}: expected 'S <first_scan> <last_scan> <precursor_mz>', got {line!r}"
                 )
             block = _Ms2Block(
@@ -382,11 +384,11 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
             continue
 
         if block is None:
-            raise ValueError(f"{path}:{line_no}: {line!r} appears before any 'S' scan line")
+            raise SpxtacularError(f"{path}:{line_no}: {line!r} appears before any 'S' scan line")
 
         if tag == "Z":
             if len(fields) < 2:
-                raise ValueError(f"{path}:{line_no}: expected 'Z <charge> <mass>', got {line!r}")
+                raise SpxtacularError(f"{path}:{line_no}: expected 'Z <charge> <mass>', got {line!r}")
             # Repeated Z lines mean several candidate charge states; all are
             # parsed (so a malformed one still errors) and the first is used.
             block.charges.append(_parse_charge(fields[1], path=path, line_no=line_no))
@@ -408,11 +410,13 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
                 block.total_ion_current = _first_float(value, field_name=fields[1], path=path, line_no=line_no)
             elif key == "ACTIVATIONTYPE":
                 block.activation_type = value
+            elif key == "NATIVEID":
+                block.native_id = value
             continue
 
         # Anything else must be an ion line.
         if len(fields) < 2:
-            raise ValueError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
+            raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
         block.mz.append(_parse_float(fields[0], field_name="peak m/z", path=path, line_no=line_no))
         block.intensity.append(_parse_float(fields[1], field_name="peak intensity", path=path, line_no=line_no))
 
@@ -427,7 +431,7 @@ def _ms2_spectrum(block: _Ms2Block) -> MsnSpectrum:
     if block.precursor_mz is not None:
         precursors = [
             Precursor(
-                mz=block.precursor_mz,
+                precursor_mz=block.precursor_mz,
                 intensity=block.precursor_intensity,
                 charge=charge,
                 im=None,
@@ -442,7 +446,13 @@ def _ms2_spectrum(block: _Ms2Block) -> MsnSpectrum:
         spectrum_type=SpectrumType.CENTROID,
         scan_number=block.scan_number,
         ms_level=2,
-        native_id=f"scan={block.scan_number}" if block.scan_number is not None else None,
+        native_id=(
+            block.native_id
+            if block.native_id is not None
+            else f"scan={block.scan_number}"
+            if block.scan_number is not None
+            else None
+        ),
         rt=block.rt,
         injection_time=block.injection_time,
         total_ion_current=block.total_ion_current,
@@ -510,7 +520,7 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
             # Inside the peak list. A blank line here means the record declared
             # more peaks than it holds.
             if not line:
-                raise ValueError(
+                raise SpxtacularError(
                     f"{path}:{line_no}: record starting at line {block.start_line} declares "
                     f"{block.num_peaks} peaks but ends after {len(block.mz)}"
                 )
@@ -522,13 +532,13 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
                 if not chunk:
                     continue
                 if len(block.mz) >= block.num_peaks:
-                    raise ValueError(
+                    raise SpxtacularError(
                         f"{path}:{line_no}: record starting at line {block.start_line} declares "
                         f"{block.num_peaks} peaks but holds more"
                     )
                 parts = _PEAK_SPLIT_RE.split(chunk)
                 if len(parts) < 2:
-                    raise ValueError(f"{path}:{line_no}: expected 'mz intensity' on a peak line, got {chunk!r}")
+                    raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on a peak line, got {chunk!r}")
                 block.mz.append(_parse_float(parts[0], field_name="peak m/z", path=path, line_no=line_no))
                 block.intensity.append(_parse_float(parts[1], field_name="peak intensity", path=path, line_no=line_no))
             if len(block.mz) == block.num_peaks:
@@ -538,14 +548,14 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
 
         if not line:
             if block is not None:
-                raise ValueError(
+                raise SpxtacularError(
                     f"{path}:{block.start_line}: record has no 'Num Peaks' line before the blank line at line {line_no}"
                 )
             continue
 
         key, sep, value = line.partition(":")
         if not sep:
-            raise ValueError(f"{path}:{line_no}: expected a 'Key: value' header line, got {line!r}")
+            raise SpxtacularError(f"{path}:{line_no}: expected a 'Key: value' header line, got {line!r}")
         if block is None:
             block = _MspBlock(start_line=line_no)
         normalised = _msp_key(key)
@@ -553,7 +563,7 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
             block.num_peaks = _first_int(value, field_name="Num Peaks", path=path, line_no=line_no)
             block.num_peaks_line = line_no
             if block.num_peaks < 0:
-                raise ValueError(f"{path}:{line_no}: negative 'Num Peaks' count {block.num_peaks}")
+                raise SpxtacularError(f"{path}:{line_no}: negative 'Num Peaks' count {block.num_peaks}")
             if block.num_peaks == 0:
                 yield _msp_spectrum(block, path=path)
                 block = None
@@ -562,8 +572,8 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
 
     if block is not None:
         if block.num_peaks is None:
-            raise ValueError(f"{path}:{block.start_line}: record has no 'Num Peaks' line before end of file")
-        raise ValueError(
+            raise SpxtacularError(f"{path}:{block.start_line}: record has no 'Num Peaks' line before end of file")
+        raise SpxtacularError(
             f"{path}:{block.start_line}: record declares {block.num_peaks} peaks "
             f"but the file ends after {len(block.mz)}"
         )
@@ -643,7 +653,7 @@ def _msp_spectrum(block: _MspBlock, *, path: Path) -> MsnSpectrum:
     if precursor_mz is not None:
         precursors = [
             Precursor(
-                mz=precursor_mz,
+                precursor_mz=precursor_mz,
                 intensity=0.0,
                 charge=charge,
                 im=None,
@@ -685,7 +695,7 @@ class PeakListLookup:
     random access is O(n) — iterate when you want every spectrum.
     """
 
-    def __init__(self, reader: _PeakListReader, ms_level: int | None = None) -> None:
+    def __init__(self, reader: _PeakListReader, *, ms_level: int | None = None) -> None:
         self._reader = reader
         self._ms_level = ms_level
 
@@ -869,12 +879,12 @@ def _as_spectra(spectra: Iterable[Spectrum] | Spectrum) -> Iterable[Spectrum]:
 
 def _check_writable(spec: Spectrum, index: int, fmt: str) -> None:
     if spec.charge is not None and np.any(spec.charge == 0):
-        raise ValueError(
+        raise SpxtacularError(
             f"cannot write neutral masses in spectrum {index} to {fmt}. "
             "Peak lists require m/z. Use JSON or NPZ to preserve neutral masses."
         )
     if spec.spectrum_type == SpectrumType.PROFILE:
-        raise ValueError(
+        raise SpxtacularError(
             f"cannot write spectrum {index} to {fmt}: peak lists hold centroid data, not profile data. "
             "Call .centroid() first."
         )
@@ -947,6 +957,8 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
             if title is not None:
                 fh.write(f"TITLE={title}\n")
 
+            # SCANS only for a real scan number: a position could collide with another
+            # spectrum's scan number. TITLE above keeps the native id.
             if msn is not None and msn.scan_number is not None:
                 fh.write(f"SCANS={msn.scan_number}\n")
             if msn is not None and msn.rt is not None:
@@ -957,9 +969,9 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
                 # An intensity of 0.0 is what an absent one reads back as, so it
                 # is left off rather than written out.
                 if prec.intensity != 0.0:
-                    fh.write(f"PEPMASS={_fmt(prec.mz)} {_fmt(prec.intensity)}\n")
+                    fh.write(f"PEPMASS={_fmt(prec.precursor_mz)} {_fmt(prec.intensity)}\n")
                 else:
-                    fh.write(f"PEPMASS={_fmt(prec.mz)}\n")
+                    fh.write(f"PEPMASS={_fmt(prec.precursor_mz)}\n")
             charge = _written_charge(spec)
             if charge is not None:
                 fh.write(f"CHARGE={format_precursor_charge(charge)}\n")
@@ -1016,8 +1028,10 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
             prec = _first_precursor(spec)
 
             scan = msn.scan_number if msn is not None and msn.scan_number is not None else index + 1
-            precursor_mz = prec.mz if prec is not None else 0.0
+            precursor_mz = prec.precursor_mz if prec is not None else 0.0
             fh.write(f"S\t{scan}\t{scan}\t{_fmt(precursor_mz)}\n")
+            if msn is not None and msn.native_id is not None and msn.native_id != f"scan={scan}":
+                fh.write(f"I\tNativeID\t{msn.native_id}\n")
 
             if msn is not None and msn.rt is not None:
                 fh.write(f"I\tRTime\t{_fmt(msn.rt / 60.0)}\n")
@@ -1032,7 +1046,7 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             charge = _written_charge(spec)
             if charge is not None and prec is not None:
-                fh.write(f"Z\t{charge}\t{_fmt(_mh_mass(prec.mz, charge))}\n")
+                fh.write(f"Z\t{charge}\t{_fmt(_mh_mass(prec.precursor_mz, charge))}\n")
 
             for i in range(len(spec.mz)):
                 fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
@@ -1084,7 +1098,7 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             prec = _first_precursor(spec)
             if prec is not None:
-                fh.write(f"PrecursorMZ: {_fmt(prec.mz)}\n")
+                fh.write(f"PrecursorMZ: {_fmt(prec.precursor_mz)}\n")
                 if prec.charge is not None:
                     fh.write(f"Charge: {int(prec.charge)}\n")
             if msn is not None and msn.polarity is not None:
@@ -1106,7 +1120,7 @@ def _mh_mass(mz: float, charge: int) -> float:
     z = abs(charge)
     if z == 0:
         return float(mz)
-    return (float(mz) - pt.PROTON_MASS) * z + pt.PROTON_MASS
+    return (float(mz) - PROTON_MASS) * z + PROTON_MASS
 
 
 def _spxtacular_version() -> str:

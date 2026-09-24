@@ -76,8 +76,7 @@ def test_filter_top_n_zero_returns_empty() -> None:
 
 def test_normalize_already_normalized_returns_distinct_copy() -> None:
     a = _spec().normalize()  # now normalized="max"
-    with pytest.warns(UserWarning):
-        b = a.normalize()  # early-return path
+    b = a.normalize()  # rescales again
     assert b is not a
     b.intensity[0] = -999.0
     assert a.intensity[0] != -999.0
@@ -85,8 +84,7 @@ def test_normalize_already_normalized_returns_distinct_copy() -> None:
 
 def test_deconvolute_already_deconvoluted_returns_distinct_copy() -> None:
     a = _spec().deconvolute(charge_range=(1, 2))
-    with pytest.warns(UserWarning):
-        b = a.deconvolute()  # early-return path
+    b = a.deconvolute()  # early-return path, no warning
     assert b is not a
     b.mz[0] = -1.0
     assert a.mz[0] != -1.0

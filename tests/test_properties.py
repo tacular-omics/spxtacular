@@ -112,7 +112,7 @@ def msn_spectra(draw):
     if draw(st.booleans()):
         precursors = [
             Precursor(
-                mz=draw(MZ),
+                precursor_mz=draw(MZ),
                 intensity=draw(FINITE_INTENSITY),
                 charge=draw(st.one_of(st.none(), st.integers(1, 6))),
                 is_monoisotopic=None,
@@ -145,7 +145,7 @@ def test_mgf_write_read_round_trip(batch: list[MsnSpectrum]) -> None:
         assert got.rt == want.rt
         if want.precursors:
             assert got.precursors is not None
-            assert got.precursors[0].mz == want.precursors[0].mz
+            assert got.precursors[0].precursor_mz == want.precursors[0].precursor_mz
             assert got.precursors[0].intensity == want.precursors[0].intensity
             assert got.precursors[0].charge == want.precursors[0].charge
         else:
@@ -219,7 +219,7 @@ def test_sort_is_idempotent(spectrum: Spectrum, by: str, reverse: bool) -> None:
 def test_normalize_does_not_crash(spectrum: Spectrum, method: str) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        out = spectrum.normalize(method)  # type: ignore[arg-type]
+        out = spectrum.normalize(method=method)  # type: ignore[arg-type]
     assert len(out.mz) == len(spectrum.mz)
 
 
@@ -230,7 +230,7 @@ def test_normalize_does_not_crash(spectrum: Spectrum, method: str) -> None:
 def test_denoise_does_not_crash(spectrum: Spectrum, method: str) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        out = spectrum.denoise(method)  # type: ignore[arg-type]
+        out = spectrum.denoise(method=method)  # type: ignore[arg-type]
     assert len(out.mz) <= len(spectrum.mz)
 
 
@@ -314,18 +314,18 @@ def test_denoise_ignores_nan_intensity(method: str) -> None:
     finite = Spectrum(mz=spectrum.mz[np.isfinite(intensity)], intensity=intensity[np.isfinite(intensity)])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        denoised = spectrum.denoise(method)  # type: ignore[arg-type]
-    np.testing.assert_array_equal(denoised.mz, finite.denoise(method).mz)  # type: ignore[arg-type]
+        denoised = spectrum.denoise(method=method)  # type: ignore[arg-type]
+    np.testing.assert_array_equal(denoised.mz, finite.denoise(method=method).mz)  # type: ignore[arg-type]
     assert 2000.0 in denoised.intensity
 
 
 def test_denoise_all_nan_spectrum_does_not_crash() -> None:
     spectrum = Spectrum(mz=np.array([50.0]), intensity=np.array([np.nan]))
-    assert len(spectrum.denoise("histogram").mz) <= 1
+    assert len(spectrum.denoise(method="histogram").mz) <= 1
 
 
 @pytest.mark.parametrize("intensity", [[0.0, 5e-324], [1.0, 1.0 + 2**-52], [1e300, np.nextafter(1e300, np.inf)]])
 def test_histogram_denoise_on_a_range_too_narrow_to_bin(intensity: list[float]) -> None:
     # numpy cannot cut a range this narrow into 100 finite bins and raised.
     spectrum = Spectrum(mz=np.array([50.0, 50.0]), intensity=np.array(intensity))
-    assert len(spectrum.denoise("histogram").mz) <= 2
+    assert len(spectrum.denoise(method="histogram").mz) <= 2
