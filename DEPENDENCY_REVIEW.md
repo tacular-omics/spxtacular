@@ -38,8 +38,8 @@ the project lock. Its latest available version is listed as well.
 | tdfpy | 3.0.0 | 4.0.1 | [Release](https://pypi.org/project/tdfpy/4.0.1/) |
 | ty | 0.0.29 | 0.0.78 | [Release](https://pypi.org/project/ty/0.0.78/) |
 
-The peptacular minimum is now 3.3.0, tdfpy is 4.0.1, paftacular is 1.2.0,
-mzMLPy is 0.9.0, and spectrl is 1.1.0.
+The peptacular minimum is now 4.2, tdfpy is 4.1, paftacular is 1.4,
+mzMLPy is 0.9, and spectrl is 3.0 (as of 0.8.0).
 Other existing supported minimums remain unchanged. The lock records the newer versions
 used for development and release checks.
 
