@@ -23,10 +23,11 @@ otherwise; pass `format="text"` or `format="json"` to choose.
 ## Streaming large libraries
 
 `read_mzspeclib` holds the whole library in memory. `MzSpecLibReader` yields one
-`LibraryEntry` at a time instead, so memory stays flat however many spectra the file holds.
-It gives the same entries and raises the same errors, at the spectrum where they occur.
-To catch duplicate keys it remembers the keys seen as runs, so sequential keys (the usual
-case) cost nothing and scattered keys cost a few bytes each.
+`LibraryEntry` at a time instead, so memory does not grow with the number of spectra, apart
+from about 70 bytes per out-of-order key (below). It gives the same entries and raises the
+same errors, at the spectrum where they occur. To catch duplicate keys it remembers the keys
+seen: keys that keep rising (the usual case) are stored as runs and cost almost nothing, and
+each key that is lower than one already seen costs about 70 bytes.
 
 ```python
 from spxtacular import MzSpecLibReader
@@ -50,8 +51,9 @@ with MzSpecLibReader("big.mzspeclib.txt.gz") as reader:
 Both forms stream, gzipped or not. Text is parsed line by line. JSON is decoded one spectrum
 at a time with the standard-library `json` decoder, with no extra dependency. A JSON file whose
 attribute sets come after its `"spectra"` array (files written with sorted keys, like the
-upstream examples) is scanned once first to read them, still in constant memory, so it costs
-about two passes.
+upstream examples) is scanned once first to read them, so it costs about two passes. When a
+file is not valid JSON, it is read whole once to report the exact `json` error. A JSON file
+with more than one `"spectra"` member is rejected (`json.loads` would keep the last one).
 
 ## The model
 

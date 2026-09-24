@@ -1253,8 +1253,20 @@ def _json_clusters(items: Any, path: Path) -> dict[int, list[_RawAttr]]:
     return clusters
 
 
-# Members that, once all seen, let the header be read without scanning past "spectra".
-_JSON_HEADER_KEYS = frozenset({"format_version", "attributes"} | {f"{kind}_attribute_sets" for kind in _SET_KINDS})
+# Members that, once all seen, let the header be read without scanning past "spectra". Cluster
+# sets are not needed by entries; they are collected by the iteration pass, after the spectra.
+_JSON_HEADER_KEYS = frozenset(
+    {"format_version", "attributes"} | {f"{kind}_attribute_sets" for kind in _SET_KINDS if kind != "cluster"}
+)
+
+
+def _json_header_key(key: str) -> str:
+    """``library_<kind>_attribute_sets`` counts as ``<kind>_attribute_sets`` for the header check."""
+    return key.removeprefix("library_") if key.endswith("_attribute_sets") else key
+
+
+# Characters a JSON number can continue with, when a chunk boundary cuts it.
+_JSON_NUMBER_TAIL = re.compile(r"[0-9.eE+-]*")
 _JSON_WS = re.compile(r"[ \t\n\r]*")
 _JSON_CHUNK = 1 << 16
 
@@ -1318,8 +1330,16 @@ class _JsonStream:
                 if self._more():
                     continue
                 raise _BadJson from None
-            # A number that ends at the buffer's end may continue in the next chunk.
-            if end >= len(self.buffer) and self._more():
+            # A value that ends at the buffer's end, or a number followed only by what could
+            # continue it ("1." cut from "1.5"), may continue in the next chunk.
+            if (
+                end >= len(self.buffer)
+                or (
+                    isinstance(value, int | float)
+                    and not isinstance(value, bool)
+                    and _JSON_NUMBER_TAIL.fullmatch(self.buffer, end) is not None
+                )
+            ) and self._more():
                 continue
             self.pos = end
             return value
@@ -1374,42 +1394,49 @@ def _open_library_text(path: Path) -> IO[str]:
 
 
 def _invalid_json(path: Path) -> SpxtacularError:
-    """The error ``json.loads`` gives for the whole file, so streamed and whole reads fail alike."""
+    """The error ``json.loads`` gives for the whole file, so streamed and whole reads fail alike.
+
+    This reads the whole file into memory; it runs only when the stream finds invalid JSON.
+    """
     with _open_library_text(path) as fh:
         text = fh.read()
     try:
         json.loads(text)
     except json.JSONDecodeError as exc:
         return SpxtacularError(f"{path}: invalid JSON: {exc}")
-    return SpxtacularError(f"{path}: invalid JSON")
+    return SpxtacularError(
+        f"{path}: internal error: the streaming JSON reader rejected a file that json.loads accepts; please report this"
+    )
 
 
 class _SeenKeys:
-    """Spectrum keys seen so far, as sorted disjoint ranges: sequential keys take one range."""
+    """Spectrum keys seen so far.
 
-    __slots__ = ("ends", "starts")
+    Keys above every key seen so far extend or start a run (``O(1)``), so a library
+    with sequential keys costs almost nothing. Any other key goes in a ``set``,
+    about 70 bytes each.
+    """
+
+    __slots__ = ("ends", "others", "starts")
 
     def __init__(self) -> None:
         self.starts: list[int] = []
         self.ends: list[int] = []
+        self.others: set[int] = set()
 
     def add(self, key: int) -> bool:
         """Record ``key``; ``False`` if it was already seen."""
+        if not self.ends or key > self.ends[-1] + 1:
+            self.starts.append(key)
+            self.ends.append(key)
+            return True
+        if key == self.ends[-1] + 1:
+            self.ends[-1] = key
+            return True
         i = bisect.bisect_right(self.starts, key) - 1
-        if i >= 0 and key <= self.ends[i]:
+        if (i >= 0 and key <= self.ends[i]) or key in self.others:
             return False
-        joins_left = i >= 0 and self.ends[i] == key - 1
-        joins_right = i + 1 < len(self.starts) and self.starts[i + 1] == key + 1
-        if joins_left and joins_right:
-            self.ends[i] = self.ends[i + 1]
-            del self.starts[i + 1], self.ends[i + 1]
-        elif joins_left:
-            self.ends[i] = key
-        elif joins_right:
-            self.starts[i + 1] = key
-        else:
-            self.starts.insert(i + 1, key)
-            self.ends.insert(i + 1, key)
+        self.others.add(key)
         return True
 
 
@@ -1447,8 +1474,10 @@ class MzSpecLibReader:
     reader can be iterated again. An iteration closes its handle when it ends,
     when the iterator is dropped (``break`` out of a ``for`` loop), or on
     :meth:`close`. A JSON file whose attribute sets follow the ``"spectra"``
-    array (as in files written with alphabetically sorted keys) is scanned once,
-    in constant memory, to read the header first.
+    array (as in files written with alphabetically sorted keys) is scanned once
+    first to read them. Memory does not grow with the number of spectra, apart
+    from about 70 bytes per spectrum key that is out of order (kept to detect
+    duplicates). A JSON file with more than one ``"spectra"`` member is rejected.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -1538,7 +1567,7 @@ class MzSpecLibReader:
                     for key, value in _JsonStream(fh).members():
                         if key != "spectra":
                             members[key] = value
-                        elif members.keys() >= _JSON_HEADER_KEYS:
+                        elif {_json_header_key(k) for k in members} >= _JSON_HEADER_KEYS:
                             break
                 except _BadJson:
                     raise _invalid_json(self.path) from None
@@ -1582,19 +1611,25 @@ class MzSpecLibReader:
         self, fh: IO[str], raw_header: _RawHeader
     ) -> Iterator[tuple[_RawSpectrum, Mapping[str, Mapping[str, list[_RawAttr]]]]]:
         members: dict[str, Any] = {}
+        seen_spectra = False
         try:
             for key, value in _JsonStream(fh).members():
                 if key != "spectra":
                     members[key] = value
                     continue
+                if seen_spectra:
+                    raise SpxtacularError(f"{self.path}: more than one 'spectra' member")
+                seen_spectra = True
                 if not isinstance(value, Iterator):
                     raise SpxtacularError(f"{self.path}: 'spectra' must be a list")
                 for index, item in enumerate(value):
                     yield _json_spectrum(item, index, self.path), raw_header.sets
         except _BadJson:
             raise _invalid_json(self.path) from None
+        # Cluster sets may follow the spectra, so take them from this pass, not the header.
+        sets = {**raw_header.sets, "cluster": _json_header(members, self.path).sets["cluster"]}
         clusters = _json_clusters(members.get("clusters", []), self.path)
-        self._clusters = _build_clusters(clusters, raw_header.sets, self.path)
+        self._clusters = _build_clusters(clusters, sets, self.path)
 
 
 def read_mzspeclib(path: str | Path) -> SpectralLibrary:

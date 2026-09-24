@@ -547,7 +547,7 @@ CvParam(accession, name, value=None, value_accession=None, group=None)
 | Behaviour | Detail |
 |---|---|
 | Format | Read: detected from content and gzip magic. Write: JSON for `*.json[.gz]`, else text |
-| Streaming | `MzSpecLibReader` yields entries one at a time in constant memory (text and JSON, gzipped or not), with `attributes` available before iterating; same entries and errors as `read_mzspeclib` |
+| Streaming | `MzSpecLibReader` yields entries one at a time, in memory that does not grow with the number of spectra (text and JSON, gzipped or not), with `attributes` available before iterating; same entries and errors as `read_mzspeclib` |
 | Spectrum fields | Precursor m/z and charge, RT, ion mobility, CE, dissociation, polarity, MS level, scan number, native id, TIC, injection time map to `MsnSpectrum`; other terms stay in `attributes` |
 | Analytes | `peptidoform` is a peptacular `ProFormaAnnotation` carrying the charge |
 | Peaks | `peak_annotations`: tuple of paftacular `PafAnnotation` per peak, or `None`. JSON writes one mzPAF string per peak, `"?"` when unannotated |
