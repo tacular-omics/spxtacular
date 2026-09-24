@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import gzip
 import json
+import random
+import time
+import tracemalloc
 from pathlib import Path
+from typing import IO
 
 import numpy as np
 import paftacular as paf
@@ -21,12 +25,14 @@ from spxtacular import (
     MgfReader,
     MsnSpectrum,
     MspReader,
+    MzSpecLibReader,
     Polarity,
     Precursor,
     SpectralLibrary,
     SpectrumType,
     SpxtacularError,
     match_fragments,
+    mzspeclib,
     read_mzspeclib,
     write_mgf,
     write_msp,
@@ -405,6 +411,8 @@ def test_invalid_files_raise(tmp_path: Path, content: str, match: str) -> None:
     path.write_text(content)
     with pytest.raises(SpxtacularError, match=match):
         read_mzspeclib(path)
+    with pytest.raises(SpxtacularError, match=match):
+        list(MzSpecLibReader(path))
 
 
 def test_invalid_entries_raise(tmp_path: Path) -> None:
@@ -432,6 +440,269 @@ def test_gzip_detected_by_magic(tmp_path: Path) -> None:
     path = tmp_path / "noext"
     path.write_bytes(gzip.compress(DIANN.read_bytes()))
     assert len(read_mzspeclib(path)) == 9
+
+
+# ---------------------------------------------------------------------------
+# Streaming (MzSpecLibReader)
+# ---------------------------------------------------------------------------
+
+
+def _library_files(tmp_path: Path) -> list[Path]:
+    files = [DIANN, SPECTRAST_TEXT, SPECTRAST_JSON]
+    library = read_mzspeclib(DIANN)
+    files += [write_mzspeclib(library, tmp_path / name) for name in ("a.txt", "a.json", "a.txt.gz", "a.json.gz")]
+    return files
+
+
+def test_streamed_equals_whole_read(tmp_path: Path) -> None:
+    for path in _library_files(tmp_path):
+        whole = read_mzspeclib(path)
+        with MzSpecLibReader(path) as reader:
+            assert reader.attributes == whole.attributes
+            assert list(reader) == whole.entries
+            assert reader.clusters == whole.clusters
+        assert reader.format == ("json" if "json" in path.name else "text")
+
+
+def test_json_streams_across_chunk_boundaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    whole = read_mzspeclib(SPECTRAST_JSON)
+    monkeypatch.setattr(mzspeclib, "_JSON_CHUNK", 7)  # splits numbers, strings and keys
+    assert list(MzSpecLibReader(SPECTRAST_JSON)) == whole.entries
+
+
+def test_header_is_read_without_peaks(tmp_path: Path) -> None:
+    path = tmp_path / "a.txt"
+    path.write_text(
+        "<mzSpecLib>\nMS:1003186|library format version=1.0\nMS:1003188|library name=demo\n"
+        "<Spectrum=1>\n<Peaks>\nnot a peak\n"
+    )
+    reader = MzSpecLibReader(path)
+    reader.open()
+    assert reader.attributes == (CvParam("MS:1003188", "library name", "demo"),)
+    with pytest.raises(SpxtacularError, match=r"a\.txt:6: .*numbers"):
+        next(iter(reader))
+
+
+def test_json_sets_after_spectra(tmp_path: Path) -> None:
+    """Upstream JSON sorts its keys, so attribute sets can follow the spectra."""
+    path = tmp_path / "a.json"
+    spectrum = {
+        "attributes": [
+            {"accession": "MS:1003237", "name": "library spectrum key", "value": 1},
+            {"accession": "MS:1003212", "name": "library attribute set name", "value": "hot"},
+        ],
+        "mzs": [100.0],
+        "intensities": [5.0],
+    }
+    energy = {"accession": "MS:1000045", "name": "collision energy", "value": 35}
+    path.write_text(
+        json.dumps(
+            {
+                "attributes": [],
+                "format_version": "1.0",
+                "spectra": [spectrum],
+                "spectrum_attribute_sets": {"hot": [energy]},
+            }
+        )
+    )
+    with MzSpecLibReader(path) as reader:
+        (entry,) = reader
+    assert entry.spectrum.collision_energy == 35.0
+
+
+def test_errors_raise_at_the_bad_spectrum(tmp_path: Path) -> None:
+    library = read_mzspeclib(DIANN)
+    text = write_mzspeclib(library, tmp_path / "a.txt").read_text().replace("<Spectrum=3>\n", "<Spectrum=3>\nbad\n")
+    (tmp_path / "a.txt").write_text(text)
+    iterator = iter(MzSpecLibReader(tmp_path / "a.txt"))
+    assert [entry.key for entry in (next(iterator), next(iterator))] == [1, 2]
+    with pytest.raises(SpxtacularError, match="ACCESSION"):
+        next(iterator)
+
+    document = json.loads(write_mzspeclib(library, tmp_path / "a.json").read_text())
+    document["spectra"][2]["mzs"] = []
+    (tmp_path / "a.json").write_text(json.dumps(document))
+    iterator = iter(MzSpecLibReader(tmp_path / "a.json"))
+    assert [entry.key for entry in (next(iterator), next(iterator))] == [1, 2]
+    with pytest.raises(SpxtacularError, match="spectrum 2: 'mzs'"):
+        next(iterator)
+
+
+@pytest.mark.parametrize("name", ["a.txt", "a.json.gz"])
+def test_early_break_closes_the_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    path = write_mzspeclib(read_mzspeclib(DIANN), tmp_path / name)
+    opened: list[IO[str]] = []
+    real_open = mzspeclib._open_library_text
+
+    def recording_open(source: Path) -> IO[str]:
+        handle = real_open(source)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(mzspeclib, "_open_library_text", recording_open)
+    with MzSpecLibReader(path) as reader:
+        for _ in reader:
+            break
+        assert opened and all(handle.closed for handle in opened)
+        held = iter(reader)
+        next(held)
+        assert not opened[-1].closed
+    assert opened[-1].closed  # close() ends unfinished iterations
+
+
+def test_clusters_before_iterating(tmp_path: Path) -> None:
+    path = tmp_path / "a.txt"
+    path.write_text(
+        "<mzSpecLib>\nMS:1003186|library format version=1.0\n<Spectrum=1>\n<Peaks>\n100\t5\n"
+        "<Cluster=1>\nMS:1003268|spectrum cluster member spectrum keys=1\n"
+    )
+    reader = MzSpecLibReader(path)
+    assert reader.clusters == {1: (CvParam("MS:1003268", "spectrum cluster member spectrum keys", (1,)),)}
+
+
+def test_reader_errors(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        MzSpecLibReader(tmp_path / "missing.txt").open()
+    path = tmp_path / "latin1.txt"
+    path.write_bytes(b"<mzSpecLib>\nMS:1003186|library format version=1.0\nMS:1003188|library name=caf\xe9\n")
+    with pytest.raises(SpxtacularError, match="not UTF-8"):
+        MzSpecLibReader(path).open()
+
+
+def test_seen_keys() -> None:
+    seen = mzspeclib._SeenKeys()
+    for key in (1, 2, 3, 10, 5, 4, 9, 7, 6, 8, 0, 11, 12):
+        assert seen.add(key)
+    assert (seen.starts, seen.ends, seen.others) == ([1, 10], [3, 12], {0, 4, 5, 6, 7, 8, 9})
+    assert not any(seen.add(key) for key in range(13))
+    assert seen.add(13) and seen.add(20) and not seen.add(20) and not seen.add(1)
+
+
+def test_seen_keys_scattered_is_fast() -> None:
+    """Out-of-order keys with gaps (a filtered library re-sorted by m/z) must not go quadratic."""
+    keys = list(range(0, 400_000, 2))
+    random.Random(0).shuffle(keys)
+    seen = mzspeclib._SeenKeys()
+    start = time.perf_counter()
+    assert all(seen.add(key) for key in keys)
+    assert time.perf_counter() - start < 2
+    assert not any(seen.add(key) for key in keys[:1000])
+    assert all(seen.add(key + 1) for key in keys[:1000])
+
+
+def _json_version_library(version: str, pad: int = 1) -> str:
+    """A JSON library whose top level holds ``"format_version": <version>`` as a bare number."""
+    spectrum = {
+        "attributes": [{"accession": "MS:1003237", "name": "library spectrum key", "value": 1}],
+        "mzs": [100.0],
+        "intensities": [5.0],
+    }
+    name = {"accession": "MS:1003188", "name": "library name", "value": "x" * pad}
+    head = json.dumps({"attributes": [name]})[:-1] + ', "format_version": '
+    return head + version + ', "spectra": ' + json.dumps([spectrum]) + "}"
+
+
+def test_json_number_cut_at_chunk_boundary(tmp_path: Path) -> None:
+    """``raw_decode`` of "...1." returns 1; the reader must read on and get 1.0."""
+    probe = _json_version_library("1.0")
+    pad = mzspeclib._JSON_CHUNK - (probe.index("1.0") + 2) + 1
+    text = _json_version_library("1.0", pad)
+    assert text[: mzspeclib._JSON_CHUNK].endswith("1.")
+    path = tmp_path / "a.json"
+    path.write_text(text)
+    with MzSpecLibReader(path) as reader:
+        assert [entry.key for entry in reader] == [1]
+    assert read_mzspeclib(path).attributes == reader.attributes
+
+
+@pytest.mark.parametrize("version", ["1.0", "1e0", "1.0e+0", "10e-1"])
+def test_json_numbers_at_chunk_size_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str) -> None:
+    path = tmp_path / "a.json"
+    path.write_text(_json_version_library(version))
+    monkeypatch.setattr(mzspeclib, "_JSON_CHUNK", 1)
+    with MzSpecLibReader(path) as reader:
+        assert [entry.key for entry in reader] == [1]
+
+
+def test_invalid_json_on_a_valid_file_is_an_internal_error(tmp_path: Path) -> None:
+    path = tmp_path / "a.json"
+    path.write_text(_json_version_library("1.0"))
+    assert "internal error" in str(mzspeclib._invalid_json(path))
+
+
+@pytest.mark.parametrize("prefix", ["", "library_"])
+def test_json_header_stops_at_spectra_without_cluster_sets(tmp_path: Path, prefix: str) -> None:
+    """Entries need no cluster sets, so ``open()`` does not scan the spectra for them."""
+    path = tmp_path / "a.json"
+    sets = "".join(f'"{prefix}{kind}_attribute_sets": {{}}, ' for kind in ("spectrum", "analyte", "interpretation"))
+    path.write_text('{"format_version": "1.0", "attributes": [], ' + sets + '"spectra": [ not json')
+    reader = MzSpecLibReader(path)
+    reader.open()
+    assert reader.attributes == ()
+    with pytest.raises(SpxtacularError, match="invalid JSON"):
+        list(reader)
+
+
+def test_json_cluster_sets_after_spectra(tmp_path: Path) -> None:
+    path = tmp_path / "a.json"
+    members = {"accession": "MS:1003268", "name": "spectrum cluster member spectrum keys", "value": [1]}
+    cluster = {
+        "attributes": [
+            {"accession": "MS:1003267", "name": "spectrum cluster key", "value": 1},
+            {"accession": "MS:1003212", "name": "library attribute set name", "value": "shared"},
+        ]
+    }
+    document = json.loads(_json_version_library('"1.0"'))
+    document |= {
+        "spectrum_attribute_sets": {},
+        "analyte_attribute_sets": {},
+        "interpretation_attribute_sets": {},
+        "clusters": [cluster],
+    }
+    path.write_text(
+        json.dumps(document)[:-1] + ', "cluster_attribute_sets": {"shared": [' + json.dumps(members) + "]}}"
+    )
+    with MzSpecLibReader(path) as reader:
+        assert [entry.key for entry in reader] == [1]
+        assert reader.clusters == {1: (CvParam("MS:1003268", "spectrum cluster member spectrum keys", (1,)),)}
+    assert read_mzspeclib(path).clusters == reader.clusters
+
+
+def test_json_duplicate_spectra_member_raises(tmp_path: Path) -> None:
+    path = tmp_path / "a.json"
+    text = _json_version_library("1.0")
+    path.write_text(text[:-1] + ', "spectra": []}')
+    with pytest.raises(SpxtacularError, match="more than one 'spectra'"):
+        read_mzspeclib(path)
+
+
+def _text_library(n_spectra: int) -> str:
+    spectrum = (
+        "<Spectrum={key}>\nMS:1003061|library spectrum name=PEPTIDEK/2\nMS:1003208|experimental precursor "
+        "monoisotopic m/z=467.2\nMS:1000041|charge state=2\n<Analyte=1>\nMS:1003270|proforma peptidoform ion "
+        "notation=PEPTIDEK/2\n<Peaks>\n147.1128\t100\ty1/0.1ppm\n244.1656\t50\n341.2183\t25\n"
+    )
+    header = "<mzSpecLib>\nMS:1003186|library format version=1.0\n"
+    return header + "".join(spectrum.format(key=key) for key in range(1, n_spectra + 1))
+
+
+@pytest.mark.parametrize("suffix", ["txt", "json"])
+def test_streaming_memory_is_flat(tmp_path: Path, suffix: str) -> None:
+    """Peak memory while streaming does not grow with the number of spectra (informal)."""
+    peaks = []
+    for n_spectra in (200, 4000):
+        path = tmp_path / f"{n_spectra}.txt"
+        path.write_text(_text_library(n_spectra))
+        if suffix == "json":
+            path = write_mzspeclib(MzSpecLibReader(path), tmp_path / f"{n_spectra}.json")
+        tracemalloc.start()
+        try:
+            count = sum(1 for _ in MzSpecLibReader(path))
+            peaks.append(tracemalloc.get_traced_memory()[1])
+        finally:
+            tracemalloc.stop()
+        assert count == n_spectra
+    assert peaks[1] < 2 * peaks[0], peaks
 
 
 # ---------------------------------------------------------------------------
