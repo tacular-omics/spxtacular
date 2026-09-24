@@ -9,7 +9,7 @@ peaks) rather than longest chain length.
 Public entry point::
 
     mz_out, charges_out, intensity_out, scores_out = deconvolve_spectrum(
-        mz, intensity, charge_range=(1, 5), tolerance=10.0, tolerance_type="ppm",
+        mz, intensity, charge_range=(1, 5), tolerance=10.0, tolerance_unit="ppm",
         min_intensity=500.0,
     )
 """
@@ -20,8 +20,9 @@ import warnings
 
 import numpy as np
 from numpy.typing import NDArray
+from tacular.types import ToleranceUnit
 
-from ..enums import ToleranceLike, ToleranceType
+from ..enums import check_im_tolerance_unit, check_tolerance_unit
 from ..errors import SpxtacularError
 from ..isotopes import IsotopeModelLike, resolve_isotope_model
 from .greedy import NEUTRON_MASS, PROTON_MASS, _has_isotope_neighbor, _match_apex_cluster
@@ -141,7 +142,7 @@ def _deconvolve_spectrum(
     max_isotopes: int | None = None,
     ion_mobility: NDArray[np.float64] | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: str = "relative",
+    im_tolerance_unit: str = "relative",
     carrier_mass: float = PROTON_MASS,
 ) -> tuple[
     NDArray[np.float64],
@@ -199,7 +200,7 @@ def _deconvolve_spectrum(
         are gated and scored against the seed peak's mobility.
     im_tolerance:
         Maximum candidate-to-seed mobility difference.
-    im_tolerance_type:
+    im_tolerance_unit:
         ``"relative"`` scales ``im_tolerance`` by the seed mobility;
         ``"absolute"`` uses it directly.
     carrier_mass:
@@ -244,9 +245,7 @@ def _deconvolve_spectrum(
         raise SpxtacularError(f"max_isotopes must be a positive integer or None, got {max_isotopes!r}")
     if not np.isfinite(im_tolerance) or im_tolerance < 0.0:
         raise SpxtacularError(f"im_tolerance must be finite and non-negative, got {im_tolerance!r}")
-    resolved_im_tolerance_type = str(im_tolerance_type).lower()
-    if resolved_im_tolerance_type not in ("relative", "absolute"):
-        raise SpxtacularError(f"im_tolerance_type must be 'relative' or 'absolute', got {im_tolerance_type!r}")
+    resolved_im_tolerance_unit = check_im_tolerance_unit(im_tolerance_unit)
     if ion_mobility is not None and len(ion_mobility) != len(mz):
         raise SpxtacularError(f"ion_mobility must have the same length as mz, got {len(ion_mobility)} and {len(mz)}")
 
@@ -382,7 +381,7 @@ def _deconvolve_spectrum(
                     max_isotope_gaps,
                     use_im,
                     im_tolerance,
-                    resolved_im_tolerance_type == "relative",
+                    resolved_im_tolerance_unit == "relative",
                 )
                 obs = np.zeros(len(template), dtype=np.float64)
                 matched = indices >= 0
@@ -454,7 +453,7 @@ def deconvolve_spectrum(
     *,
     charge_range: tuple[int, int] = (1, 3),
     tolerance: float = 50.0,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance_unit: ToleranceUnit = "ppm",
     max_dpeaks: int = 2000,
     intensity_mode: str = "total",
     min_intensity: float = 0.0,
@@ -466,7 +465,7 @@ def deconvolve_spectrum(
     max_isotopes: int | None = None,
     ion_mobility: NDArray[np.float64] | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: str = "relative",
+    im_tolerance_unit: str = "relative",
     carrier_mass: float = PROTON_MASS,
 ) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.float64], NDArray[np.float64]]:
     """Greedy apex-first isotope deconvolution.
@@ -480,7 +479,7 @@ def deconvolve_spectrum(
         intensity=intensity,
         charge_range=charge_range,
         tolerance=tolerance,
-        is_ppm=ToleranceType(tolerance_type) is ToleranceType.PPM,
+        is_ppm=check_tolerance_unit(tolerance_unit) == "ppm",
         max_dpeaks=max_dpeaks,
         intensity_mode=intensity_mode,
         min_intensity=min_intensity,
@@ -492,7 +491,7 @@ def deconvolve_spectrum(
         max_isotopes=max_isotopes,
         ion_mobility=ion_mobility,
         im_tolerance=im_tolerance,
-        im_tolerance_type=im_tolerance_type,
+        im_tolerance_unit=im_tolerance_unit,
         carrier_mass=carrier_mass,
     )
     return result[0], result[1], result[2], result[3]
@@ -515,7 +514,7 @@ def _deconvolve_spectrum_with_sources(
     max_isotopes: int | None = None,
     ion_mobility: NDArray[np.float64] | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: str = "relative",
+    im_tolerance_unit: str = "relative",
     carrier_mass: float = PROTON_MASS,
 ) -> tuple[
     NDArray[np.float64],
@@ -542,6 +541,6 @@ def _deconvolve_spectrum_with_sources(
         max_isotopes=max_isotopes,
         ion_mobility=ion_mobility,
         im_tolerance=im_tolerance,
-        im_tolerance_type=im_tolerance_type,
+        im_tolerance_unit=im_tolerance_unit,
         carrier_mass=carrier_mass,
     )

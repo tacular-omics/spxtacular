@@ -181,7 +181,7 @@ def test_custom_model_controls_automatic_precursor_isotopes() -> None:
         precursor_mz=precursor_mz,
         precursor_charge=1,
         tolerance=0.001,
-        tolerance_type="da",
+        tolerance_unit="da",
         isotopes="auto",
         isotope_model=monoisotopic_model,
     )
@@ -206,7 +206,7 @@ def test_automatic_precursor_removal_covers_adaptive_high_mass_envelope() -> Non
         precursor_mz=precursor_mz,
         precursor_charge=charge,
         tolerance=0.001,
-        tolerance_type="da",
+        tolerance_unit="da",
         isotopes="auto",
         remove_charge_states=False,
     )
@@ -233,7 +233,7 @@ def test_high_mass_envelope_recovers_monoisotopic_anchor() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         isotope_model="peptide",
     )
 
@@ -248,7 +248,7 @@ def test_high_mass_envelope_recovers_monoisotopic_anchor() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         intensity_mode="base",
     )
     assert base_intensity[0] == 0.0
@@ -277,7 +277,7 @@ def test_near_apex_alignment_handles_observed_maximum_shift() -> None:
         intensity,
         charge_range=(1, 10),
         tolerance=10.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         isotope_model="peptide",
     )
 
@@ -302,7 +302,7 @@ def test_inferred_monoisotopic_peak_keeps_apex_ion_mobility() -> None:
     deconvoluted = Spectrum(mz=mz, intensity=intensity, im=im).deconvolute(
         charge_range=(charge, charge),
         tolerance=5.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
     )
 
     assert deconvoluted.mz[0] == pytest.approx(mono_mz)
@@ -335,7 +335,7 @@ def test_candidate_score_can_prefer_abundance_over_closest_mz() -> None:
         intensity,
         charge_range=(charge, charge),
         tolerance=10.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
     )
 
     cluster = int(np.flatnonzero(out_charge == charge)[0])
@@ -366,9 +366,9 @@ def test_candidate_score_uses_ion_mobility_to_reject_closer_interference() -> No
     deconvoluted = Spectrum(mz=mz, intensity=intensity, im=ion_mobility).deconvolute(
         charge_range=(charge, charge),
         tolerance=10.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         im_tolerance=0.05,
-        im_tolerance_type="absolute",
+        im_tolerance_unit="absolute",
     )
 
     assert deconvoluted.charge is not None
@@ -445,7 +445,7 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
     )
     clean_cluster = int(np.flatnonzero(clean_charge == charge)[0])
     intensity[2] *= 3.0  # Outside the default twofold gate, but still below the apex.
@@ -455,7 +455,7 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
         intensity,
         charge_range=(charge, charge),
         tolerance=5.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
     )
 
     first_cluster = int(np.argmin(np.abs(out_mz - mono_mz)))

@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 
 from spxtacular.core import Peak, Spectrum
-from spxtacular.enums import ToleranceType
 from spxtacular.errors import SpxtacularError
 
 # ---------------------------------------------------------------------------
@@ -62,13 +61,13 @@ class TestTolerance:
     def test_ppm_tolerance_scales_with_target_mz(self) -> None:
         spec = _query_spec()
         # 50 ppm of 100 Da == 0.005 Da -> two peaks.
-        assert _mzs(spec.get_peaks(100.0, tolerance=50, tolerance_type="ppm")) == [100.000, 100.004]
+        assert _mzs(spec.get_peaks(100.0, tolerance=50, tolerance_unit="ppm")) == [100.000, 100.004]
 
     def test_ppm_and_da_differ_for_the_same_tolerance_number(self) -> None:
         """The unit must be honoured: 50 Da is a vastly wider window than 50 ppm."""
         spec = _query_spec()
-        ppm_hits = spec.get_peaks(100.0, tolerance=50, tolerance_type="ppm")
-        da_hits = spec.get_peaks(100.0, tolerance=50, tolerance_type="da")
+        ppm_hits = spec.get_peaks(100.0, tolerance=50, tolerance_unit="ppm")
+        da_hits = spec.get_peaks(100.0, tolerance=50, tolerance_unit="da")
         assert _mzs(ppm_hits) == [100.000, 100.004]  # 0.005 Da window
         assert _mzs(da_hits) == [100.000, 100.004, 100.008]  # +-50 Da window (reaches 150)
 
@@ -79,37 +78,32 @@ class TestTolerance:
             mz=np.array([100.01, 1000.01], dtype=np.float64),
             intensity=np.array([1.0, 1.0], dtype=np.float64),
         )
-        assert spec.get_peaks(100.0, tolerance=20, tolerance_type="ppm") == []
-        assert len(spec.get_peaks(1000.0, tolerance=20, tolerance_type="ppm")) == 1
+        assert spec.get_peaks(100.0, tolerance=20, tolerance_unit="ppm") == []
+        assert len(spec.get_peaks(1000.0, tolerance=20, tolerance_unit="ppm")) == 1
 
-    def test_tolerance_type_is_case_insensitive(self) -> None:
-        """``"PPM"`` used to fall through to Da — a window 1e6 times too wide."""
+    def test_ppm_tolerance_unit(self) -> None:
         spec = _query_spec()
-        expected = _mzs(spec.get_peaks(100.0, tolerance=50, tolerance_type=ToleranceType.PPM))
-        assert expected == [100.000, 100.004]
-        # cast: the Literal alias only spells the lower-case forms, but the
-        # runtime coerces through the enum, so these must agree.
-        for spelling in ("ppm", "PPM", "Ppm"):
-            assert _mzs(spec.get_peaks(100.0, tolerance=50, tolerance_type=cast(Any, spelling))) == expected
+        assert _mzs(spec.get_peaks(100.0, tolerance=50, tolerance_unit="ppm")) == [100.000, 100.004]
 
-    def test_da_tolerance_type_is_case_insensitive(self) -> None:
+    @pytest.mark.parametrize("spelling", ["PPM", "Ppm", "DA", "Da"])
+    def test_tolerance_unit_is_lowercase_only(self, spelling: str) -> None:
+        """``"PPM"`` once fell through to Da (a window 1e6 times too wide); now it raises."""
         spec = _query_spec()
-        expected = _mzs(spec.get_peaks(100.0, tolerance=0.005, tolerance_type=ToleranceType.DA))
-        for spelling in ("da", "DA", "Da"):
-            assert _mzs(spec.get_peaks(100.0, tolerance=0.005, tolerance_type=cast(Any, spelling))) == expected
+        with pytest.raises(SpxtacularError, match="tolerance_unit must be 'da' or 'ppm'"):
+            spec.get_peaks(100.0, tolerance=50, tolerance_unit=cast(Any, spelling))
 
-    def test_default_tolerance_type_is_da(self) -> None:
+    def test_default_tolerance_unit_is_da(self) -> None:
         spec = _query_spec()
         assert _mzs(spec.get_peaks(100.0, tolerance=0.005)) == _mzs(
-            spec.get_peaks(100.0, tolerance=0.005, tolerance_type="da")
+            spec.get_peaks(100.0, tolerance=0.005, tolerance_unit="da")
         )
 
     @pytest.mark.parametrize("method", ["has_peak", "get_peak", "get_peaks"])
-    def test_unknown_tolerance_type_raises(self, method: str) -> None:
+    def test_unknown_tolerance_unit_raises(self, method: str) -> None:
         """An unrecognised unit must raise, not silently mean "Da"."""
         spec = _query_spec()
-        with pytest.raises(ValueError, match="ToleranceType"):
-            getattr(spec, method)(100.0, tolerance=0.01, tolerance_type=cast(Any, "bogus"))
+        with pytest.raises(ValueError, match="tolerance_unit"):
+            getattr(spec, method)(100.0, tolerance=0.01, tolerance_unit=cast(Any, "bogus"))
 
 
 class TestToleranceBoundary:
@@ -126,7 +120,7 @@ class TestToleranceBoundary:
     def test_peak_exactly_at_ppm_tolerance_edge_is_included(self) -> None:
         # 2500 ppm of 100.0 is exactly 0.25 Da.
         spec = _boundary_spec()
-        assert _mzs(spec.get_peaks(100.0, tolerance=2500, tolerance_type="ppm")) == [100.0, 100.25]
+        assert _mzs(spec.get_peaks(100.0, tolerance=2500, tolerance_unit="ppm")) == [100.0, 100.25]
 
     def test_peak_exactly_at_im_tolerance_edge_is_included(self) -> None:
         spec = Spectrum(
@@ -392,14 +386,14 @@ class TestFindMatchingPeaks:
             mz=np.array([100.008, 100.000, 100.004], dtype=np.float64),
             intensity=np.array([50.0, 10.0, 100.0], dtype=np.float64),
         )
-        idx = spec._find_matching_peaks(100.0, 0.01, ToleranceType.DA, None, None, 0.01)
+        idx = spec._find_matching_peaks(100.0, 0.01, "da", None, None, 0.01)
         assert idx.tolist() == [0, 1, 2]
         # get_peaks inherits that order — it does not re-sort by m/z.
         assert _mzs(spec.get_peaks(100.0, tolerance=0.01)) == [100.008, 100.000, 100.004]
 
     def test_returns_empty_index_array_on_a_miss(self) -> None:
         spec = _query_spec()
-        idx = spec._find_matching_peaks(150.0, 0.01, ToleranceType.DA, None, None, 0.01)
+        idx = spec._find_matching_peaks(150.0, 0.01, "da", None, None, 0.01)
         assert idx.tolist() == []
 
 

@@ -18,7 +18,6 @@ import numpy as np
 import pytest
 
 from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType
-from spxtacular.enums import Polarity
 from spxtacular.usi import _parse_proxi_response, fetch_usi, spectrum_from_proxi_response
 
 USI = "mzspec:TEST:test:scan:1"
@@ -131,7 +130,7 @@ class TestSpectrumFromProxiResponse:
         result = spectrum_from_proxi_response([entry], USI)
         assert isinstance(result, MsnSpectrum)
         assert result.spectrum_type == SpectrumType.PROFILE
-        assert result.polarity == Polarity.NEGATIVE
+        assert result.polarity == "negative"
         assert result.ms_level == 1
         assert result.scan_number == 1
 

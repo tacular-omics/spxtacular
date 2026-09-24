@@ -38,10 +38,10 @@ from . import theme
 from .core import Spectrum, SpectrumType
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceLike,
+    ToleranceUnit,
 )
 from .errors import SpxtacularError
 from .matching import FragmentInput, match_fragments
@@ -434,7 +434,7 @@ def build_annot_plot_table(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
@@ -456,8 +456,8 @@ def build_annot_plot_table(
         Fragment objects from peptacular.
     tolerance:
         Matching tolerance.
-    tolerance_type:
-        ``"Da"`` or ``"ppm"``.
+    tolerance_unit:
+        ``"da"`` or ``"ppm"``.
     peak_selection:
         How to resolve multiple peaks per fragment — ``"closest"``,
         ``"largest"``, or ``"all"``.
@@ -481,7 +481,7 @@ def build_annot_plot_table(
     pd.DataFrame with the same columns as :func:`build_plot_table`.
     """
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
     )
 
     # Group matches by peak index

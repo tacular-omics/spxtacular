@@ -100,7 +100,7 @@ spec = spx.Spectrum(mz=mz, intensity=intensity)
 neutral = (
     spec
     .denoise(method="mad")
-    .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_type="ppm", min_score=0.4)
+    .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_unit="ppm", min_score=0.4)
     .decharge()
 )
 
@@ -145,7 +145,7 @@ with `spx.write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")`.
 
 ```python
 # 1. Find isotope clusters → assign monoisotopic m/z + charge + Bhattacharyya score
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
 
 # charge > 0  → assigned cluster
 # charge = -1 → singleton / unassigned

@@ -144,7 +144,7 @@ def _pyteomics_fragment_dict(case: dict) -> dict:
 def test_exact_fragments_all_match(case: dict) -> None:
     mz = np.asarray(case["b"] + case["y"])
     spectrum = Spectrum(mz=mz, intensity=np.arange(1.0, mz.size + 1.0))
-    matches = match_fragments(spectrum, _pyteomics_fragment_dict(case), tolerance=1e-9, tolerance_type="da")
+    matches = match_fragments(spectrum, _pyteomics_fragment_dict(case), tolerance=1e-9, tolerance_unit="da")
     assert len(matches) == mz.size
     for match in matches:
         assert match.da_error == pytest.approx(0.0, abs=1e-9)
@@ -163,9 +163,9 @@ def test_fragment_tolerance_edges(case: dict, unit: str) -> None:
     for sign in (1.0, -1.0):
         inside = Spectrum(mz=theoretical + sign * window * (1 - 1e-6), intensity=np.ones_like(theoretical))
         outside = Spectrum(mz=theoretical + sign * window * (1 + 1e-6), intensity=np.ones_like(theoretical))
-        inside_matches = match_fragments(inside, fragments, tolerance=tolerance, tolerance_type=unit)
+        inside_matches = match_fragments(inside, fragments, tolerance=tolerance, tolerance_unit=unit)
         assert sorted(m.peak_index for m in inside_matches) == list(range(theoretical.size))
-        assert match_fragments(outside, fragments, tolerance=tolerance, tolerance_type=unit) == []
+        assert match_fragments(outside, fragments, tolerance=tolerance, tolerance_unit=unit) == []
         for match in inside_matches:
             error = match.ppm_error if unit == "ppm" else match.da_error
             assert abs(error) <= tolerance
@@ -186,7 +186,7 @@ def test_hyperscore_on_pyteomics_fragments() -> None:
     intensity = np.asarray([10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0])
     order = np.argsort(mz)
     spectrum = Spectrum(mz=mz[order], intensity=intensity[order])
-    result = score(spectrum, _pyteomics_fragment_dict(case), tolerance=0.001, tolerance_type="da")
+    result = score(spectrum, _pyteomics_fragment_dict(case), tolerance=0.001, tolerance_unit="da")
     expected = math.log10(150.0) + math.log10(math.factorial(3)) + math.log10(math.factorial(2))
     assert result["hyperscore"] == pytest.approx(expected, abs=1e-12)
 

@@ -11,15 +11,15 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from numpy.typing import NDArray
 from peptacular import Fragment, IonType
+from tacular.types import ToleranceUnit
 
 from .core import Spectrum
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceLike,
-    ToleranceType,
+    check_tolerance_unit,
 )
 from .errors import SpxtacularError
 from .utils import da_to_ppm
@@ -102,7 +102,7 @@ def match_fragments(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]:
@@ -123,7 +123,7 @@ def match_fragments(
         :meth:`~peptacular.ProFormaAnnotation.fast_fragment`.
     tolerance:
         Tolerance value.
-    tolerance_type:
+    tolerance_unit:
         ``"da"`` for absolute or ``"ppm"`` for parts-per-million.  Matched
         case-insensitively; anything else raises ``ValueError``.
     peak_selection:
@@ -145,7 +145,7 @@ def match_fragments(
     Raises
     ------
     ValueError
-        If ``tolerance_type`` / ``peak_selection`` is not a recognised value, or if
+        If ``tolerance_unit`` / ``peak_selection`` is not a recognised value, or if
         a dict key carries ``charge_state == 0`` (an m/z cannot be converted to a
         mass).
     TypeError
@@ -181,7 +181,7 @@ def match_fragments(
             f"not {type(fragments).__name__} {fragments!r}. Build them first, e.g. "
             'peptacular.fragment("PEPTIDE", ion_types=("b", "y")).'
         )
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    tol_unit = check_tolerance_unit(tolerance_unit)
     selection = PeakSelection(str(peak_selection).lower())
 
     mz = spectrum.mz
@@ -260,7 +260,7 @@ def match_fragments(
         None if is_decharged else charge,
         intensity,
         tolerance=float(tolerance),
-        ppm=tol_type is ToleranceType.PPM,
+        ppm=tol_unit == "ppm",
         selection=selection,
     )
     if frag_idx.size == 0:

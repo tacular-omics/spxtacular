@@ -34,22 +34,22 @@ def _spec() -> Spectrum:
 
 
 # ---------------------------------------------------------------------------
-# tolerance_type default is DA (0.02 Da), uniformly. A peak 0.005 Da off matches
+# tolerance_unit default is DA (0.02 Da), uniformly. A peak 0.005 Da off matches
 # under the DA default but not under PPM (0.02 ppm ≈ 2e-6 Da) — so this discriminates.
 # ---------------------------------------------------------------------------
 
 
-def test_match_fragments_default_tolerance_type_is_da() -> None:
+def test_match_fragments_default_tolerance_unit_is_da() -> None:
     frag = _frag(100.005)  # 0.005 Da from the 100.0 peak
     assert len(match_fragments(_spec(), [frag])) == 1  # DA default → match
-    assert match_fragments(_spec(), [frag], tolerance_type="ppm") == []  # PPM → no match
+    assert match_fragments(_spec(), [frag], tolerance_unit="ppm") == []  # PPM → no match
 
 
-def test_score_default_tolerance_type_is_da() -> None:
+def test_score_default_tolerance_unit_is_da() -> None:
     frags = [_frag(100.005)]
     default = score(_spec(), frags)
-    da = score(_spec(), frags, tolerance_type="da")
-    ppm = score(_spec(), frags, tolerance_type="ppm")
+    da = score(_spec(), frags, tolerance_unit="da")
+    ppm = score(_spec(), frags, tolerance_unit="ppm")
     assert default["total_matched_intensity"] == da["total_matched_intensity"]
     assert default["total_matched_intensity"] > 0.0
     assert ppm["total_matched_intensity"] == 0.0
@@ -98,7 +98,7 @@ def test_deconvolute_already_deconvoluted_returns_distinct_copy() -> None:
 def test_match_fragments_zero_target_mass_ppm_no_crash() -> None:
     # Degenerate 0.0 target mass under ppm previously raised ZeroDivisionError.
     # The contract of the fix is crash-safety; just assert the call completes.
-    match_fragments(_spec(), [_frag(0.0)], tolerance_type="ppm")
+    match_fragments(_spec(), [_frag(0.0)], tolerance_unit="ppm")
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ def test_deconvolute_rejected_cluster_conserves_total_intensity() -> None:
     intensity = np.array([100.0, 60.0, 30.0, 50.0], dtype=np.float64)
     spec = Spectrum(mz=mz.copy(), intensity=intensity.copy())
     # min_score above any achievable Bhattacharyya score → every cluster rejected.
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_type="ppm", min_score=0.9999)
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=50, tolerance_unit="ppm", min_score=0.9999)
     # All peaks emitted as singletons; total intensity must equal the input (240),
     # not an inflated value from double-counting the rejected seed's cluster sum.
     assert decon.charge is not None

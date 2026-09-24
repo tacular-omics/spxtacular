@@ -14,15 +14,15 @@ from .errors import SpxtacularError
 
 SPECTRUM_SCHEMA = "spxtacular.spectrum"
 CHROMATOGRAM_SCHEMA = "spxtacular.chromatogram"
-JSON_SCHEMA_VERSION = 1
+CHROMATOGRAM_SCHEMA_VERSION = 2
 SPECTRUM_SCHEMA_VERSION = 2
 
 
 def get_json_schema(kind: Literal["spectrum", "chromatogram"]) -> dict[str, Any]:
-    """Return a fresh copy of the packaged JSON Schema document (spectrum v2, chromatogram v1)."""
+    """Return a fresh copy of the packaged JSON Schema document (spectrum v2, chromatogram v2)."""
     schema_files = {
         "spectrum": "spectrum-v2.schema.json",
-        "chromatogram": "chromatogram-v1.schema.json",
+        "chromatogram": "chromatogram-v2.schema.json",
     }
     try:
         filename = schema_files[kind]
@@ -236,7 +236,7 @@ def require_schema(
     schema: str,
     kinds: set[str],
     *,
-    versions: tuple[int, ...] = (JSON_SCHEMA_VERSION,),
+    versions: tuple[int, ...],
 ) -> str:
     """Validate the common transport envelope and return its kind."""
     require_exact_keys(payload, {"schema", "schema_version", "kind", "arrays", "metadata"}, "payload")

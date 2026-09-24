@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from spxtacular.core import MsnSpectrum, Peak, Spectrum, SpectrumType, _centroid_peaks
+from spxtacular.errors import SpxtacularError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -732,22 +733,22 @@ def test_update_inplace_validation_failure_leaves_spectrum_unchanged() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_merge_invalid_mz_tolerance_type_raises() -> None:
+def test_merge_invalid_mz_tolerance_unit_raises() -> None:
     from typing import cast
 
     spec = _spec()
     bad: Any = cast(Any, "invalid")
-    with pytest.raises(ValueError, match="mz_tolerance_type"):
-        spec.merge(mz_tolerance_type=bad)
+    with pytest.raises(ValueError, match="mz_tolerance_unit"):
+        spec.merge(mz_tolerance_unit=bad)
 
 
-def test_merge_invalid_im_tolerance_type_raises() -> None:
+def test_merge_invalid_im_tolerance_unit_raises() -> None:
     from typing import cast
 
     spec = _spec()
     bad: Any = cast(Any, "invalid")
-    with pytest.raises(ValueError, match="im_tolerance_type"):
-        spec.merge(im_tolerance_type=bad)
+    with pytest.raises(ValueError, match="im_tolerance_unit"):
+        spec.merge(im_tolerance_unit=bad)
 
 
 def test_msn_str_repr_with_rt() -> None:
@@ -874,13 +875,13 @@ def test_deconvolute_clears_the_normalized_flag() -> None:
 
 
 # ---------------------------------------------------------------------------
-# remove_precursor_peak — tolerance type is case-insensitive
+# remove_precursor_peak — tolerance unit is validated
 # ---------------------------------------------------------------------------
 
 
-def test_remove_precursor_peak_uppercase_ppm_is_still_ppm() -> None:
-    """Regression: ``tolerance_type="PPM"`` failed a case-sensitive comparison
-    and was treated as Da, so 20 ppm became a 20 Da window."""
+def test_remove_precursor_peak_uppercase_ppm_raises() -> None:
+    """Regression: ``tolerance_unit="PPM"`` once fell through to Da, so 20 ppm became
+    a 20 Da window. Units are lowercase only now, and anything else raises."""
     from typing import cast
 
     spec = Spectrum(
@@ -888,11 +889,10 @@ def test_remove_precursor_peak_uppercase_ppm_is_still_ppm() -> None:
         intensity=np.array([1000.0, 2000.0], dtype=np.float64),
         spectrum_type=SpectrumType.CENTROID,
     )
-    # The Literal type spells the canonical lowercase values; the case-insensitive
-    # spellings are a runtime affordance, so the cast is the point of the test.
     upper: Any = cast(Any, "PPM")
-    kept = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=20, tolerance_type=upper, isotopes=0)
-
+    with pytest.raises(SpxtacularError, match="tolerance_unit must be 'da' or 'ppm'"):
+        spec.remove_precursor_peak(precursor_mz=500.0, tolerance=20, tolerance_unit=upper, isotopes=0)
+    kept = spec.remove_precursor_peak(precursor_mz=500.0, tolerance=20, tolerance_unit="ppm", isotopes=0)
     assert _mzs(kept) == [510.0]
 
 

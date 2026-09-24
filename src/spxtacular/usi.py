@@ -326,7 +326,7 @@ def spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum:
     and scan polarity CV terms are preserved when present.
     """
     from .core import MsnSpectrum, Precursor, Spectrum
-    from .enums import Polarity
+    from .enums import check_polarity
 
     parsed_usi = parse_usi(usi)
     response_data = _parse_proxi_response(data, usi)
@@ -338,7 +338,7 @@ def spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum:
     ms_level = response_data.get("ms_level")
     spectrum_type = response_data.get("spectrum_type")
     polarity_value = response_data.get("polarity")
-    polarity = Polarity(polarity_value) if polarity_value is not None else None
+    polarity = check_polarity(polarity_value)
 
     precursor = None
     if prec_mz is not None:

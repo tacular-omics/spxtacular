@@ -82,31 +82,31 @@ Everything after `intensity` is keyword-only:
 Required parameters stay positional. Every parameter with a default is now keyword-only in the
 public functions and methods below. `spec.normalize("tic")` becomes
 `spec.normalize(method="tic")`; `match_fragments(spec, frags, 10, "ppm")` becomes
-`match_fragments(spec, frags, tolerance=10, tolerance_type="ppm")`.
+`match_fragments(spec, frags, tolerance=10, tolerance_unit="ppm")`.
 
 | Function or method | Now keyword-only |
 |---|---|
 | `Spectrum.filter` | all parameters |
 | `Spectrum.normalize`, `Spectrum.denoise` | `method`, `inplace` |
 | `Spectrum.centroid` | `min_intensity`, `inplace` |
-| `Spectrum.merge` | `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `inplace` |
+| `Spectrum.merge` | `mz_tolerance`, `mz_tolerance_unit`, `im_tolerance`, `im_tolerance_unit`, `inplace` |
 | `Spectrum.sort`, `Spectrum.top_peaks` | `by`, `reverse` (and `inplace` for `sort`) |
 | `Spectrum.update`, `Spectrum.decharge` | `inplace` |
 | `Spectrum.deconvolute` | all parameters |
 | `Spectrum.remove_precursor_peak` | all parameters, including `precursor_mz` and `precursor_charge` |
 | `Spectrum.scale_intensity` | `method`, `degree`, `base`, `inplace` |
 | `Spectrum.round_mz` | `decimals`, `combine`, `inplace` |
-| `Spectrum.has_peak`, `get_peak`, `get_peaks` | `tolerance`, `tolerance_type`, `target_charge`, `target_im`, `im_tolerance` (and `peak_selection` for `get_peak`) |
-| `Spectrum.match_fragments`, `match_fragments` | `tolerance`, `tolerance_type`, `peak_selection`, `is_monoisotopic` |
-| `Spectrum.score`, `score` | `tolerance`, `tolerance_type`, `peak_selection`, `predicted_intensities` |
-| `Spectrum.annotate`, `Spectrum.annot_plot_table` | `tolerance`, `tolerance_type`, `title`, `peak_selection`, `include_sequence` |
+| `Spectrum.has_peak`, `get_peak`, `get_peaks` | `tolerance`, `tolerance_unit`, `target_charge`, `target_im`, `im_tolerance` (and `peak_selection` for `get_peak`) |
+| `Spectrum.match_fragments`, `match_fragments` | `tolerance`, `tolerance_unit`, `peak_selection`, `is_monoisotopic` |
+| `Spectrum.score`, `score` | `tolerance`, `tolerance_unit`, `peak_selection`, `predicted_intensities` |
+| `Spectrum.annotate`, `Spectrum.annot_plot_table` | `tolerance`, `tolerance_unit`, `title`, `peak_selection`, `include_sequence` |
 | `Spectrum.plot`, `Spectrum.plot_table` | all parameters |
 | `Spectrum.mass_error_plot`, `Spectrum.facet_plot` | all optional parameters, including `fragments` and `mirror_spectrum` for `facet_plot` |
 | `Spectrum.to_spectrl_url`, `to_spectrl_url` | `base` |
 | `Spectrum.from_usi`, `fetch_usi` | `backend`, `timeout` |
-| `cosine`, `modified_cosine`, `entropy_similarity` | `tolerance`, `tolerance_type` (and `transform`); the two precursor m/z of `modified_cosine` stay positional |
+| `cosine`, `modified_cosine`, `entropy_similarity` | `tolerance`, `tolerance_unit` (and `transform`); the two precursor m/z of `modified_cosine` stay positional |
 | `extract_chromatogram` | `mode`, `mz_range` |
-| `extract_xic`, `plot_xic` | `tolerance`, `tolerance_type`, `im_window`, `aggregate` (and plot options) |
+| `extract_xic`, `plot_xic` | `tolerance`, `tolerance_unit`, `im_window`, `aggregate` (and plot options) |
 | `brain_isotopic_distribution` | `max_isotopes`, `isotope_abundances` |
 | `IsotopeModel.adaptive_distribution` | `min_relative_abundance`, `max_isotopes` |
 | `estimate_noise_level` | `method` |
@@ -137,7 +137,7 @@ public functions and methods below. `spec.normalize("tic")` becomes
 | `get_peak(collision="largest"\|"closest")` | `get_peak(peak_selection="largest"\|"closest")`, the name `match_fragments` uses. Default is still `"largest"`; `"all"` raises (use `get_peaks`) |
 | `Spectrum.plot(show_charges=...)`, `plot_spectrum(show_charges=...)` | removed (deprecated in 0.8); use `color="charge"` or `color=None` |
 | `Spectrum.plot_table(show_charges=...)` | removed; use `color="charge"` or `color=None` |
-| `deconvolve_spectrum(..., is_ppm=True)` | `tolerance_type="ppm"` (or `"da"`), as in `Spectrum.deconvolute` |
+| `deconvolve_spectrum(..., is_ppm=True)` | `tolerance_unit="ppm"` (or `"da"`), as in `Spectrum.deconvolute` |
 
 `build_plot_table(show_charges=...)` and `mirror_plot(show_charges=...)` keep their option: there
 it is not a deprecated alias.
@@ -148,6 +148,25 @@ it is not a deprecated alias.
 |---|---|
 | `spxtacular.core.JSON_SCHEMA_VERSION` (`1`) | `spxtacular.serialization.SPECTRUM_SCHEMA_VERSION` (now `2`) for spectra. `spxtacular.serialization.JSON_SCHEMA_VERSION` still exists and stays `1`: it is the chromatogram schema version |
 | `spxtacular.reader.PeakListLookup`, `spxtacular.reader.ThermoScanLookup` | import from the package root: `from spxtacular import PeakListLookup, ThermoScanLookup` |
+
+## Tolerance units and polarity
+
+Units and polarity are plain lowercase strings, typed by tacular. There are no enums or
+aliases for them in spxtacular.
+
+| 0.8 | 0.9 |
+|---|---|
+| `tolerance_type=` (every function, method and field) | `tolerance_unit=` |
+| `mz_tolerance_type=`, `im_tolerance_type=` (`merge`, `deconvolute`, `CentroidConfig`) | `mz_tolerance_unit=`, `im_tolerance_unit=` |
+| `Chromatogram.tolerance_type` | `Chromatogram.tolerance_unit` |
+| `DeconvolutionProvenance.tolerance_type`, `.im_tolerance_type` | `.tolerance_unit`, `.im_tolerance_unit` |
+| `ToleranceType.DA`, `ToleranceType.PPM`, `"Da"`, `"PPM"` | `"da"`, `"ppm"` (other spellings raise `SpxtacularError`) |
+| `ToleranceType`, `ToleranceLike` | `from tacular.types import ToleranceUnit` (`Literal["da", "ppm"]`) |
+| `Polarity.POSITIVE`, `Polarity.NEGATIVE`, `"Positive"` | `"positive"`, `"negative"` |
+| `Polarity`, `PolarityLike` | `from tacular.types import Polarity` (`Literal["positive", "negative"]`) |
+| `enums.DEFAULT_FRAGMENT_TOLERANCE_TYPE` | `enums.DEFAULT_FRAGMENT_TOLERANCE_UNIT` |
+
+Chromatograms built by `extract_xic` store `"da"`/`"ppm"`, where 0.8 stored `"Da"`.
 
 ## Readers
 
@@ -189,8 +208,8 @@ Code that wrapped these calls in `pytest.warns` or `warnings.catch_warnings` can
 | `ValueError` for invalid input | `SpxtacularError`, a `ValueError` subclass: `except ValueError` still works |
 | `da_to_ppm(delta, 0)` raises `ValueError` | raises tacular's `TacularError` (also a `ValueError`) |
 | `da_to_ppm(delta, mz)` divides by `mz` | divides by `abs(mz)`, so a negative reference keeps the error's sign |
-| enum coercion (`ToleranceType("foo")`) raises plain `ValueError` | raises `SpxtacularError`, listing the accepted values. Coercion is case-insensitive (`"PPM"`, `"Positive"`) |
-| `im_type`, `polarity` accepted any value | coerced to `IMType` / `Polarity` on construction (`Precursor`, `MsnSpectrum`, JSON); anything else raises `SpxtacularError` |
+| enum coercion (`ToleranceType("foo")`) raises plain `ValueError` | raises `SpxtacularError`, listing the accepted values. Tolerance units and polarity are lowercase only (`"PPM"`, `"Da"`, `"Positive"` raise); `IMType` coercion is case-insensitive |
+| `im_type`, `polarity` accepted any value | `im_type` coerced to `IMType`, `polarity` checked to be `"positive"`/`"negative"`, on construction (`Precursor`, `MsnSpectrum`, JSON); anything else raises `SpxtacularError` |
 | `activation_type`, `analyzer` kept any value as given | a member name in any case or a PSI-MS accession becomes the member (`"MS:1002481"` -> `ActivationType.HCD`, `"TOF"` or `"MS:1000484"` -> `Analyzer.TOF` / `Analyzer.ORBITRAP`); other non-blank strings are kept; non-strings and blanks raise |
 | a bad JSON payload (wrong types) raised `TypeError` | raises `SpxtacularError` |
 | a corrupt or non-spectrum `.npz` raised numpy/zipfile/JSON errors | raises `SpxtacularError`, chained to the original |
@@ -210,7 +229,7 @@ in ppm), built on first access and cached.
 | metadata key `isolation_im_range` | `isolation_ook0_range` |
 | `spxtacular/schemas/spectrum-v1.schema.json` | `spxtacular/schemas/spectrum-v2.schema.json` |
 
-The chromatogram schema stays at version 1. spectrl tokens and URLs keep their wire keys, so
+Deconvolution provenance (`spectrum.deconvolution`) is `schema_version` 3 with keys `tolerance_unit` and `im_tolerance_unit` (was 2 with `tolerance_type`, `im_tolerance_type`). Chromatogram JSON is schema version 2 with key `tolerance_unit`, and `spxtacular/schemas/chromatogram-v1.schema.json` is now `chromatogram-v2.schema.json`. 0.9 still reads the old provenance and chromatogram files, lowercasing `"Da"`. spectrl tokens and URLs keep their wire keys, so
 tokens written by 0.8 decode in 0.9.
 
 ## Fragment labels

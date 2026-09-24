@@ -64,7 +64,7 @@ spec = Spectrum(mz=mz, intensity=intensity)
 neutral = (
     spec
     .denoise(method="mad")
-    .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_type="ppm")
+    .deconvolute(charge_range=(1, 5), tolerance=15, tolerance_unit="ppm")
     .decharge()
 )
 

@@ -23,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
-from .enums import Polarity
+from .enums import check_polarity
 from .errors import SpxtacularError
 
 __all__ = ["from_matchms", "from_spectrum_utils", "to_matchms", "to_spectrum_utils"]
@@ -364,7 +364,7 @@ def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -
     native_id = _metadata_first(metadata, "id", "spectrum_id", "title")
     polarity_value = _metadata_first(metadata, "ionmode", "ion_mode")
     try:
-        polarity = Polarity(str(polarity_value).lower()) if polarity_value is not None else None
+        polarity = check_polarity(str(polarity_value).lower()) if polarity_value is not None else None
     except ValueError:
         polarity = None
     return MsnSpectrum(

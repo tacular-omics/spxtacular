@@ -22,9 +22,10 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
+from tacular.types import ToleranceUnit
 
 from .core import Spectrum
-from .enums import DEFAULT_FRAGMENT_TOLERANCE, DEFAULT_FRAGMENT_TOLERANCE_TYPE, ToleranceLike, ToleranceType
+from .enums import DEFAULT_FRAGMENT_TOLERANCE, DEFAULT_FRAGMENT_TOLERANCE_UNIT, check_tolerance_unit
 from .errors import SpxtacularError
 
 IntensityTransform = Literal["sqrt", "linear", "log"]
@@ -58,8 +59,8 @@ def _prepared(
     return mz, inten
 
 
-def _tolerance_da(target: NDArray[np.float64], tolerance: float, tol_type: ToleranceType) -> NDArray[np.float64]:
-    if tol_type is ToleranceType.PPM:
+def _tolerance_da(target: NDArray[np.float64], tolerance: float, tol_unit: ToleranceUnit) -> NDArray[np.float64]:
+    if tol_unit == "ppm":
         return target * tolerance / 1e6
     return np.full_like(target, tolerance)
 
@@ -70,7 +71,7 @@ def _greedy_align(
     mz_b: NDArray[np.float64],
     int_b: NDArray[np.float64],
     tolerance: float,
-    tol_type: ToleranceType,
+    tol_unit: ToleranceUnit,
     shifts: tuple[float, ...] = (0.0,),
 ) -> list[tuple[int, int]]:
     """Pair peaks one-to-one, strongest contribution first.
@@ -82,7 +83,7 @@ def _greedy_align(
     pairs: list[tuple[float, int, int]] = []
     for shift in shifts:
         target = mz_a + shift
-        tol = _tolerance_da(np.abs(target), tolerance, tol_type)
+        tol = _tolerance_da(np.abs(target), tolerance, tol_unit)
         lo = np.searchsorted(mz_b, target - tol, side="left")
         hi = np.searchsorted(mz_b, target + tol, side="right")
         for i in range(mz_a.size):
@@ -108,7 +109,7 @@ def cosine(
     reference: Spectrum,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     transform: IntensityTransform = "sqrt",
 ) -> float:
     """Cosine similarity between two spectra, 0 to 1.
@@ -123,7 +124,7 @@ def cosine(
     ----------
     query, reference:
         Spectra to compare. Any m/z order is accepted.
-    tolerance, tolerance_type:
+    tolerance, tolerance_unit:
         Peak matching window, ``"da"`` (default) or ``"ppm"``.
     transform:
         ``"sqrt"`` (default, the matching convention), ``"linear"`` or ``"log"``.
@@ -133,13 +134,13 @@ def cosine(
     float in ``[0, 1]``. Returns ``0.0`` if either spectrum is empty or has no
     positive intensity.
     """
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    tol_unit = check_tolerance_unit(tolerance_unit)
     mz_a, int_a = _prepared(query, transform)
     mz_b, int_b = _prepared(reference, transform)
     if mz_a.size == 0 or mz_b.size == 0 or int_a.sum() == 0 or int_b.sum() == 0:
         return 0.0
 
-    total = sum(int_a[i] * int_b[j] for i, j in _greedy_align(mz_a, int_a, mz_b, int_b, tolerance, tol_type))
+    total = sum(int_a[i] * int_b[j] for i, j in _greedy_align(mz_a, int_a, mz_b, int_b, tolerance, tol_unit))
     # Both vectors are unit-length, so Cauchy-Schwarz bounds this at 1; clamp
     # only to absorb floating-point drift.
     return float(min(1.0, max(0.0, total)))
@@ -152,7 +153,7 @@ def modified_cosine(
     reference_precursor_mz: float,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     transform: IntensityTransform = "sqrt",
 ) -> float:
     """Cosine that also matches peaks displaced by the precursor mass difference.
@@ -169,14 +170,14 @@ def modified_cosine(
         Spectra to compare.
     query_precursor_mz, reference_precursor_mz:
         Precursor m/z of each. Their difference is the extra offset considered.
-    tolerance, tolerance_type, transform:
+    tolerance, tolerance_unit, transform:
         As for :func:`cosine`.
 
     Returns
     -------
     float in ``[0, 1]``. Equals :func:`cosine` when the precursors match.
     """
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    tol_unit = check_tolerance_unit(tolerance_unit)
     mz_a, int_a = _prepared(query, transform)
     mz_b, int_b = _prepared(reference, transform)
     if mz_a.size == 0 or mz_b.size == 0 or int_a.sum() == 0 or int_b.sum() == 0:
@@ -185,7 +186,7 @@ def modified_cosine(
     shift = float(reference_precursor_mz) - float(query_precursor_mz)
     shifts = (0.0,) if shift == 0.0 else (0.0, shift)
 
-    total = sum(int_a[i] * int_b[j] for i, j in _greedy_align(mz_a, int_a, mz_b, int_b, tolerance, tol_type, shifts))
+    total = sum(int_a[i] * int_b[j] for i, j in _greedy_align(mz_a, int_a, mz_b, int_b, tolerance, tol_unit, shifts))
     return float(min(1.0, max(0.0, total)))
 
 
@@ -204,7 +205,7 @@ def entropy_similarity(
     reference: Spectrum,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
 ) -> float:
     """Unweighted entropy similarity between two spectra, from 0 to 1.
 
@@ -218,7 +219,7 @@ def entropy_similarity(
     -------
     float in ``[0, 1]``; ``0.0`` if either spectrum is empty.
     """
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    tol_unit = check_tolerance_unit(tolerance_unit)
     # Entropy is defined on the raw intensity distribution, so no sqrt here.
     mz_a, int_a = _prepared(query, "linear")
     mz_b, int_b = _prepared(reference, "linear")
@@ -228,7 +229,7 @@ def entropy_similarity(
     a = int_a / int_a.sum()
     b = int_b / int_b.sum()
 
-    matched = _greedy_align(mz_a, a, mz_b, b, tolerance, tol_type)
+    matched = _greedy_align(mz_a, a, mz_b, b, tolerance, tol_unit)
     pair_a = {i for i, _ in matched}
     pair_b = {j for _, j in matched}
 

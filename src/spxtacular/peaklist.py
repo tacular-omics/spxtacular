@@ -43,11 +43,11 @@ from typing import IO, Any, BinaryIO, Self
 
 import numpy as np
 from tacular.constants import PROTON_MASS
+from tacular.types import Polarity
 
 from ._peak_annotations import peak_list_annotation_texts, per_spectrum
 from ._scan_lookup import IdIndex, build_id_index, by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
-from .enums import Polarity
 from .errors import SpxtacularError
 from .utils import format_precursor_charge, signed_precursor_charge
 
@@ -196,7 +196,7 @@ def _polarity_of(charge: int | None) -> Polarity | None:
     """Polarity implied by a signed charge — neither format states it outright."""
     if charge is None or charge == 0:
         return None
-    return Polarity.NEGATIVE if charge < 0 else Polarity.POSITIVE
+    return "negative" if charge < 0 else "positive"
 
 
 # ---------------------------------------------------------------------------
@@ -642,9 +642,9 @@ def _msp_spectrum(block: _MspBlock, *, path: Path) -> MsnSpectrum:
     if found is not None:
         mode = found[0].strip().upper()
         if mode.startswith("P"):
-            polarity = Polarity.POSITIVE
+            polarity = "positive"
         elif mode.startswith("N"):
-            polarity = Polarity.NEGATIVE
+            polarity = "negative"
     if polarity is None:
         polarity = _polarity_of(charge)
 
@@ -1329,7 +1329,7 @@ def write_msp(
                 if prec.charge is not None:
                     fh.write(f"Charge: {int(prec.charge)}\n")
             if msn is not None and msn.polarity is not None:
-                fh.write(f"Ion_mode: {'N' if msn.polarity == Polarity.NEGATIVE else 'P'}\n")
+                fh.write(f"Ion_mode: {'N' if msn.polarity == 'negative' else 'P'}\n")
             if msn is not None and msn.rt is not None:
                 fh.write(f"RetentionTime: {_fmt(msn.rt)}\n")
             if msn is not None and msn.collision_energy is not None:

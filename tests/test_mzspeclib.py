@@ -26,7 +26,6 @@ from spxtacular import (
     MsnSpectrum,
     MspReader,
     MzSpecLibReader,
-    Polarity,
     Precursor,
     SpectralLibrary,
     SpectrumType,
@@ -54,7 +53,7 @@ def make_spectrum(**overrides: object) -> MsnSpectrum:
         "scan_number": 17,
         "native_id": "controllerType=0 controllerNumber=1 scan=17",
         "rt": 1234.5,
-        "polarity": Polarity.POSITIVE,
+        "polarity": "positive",
         "collision_energy": 27.0,
         "activation_type": ActivationType.HCD,
         "injection_time": 22.0,
@@ -126,7 +125,7 @@ def test_fields_map_to_spectrum(tmp_path: Path) -> None:
     entry = read_mzspeclib(write_mzspeclib(make_entry(), tmp_path / "a.txt"))[0]
     spec = entry.spectrum
     assert spec.rt == 1234.5
-    assert spec.polarity == Polarity.POSITIVE
+    assert spec.polarity == "positive"
     assert spec.activation_type == ActivationType.HCD
     assert spec.collision_energy == 27.0
     assert spec.scan_number == 17
@@ -251,7 +250,7 @@ def test_matched_fragments_as_annotations(tmp_path: Path) -> None:
         spectrum_type=SpectrumType.CENTROID,
         ms_level=2,
     )
-    matches = match_fragments(spec, frags, tolerance=10, tolerance_type="ppm")
+    matches = match_fragments(spec, frags, tolerance=10, tolerance_unit="ppm")
     entry = LibraryEntry.from_spectrum(spec, "PEPTIDEK/1", key=1, peak_annotations=matches)
     assert entry.peak_annotations is not None
     assert all(entry.peak_annotations)
@@ -751,9 +750,9 @@ def test_peak_list_annotation_with_equals_sign(tmp_path: Path, writer, reader, s
 
 def test_peak_list_annotations_errors(tmp_path: Path) -> None:
     spec = make_spectrum()
-    with pytest.raises(SpxtacularError, match="fewer|more|spectra|entries"):
+    with pytest.raises(SpxtacularError, match=r"fewer|more|spectra|entries"):
         write_msp([spec, spec], tmp_path / "a.msp", annotations=[[None] * 4])
-    with pytest.raises(SpxtacularError, match="more|spectra|entries"):
+    with pytest.raises(SpxtacularError, match=r"more|spectra|entries"):
         write_mgf([spec], tmp_path / "a.mgf", annotations=[[None] * 4, [None] * 4])
     with pytest.raises(SpxtacularError, match="annotations for 4 peaks"):
         write_msp([spec], tmp_path / "a.msp", annotations=[["y1"]])
@@ -771,6 +770,6 @@ def test_peak_list_matched_fragments(tmp_path: Path) -> None:
         spectrum_type=SpectrumType.CENTROID,
         ms_level=2,
     )
-    matches = match_fragments(spec, frags, tolerance=10, tolerance_type="ppm")
+    matches = match_fragments(spec, frags, tolerance=10, tolerance_unit="ppm")
     text = write_msp([spec], tmp_path / "a.msp", annotations=[matches]).read_text()
     assert text.count('"') == 6
