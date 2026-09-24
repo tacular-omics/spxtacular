@@ -813,6 +813,10 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
     ramp_time = float(ramp_time_v) if ramp_time_v is not None else None
     im_range = _range_from_user_params(up, _UP_IM_RANGE_LO, _UP_IM_RANGE_HI)
     isolation_ook0_range = _range_from_user_params(up, _UP_ISOL_IM_RANGE_LO, _UP_ISOL_IM_RANGE_HI)
+    if isolation_ook0_range is not None:
+        # Tokens from 0.8 carry Bruker windows as (high, low); 0.9 uses (low, high).
+        lo, hi = sorted(isolation_ook0_range)
+        isolation_ook0_range = (lo, hi)
 
     return MsnSpectrum(
         mz=mz,

@@ -9,7 +9,7 @@ peaks) rather than longest chain length.
 Public entry point::
 
     mz_out, charges_out, intensity_out, scores_out = deconvolve_spectrum(
-        mz, intensity, charge_range=(1, 5), tolerance=10.0, is_ppm=True,
+        mz, intensity, charge_range=(1, 5), tolerance=10.0, tolerance_type="ppm",
         min_intensity=500.0,
     )
 """
@@ -21,6 +21,7 @@ import warnings
 import numpy as np
 from numpy.typing import NDArray
 
+from ..enums import ToleranceLike, ToleranceType
 from ..errors import SpxtacularError
 from ..isotopes import IsotopeModelLike, resolve_isotope_model
 from .greedy import NEUTRON_MASS, PROTON_MASS, _has_isotope_neighbor, _match_apex_cluster
@@ -450,9 +451,10 @@ def _deconvolve_spectrum(
 def deconvolve_spectrum(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
-    charge_range: tuple[int, int],
-    tolerance: float,
-    is_ppm: bool,
+    *,
+    charge_range: tuple[int, int] = (1, 3),
+    tolerance: float = 50.0,
+    tolerance_type: ToleranceLike = ToleranceType.PPM,
     max_dpeaks: int = 2000,
     intensity_mode: str = "total",
     min_intensity: float = 0.0,
@@ -470,14 +472,15 @@ def deconvolve_spectrum(
     """Greedy apex-first isotope deconvolution.
 
     Every charge is evaluated before the winning candidate consumes peaks.
-    See :meth:`spxtacular.Spectrum.deconvolute` for parameter details.
+    The defaults match :meth:`spxtacular.Spectrum.deconvolute`, which documents
+    each parameter (``intensity_mode`` is its ``intensity``).
     """
     result = _deconvolve_spectrum(
         mz=mz,
         intensity=intensity,
         charge_range=charge_range,
         tolerance=tolerance,
-        is_ppm=is_ppm,
+        is_ppm=ToleranceType(tolerance_type) is ToleranceType.PPM,
         max_dpeaks=max_dpeaks,
         intensity_mode=intensity_mode,
         min_intensity=min_intensity,

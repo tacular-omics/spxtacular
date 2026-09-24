@@ -174,6 +174,22 @@ def test_spectrum_load_legacy_score_key(tmp_path):
     np.testing.assert_array_equal(restored.iso_score, [0.9, 0.5])
 
 
+def test_msn_load_0_8_isolation_range_is_sorted(tmp_path):
+    """0.8 saved Bruker windows under isolation_im_range as (high, low)."""
+    import json
+
+    _basic_msn().save(tmp_path / "msn")
+    with np.load(tmp_path / "msn.npz") as archive:
+        arrays = {key: archive[key] for key in archive.files}
+    meta = json.loads(str(arrays["meta"]))
+    meta.pop("isolation_ook0_range", None)
+    meta["isolation_im_range"] = [1.3062, 1.29]
+    arrays["meta"] = np.array(json.dumps(meta))
+    np.savez(tmp_path / "old.npz", **arrays)
+    restored = MsnSpectrum.load(tmp_path / "old.npz")
+    assert restored.isolation_ook0_range == (1.29, 1.3062)
+
+
 def test_spectrum_load_without_iso_score(tmp_path):
     """A saved Spectrum with no iso_score array decodes back to iso_score=None."""
     spec = _basic_spectrum()  # no iso_score
@@ -246,3 +262,32 @@ def test_load_rejects_pickled_metadata_with_a_clear_error(tmp_path):
     )
     with pytest.raises(ValueError, match="pickled object array"):
         Spectrum.load(out)
+
+
+class TestLoadErrors:
+    """Files that are not spectrum .npz archives raise SpxtacularError, chained."""
+
+    def test_garbage_file(self, tmp_path):
+        from spxtacular.errors import SpxtacularError
+
+        path = tmp_path / "garbage.npz"
+        path.write_bytes(b"garbage")
+        with pytest.raises(SpxtacularError, match=r"not a spectrum \.npz") as info:
+            MsnSpectrum.load(path)
+        assert info.value.__cause__ is not None
+
+    def test_npz_without_meta(self, tmp_path):
+        from spxtacular.errors import SpxtacularError
+
+        path = tmp_path / "other.npz"
+        np.savez(path, mz=np.array([1.0]))
+        with pytest.raises(SpxtacularError, match="no 'meta'"):
+            MsnSpectrum.load(path)
+
+    def test_single_npy(self, tmp_path):
+        from spxtacular.errors import SpxtacularError
+
+        path = tmp_path / "array.npy"
+        np.save(path, np.array([1.0]))
+        with pytest.raises(SpxtacularError, match=r"single \.npy"):
+            MsnSpectrum.load(path)

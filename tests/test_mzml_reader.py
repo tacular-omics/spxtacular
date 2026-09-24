@@ -493,3 +493,58 @@ def test_scan_number_comes_from_the_native_id_scan_key():
     spectrum = next(iter(reader.ms1))
     assert spectrum.native_id == "scan=19"
     assert spectrum.scan_number == 19
+
+
+@pytest.mark.parametrize(
+    ("id_dict", "expected"),
+    [
+        ({"scan": 19}, 19),
+        ({"controllerType": 0, "controllerNumber": 1, "scan": 19}, 19),
+        ({"index": 5}, 5),
+        ({"spectrum": 7}, 7),
+        # the scan value repeats across frames / functions, so it is not an identifier
+        ({"frame": 1016, "scan": 1}, None),
+        ({"function": 2, "process": 0, "scan": 3}, None),
+        ({"sample": 1, "period": 1, "cycle": 4, "experiment": 2}, None),
+        ({"scan": "abc"}, None),
+        ({}, None),
+    ],
+)
+def test_scan_number_only_when_the_native_id_is_unique(id_dict, expected):
+    from types import SimpleNamespace
+
+    from spxtacular.reader import _mzml_scan_number
+
+    assert _mzml_scan_number(SimpleNamespace(id_dict=id_dict)) == expected  # ty: ignore[invalid-argument-type]
+
+
+def test_malformed_mzml_raises_spxtacular_error(tmp_path):
+    import warnings
+
+    from spxtacular.errors import SpxtacularError
+
+    path = tmp_path / "bad.mzML"
+    path.write_text("garbage, not XML")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reader = MzmlReader(str(path))
+        with pytest.raises(SpxtacularError) as info:
+            reader.open()
+    assert isinstance(info.value.__cause__, mzp.MzmlError)
+
+
+def test_truncated_mzml_raises_spxtacular_error_while_iterating(tmp_path):
+    import warnings
+
+    from spxtacular.errors import SpxtacularError
+
+    path = tmp_path / "bad.mzML"
+    path.write_text(
+        '<?xml version="1.0"?><mzML><run><spectrumList count="1">'
+        '<spectrum index="0" id="x" defaultArrayLength="1"></spectrumList></run></mzML>'
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(SpxtacularError) as info:
+            list(MzmlReader(str(path)).ms2)
+    assert isinstance(info.value.__cause__, mzp.MzmlError)

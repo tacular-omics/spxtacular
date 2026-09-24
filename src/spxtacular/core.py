@@ -1,9 +1,9 @@
 """Chainable mass-spectrum processing and metadata-preserving data models."""
 
 import warnings
+import zipfile
 from collections.abc import Mapping
 from dataclasses import KW_ONLY, dataclass, fields, replace
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
 
@@ -18,20 +18,25 @@ if TYPE_CHECKING:
 import numpy as np
 from numpy.typing import NDArray
 
-from ._merge import merge_peaks
+from ._merge import merge_peaks as _merge_peaks
 from .decon.greedy import NEUTRON_MASS
 from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
     DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    ActivationType,
     ActivationTypeLike,
+    Analyzer,
     AnalyzerLike,
+    IMType,
     IMTypeLike,
     PeakSelection,
     PeakSelectionLike,
+    Polarity,
     PolarityLike,
     ToleranceLike,
     ToleranceType,
+    _SpxEnum,
 )
 from .errors import SpxtacularError
 from .ionization import (
@@ -109,12 +114,26 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
     return canonical
 
 
+def _v1_isolation_range(value: Any) -> Any:
+    """Return a 0.8 isolation 1/K0 range as (low, high).
+
+    0.8 stored Bruker windows as (high, low); 0.9 always uses (low, high). Values that
+    are not a pair of numbers are returned unchanged for the validator to reject.
+    """
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return type(value)(sorted(value))
+        except TypeError:
+            return value
+    return value
+
+
 def _upgrade_spectrum_payload_v1(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Rename the 0.8 (schema v1) MSn metadata keys to their schema-v2 names."""
     upgraded = dict(payload)
     metadata = dict(require_mapping(payload["metadata"], "payload.metadata"))
     if "isolation_im_range" in metadata:
-        metadata["isolation_ook0_range"] = metadata.pop("isolation_im_range")
+        metadata["isolation_ook0_range"] = _v1_isolation_range(metadata.pop("isolation_im_range"))
     precursors = metadata.get("precursors")
     if isinstance(precursors, list):
         renamed = []
@@ -166,7 +185,7 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
     if precursors is None:
         result["precursors"] = None
     elif not isinstance(precursors, list):
-        raise TypeError("payload.metadata.precursors must be a JSON array or null")
+        raise SpxtacularError("payload.metadata.precursors must be a JSON array or null")
     else:
         result["precursors"] = []
         precursor_fields = {"precursor_mz", "intensity", "charge", "im", "im_type", "iso_score", "is_monoisotopic"}
@@ -277,7 +296,7 @@ class Peak:
         return f"Peak({', '.join(parts)})"
 
 
-class SpectrumType(StrEnum):
+class SpectrumType(_SpxEnum):
     """Processing state of a spectrum."""
 
     CENTROID = "centroid"
@@ -473,10 +492,12 @@ class Spectrum:
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
         target_im: float | None = None,
-        im_tol: float = 0.01,
+        im_tolerance: float = 0.01,
     ) -> bool:
         """Check if spectrum contains a peak matching criteria."""
-        matches = self._find_matching_peaks(target_mz, tolerance, tolerance_type, target_charge, target_im, im_tol)
+        matches = self._find_matching_peaks(
+            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+        )
         return len(matches) > 0
 
     def get_peak(
@@ -487,22 +508,27 @@ class Spectrum:
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
         target_im: float | None = None,
-        im_tol: float = 0.01,
-        collision: Literal["largest", "closest"] = "largest",
+        im_tolerance: float = 0.01,
+        peak_selection: PeakSelectionLike = PeakSelection.LARGEST,
     ) -> Peak | None:
-        """Get single peak matching criteria."""
-        matches = self._find_matching_peaks(target_mz, tolerance, tolerance_type, target_charge, target_im, im_tol)
+        """Get single peak matching criteria.
+
+        When several peaks match, ``peak_selection="largest"`` (default) returns the most
+        intense and ``"closest"`` the nearest in m/z. Use :meth:`get_peaks` for all of them.
+        """
+        # Coerce first, so an invalid value raises even when nothing matches.
+        resolved = PeakSelection(peak_selection)
+        if resolved is PeakSelection.ALL:
+            raise SpxtacularError("get_peak returns one peak; use get_peaks for peak_selection='all'")
+
+        matches = self._find_matching_peaks(
+            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+        )
 
         if len(matches) == 0:
             return None
 
-        # Coerce rather than falling through to "closest": an unrecognised value
-        # (or "LARGEST") would otherwise silently change which peak you get.
-        resolved = str(collision).lower()
-        if resolved not in ("largest", "closest"):
-            raise SpxtacularError(f"collision must be 'largest' or 'closest', got {collision!r}")
-
-        if resolved == "largest":
+        if resolved is PeakSelection.LARGEST:
             idx = matches[np.argmax(self.intensity[matches])]
         else:  # closest
             mz_diffs = np.abs(self.mz[matches] - target_mz)
@@ -524,10 +550,12 @@ class Spectrum:
         tolerance_type: ToleranceLike = ToleranceType.DA,
         target_charge: int | None = None,
         target_im: float | None = None,
-        im_tol: float = 0.01,
+        im_tolerance: float = 0.01,
     ) -> list[Peak]:
         """Get all peaks matching criteria."""
-        matches = self._find_matching_peaks(target_mz, tolerance, tolerance_type, target_charge, target_im, im_tol)
+        matches = self._find_matching_peaks(
+            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+        )
 
         return [
             Peak(
@@ -547,7 +575,7 @@ class Spectrum:
         tolerance_type: ToleranceLike,
         target_charge: int | None,
         target_im: float | None,
-        im_tol: float,
+        im_tolerance: float,
     ) -> NDArray[np.int64]:
         """Find indices of peaks matching criteria."""
         # m/z tolerance
@@ -572,7 +600,7 @@ class Spectrum:
 
         # Ion mobility filter
         if target_im is not None and self.im is not None:
-            mask &= np.abs(self.im - target_im) <= im_tol
+            mask &= np.abs(self.im - target_im) <= im_tolerance
 
         return np.where(mask)[0]
 
@@ -817,7 +845,7 @@ class Spectrum:
 
         # The seed always belongs to its own cluster: im=NaN compares False even
         # against itself, and a merge must never lose a peak (see _merge.py).
-        new_mz, new_intensity, new_charge, new_im, new_score = merge_peaks(
+        new_mz, new_intensity, new_charge, new_im, new_score = _merge_peaks(
             self.mz,
             self.intensity,
             self.charge,
@@ -1159,7 +1187,6 @@ class Spectrum:
         title: str | None = None,
         color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
-        show_charges: bool | None = None,
         **layout_kwargs,
     ) -> "go.Figure":
         """Plot spectrum as a stick plot (requires plotly).
@@ -1173,8 +1200,6 @@ class Spectrum:
             See :func:`~spxtacular.plot_spectrum` for details.
         show_scores:
             Annotate peaks with isotope profile scores when score data is present.
-        show_charges:
-            Deprecated. Use ``color="charge"`` or ``color=None`` instead.
         **layout_kwargs:
             Forwarded to ``fig.update_layout``.
         """
@@ -1185,14 +1210,12 @@ class Spectrum:
             title=title,
             color=color,
             show_scores=show_scores,
-            show_charges=show_charges,
             **layout_kwargs,
         )
 
     def plot_table(
         self,
         *,
-        show_charges: bool | None = None,
         show_scores: bool = True,
         color: "Literal['charge'] | None" = "charge",
     ) -> "pd.DataFrame":
@@ -1209,8 +1232,6 @@ class Spectrum:
 
         Parameters
         ----------
-        show_charges:
-            Deprecated. Use ``color="charge"`` or ``color=None`` instead.
         show_scores:
             Label peaks with their isotope profile score (score > 0 only).
         color:
@@ -1224,13 +1245,6 @@ class Spectrum:
         """
         from .plot_table import build_plot_table
 
-        if show_charges is not None:
-            warnings.warn(
-                "show_charges is deprecated; use color='charge' or color=None instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            color = "charge" if show_charges else None
         return build_plot_table(self, show_charges=color == "charge", show_scores=show_scores)
 
     def annot_plot_table(
@@ -1826,15 +1840,26 @@ class Spectrum:
         # allow_pickle=False: unpickling a file someone else wrote executes
         # whatever it contains. Metadata is a plain JSON string, so nothing here
         # needs pickle.
-        with np.load(path, allow_pickle=False) as data:
+        try:
+            archive = np.load(path, allow_pickle=False)
+        except (ValueError, EOFError, zipfile.BadZipFile) as exc:
+            raise SpxtacularError(f"{path} is not a spectrum .npz file written by save(): {exc}") from exc
+        if isinstance(archive, np.ndarray):
+            raise SpxtacularError(f"{path} is a single .npy array, not a spectrum .npz file written by save()")
+        with archive as data:
             try:
                 meta_raw = data["meta"]
+            except KeyError as exc:
+                raise SpxtacularError(f"{path} has no 'meta' entry; it was not written by save()") from exc
             except ValueError as exc:
                 raise SpxtacularError(
                     f"{path} stores its metadata as a pickled object array (written by spxtacular < 0.5.0). "
                     "Re-save it with a current version; it cannot be loaded without allow_pickle."
                 ) from exc
-            meta = json.loads(str(meta_raw))
+            try:
+                meta = json.loads(str(meta_raw))
+            except json.JSONDecodeError as exc:
+                raise SpxtacularError(f"{path} has unreadable metadata: {exc}") from exc
             # Back-compat: pre-unified Spectrum.save() used the key "score".
             if "iso_score" in data:
                 iso_score = np.array(data["iso_score"], copy=True)
@@ -2296,6 +2321,40 @@ class Spectrum:
         return len(self.mz)
 
 
+def _closed_enum[E: _SpxEnum](value: object, enum_cls: type[E], field: str) -> E | None:
+    """Coerce a closed-vocabulary field to its enum member; anything else raises."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SpxtacularError(f"{field} must be a string or {enum_cls.__name__}, got {type(value).__name__}")
+    try:
+        return enum_cls(value)
+    except SpxtacularError as error:
+        raise SpxtacularError(f"{field}: {error}") from None
+
+
+def _open_enum[E: _SpxEnum](value: object, enum_cls: type[E], field: str) -> E | str | None:
+    """Canonicalise an open-vocabulary field.
+
+    A member name in any case, or a PSI-MS accession the enum knows, becomes the
+    member; other non-blank strings (vendor terms, PSI-MS accessions without a
+    member) are kept as given. Non-strings and blank strings raise.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SpxtacularError(f"{field} must be a string or {enum_cls.__name__}, got {type(value).__name__}")
+    if not value.strip():
+        raise SpxtacularError(f"{field} must not be blank")
+    try:
+        return enum_cls(value)
+    except SpxtacularError:
+        pass
+    if enum_cls is ActivationType:
+        return ActivationType.from_accession(value)
+    return value
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Precursor:
     """A precursor ion selected for MSn fragmentation.
@@ -2325,6 +2384,9 @@ class Precursor:
     im_type: IMTypeLike | None = None
     iso_score: float | None = None
     is_monoisotopic: bool | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "im_type", _closed_enum(self.im_type, IMType, "Precursor.im_type"))
 
     def __repr__(self) -> str:
         parts = [f"precursor_mz={self.precursor_mz:.4f}", f"int={self.intensity:.2e}"]
@@ -2395,6 +2457,10 @@ class MsnSpectrum(Spectrum):
 
     def __post_init__(self) -> None:
         Spectrum.__post_init__(self)
+        self.im_type = _closed_enum(self.im_type, IMType, "im_type")
+        self.polarity = _closed_enum(self.polarity, Polarity, "polarity")
+        self.activation_type = _open_enum(self.activation_type, ActivationType, "activation_type")
+        self.analyzer = _open_enum(self.analyzer, Analyzer, "analyzer")
         # Frozen Precursor values may be shared, but their list must be owned.
         if self.precursors is not None:
             self.precursors = list(self.precursors)
@@ -2493,7 +2559,8 @@ class MsnSpectrum(Spectrum):
             kwargs[field] = tuple(val) if val is not None else None
         if kwargs.get("isolation_ook0_range") is None and meta.get("isolation_im_range") is not None:
             # Files written before 0.9.0 used the old field name.
-            kwargs["isolation_ook0_range"] = tuple(meta["isolation_im_range"])
+            # They stored Bruker windows as (high, low); 0.9 uses (low, high).
+            kwargs["isolation_ook0_range"] = _v1_isolation_range(tuple(meta["isolation_im_range"]))
         kwargs["precursors"] = (
             [_precursor_from_meta(p) for p in meta["precursors"]] if meta.get("precursors") is not None else None
         )

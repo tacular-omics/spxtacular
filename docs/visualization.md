@@ -73,9 +73,6 @@ score values label the strongest scored peaks.
 On an `MsnSpectrum` carrying precursor information, the precursor m/z and its isolation window are
 drawn as recessive reference chrome behind the peaks. Pass `show_precursor=False` to suppress them.
 
-The legacy `show_charges=True/False` keyword is still accepted as a deprecated alias mapping to
-`color="charge"` / `color=None`.
-
 `Spectrum.plot()` is a convenience wrapper around this function:
 
 ```python

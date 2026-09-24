@@ -143,7 +143,9 @@ def test_to_inline_activation_raw_accession_emitted_as_cv() -> None:
     inline = to_inline_spectrum(msn)
     activation = inline.precursors[0].activation
     assert activation is not None
-    assert "MS:1002481" in {p.accession for p in activation.params}
+    # The accession is canonicalised to ActivationType.HCD, written as its CV term.
+    assert msn.activation_type == "HCD"
+    assert {"MS:1002481", "MS:1000422"} & {p.accession for p in activation.params}
 
 
 def test_to_inline_freetext_activation_not_emitted_as_cv() -> None:

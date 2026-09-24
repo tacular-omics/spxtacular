@@ -99,10 +99,10 @@ def strict_json_loads(value: str | bytes | bytearray) -> Any:
 def require_mapping(value: Any, path: str) -> Mapping[str, Any]:
     """Require a JSON object at ``path``."""
     if not isinstance(value, Mapping):
-        raise TypeError(f"{path} must be a JSON object")
+        raise SpxtacularError(f"{path} must be a JSON object")
     for key in value:
         if not isinstance(key, str):
-            raise TypeError(f"{path} keys must be strings, got {type(key).__name__}")
+            raise SpxtacularError(f"{path} keys must be strings, got {type(key).__name__}")
     return value
 
 
@@ -122,7 +122,7 @@ def require_array_or_none(value: Any, path: str) -> list[Any] | None:
     if value is None:
         return None
     if not isinstance(value, list):
-        raise TypeError(f"{path} must be a JSON array or null")
+        raise SpxtacularError(f"{path} must be a JSON array or null")
     return value.copy()
 
 
@@ -139,10 +139,10 @@ def require_number(value: Any, path: str, *, nullable: bool = False) -> int | fl
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a number")
+        raise SpxtacularError(f"{path} must be a number")
     if isinstance(value, bool) or not isinstance(value, (int, float, np.integer, np.floating)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a number{suffix}")
+        raise SpxtacularError(f"{path} must be a number{suffix}")
     number = to_json_value(value, path)
     return number
 
@@ -160,10 +160,10 @@ def require_integer(value: Any, path: str, *, nullable: bool = False) -> int | N
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be an integer")
+        raise SpxtacularError(f"{path} must be an integer")
     if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be an integer{suffix}")
+        raise SpxtacularError(f"{path} must be an integer{suffix}")
     return int(value)
 
 
@@ -180,10 +180,10 @@ def require_string(value: Any, path: str, *, nullable: bool = False) -> str | No
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a string")
+        raise SpxtacularError(f"{path} must be a string")
     if not isinstance(value, str):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a string{suffix}")
+        raise SpxtacularError(f"{path} must be a string{suffix}")
     return str(value)
 
 
@@ -200,10 +200,10 @@ def require_boolean(value: Any, path: str, *, nullable: bool = False) -> bool | 
     if value is None:
         if nullable:
             return None
-        raise TypeError(f"{path} must be a boolean")
+        raise SpxtacularError(f"{path} must be a boolean")
     if not isinstance(value, (bool, np.bool_)):
         suffix = " or null" if nullable else ""
-        raise TypeError(f"{path} must be a boolean{suffix}")
+        raise SpxtacularError(f"{path} must be a boolean{suffix}")
     return bool(value)
 
 

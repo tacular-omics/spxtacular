@@ -22,6 +22,7 @@ from spxtacular import (
     write_ms2,
     write_msp,
 )
+from spxtacular.errors import SpxtacularError
 from spxtacular.ionization import PROTONATED, DeconvolutionProvenance
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -185,6 +186,14 @@ class TestSchemaV1Upgrade:
         assert restored.precursors[0].precursor_mz == pytest.approx(523.2764)
         assert restored.isolation_ook0_range == (0.95, 1.1)
 
+    def test_v1_bruker_isolation_range_is_sorted(self) -> None:
+        """0.8 stored Bruker windows as (high, low); 0.9 reads them as (low, high)."""
+        payload = self._as_v1(_msn_spectrum())
+        payload["metadata"]["isolation_im_range"] = [1.3062, 1.29]
+        restored = MsnSpectrum.from_dict(payload)
+        assert isinstance(restored, MsnSpectrum)
+        assert restored.isolation_ook0_range == (1.29, 1.3062)
+
     def test_v1_plain_payload_is_read(self) -> None:
         payload = _plain_spectrum().to_dict()
         payload["schema_version"] = 1
@@ -321,7 +330,7 @@ class TestSpectrumValidation:
         payload: dict[Any, Any] = _plain_spectrum().to_dict()
         payload[key] = "invalid"
 
-        with pytest.raises(TypeError, match="payload keys must be strings"):
+        with pytest.raises(SpxtacularError, match="payload keys must be strings"):
             Spectrum.from_dict(payload)
 
     def test_missing_array_field_is_rejected(self) -> None:
@@ -342,21 +351,21 @@ class TestSpectrumValidation:
         payload = _plain_spectrum().to_dict()
         payload["arrays"]["mz"] = (100.0, 200.0)
 
-        with pytest.raises(TypeError, match="JSON array or null"):
+        with pytest.raises(SpxtacularError, match="JSON array or null"):
             Spectrum.from_dict(payload)
 
     def test_non_numeric_peak_value_is_rejected(self) -> None:
         payload = _plain_spectrum().to_dict()
         payload["arrays"]["mz"][0] = "100.0"
 
-        with pytest.raises(TypeError, match=r"payload\.arrays\.mz\[0\] must be a number"):
+        with pytest.raises(SpxtacularError, match=r"payload\.arrays\.mz\[0\] must be a number"):
             Spectrum.from_dict(payload)
 
     def test_fractional_charge_is_rejected(self) -> None:
         payload = _plain_spectrum().to_dict()
         payload["arrays"]["charge"][0] = 1.5
 
-        with pytest.raises(TypeError, match=r"payload\.arrays\.charge\[0\] must be an integer"):
+        with pytest.raises(SpxtacularError, match=r"payload\.arrays\.charge\[0\] must be an integer"):
             Spectrum.from_dict(payload)
 
     def test_mismatched_array_lengths_are_rejected(self) -> None:
@@ -395,14 +404,14 @@ class TestSpectrumValidation:
         payload = _msn_spectrum().to_dict()
         payload["metadata"]["precursors"][0]["charge"] = 2.5
 
-        with pytest.raises(TypeError, match="charge must be an integer"):
+        with pytest.raises(SpxtacularError, match="charge must be an integer"):
             Spectrum.from_dict(payload)
 
     def test_boolean_numeric_metadata_is_rejected(self) -> None:
         payload = _msn_spectrum().to_dict()
         payload["metadata"]["rt"] = True
 
-        with pytest.raises(TypeError, match="rt must be a number"):
+        with pytest.raises(SpxtacularError, match="rt must be a number"):
             Spectrum.from_dict(payload)
 
     def test_unknown_deconvolution_field_is_rejected(self) -> None:
@@ -416,7 +425,7 @@ class TestSpectrumValidation:
         payload = _plain_spectrum().to_dict()
         payload["metadata"]["deconvolution"]["max_isotope_gaps"] = 0.0
 
-        with pytest.raises(TypeError, match="max_isotope_gaps must be an integer"):
+        with pytest.raises(SpxtacularError, match="max_isotope_gaps must be an integer"):
             Spectrum.from_dict(payload)
 
 
@@ -470,7 +479,7 @@ class TestChromatogramJson:
         payload = Chromatogram(rt=np.array([1.0]), intensity=np.array([2.0])).to_dict()
         payload["metadata"]["label"] = 7
 
-        with pytest.raises(TypeError, match="label must be a string"):
+        with pytest.raises(SpxtacularError, match="label must be a string"):
             Chromatogram.from_dict(payload)
 
     def test_non_finite_metadata_value_is_rejected(self) -> None:

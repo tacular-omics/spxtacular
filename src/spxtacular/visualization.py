@@ -5,7 +5,6 @@ Visualization tools for mass spectrometry data.
 from __future__ import annotations
 
 import functools
-import warnings
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -303,7 +302,6 @@ def plot_spectrum(
     title: str | None = None,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
-    show_charges: bool | None = None,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
@@ -334,8 +332,6 @@ def plot_spectrum(
     show_scores:
         Annotate peaks with their isotope profile score when score data is
         present. Only peaks with score > 0 are labelled. Defaults to True.
-    show_charges:
-        Deprecated. Use ``color="charge"`` or ``color=None`` instead.
     intensity_scale:
         ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
         raw intensities on the y-axis.
@@ -365,14 +361,6 @@ def plot_spectrum(
     **layout_kwargs:
         Forwarded to ``fig.update_layout``.
     """
-    if show_charges is not None:
-        warnings.warn(
-            "show_charges is deprecated; use color='charge' or color=None instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        color = "charge" if show_charges else None
-
     if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
         # The type check has to come *first*. The im path only knows how to draw
         # sticks, so routing to it before asking what kind of spectrum this is

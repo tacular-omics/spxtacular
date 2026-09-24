@@ -5,7 +5,7 @@ Fragment-to-peak matching.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 FragmentInput = Sequence[Fragment] | dict[tuple[IonType, int], list[float]]
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class MatchedFragment:
     """A confirmed fragment-to-peak match, carrying both the fragment and peak metadata.
 
@@ -52,6 +52,19 @@ class MatchedFragment:
         Signed error ``peak_mz - theoretical``.
     """
 
+    # Hand-written slots, so the ``annotation`` cache is a slot but not a dataclass
+    # field: it stays out of ``fields()``, ``asdict()``, ``repr`` and ``==``.
+    __slots__ = (
+        "_annotation",
+        "da_error",
+        "fragment",
+        "intensity_pct",
+        "peak_index",
+        "peak_intensity",
+        "peak_mz",
+        "ppm_error",
+    )
+
     fragment: Fragment
     peak_index: int
     peak_mz: float
@@ -59,7 +72,14 @@ class MatchedFragment:
     intensity_pct: float
     ppm_error: float
     da_error: float
-    _annotation: PafAnnotation | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __getstate__(self) -> tuple[object, ...]:
+        # Frozen and slotted: the default pickle protocol would setattr on load.
+        return tuple(getattr(self, f.name) for f in fields(self))
+
+    def __setstate__(self, state: tuple[object, ...]) -> None:
+        for f, value in zip(fields(self), state, strict=True):
+            object.__setattr__(self, f.name, value)
 
     @property
     def annotation(self) -> PafAnnotation:
@@ -68,7 +88,7 @@ class MatchedFragment:
         It carries the fragment's own sequence and the ppm mass error of this match.
         ``annotation.serialize()`` gives the mzPAF string.
         """
-        cached = self._annotation
+        cached: PafAnnotation | None = getattr(self, "_annotation", None)
         if cached is None:
             from paftacular import to_mzpaf
 

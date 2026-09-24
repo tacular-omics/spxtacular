@@ -10,6 +10,7 @@ import pytest
 
 from spxtacular.core import Peak, Spectrum
 from spxtacular.enums import ToleranceType
+from spxtacular.errors import SpxtacularError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -133,9 +134,9 @@ class TestToleranceBoundary:
             intensity=np.array([1.0, 2.0], dtype=np.float64),
             im=np.array([1.0, 1.25], dtype=np.float64),
         )
-        peaks = spec.get_peaks(100.0, tolerance=0.001, target_im=1.0, im_tol=0.25)
+        peaks = spec.get_peaks(100.0, tolerance=0.001, target_im=1.0, im_tolerance=0.25)
         assert [p.im for p in peaks] == [1.0, 1.25]
-        assert [p.im for p in spec.get_peaks(100.0, tolerance=0.001, target_im=1.0, im_tol=0.2)] == [1.0]
+        assert [p.im for p in spec.get_peaks(100.0, tolerance=0.001, target_im=1.0, im_tolerance=0.2)] == [1.0]
 
 
 # ---------------------------------------------------------------------------
@@ -181,12 +182,12 @@ class TestTargetIm:
         spec = _query_spec()
         # IM values in the cluster are 0.90 / 1.10 / 0.92; +-0.02 around 0.91
         # keeps the first and third and drops the (most intense) second.
-        peaks = spec.get_peaks(100.0, tolerance=0.01, target_im=0.91, im_tol=0.02)
+        peaks = spec.get_peaks(100.0, tolerance=0.01, target_im=0.91, im_tolerance=0.02)
         assert _mzs(peaks) == [100.000, 100.008]
 
-    def test_default_im_tol_is_narrow(self) -> None:
+    def test_default_im_tolerance_is_narrow(self) -> None:
         spec = _query_spec()
-        # default im_tol=0.01 around 0.90 excludes the 0.92 peak.
+        # default im_tolerance=0.01 around 0.90 excludes the 0.92 peak.
         assert _mzs(spec.get_peaks(100.0, tolerance=0.01, target_im=0.90)) == [100.000]
 
     def test_target_im_with_no_match_returns_nothing(self) -> None:
@@ -218,8 +219,8 @@ class TestGetPeakCollision:
     def test_largest_and_closest_disagree_on_the_same_query(self) -> None:
         """The two modes must resolve the same three-way collision differently."""
         spec = _query_spec()
-        largest = spec.get_peak(100.0, tolerance=0.01, collision="largest")
-        closest = spec.get_peak(100.0, tolerance=0.01, collision="closest")
+        largest = spec.get_peak(100.0, tolerance=0.01, peak_selection="largest")
+        closest = spec.get_peak(100.0, tolerance=0.01, peak_selection="closest")
         assert largest is not None
         assert closest is not None
         assert largest.mz == pytest.approx(100.004)  # highest intensity (100.0)
@@ -239,8 +240,8 @@ class TestGetPeakCollision:
             mz=np.array([99.996, 100.006], dtype=np.float64),
             intensity=np.array([1.0, 500.0], dtype=np.float64),
         )
-        closest = spec.get_peak(100.0, tolerance=0.01, collision="closest")
-        largest = spec.get_peak(100.0, tolerance=0.01, collision="largest")
+        closest = spec.get_peak(100.0, tolerance=0.01, peak_selection="closest")
+        largest = spec.get_peak(100.0, tolerance=0.01, peak_selection="largest")
         assert closest is not None and largest is not None
         assert closest.mz == pytest.approx(99.996)
         assert largest.mz == pytest.approx(100.006)
@@ -250,7 +251,7 @@ class TestGetPeakCollision:
         spec = _query_spec()
         # unrestricted, "largest" is the z=2 peak at 100.004; restricted to
         # z=1 the only candidate is 100.000.
-        peak = spec.get_peak(100.0, tolerance=0.01, target_charge=1, collision="largest")
+        peak = spec.get_peak(100.0, tolerance=0.01, target_charge=1, peak_selection="largest")
         assert peak is not None
         assert peak.mz == pytest.approx(100.000)
         assert peak.charge == 1
@@ -291,7 +292,7 @@ class TestReturnedPeak:
     def test_get_peak_carries_every_optional_field(self) -> None:
         """Regression: ``iso_score`` used to be dropped from returned peaks."""
         spec = _query_spec()
-        peak = spec.get_peak(100.0, tolerance=0.01, collision="closest")
+        peak = spec.get_peak(100.0, tolerance=0.01, peak_selection="closest")
         assert peak is not None
         assert peak.mz == pytest.approx(100.000)
         assert peak.intensity == pytest.approx(10.0)
@@ -358,7 +359,7 @@ class TestDegenerateSpectra:
             iso_score=np.empty(0, dtype=np.float64),
         )
         assert spec.get_peaks(100.0, tolerance=1.0, target_charge=2, target_im=1.0) == []
-        assert spec.get_peak(100.0, tolerance=1.0, collision="closest") is None
+        assert spec.get_peak(100.0, tolerance=1.0, peak_selection="closest") is None
 
     def test_single_peak_spectrum_hit_and_miss(self) -> None:
         spec = Spectrum(
@@ -376,7 +377,7 @@ class TestDegenerateSpectra:
             mz=np.array([250.0], dtype=np.float64),
             intensity=np.array([42.0], dtype=np.float64),
         )
-        assert spec.get_peak(250.0, collision="largest") == spec.get_peak(250.0, collision="closest")
+        assert spec.get_peak(250.0, peak_selection="largest") == spec.get_peak(250.0, peak_selection="closest")
 
 
 # ---------------------------------------------------------------------------
@@ -402,14 +403,22 @@ class TestFindMatchingPeaks:
         assert idx.tolist() == []
 
 
-class TestCollisionValidation:
-    def test_unknown_collision_mode_raises(self) -> None:
+class TestPeakSelectionValidation:
+    def test_unknown_peak_selection_raises(self) -> None:
         """An unrecognised mode used to fall through to "closest" silently."""
         spec = _boundary_spec()
-        with pytest.raises(ValueError, match="collision must be"):
-            spec.get_peak(100.0, tolerance=0.5, collision="nearest")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        with pytest.raises(SpxtacularError, match="not a valid PeakSelection"):
+            spec.get_peak(100.0, tolerance=0.5, peak_selection="nearest")
 
-    def test_collision_mode_is_case_insensitive(self) -> None:
+    def test_peak_selection_is_case_insensitive(self) -> None:
         spec = _boundary_spec()
-        upper = spec.get_peak(100.0, tolerance=0.5, collision="LARGEST")  # ty: ignore[invalid-argument-type]
-        assert upper == spec.get_peak(100.0, tolerance=0.5, collision="largest")
+        upper = spec.get_peak(100.0, tolerance=0.5, peak_selection="LARGEST")
+        assert upper == spec.get_peak(100.0, tolerance=0.5, peak_selection="largest")
+
+    def test_peak_selection_all_points_to_get_peaks(self) -> None:
+        with pytest.raises(SpxtacularError, match="use get_peaks"):
+            _boundary_spec().get_peak(100.0, peak_selection="all")
+
+    def test_collision_keyword_removed(self) -> None:
+        with pytest.raises(TypeError):
+            _boundary_spec().get_peak(100.0, collision="largest")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -483,33 +484,52 @@ class MzmlSpectraLookup:
         self._ms_level = ms_level
 
     def __iter__(self) -> Iterator[MsnSpectrum]:
-        handle = self._reader._mzml_handle
-        if handle is not None:
-            # Resolved once per walk: it is a property of the file, not the scan.
-            decon = _deconvolution_refs(handle)
-            for spec in handle.spectra:
-                if self._ms_level is not None and spec.ms_level != self._ms_level:
-                    continue
-                yield MzmlReader._parse_spectrum(spec, decon)
-        else:
-            with self._reader._new_handle() as r:
-                decon = _deconvolution_refs(r)
-                for spec in r.spectra:
+        with _mzml_errors(self._reader.mzml_path):
+            handle = self._reader._mzml_handle
+            if handle is not None:
+                # Resolved once per walk: it is a property of the file, not the scan.
+                decon = _deconvolution_refs(handle)
+                for spec in handle.spectra:
                     if self._ms_level is not None and spec.ms_level != self._ms_level:
                         continue
                     yield MzmlReader._parse_spectrum(spec, decon)
+            else:
+                with self._reader._new_handle() as r:
+                    decon = _deconvolution_refs(r)
+                    for spec in r.spectra:
+                        if self._ms_level is not None and spec.ms_level != self._ms_level:
+                            continue
+                        yield MzmlReader._parse_spectrum(spec, decon)
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
         """Fetch a single spectrum by 0-based index or native ID string."""
-        handle = self._reader._mzml_handle
-        if handle is not None:
-            spec = handle.spectra[key]
-            decon = _deconvolution_refs(handle)
-        else:
-            with self._reader._new_handle() as r:
-                spec = r.spectra[key]
-                decon = _deconvolution_refs(r)
-        return MzmlReader._parse_spectrum(spec, decon)
+        with _mzml_errors(self._reader.mzml_path):
+            handle = self._reader._mzml_handle
+            if handle is not None:
+                spec = handle.spectra[key]
+                decon = _deconvolution_refs(handle)
+            else:
+                with self._reader._new_handle() as r:
+                    spec = r.spectra[key]
+                    decon = _deconvolution_refs(r)
+            return MzmlReader._parse_spectrum(spec, decon)
+
+
+@contextmanager
+def _mzml_errors(path: object) -> Iterator[None]:
+    """Re-raise mzmlpy's errors about a malformed file as :class:`SpxtacularError`.
+
+    The original is chained. A missing record stays a ``KeyError`` (mzmlpy's
+    ``MzmlRecordNotFoundError``), so ``except KeyError`` lookups keep working.
+    """
+    try:
+        yield
+    except SpxtacularError:
+        raise
+    except Exception as error:
+        if mzp is not None and isinstance(error, mzp.MzmlError) and not isinstance(error, KeyError):
+            raise SpxtacularError(f"{path}: {error}") from error
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -567,33 +587,68 @@ def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
     return _DeconvolutionRefs(ids=ids, unreferenced=len(processes) == 1 and bool(ids))
 
 
-# Ion-mobility binary-array accessions -> the unit of the values they hold.
-_MZML_IM_TYPE_FROM_ACCESSION: dict[str, IMType] = {
-    "MS:1003008": IMType.OOK0,  # raw inverse reduced ion mobility array
-    "MS:1003006": IMType.OOK0,  # mean inverse reduced ion mobility array
-    "MS:1003155": IMType.OOK0,  # deconvoluted inverse reduced ion mobility array
-    "MS:1002816": IMType.OOK0,  # mean ion mobility array (timsTOF converters write 1/K0 here)
-    "MS:1002893": IMType.IM,  # ion mobility array
-    "MS:1003007": IMType.IM,  # raw ion mobility array
-    "MS:1003154": IMType.IM,  # deconvoluted ion mobility array
-    "MS:1003153": IMType.DRIFT_TIME_MS,  # raw ion mobility drift time array
-    "MS:1002477": IMType.DRIFT_TIME_MS,  # mean ion mobility drift time array
-    "MS:1003156": IMType.DRIFT_TIME_MS,  # deconvoluted ion mobility drift time array
+# Ion-mobility unit accessions -> the IMType of the values, and the factor that
+# converts them to that type's unit. The unit decides, not the array accession:
+# PSI-MS allows several units on most ion-mobility array terms (MS:1002816 "mean
+# ion mobility array" can hold 1/K0 or a drift time in ms or s).
+_MZML_IM_UNITS: dict[str, tuple[IMType, float]] = {
+    "MS:1002814": (IMType.OOK0, 1.0),  # volt-second per square centimeter
+    "UO:0000028": (IMType.DRIFT_TIME_MS, 1.0),  # millisecond
+    "UO:0000010": (IMType.DRIFT_TIME_MS, 1000.0),  # second
 }
 
 
-def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
-    """The instrument scan number from the native id (``scan=19``), or ``None``.
+def _mzml_im_type(unit_accession: str | None) -> tuple[IMType, float]:
+    """``(im_type, scale)`` for an ion-mobility value with this unit.
 
-    Vendor ids without a ``scan`` key (Waters ``function=… process=… scan=…``
-    has one; SCIEX ``sample=… period=… cycle=…`` does not) leave it unset
-    rather than falling back to the 0-based list index.
+    A missing or unrecognised unit gives the generic :attr:`IMType.IM`, unscaled,
+    rather than a guess.
+    """
+    if unit_accession is None:
+        return IMType.IM, 1.0
+    return _MZML_IM_UNITS.get(unit_accession, (IMType.IM, 1.0))
+
+
+def _mzml_im_array(darr: Any, accession: object) -> tuple[np.ndarray, IMType]:
+    """Decode an ion-mobility binary array, typed and scaled by its declared unit."""
+    param = darr.get_cv_param(str(accession))
+    im_type, scale = _mzml_im_type(param.unit_accession if param is not None else None)
+    data = darr.data.astype(np.float64)
+    if scale != 1.0:
+        data = data * scale
+    return data, im_type
+
+
+#: Native-id keys that may sit next to ``scan=`` without making it ambiguous
+#: (Thermo: ``controllerType=0 controllerNumber=1 scan=19``).
+_MZML_THERMO_ID_KEYS = frozenset({"controllertype", "controllernumber"})
+
+
+def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
+    """The instrument scan number from the native id, or ``None`` when it is not unique.
+
+    Only ids whose number identifies the spectrum on its own count:
+
+    - ``scan=19`` and Thermo ``controllerType=0 controllerNumber=1 scan=19`` -> 19
+    - ``index=5`` (multiple peak list) and ``spectrum=5`` -> 5, verbatim
+
+    Every other id leaves it ``None`` rather than falling back to the 0-based list index:
+    in Bruker ``frame=… scan=…`` and Waters ``function=… process=… scan=…`` the ``scan``
+    value repeats across frames or functions, and SCIEX ``sample=… period=… cycle=…
+    experiment=…`` has no single number. ``native_id`` always keeps the full id.
     """
     try:
-        value = spec.id_dict.get("scan")
+        id_dict = spec.id_dict
     except (ValueError, TypeError):
         return None
-    if value is None:
+    keys = {str(key).lower(): value for key, value in id_dict.items()}
+    if "scan" in keys and set(keys) - {"scan"} <= _MZML_THERMO_ID_KEYS:
+        value = keys["scan"]
+    elif set(keys) == {"index"}:
+        value = keys["index"]
+    elif set(keys) == {"spectrum"}:
+        value = keys["spectrum"]
+    else:
         return None
     try:
         return int(value)
@@ -690,25 +745,26 @@ class MzmlReader:
             darr = spec.get_binary_array(im_types[0])
             if darr is None:
                 raise SpxtacularError(f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None")
-            im_array = darr.data.astype(np.float64)
-            im_type = _MZML_IM_TYPE_FROM_ACCESSION.get(str(im_types[0]))
+            im_array, im_type = _mzml_im_array(darr, im_types[0])
             if len(im_array) != len(mz_array):
                 raise SpxtacularError(f"Spectrum {spec} has ion mobility array of different length than m/z array")
         elif len(im_types) > 1:
-            warnings.warn(
-                f"Spectrum {spec} has multiple ion mobility arrays; only the first is used: {im_types[0]}",
-                stacklevel=3,
-            )
             for candidate_type in im_types:
                 darr = spec.get_binary_array(candidate_type)
                 if darr is None:
                     raise SpxtacularError(
-                        f"Spectrum {spec}: multiple IM arrays, first is not None. Array types: {im_types}"
+                        f"Spectrum {spec}: ion mobility array {candidate_type} is listed but missing. "
+                        f"Array types: {im_types}"
                     )
-                candidate = darr.data.astype(np.float64)
+                candidate, candidate_im_type = _mzml_im_array(darr, candidate_type)
                 if len(candidate) == len(mz_array):
                     im_array = candidate
-                    im_type = _MZML_IM_TYPE_FROM_ACCESSION.get(str(candidate_type))
+                    im_type = candidate_im_type
+                    warnings.warn(
+                        f"Spectrum {spec} has multiple ion mobility arrays {im_types}; using {candidate_type}, "
+                        "the first whose length matches the m/z array",
+                        stacklevel=3,
+                    )
                     break
             if im_array is None:
                 warnings.warn(
@@ -772,8 +828,10 @@ class MzmlReader:
             prec_im = ion.ook0
             prec_im_type: IMType | None = IMType.OOK0 if prec_im is not None else None
             if prec_im is None and ion.drift_time is not None:
-                prec_im = ion.drift_time
-                prec_im_type = IMType.DRIFT_TIME_MS
+                # MS:1002476 "ion mobility drift time" is in ms or s; the unit decides.
+                drift_param = ion.get_cv_param("MS:1002476")
+                prec_im_type, scale = _mzml_im_type(drift_param.unit_accession if drift_param is not None else None)
+                prec_im = ion.drift_time * scale
             precursors.append(
                 Precursor(
                     precursor_mz=mz,
@@ -850,10 +908,11 @@ class MzmlReader:
         """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
         if self._mzml_handle is not None:
             self.close()
-        handle = self._new_handle()
-        # Only publish the handle once it is genuinely open, so a failing
-        # __enter__ doesn't leave a half-open reader behind.
-        handle.__enter__()
+        with _mzml_errors(self.mzml_path):
+            handle = self._new_handle()
+            # Only publish the handle once it is genuinely open, so a failing
+            # __enter__ doesn't leave a half-open reader behind.
+            handle.__enter__()
         self._mzml_handle = handle
 
     def close(self) -> None:

@@ -149,11 +149,11 @@ Properties:
 Peak access:
 - `top_peaks(n: int, by: "intensity"|"mz"|"charge"|"im"|"score" = "intensity", reverse: bool = True) -> list[Peak]`
   — top N peaks by an attribute.
-- `has_peak(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01) -> bool`
+- `has_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> bool`
   — is there a peak matching the criteria.
-- `get_peak(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01, collision: "largest"|"closest" = "largest") -> Peak | None`
-  — one matching peak; `collision` picks between several.
-- `get_peaks(target_mz, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tol=0.01) -> list[Peak]`
+- `get_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01, peak_selection: "largest"|"closest" = "largest") -> Peak | None`
+  — one matching peak; `peak_selection` picks between several.
+- `get_peaks(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> list[Peak]`
   — all matching peaks.
 
 Transforms (all return a new spectrum unless `inplace=True`):
@@ -199,11 +199,11 @@ Matching and scoring (thin wrappers over the module functions in section 6):
 - `score(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", predicted_intensities=None) -> dict[str, float]`
 
 Plotting (need plotly, which is a core dependency):
-- `plot(title=None, *, color: "charge"|"im"|None = "charge", show_scores=True, show_charges=None, **layout_kwargs) -> go.Figure`
+- `plot(*, title=None, color: "charge"|"im"|None = "charge", show_scores=True, **layout_kwargs) -> go.Figure`
 - `annotate(fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
 - `mass_error_plot(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
 - `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
-- `plot_table(show_charges=None, show_scores=True, *, color: "charge"|None = "charge") -> pd.DataFrame` (`show_charges` is deprecated; use `color`)
+- `plot_table(*, show_scores=True, color: "charge"|None = "charge") -> pd.DataFrame`
 - `annot_plot_table(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
 
 Serialization and sharing:
@@ -250,14 +250,13 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 | `PeakSelection` | `closest`, `largest`, `all` | `PeakSelectionLike` |
 | `Polarity` (closed) | `positive`, `negative` | `PolarityLike` |
 | `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
-| `IMType` | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or any `str` |
+| `IMType` (closed) | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or its `str` value |
 | `Analyzer` | `orbitrap`, `ft_icr`, `tof`, `quadrupole`, `ion_trap`, `linear_ion_trap`, `quadrupole_ion_trap`, `magnetic_sector`, `electrostatic_energy_analyzer` | `AnalyzerLike` = enum or any `str` |
 | `SpectrumType` | `centroid`, `profile`, `deconvoluted` | — |
 | `AcquisitionType` | `DDA`, `DIA`, `PRM`, `UNKNOWN` | — (Bruker runs) |
 | `IsotopeModelType` | `peptide`, `glycan`, `lipid`, `dna`, `rna` | — |
 
-`ActivationType`, `IMType` and `Analyzer` are open vocabularies: unknown strings are kept as
-plain strings.
+`IMType` and `Polarity` are closed: a string must name a member (case-insensitive; `IMType` also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
 
 ---------------------------------------------------------------------------------------------
 
@@ -303,7 +302,7 @@ Collapses isotope envelopes into one peak per cluster and assigns charge magnitu
 Isotope models:
 
 ```python
-IsotopeModel(atoms_per_da: Mapping[str, float], fixed_composition: Mapping[str, int] = {},
+IsotopeModel(atoms_per_da: Mapping[str, float], *, fixed_composition: Mapping[str, int] = {},
              isotope_abundances: IsotopeAbundances | None = None, name: str = "custom")
 ```
 Average elemental composition per Dalton used to predict isotope envelopes.
@@ -323,7 +322,7 @@ Built-ins: `PEPTIDE_ISOTOPE_MODEL` (averagine), `GLYCAN_ISOTOPE_MODEL`, `LIPID_I
 Ionization models:
 
 ```python
-IonizationModel(name: str, polarity: Polarity | str, carrier_mass: float, carrier: str = "custom")
+IonizationModel(name: str, polarity: Polarity | str, carrier_mass: float, *, carrier: str = "custom")
 ```
 A repeated charge carrier.
 - `ion_mz(neutral_mass, charge)` — neutral mass to m/z (positive charge magnitudes).
@@ -338,7 +337,7 @@ Presets: `PROTONATED` (`[M+H]+`, default), `DEPROTONATED` (`[M-H]-`), `SODIATED`
 - `resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> IonizationModel`.
 
 `DeconvolutionProvenance(isotope_model, ionization_model, charge_range, tolerance,
-tolerance_type, intensity_mode, min_intensity, min_score, isotope_model_definition=None,
+tolerance_type, intensity_mode, min_intensity, min_score, *, isotope_model_definition=None,
 min_isotope_abundance=0.01, max_isotope_fold_error=2.0, max_isotope_gaps=0,
 max_isotopes=None, im_tolerance=0.05, im_tolerance_type="relative")` — the parameters a
 deconvolution ran with; stored on `Spectrum.deconvolution`, serialized with the spectrum
@@ -517,7 +516,7 @@ full `http(s)://` PROXI base URL. `Spectrum.from_usi` is the same call.
 ## 8. Chromatograms
 
 ```python
-Chromatogram(rt: NDArray, intensity: NDArray, label: str = "", mz: float | None = None,
+Chromatogram(rt: NDArray, intensity: NDArray, *, label: str = "", mz: float | None = None,
              tolerance: float | None = None, tolerance_type: str | None = None, meta: dict = {})
 ```
 Intensity against retention time. `apex_rt` (property, `None` if empty), `total` (sum of
@@ -552,7 +551,7 @@ passed to `fig.update_layout`. `theme_mode` is `"light"`, `"dark"` or `None` (gl
 
 ```python
 plot_spectrum(spectrum, title=None, *, color: "charge"|"im"|None = "charge", show_scores=True,
-              show_charges=None, max_labels=60, theme_mode=None,
+              max_labels=60, theme_mode=None,
               intensity_scale: "absolute"|"relative" = "relative",
               intensity_transform: "sqrt"|"log"|None = None, show_precursor=True,
               render: "sticks"|"profile"|None = None, max_points=4000, **layout_kwargs)

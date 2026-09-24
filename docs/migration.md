@@ -19,6 +19,10 @@ peptacular 5 changes affect code that builds fragments to pass in: `ion_types="b
 **one** ion type named `"by"` (an internal fragment), so write `ion_types=("b", "y")`; and
 `Fragment.losses` is now `Fragment.deltas`.
 
+tdfpy 5 changes some Bruker peak values. MS1 spectra from `DReader` can differ by one or two
+peaks, with summed intensity about 40 ppm different. Some DDA MS2 peaks that 0.8 merged into one
+now come out as separate peaks.
+
 ## Precursor
 
 `Precursor` is now its own frozen, slotted, keyword-only dataclass. It is no longer a `Peak`
@@ -35,8 +39,18 @@ subclass.
 
 `Precursor.im` keeps its name because the value is whatever the source recorded: 1/K0 for
 Bruker and most mzML files, drift time for some mzML files. `im_type` (an `IMType`, or
-`None` when unknown) says which. Readers fill it in: Bruker DDA and PRM set `"ook0"`; mzML
-sets `"ook0"` for inverse reduced mobility and `"drift_time_ms"` for drift time.
+`None` when unknown) says which. Readers fill it in: Bruker DDA and PRM set `"ook0"`. mzML
+takes it from the declared unit, for precursor values and for ion mobility arrays alike:
+
+| mzML unit | `im_type` | values |
+|---|---|---|
+| MS:1002814 (volt-second per square centimeter) | `"ook0"` | as stored |
+| UO:0000028 (millisecond) | `"drift_time_ms"` | as stored |
+| UO:0000010 (second) | `"drift_time_ms"` | multiplied by 1000 |
+| no unit | `"im"` (generic) | as stored |
+
+When a spectrum has several ion mobility arrays, the first whose length matches the peaks is
+used, with a warning.
 
 ## MsnSpectrum
 
@@ -47,6 +61,12 @@ sets `"ook0"` for inverse reduced mobility and `"drift_time_ms"` for drift time.
 
 The isolation window is always 1/K0 (it comes from Bruker's quadrupole/TIMS isolation), so
 the name now says so.
+
+| 0.8 | 0.9 |
+|---|---|
+| Bruker `isolation_im_range` was `(high, low)`, e.g. `(1.3062, 1.29)` | `isolation_ook0_range` is `(low, high)`: `(1.29, 1.3062)` |
+
+0.8 JSON, npz files and spectrl tokens are read back as `(low, high)`.
 
 ## Spectrum and Peak constructors
 
@@ -76,11 +96,11 @@ public functions and methods below. `spec.normalize("tic")` becomes
 | `Spectrum.remove_precursor_peak` | all parameters, including `precursor_mz` and `precursor_charge` |
 | `Spectrum.scale_intensity` | `method`, `degree`, `base`, `inplace` |
 | `Spectrum.round_mz` | `decimals`, `combine`, `inplace` |
-| `Spectrum.has_peak`, `get_peak`, `get_peaks` | `tolerance`, `tolerance_type`, `target_charge`, `target_im`, `im_tol` (and `collision` for `get_peak`) |
+| `Spectrum.has_peak`, `get_peak`, `get_peaks` | `tolerance`, `tolerance_type`, `target_charge`, `target_im`, `im_tolerance` (and `peak_selection` for `get_peak`) |
 | `Spectrum.match_fragments`, `match_fragments` | `tolerance`, `tolerance_type`, `peak_selection`, `is_monoisotopic` |
 | `Spectrum.score`, `score` | `tolerance`, `tolerance_type`, `peak_selection`, `predicted_intensities` |
 | `Spectrum.annotate`, `Spectrum.annot_plot_table` | `tolerance`, `tolerance_type`, `title`, `peak_selection`, `include_sequence` |
-| `Spectrum.plot`, `Spectrum.plot_table` | `title`; `show_charges`, `show_scores` |
+| `Spectrum.plot`, `Spectrum.plot_table` | all parameters |
 | `Spectrum.mass_error_plot`, `Spectrum.facet_plot` | all optional parameters, including `fragments` and `mirror_spectrum` for `facet_plot` |
 | `Spectrum.to_spectrl_url`, `to_spectrl_url` | `base` |
 | `Spectrum.from_usi`, `fetch_usi` | `backend`, `timeout` |
@@ -99,8 +119,35 @@ public functions and methods below. `spec.normalize("tic")` becomes
 | `ThermoReader` | `prefer_vendor_centroid` |
 | `CentroidConfig` | all fields |
 | `MatchedFragment` | all fields (it is built by `match_fragments`, not by hand) |
+| `spxtacular.decon.deconvolve_spectrum` | everything after `intensity` |
+| `Chromatogram` | everything after `intensity` |
+| `IsotopeModel` | everything after `atoms_per_da` |
+| `IonizationModel` | `carrier` |
+| `DeconvolutionProvenance` | everything from `isotope_model_definition` on |
+
+`ParsedUsi` is a `NamedTuple`, so its fields stay positional: tuple unpacking depends on it.
 
 `IsotopeModel.distribution(mass, max_isotopes)` and `apex_index` are unchanged.
+
+## Renamed and removed parameters
+
+| 0.8 | 0.9 |
+|---|---|
+| `has_peak`/`get_peak`/`get_peaks(im_tol=...)` | `im_tolerance=...`, the name used everywhere else |
+| `get_peak(collision="largest"\|"closest")` | `get_peak(peak_selection="largest"\|"closest")`, the name `match_fragments` uses. Default is still `"largest"`; `"all"` raises (use `get_peaks`) |
+| `Spectrum.plot(show_charges=...)`, `plot_spectrum(show_charges=...)` | removed (deprecated in 0.8); use `color="charge"` or `color=None` |
+| `Spectrum.plot_table(show_charges=...)` | removed; use `color="charge"` or `color=None` |
+| `deconvolve_spectrum(..., is_ppm=True)` | `tolerance_type="ppm"` (or `"da"`), as in `Spectrum.deconvolute` |
+
+`build_plot_table(show_charges=...)` and `mirror_plot(show_charges=...)` keep their option: there
+it is not a deprecated alias.
+
+## Removed names
+
+| 0.8 | 0.9 |
+|---|---|
+| `spxtacular.core.JSON_SCHEMA_VERSION`, `spxtacular.serialization.JSON_SCHEMA_VERSION` (`1`) | `spxtacular.serialization.SPECTRUM_SCHEMA_VERSION` (now `2`) |
+| `spxtacular.reader.PeakListLookup`, `spxtacular.reader.ThermoScanLookup` | import from the package root: `from spxtacular import PeakListLookup, ThermoScanLookup` |
 
 ## Readers
 
@@ -110,7 +157,9 @@ public functions and methods below. `spec.normalize("tic")` becomes
 | `Reader(..., mzml_extract_dir=...)` | removed |
 | `gzip_mode="extract"` | removed; use `"auto"` (default), `"indexed"` or `"stream"` |
 | `access_strategy == "extracted"` | no longer returned; `"memory"` or `"stream"` are new values |
-| mzML `scan_number` = 0-based spectrum index | the `scan=` value of the native id (`"scan=19"` -> `19`), or `None` when the id has no `scan` key |
+| mzML `scan_number` = 0-based spectrum index | the number in the native id when it identifies the spectrum on its own: `scan=19` or Thermo `controllerType=0 controllerNumber=1 scan=19` -> `19`, `index=5` / `spectrum=5` -> `5`. Otherwise `None` (Bruker `frame=… scan=…`, Waters `function=… scan=…`, SCIEX `cycle=…`), because the `scan` value repeats or is missing |
+| `write_mgf` wrote no `SCANS` without a scan number | `SCANS` is the 1-based position in the input, and `TITLE` keeps the native id. `write_ms2` also writes the native id as `I NativeID` when it is not `scan=<n>`, and `Ms2Reader` reads it back |
+| malformed mzML raised mzmlpy's `MzmlParseError` | raises `SpxtacularError`, with the mzmlpy error as `__cause__` (a missing spectrum is still `KeyError`) |
 | `AcquisitionType.UNKNOWN == "UNKNOWN"` (values `"DDA"`, ...) | `AcquisitionType` is tdfpy's enum; compare members, not strings |
 | lookup before `open()` raises `RuntimeError` | raises `SpxtacularError` |
 | `CentroidConfig` applied to DDA MS2 | DDA MS2 spectra use tdfpy's per-precursor merged peaks; `CentroidConfig` affects MS1, DIA and PRM |
@@ -139,8 +188,11 @@ Code that wrapped these calls in `pytest.warns` or `warnings.catch_warnings` can
 | `ValueError` for invalid input | `SpxtacularError`, a `ValueError` subclass: `except ValueError` still works |
 | `da_to_ppm(delta, 0)` raises `ValueError` | raises tacular's `TacularError` (also a `ValueError`) |
 | `da_to_ppm(delta, mz)` divides by `mz` | divides by `abs(mz)`, so a negative reference keeps the error's sign |
-
-Enum coercion errors (for example an unknown `tolerance_type`) are still plain `ValueError`.
+| enum coercion (`ToleranceType("foo")`) raises plain `ValueError` | raises `SpxtacularError`, listing the accepted values. Coercion is case-insensitive (`"PPM"`, `"Positive"`) |
+| `im_type`, `polarity` accepted any value | coerced to `IMType` / `Polarity` on construction (`Precursor`, `MsnSpectrum`, JSON); anything else raises `SpxtacularError` |
+| `activation_type`, `analyzer` kept any value as given | a member name in any case or a PSI-MS accession becomes the member (`"MS:1002481"` -> `ActivationType.HCD`, `"TOF"` -> `Analyzer.TOF`); other non-blank strings are kept; non-strings and blanks raise |
+| a bad JSON payload (wrong types) raised `TypeError` | raises `SpxtacularError` |
+| a corrupt or non-spectrum `.npz` raised numpy/zipfile/JSON errors | raises `SpxtacularError`, chained to the original |
 
 ## MatchedFragment
 

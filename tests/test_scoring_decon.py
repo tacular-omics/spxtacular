@@ -193,7 +193,7 @@ class TestIntensityModeValidation:
             intensity,
             charge_range=(1, 3),
             tolerance=50.0,
-            is_ppm=True,
+            tolerance_type="ppm",
             intensity_mode=intensity_mode,
         )
 

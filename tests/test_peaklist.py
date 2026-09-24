@@ -149,6 +149,26 @@ def test_ms2_round_trip_preserves_peaks_and_metadata(tmp_path):
         assert precursor(restored).charge == precursor(original).charge
 
 
+def test_spectra_without_scan_number_use_position_and_keep_native_id(tmp_path):
+    """mzML ids such as Bruker frame= carry no unique scan number."""
+    native_ids = ["merged=1015 frame=1016 scanStart=655 scanEnd=679", "merged=1020 frame=1021"]
+    spectra = [make_spectrum(scan=None, native_id=native_id) for native_id in native_ids]
+
+    mgf = write_mgf(spectra, tmp_path / "out.mgf")
+    text = mgf.read_text()
+    assert "SCANS=1\n" in text and "SCANS=2\n" in text
+    assert f"TITLE={native_ids[0]}\n" in text
+    read = list(MgfReader(mgf))
+    assert [s.scan_number for s in read] == [1, 2]
+    assert [s.native_id for s in read] == native_ids
+
+    ms2 = write_ms2(spectra, tmp_path / "out.ms2")
+    assert f"I\tNativeID\t{native_ids[1]}\n" in ms2.read_text()
+    read = list(Ms2Reader(ms2))
+    assert [s.scan_number for s in read] == [1, 2]
+    assert [s.native_id for s in read] == native_ids
+
+
 def test_ms2_round_trip_optional_info_values(tmp_path):
     spec = make_spectrum(precursor_intensity=1.5e5)
     spec.injection_time = 25.4
@@ -200,7 +220,8 @@ def test_plain_spectrum_writes_without_metadata(tmp_path):
     mgf = write_mgf([spec], tmp_path / "plain.mgf")
     restored = next(iter(MgfReader(mgf)))
     assert restored.precursors is None
-    assert restored.scan_number is None
+    # SCANS falls back to the 1-based position, as in MS2 files.
+    assert restored.scan_number == 1
     np.testing.assert_array_equal(restored.mz, spec.mz)
 
     ms2 = write_ms2([spec], tmp_path / "plain.ms2")

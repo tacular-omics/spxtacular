@@ -165,7 +165,7 @@ write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")
 
 | Field | Source |
 |---|---|
-| `scan_number` | Spectrum index |
+| `scan_number` | The number in the native id when it identifies the spectrum on its own: `scan=19` or Thermo `controllerType=0 controllerNumber=1 scan=19` -> `19`; `index=5` / `spectrum=5` -> `5`. `None` for every other id (Bruker `frame=… scan=…`, Waters `function=… scan=…`, SCIEX `cycle=…`), whose `scan` value repeats or is missing; `native_id` keeps the full id |
 | `ms_level` | `msLevel` CV param |
 | `native_id` | Raw spectrum `id` attribute |
 | `rt` | `scan start time` (converted to seconds) |
@@ -624,7 +624,7 @@ result.
 | `mz` / `intensity` | Ion lines following an `S` record |
 | `scan_number` | First scan field of the `S` line |
 | `ms_level` | Always `2` |
-| `native_id` | Synthesised as `"scan=<scan_number>"` |
+| `native_id` | `I NativeID` when present (spxtacular writes it for ids that are not `scan=<n>`), else synthesised as `"scan=<scan_number>"` |
 | `rt` | `I RTime` / `I RetTime` × 60 — those values are **minutes** in the wild, `rt` is seconds |
 | `injection_time` | `I IonInjectionTime` |
 | `total_ion_current` | `I TIC` |
@@ -715,7 +715,8 @@ The reader cannot infer an MSP time unit.
 |---|---|
 | Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
 | Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
-| Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent scan number becomes the 1-based position in the input and an absent precursor m/z becomes `0.0` |
+| Missing metadata is omitted | A plain `Spectrum` writes just its peaks (and a `SCANS` position). MS2's `S` line has no optional fields, so an absent precursor m/z becomes `0.0` |
+| Missing scan number | An absent `scan_number` (a plain `Spectrum`, or mzML ids such as Bruker `frame=…` that carry no unique one) is written as the 1-based position in the input: MGF `SCANS`, MS2 `S`. The native id still goes out as MGF `TITLE` and as an MS2 `I NativeID` line |
 | MGF `TITLE` / MSP `Name` | `native_id`, falling back to `scan=<scan_number>` |
 | MS2 `Z` mass | Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read |
 | `rt` in MS2 | Written as minutes (`I RTime`), so it returns to within floating-point noise rather than bit-exact. MGF's `RTINSECONDS` is exact |

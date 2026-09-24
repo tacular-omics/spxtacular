@@ -46,7 +46,7 @@ def test_adduct_aliases(alias: str, expected: IonizationModel) -> None:
 
 
 def test_custom_carrier_mass() -> None:
-    model = IonizationModel("potassiated", "positive", 38.963158, "K")
+    model = IonizationModel("potassiated", "positive", 38.963158, carrier="K")
     assert model.neutral_mass(model.ion_mz(800.0, 3), 3) == pytest.approx(800.0)
     assert model.notation(3) == "[M+3K]3+"
 

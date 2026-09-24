@@ -13,8 +13,7 @@ Dittwald et al. (2014), BRAIN 2.0, doi:10.1007/s13361-013-0796-5.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import KW_ONLY, dataclass, field
 from functools import cache, lru_cache
 from math import ceil, floor, sqrt
 from types import MappingProxyType
@@ -23,6 +22,7 @@ from typing import Any, Final
 import numpy as np
 from numpy.typing import NDArray
 
+from .enums import _SpxEnum
 from .errors import SpxtacularError
 
 MAX_ISOTOPE_PEAKS: Final[int] = 32
@@ -48,7 +48,7 @@ NATURAL_ISOTOPE_ABUNDANCES: Final[dict[str, tuple[tuple[int, float], ...]]] = {
 }
 
 
-class IsotopeModelType(StrEnum):
+class IsotopeModelType(_SpxEnum):
     """Built-in average-composition models."""
 
     PEPTIDE = "peptide"
@@ -205,6 +205,7 @@ class IsotopeModel:
     """
 
     atoms_per_da: Mapping[str, float]
+    _: KW_ONLY
     fixed_composition: Mapping[str, int] = field(default_factory=dict)
     isotope_abundances: IsotopeAbundances | None = None
     name: str = "custom"

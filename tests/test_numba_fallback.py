@@ -65,7 +65,7 @@ def test_deconvolve_works_without_numba() -> None:
     intensity = np.array([100000.0, 70000.0, 30000.0], dtype=np.float64)
 
     with numba_blocked() as deconvolve_spectrum:
-        result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True)
+        result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm")
 
     assert len(result) == 4
     assert len(result[0]) > 0
@@ -76,11 +76,11 @@ def test_numba_and_pure_python_produce_identical_results() -> None:
     mz, intensity = _two_cluster_spectrum()
 
     with numba_blocked() as pure_deconvolve:
-        pure = pure_deconvolve(mz, intensity, charge_range=(1, 4), tolerance=20.0, is_ppm=True)
+        pure = pure_deconvolve(mz, intensity, charge_range=(1, 4), tolerance=20.0, tolerance_type="ppm")
 
     from spxtacular.decon.scored import deconvolve_spectrum as current
 
-    jitted = current(mz, intensity, charge_range=(1, 4), tolerance=20.0, is_ppm=True)
+    jitted = current(mz, intensity, charge_range=(1, 4), tolerance=20.0, tolerance_type="ppm")
 
     for name, a, b in zip(("mz", "charge", "intensity", "score"), pure, jitted, strict=True):
         assert len(a) == len(b), f"{name}: length differs between backends"
@@ -119,7 +119,7 @@ def test_empty_spectrum_returns_four_empty_arrays() -> None:
         np.array([], dtype=np.float64),
         charge_range=(1, 3),
         tolerance=50.0,
-        is_ppm=True,
+        tolerance_type="ppm",
     )
     assert len(result) == 4
     for arr in result:
@@ -131,7 +131,7 @@ def test_result_is_4_tuple() -> None:
 
     mz = np.array([500.0, 500.501, 501.002], dtype=np.float64)
     intensity = np.array([100000.0, 70000.0, 30000.0], dtype=np.float64)
-    result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True)
+    result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm")
 
     assert len(result) == 4
 
@@ -142,7 +142,7 @@ def test_result_arrays_have_same_length() -> None:
     mz = np.array([500.0, 500.501, 501.002, 800.0], dtype=np.float64)
     intensity = np.array([100000.0, 70000.0, 30000.0, 5000.0], dtype=np.float64)
     mz_out, charges_out, intensity_out, scores_out = deconvolve_spectrum(
-        mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True
+        mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm"
     )
 
     n = len(mz_out)
@@ -156,7 +156,7 @@ def test_result_mz_sorted_ascending() -> None:
 
     mz = np.array([500.0, 500.501, 501.002, 200.0, 201.0], dtype=np.float64)
     intensity = np.array([100000.0, 70000.0, 30000.0, 5000.0, 4000.0], dtype=np.float64)
-    mz_out, _, _, _ = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True)
+    mz_out, _, _, _ = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm")
 
     assert list(mz_out) == sorted(mz_out.tolist())
 
@@ -166,7 +166,7 @@ def test_scores_in_zero_to_one_range() -> None:
 
     mz = np.array([500.0, 500.501, 501.002], dtype=np.float64)
     intensity = np.array([100000.0, 70000.0, 30000.0], dtype=np.float64)
-    _, _, _, scores_out = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True)
+    _, _, _, scores_out = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm")
 
     assert np.all(scores_out >= 0.0)
     assert np.all(scores_out <= 1.0)
@@ -178,7 +178,9 @@ def test_singletons_have_charge_minus_one() -> None:
     # Single isolated peak — no isotope cluster possible
     mz = np.array([500.0], dtype=np.float64)
     intensity = np.array([100000.0], dtype=np.float64)
-    _, charges_out, _, scores_out = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=50.0, is_ppm=True)
+    _, charges_out, _, scores_out = deconvolve_spectrum(
+        mz, intensity, charge_range=(1, 3), tolerance=50.0, tolerance_type="ppm"
+    )
 
     assert len(charges_out) == 1
     assert charges_out[0] == -1
@@ -190,7 +192,7 @@ def test_da_tolerance_mode() -> None:
 
     mz = np.array([500.0, 500.501, 501.002], dtype=np.float64)
     intensity = np.array([100000.0, 70000.0, 30000.0], dtype=np.float64)
-    result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=0.01, is_ppm=False)
+    result = deconvolve_spectrum(mz, intensity, charge_range=(1, 3), tolerance=0.01, tolerance_type="da")
 
     assert len(result) == 4
     assert len(result[0]) > 0

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import KW_ONLY, dataclass, field
 from typing import Any, Literal, Self
 
 import numpy as np
@@ -75,6 +75,7 @@ class Chromatogram:
 
     rt: NDArray[np.float64]
     intensity: NDArray[np.float64]
+    _: KW_ONLY
     label: str = ""
     mz: float | None = None
     tolerance: float | None = None

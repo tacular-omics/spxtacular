@@ -347,6 +347,7 @@ class _Ms2Block:
     injection_time: float | None = None
     total_ion_current: float | None = None
     activation_type: str | None = None
+    native_id: str | None = None
     mz: list[float] = field(default_factory=list)
     intensity: list[float] = field(default_factory=list)
 
@@ -409,6 +410,8 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
                 block.total_ion_current = _first_float(value, field_name=fields[1], path=path, line_no=line_no)
             elif key == "ACTIVATIONTYPE":
                 block.activation_type = value
+            elif key == "NATIVEID":
+                block.native_id = value
             continue
 
         # Anything else must be an ion line.
@@ -443,7 +446,13 @@ def _ms2_spectrum(block: _Ms2Block) -> MsnSpectrum:
         spectrum_type=SpectrumType.CENTROID,
         scan_number=block.scan_number,
         ms_level=2,
-        native_id=f"scan={block.scan_number}" if block.scan_number is not None else None,
+        native_id=(
+            block.native_id
+            if block.native_id is not None
+            else f"scan={block.scan_number}"
+            if block.scan_number is not None
+            else None
+        ),
         rt=block.rt,
         injection_time=block.injection_time,
         total_ion_current=block.total_ion_current,
@@ -948,8 +957,11 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
             if title is not None:
                 fh.write(f"TITLE={title}\n")
 
-            if msn is not None and msn.scan_number is not None:
-                fh.write(f"SCANS={msn.scan_number}\n")
+            # A spectrum without a scan number (mzML ids that carry none, such as
+            # Bruker frame= or SCIEX cycle= ids) is numbered by its 1-based position
+            # in the file; TITLE above keeps its native id.
+            scans = msn.scan_number if msn is not None and msn.scan_number is not None else index + 1
+            fh.write(f"SCANS={scans}\n")
             if msn is not None and msn.rt is not None:
                 fh.write(f"RTINSECONDS={_fmt(msn.rt)}\n")
 
@@ -1019,6 +1031,8 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
             scan = msn.scan_number if msn is not None and msn.scan_number is not None else index + 1
             precursor_mz = prec.precursor_mz if prec is not None else 0.0
             fh.write(f"S\t{scan}\t{scan}\t{_fmt(precursor_mz)}\n")
+            if msn is not None and msn.native_id is not None and msn.native_id != f"scan={scan}":
+                fh.write(f"I\tNativeID\t{msn.native_id}\n")
 
             if msn is not None and msn.rt is not None:
                 fh.write(f"I\tRTime\t{_fmt(msn.rt / 60.0)}\n")

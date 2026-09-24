@@ -239,12 +239,9 @@ def test_spectrum_plot_table_color_none_matches_show_charges_false() -> None:
     pd.testing.assert_frame_equal(spec.plot_table(color=None), build_plot_table(spec, show_charges=False))
 
 
-@pytest.mark.parametrize("show_charges", [True, False])
-def test_spectrum_plot_table_show_charges_deprecated(show_charges: bool) -> None:
-    spec = _decon_spectrum()
-    with pytest.warns(DeprecationWarning, match="show_charges is deprecated"):
-        table = spec.plot_table(show_charges=show_charges)
-    pd.testing.assert_frame_equal(table, build_plot_table(spec, show_charges=show_charges))
+def test_spectrum_plot_table_show_charges_removed() -> None:
+    with pytest.raises(TypeError):
+        _decon_spectrum().plot_table(show_charges=True)  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
 
 
 # ---------------------------------------------------------------------------

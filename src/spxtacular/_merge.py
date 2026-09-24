@@ -69,7 +69,8 @@ def _merge_kernel(
                 members[n_members] = j
                 n_members += 1
         else:
-            # A NaN m/z sorts outside every window, including its own.
+            # Only a NaN m/z gets here: its searchsorted window never
+            # contains its own index, so it stays a peak of its own.
             members[0] = idx
             n_members = 1
 

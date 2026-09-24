@@ -219,7 +219,7 @@ Extends `Spectrum` with instrument metadata fields. Returned by every reader.
 | `im_range` | `tuple[float, float] \| None` | Ion mobility acquisition window |
 | `isolation_mz_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (m/z) |
 | `isolation_ook0_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (ion mobility) |
-| `im_type` | `IMType \| str \| None` | Ion mobility unit (open vocabulary) |
+| `im_type` | `IMType \| str \| None` | Ion mobility unit (closed vocabulary) |
 | `polarity` | `Polarity \| "positive" \| "negative" \| None` | Scan polarity (closed vocabulary) |
 | `resolution` | `float \| None` | Instrument resolution |
 | `analyzer` | `Analyzer \| str \| None` | Mass analyser type (open vocabulary) |
@@ -246,10 +246,10 @@ from spxtacular import Polarity, ActivationType, IMType, Analyzer
 |---|---|---|
 | `Polarity` | Closed | `POSITIVE` (`"positive"`), `NEGATIVE` (`"negative"`) |
 | `ActivationType` | Open | `CID`, `HCD`, `ETD`, `ECD`, `ETHCD` (`"EThcD"`), `ETCID` (`"ETciD"`), `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` |
-| `IMType` | Open | `OOK0` (`"ook0"`), `IM` (`"im"`), `DRIFT_TIME_MS` (`"drift_time_ms"`), `CCS` (`"ccs"`) |
+| `IMType` | Closed | `OOK0` (`"ook0"`), `IM` (`"im"`), `DRIFT_TIME_MS` (`"drift_time_ms"`), `CCS` (`"ccs"`) |
 | `Analyzer` | Open | `ORBITRAP`, `FT_ICR`, `TOF`, `QUADRUPOLE`, `ION_TRAP`, `LINEAR_ION_TRAP`, `QUADRUPOLE_ION_TRAP`, `MAGNETIC_SECTOR`, `ELECTROSTATIC_ENERGY_ANALYZER` |
 
-`Polarity` is closed vocabulary: `MsnSpectrum.polarity` only accepts a `Polarity` member or the literal strings `"positive"`/`"negative"`. The other three are open vocabulary — `MsnSpectrum.im_type`, `.analyzer`, and `.activation_type` are typed `Enum | str`, so an enum member gives autocomplete/typo-safety while raw PSI-MS accessions (e.g. `"MS:1002481"` from `DReader`) and unknown vendor strings still pass through unchanged.
+`IMType` and `Polarity` are closed: a string must name a member (case-insensitive; `IMType` also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
 
 ```python
 from spxtacular import MsnSpectrum, ActivationType
@@ -592,6 +592,7 @@ conversion. All names below are exported from `spxtacular`.
 ```python
 IsotopeModel(
     atoms_per_da: Mapping[str, float],
+    *,
     fixed_composition: Mapping[str, int] = ...,
     isotope_abundances: Mapping[str, Sequence[tuple[int, float]]] | None = None,
     name: str = "custom",
@@ -619,6 +620,7 @@ IonizationModel(
     name: str,
     polarity: Polarity | str,
     carrier_mass: float,
+    *,
     carrier: str = "custom",
 )
 
@@ -817,6 +819,7 @@ repeated in each parameter table.
 Chromatogram(
     rt: NDArray[np.float64],
     intensity: NDArray[np.float64],
+    *,
     label: str = "",
     mz: float | None = None,
     tolerance: float | None = None,
@@ -905,7 +908,6 @@ plot_spectrum(
     *,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
-    show_charges: bool | None = None,  # deprecated alias of color
     max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
     intensity_scale: Literal["absolute", "relative"] = "relative",
@@ -923,7 +925,6 @@ Everything after `title` is keyword-only.
 |---|---|---|
 | `color` | `"charge"` | `"charge"` colours sticks by charge state on the ordinal ramp; `"im"` colours by ion mobility on the single-hue sequential scale with a colourbar (falls back to `"charge"` when no IM array is present); `None` renders every stick in one colour |
 | `show_scores` | `True` | Label peaks whose `iso_score > 0` with their score |
-| `show_charges` | `None` | Deprecated alias — `True` → `color="charge"`, `False` → `color=None`; emits `DeprecationWarning` |
 | `max_labels` | `60` | Cap on directly drawn labels, strongest first; `None` for no count cap |
 | `theme_mode` | `None` | `"light"` / `"dark"`; `None` uses the global default |
 | `intensity_scale` | `"relative"` | `"relative"` (base peak = 100%) or `"absolute"` |

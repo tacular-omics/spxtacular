@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from math import isfinite
 from typing import Any
 
@@ -32,6 +32,7 @@ class IonizationModel:
     name: str
     polarity: Polarity | str
     carrier_mass: float
+    _: KW_ONLY
     carrier: str = "custom"
 
     def __post_init__(self) -> None:
@@ -109,10 +110,10 @@ def _validated_charge_scalar(charge: int) -> int:
     return int(charge)
 
 
-PROTONATED = IonizationModel("protonated", Polarity.POSITIVE, PROTON_MASS, "H")
-DEPROTONATED = IonizationModel("deprotonated", Polarity.NEGATIVE, -PROTON_MASS, "H")
-SODIATED = IonizationModel("sodiated", Polarity.POSITIVE, SODIUM_CATION_MASS, "Na")
-AMMONIATED = IonizationModel("ammoniated", Polarity.POSITIVE, AMMONIUM_CATION_MASS, "NH4")
+PROTONATED = IonizationModel("protonated", Polarity.POSITIVE, PROTON_MASS, carrier="H")
+DEPROTONATED = IonizationModel("deprotonated", Polarity.NEGATIVE, -PROTON_MASS, carrier="H")
+SODIATED = IonizationModel("sodiated", Polarity.POSITIVE, SODIUM_CATION_MASS, carrier="Na")
+AMMONIATED = IonizationModel("ammoniated", Polarity.POSITIVE, AMMONIUM_CATION_MASS, carrier="NH4")
 
 IONIZATION_MODELS: dict[str, IonizationModel] = {
     "protonated": PROTONATED,
@@ -166,6 +167,7 @@ class DeconvolutionProvenance:
     intensity_mode: str
     min_intensity: float
     min_score: float
+    _: KW_ONLY
     isotope_model_definition: IsotopeModel | None = None
     min_isotope_abundance: float = 0.01
     max_isotope_fold_error: float = 2.0
