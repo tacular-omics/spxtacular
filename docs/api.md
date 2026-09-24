@@ -194,7 +194,7 @@ positional mix-ups.
 | `.annotate(fragments, ...)` | `go.Figure` | Plot with fragment annotations |
 | `.mass_error_plot(fragments, ...)` | `go.Figure` | Bubble chart of fragment mass errors |
 | `.facet_plot(fragments, mirror_spectrum, ...)` | `go.Figure` | Multi-panel facet plot |
-| `.plot_table(show_charges, show_scores)` | `pd.DataFrame` | Build an editable plot table (one row per peak) |
+| `.plot_table(show_scores, *, color)` | `pd.DataFrame` | Build an editable plot table (one row per peak) |
 | `.annot_plot_table(fragments, ...)` | `pd.DataFrame` | Build an editable annotated plot table with fragment labels |
 
 Full documentation: [Spectrum reference](spectrum.md)

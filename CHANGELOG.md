@@ -15,11 +15,19 @@ User-visible changes only; implementation details belong in commits and pull req
 - `Spectrum.sort` is stable in both directions, so tied peaks keep their input order and sorting a sorted spectrum returns it unchanged. `reverse=True` flipped tied peaks.
 - `denoise` and `estimate_noise_level` ignore NaN and infinite intensities. One NaN peak made the `"histogram"` method raise and the other methods return a NaN threshold that removed every peak.
 - `denoise("histogram")` no longer raises when the intensities span too narrow a range to cut into 100 bins.
+- `filter(top_n=...)` raises `ValueError` for a negative count instead of returning an empty spectrum.
+- `match_fragments`, `score`, `annotate` and the other fragment-matching entry points raise a clear `TypeError` when given a string such as `"PEPTIDE/2"` instead of fragments, instead of `AttributeError: 'str' object has no attribute 'mz'`.
+- `Reader` raises `FileNotFoundError` at construction when the path does not exist, instead of failing later on first access.
 
 ### Changed
 
 - Required spectrl 3 (`spectrl>=3.0,<4`). **Breaking for stored or shared tokens:** `to_spectrl_token`/`to_spectrl_url` now write `spectrl.v3.…` tokens, and `from_spectrl_token`/`from_spectrl_url` reject the `spectrl.v1` tokens earlier spxtacular releases wrote. Every spxtacular field still round-trips. The default lossy profile now picks the smallest bounded-error encoding per array (m/z within 0.1 ppm), so token bytes differ from before; `lossless=True` stays bit-exact. Decoding applies spectrl's default untrusted-input limits (1,000,000 peaks, 64 MiB of arrays). Downstream packages that read spxtacular tokens (`msbit`, `pepbit`) need spectrl 3 too.
-- Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
+- Capped the sibling requirements (peptacular, paftacular, tdfpy, mzmlpy) at their next breaking version, so installs no longer pick up a new major release before spxtacular is tested against it.
+- Fragment labels in annotated plots and plot tables follow paftacular 1.4's mzPAF output: peptacular z fragments are labelled `z3-H` instead of `z3`, and d, v and w ions (including `da`/`db`/`wa`/`wb` and side-chain variants such as `d-valine`) get labels such as `d3^2` instead of raising `ValueError`.
+
+### Deprecated
+
+- `Spectrum.plot_table(show_charges=...)` warns with `DeprecationWarning`, as `plot(show_charges=...)` already did. Use the new keyword `color="charge"` (default) or `color=None`.
 
 ## [0.7.0] (2026-09-04)
 

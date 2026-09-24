@@ -380,6 +380,11 @@ def test_filter_top_n_larger_than_spectrum_keeps_everything() -> None:
     assert _mzs(filtered) == _mzs(spec)
 
 
+def test_filter_negative_top_n_raises() -> None:
+    with pytest.raises(ValueError, match="top_n must be >= 0"):
+        _multi_spec().filter(top_n=-1)
+
+
 def test_filter_top_n_zero_keeps_nothing() -> None:
     filtered = _multi_spec().filter(top_n=0)
     assert _mzs(filtered) == []

@@ -201,7 +201,7 @@ Plotting (need plotly, which is a core dependency):
 - `annotate(fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
 - `mass_error_plot(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
 - `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
-- `plot_table(show_charges=True, show_scores=True) -> pd.DataFrame`
+- `plot_table(show_charges=None, show_scores=True, *, color: "charge"|None = "charge") -> pd.DataFrame` (`show_charges` is deprecated; use `color`)
 - `annot_plot_table(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
 
 Serialization and sharing:

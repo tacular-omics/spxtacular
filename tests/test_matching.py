@@ -454,3 +454,16 @@ class TestUnsortedSpectra:
         shuffle = np.random.default_rng(2).permutation(mz.size)
         spec = Spectrum(mz=mz[shuffle], intensity=np.linspace(1e4, 1e5, mz.size)[shuffle])
         assert score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"] > 0
+
+
+@pytest.mark.parametrize("value", ["PEPTIDE/2", b"PEPTIDE/2"])
+def test_match_fragments_rejects_string(value: str | bytes) -> None:
+    spec = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))
+    with pytest.raises(TypeError, match="sequence of peptacular Fragment"):
+        match_fragments(spec, value)  # ty: ignore[invalid-argument-type]
+
+
+def test_annotate_rejects_string() -> None:
+    spec = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))
+    with pytest.raises(TypeError, match="not str 'PEPTIDE/2'"):
+        spec.annotate("PEPTIDE/2")  # ty: ignore[invalid-argument-type]

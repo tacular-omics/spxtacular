@@ -572,6 +572,7 @@ class Spectrum:
 
         ``top_n`` keeps the ``n`` most intense peaks in the whole spectrum, so a
         quiet high-m/z region loses every peak it has to a loud low-m/z one.
+        ``top_n=0`` keeps no peaks; a negative ``top_n`` raises ``ValueError``.
 
         ``top_n_per_window`` is the search-engine preprocessing step that avoids
         that: given ``(n, width)`` it keeps the ``n`` most intense peaks of each
@@ -626,6 +627,8 @@ class Spectrum:
         if max_score is not None and self.iso_score is not None:
             mask &= self.iso_score <= max_score
 
+        if top_n is not None and top_n < 0:
+            raise ValueError(f"top_n must be >= 0; got {top_n!r}")
         if top_n is not None and top_n_per_window is not None:
             raise ValueError(
                 "top_n and top_n_per_window are mutually exclusive; applying a global cut "
@@ -1278,8 +1281,10 @@ class Spectrum:
 
     def plot_table(
         self,
-        show_charges: bool = True,
+        show_charges: bool | None = None,
         show_scores: bool = True,
+        *,
+        color: "Literal['charge'] | None" = "charge",
     ) -> "pd.DataFrame":
         """Return an editable plot table (one row per peak) for this spectrum.
 
@@ -1295,9 +1300,13 @@ class Spectrum:
         Parameters
         ----------
         show_charges:
-            Colour peaks by charge state when charge data is present.
+            Deprecated. Use ``color="charge"`` or ``color=None`` instead.
         show_scores:
             Label peaks with their isotope profile score (score > 0 only).
+        color:
+            ``"charge"`` (default) colours peaks by charge state when charge
+            data is present; ``None`` gives every peak one colour. Same
+            meaning as in :meth:`plot`.
 
         Returns
         -------
@@ -1305,7 +1314,14 @@ class Spectrum:
         """
         from .plot_table import build_plot_table
 
-        return build_plot_table(self, show_charges=show_charges, show_scores=show_scores)
+        if show_charges is not None:
+            warnings.warn(
+                "show_charges is deprecated; use color='charge' or color=None instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            color = "charge" if show_charges else None
+        return build_plot_table(self, show_charges=color == "charge", show_scores=show_scores)
 
     def annot_plot_table(
         self,
