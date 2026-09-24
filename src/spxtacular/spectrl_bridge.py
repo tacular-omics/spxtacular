@@ -34,7 +34,7 @@ per array, each checked against a bounded error (0.1 ppm for m/z; see the
 spectrl specification for the intensity bound). Pass ``lossless=True`` for a
 bit-exact round-trip of the peak arrays.
 
-Requires spectrl 3.x (``spectrl>=3.0.0,<4``); spxtacular skipped the 2.x
+Requires spectrl 3.x (``spectrl>=3.0,<4``); spxtacular skipped the 2.x
 series. spectrl 3 tokens use the ``spectrl.v3.…`` format; each array decodes
 back to its declared numeric type (e.g. a float32 array quantized then
 decoded stays float32, not float64), so code consuming decoded arrays must
@@ -287,10 +287,9 @@ def _up(name: str, value=None):
 
     spectrl 3 dropped ``SpectrlUserParam.type`` — the value's native scalar
     type (``str``/``int``/``float``/``None``) is authoritative, so callers
-    must pass a value of the type they want restored on decode. A Python
-    ``bool`` is rejected by spectrl's own scalar validator (``type(value) in
-    (int, float)`` excludes ``bool`` even though it subclasses ``int``), so a
-    boolean-valued field must be passed as ``int(...)`` (0/1), not ``bool``.
+    must pass a value of the type they want restored on decode. spectrl 3
+    rejects booleans as parameter values, so a boolean-valued field must be
+    passed as ``int(...)`` (0/1), not ``bool``.
     """
     from spectrl.model import SpectrlUserParam
 
@@ -465,8 +464,8 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
     # spxtacular scalar fields with no CV term travel as namespaced user_params.
     # spectrl 3 has no separate type annotation — the value's native scalar type
     # (str/int/float) is authoritative, so no "xsd:*" tag is passed here. A
-    # boolean field (is_monoisotopic, below) is encoded as int 0/1: spectrl's
-    # scalar validator rejects a Python bool outright.
+    # boolean field (is_monoisotopic, below) is encoded as int 0/1: spectrl 3
+    # rejects boolean parameter values.
     user_params = []
     if spec.denoised is not None:
         user_params.append(_up(_UP_DENOISED, spec.denoised))
@@ -724,10 +723,8 @@ def from_decoded_spectrum(decoded: DecodedSpectrum) -> Spectrum | MsnSpectrum:
             # whose precursor carries several selected ions, or one whose
             # selected ion is skipped below for a missing m/z.
             mono_v = up.get(_up_prec_monoisotopic(prec_index))
-            # spectrl 3 has no separate type annotation, so a foreign token may
-            # carry this as a native bool or (as spxtacular's own pre-3 tokens
-            # did) as an int 0/1; bool() handles both.
-            is_monoisotopic = bool(mono_v) if mono_v is not None else None
+            # Written as int 0/1 (spectrl 3 rejects boolean parameter values).
+            is_monoisotopic = bool(int(mono_v)) if mono_v is not None else None
             for ion in sp.selected_ions:
                 mz_p = _find_param(ion.params, _SELECTED_ION_MZ)
                 if mz_p is None or mz_p.value is None:

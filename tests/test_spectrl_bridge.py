@@ -210,6 +210,27 @@ def test_token_roundtrip_msn_spectrum() -> None:
     assert prec.intensity == pytest.approx(8000.0)
 
 
+@pytest.mark.parametrize("flag", [True, False])
+def test_monoisotopic_flag_written_as_int_and_roundtrips(flag: bool) -> None:
+    """spectrl 3 rejects boolean parameter values, so the flag travels as 0/1."""
+    spec = _basic_msn()
+    spec.precursors = [Precursor(mz=500.25, intensity=8000.0, charge=2, is_monoisotopic=flag)]
+    inline = to_inline_spectrum(spec)
+    [param] = [p for p in inline.user_params if p.name == f"{_UP_PREC_MONOISOTOPIC}.0"]
+    assert type(param.value) is int and param.value == int(flag)
+
+    restored = from_spectrl_token(to_spectrl_token(spec))
+    assert isinstance(restored, MsnSpectrum)
+    assert restored.precursors is not None
+    assert restored.precursors[0].is_monoisotopic is flag
+
+
+def test_pre_v3_token_is_rejected() -> None:
+    token = to_spectrl_token(_basic_spectrum(), lossless=True)
+    with pytest.raises(spectrl.SpectrlDecodeError):
+        from_spectrl_token(token.replace("spectrl.v3.", "spectrl.v1.", 1))
+
+
 def test_token_roundtrip_lossy_within_tolerance() -> None:
     spec = _basic_msn()
     token = to_spectrl_token(spec)  # default: lossy, bounded per array
