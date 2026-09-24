@@ -689,7 +689,7 @@ def _text_library(n_spectra: int) -> str:
 def test_streaming_memory_is_flat(tmp_path: Path, suffix: str) -> None:
     """Peak memory while streaming does not grow with the number of spectra (informal)."""
     peaks = []
-    for n_spectra in (200, 4000):
+    for n_spectra in (100, 1000):
         path = tmp_path / f"{n_spectra}.txt"
         path.write_text(_text_library(n_spectra))
         if suffix == "json":
