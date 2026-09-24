@@ -1,4 +1,4 @@
-# Fragment matching and scoring
+# Fragment matching, scoring and reporter ions
 
 spxtacular provides two functions for peptide-spectrum match (PSM) scoring:
 `match_fragments()` for matching and `score()` for computing all metrics at once.
@@ -214,3 +214,100 @@ distribution. Preprocess both inputs consistently. The
 distinguishes weighted and unweighted variants and documents its own cleaning defaults.
 The tests include independent values for unambiguous peak alignments. They do not establish
 that one metric outperforms another for compound identification.
+
+## Isobaric reporter ions (TMT, TMTpro, iTRAQ)
+
+spxtacular reads the reporter-ion intensities of isobaric-labelled spectra: TMT 0/2/6/10/11,
+TMTpro 0/16/18 and iTRAQ 4/8. Channel names and reporter m/z come from tacular's
+`ISOBARIC_TAG_LOOKUP`, which computes each reporter m/z from its isotopic composition, so no
+reporter mass is typed into spxtacular.
+
+```python
+import spxtacular as spx
+
+spec = next(iter(spx.Reader("run.mzML").ms2))
+ions = spec.reporter_ions("TMT10")          # or spx.extract_reporter_ions(spec, "TMT10")
+ions.channels        # ('126', '127N', '127C', ..., '131N')
+ions.intensity       # one value per channel, 0.0 where no peak was found
+ions.ppm_error       # observed - theoretical m/z in ppm, NaN where no peak was found
+ions["127N"]         # one channel's intensity
+
+table = spx.reporter_ion_table(spx.Reader("run.mzML"), "TMTpro18", include_errors=True)
+# spectrum_index  scan_number  native_id  ms_level  rt  126  127N  ...  135N  126_ppm_error ...
+```
+
+### Plex names
+
+Pass a name or alias from tacular, case-insensitive: `TMT0`, `TMT2`, `TMT6`, `TMT10`
+(`TMT10plex`), `TMT11`, `TMTpro0`, `TMT16` (`TMTpro16`), `TMT18` (`TMTpro18`), `iTRAQ4`,
+`iTRAQ8`, or a `tacular.IsobaricTagInfo`. `ReporterIons.plex` is tacular's name for it
+(`"TMT18"` for `"TMTpro18"`). An unknown name raises `SpxtacularError` listing the valid
+ones.
+
+### How peaks are picked
+
+| Choice | Behaviour |
+|---|---|
+| Tolerance | `tolerance=20.0, tolerance_unit="ppm"` by default (`"da"` also accepted). The closest channels, the TMT/TMTpro N/C pairs, are 6.32 mDa (about 47-50 ppm) apart, so +/-20 ppm windows never overlap. A tolerance that makes two windows overlap raises `SpxtacularError`. |
+| Several peaks in a window | The most intense peak is used (ties: lowest m/z). |
+| No peak in a window | Intensity `0.0`; `observed_mz` and the error are `NaN`; `found` is `False`. Zero keeps sums, ratios and the impurity correction well defined, and NaN in the error columns keeps "not found" visible. |
+| Input | Centroided spectra in m/z; the m/z array need not be sorted. A decharged spectrum (neutral masses) raises. |
+
+### Many spectra
+
+`reporter_ion_table(spectra, plex, ...)` takes any iterable of spectra (a list, a generator,
+`reader.ms2`) or a reader with an `ms2` view, which it reads. It returns one row per spectrum:
+`spectrum_index` (position in the input), `scan_number`, `native_id`, `ms_level`, `rt`
+(`None` for a plain `Spectrum`), one float column per channel, and with
+`include_errors=True` a `<channel>_ppm_error` column per channel. `ms_level=` keeps only
+spectra of that level; for SPS-MS3 data pass the MS3 spectra with `ms_level=3`.
+
+### Isotope impurity correction
+
+Each TMT/iTRAQ reagent lot ships with a sheet of isotope impurities: for every channel, the
+percentage of its reporter signal that appears 2 or 1 Da below and 1 or 2 Da above. Pass the
+sheet as `impurities=` and the intensities are corrected:
+
+```python
+lot = {
+    "126":  {"-2": 0.0, "-1": 0.0, "+1": 7.0, "+2": 0.2},
+    "127N": {"-2": 0.0, "-1": 0.4, "+1": 6.5, "+2": 0.0},
+    # ... one row per channel; channels left out are taken as pure
+}
+ions = spec.reporter_ions("TMT10", impurities=lot)
+ions.raw_intensity   # what was measured
+ions.intensity       # corrected
+
+table = spx.reporter_ion_table(reader, "TMT10", impurities=lot, normalize="sum")
+```
+
+A `pandas.DataFrame` with channels as the index and shifts as columns works as well. Column
+labels are counts of 13C (`-2`, `-1`, `+1`, `+2`, the lot-sheet convention) or explicit
+substitutions (`"-13C"`, `"+2x13C"`, `"-15N"`, `"+13C+15N"`, `"-18O"`). Empty cells
+(`None`, NaN) are 0.
+
+`isotope_correction_matrix(plex, lot)` returns the matrix `M` that is solved,
+`observed = M @ true`. `M[i, j]` is the fraction of reagent `j`'s signal seen in channel `i`:
+
+- A reagent keeps `100 - sum(its impurities)` percent in its own channel.
+- Each impurity goes to the channel whose m/z is nearest the shifted reporter m/z (within
+  0.02 Da). So the -1 of TMT `128C` goes to `127C` and of `128N` to `127N`, since they differ
+  by one 13C. The -1 of `127N` goes to `126`, the only channel 1 Da below it.
+- An impurity that lands on no channel of the plex is lost signal and only lowers the
+  diagonal.
+
+You can also pass a precomputed square matrix as `impurities=`, or call
+`correct_isotope_impurities(intensities, matrix_or_lot, plex)` on your own arrays (one
+spectrum or a 2-D array of many).
+
+**Non-negativity.** Each spectrum is first solved exactly. With noise, the exact solution can
+go slightly negative in a weak channel next to a strong one. Those spectra are re-solved by
+non-negative least squares (a small Lawson-Hanson NNLS in numpy, since scipy is not a
+dependency). That gives the exact answer whenever it is already non-negative. Otherwise it
+gives the closest non-negative fit, which, unlike clipping negatives to zero, passes the
+remainder on to the neighbouring channels.
+
+### Normalization
+
+`normalize="sum"` divides each spectrum's channels by their sum and `normalize="max"` by the
+largest channel, after correction. A spectrum with no reporter signal stays all zero.

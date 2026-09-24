@@ -234,6 +234,19 @@ url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl.v3.… (sha
 restored = spx.Spectrum.from_spectrl_url(url)
 ```
 
+## Isobaric reporter ions
+
+TMT, TMTpro and iTRAQ reporter intensities, with channels and m/z from tacular and optional
+isotope impurity correction from the reagent lot sheet:
+
+```python
+ions = spec.reporter_ions("TMT10")          # most intense peak within 20 ppm per channel
+ions.intensity, ions.ppm_error
+
+lot = {"126": {"-2": 0.0, "-1": 0.0, "+1": 7.0, "+2": 0.2}, ...}   # from the lot sheet
+table = spx.reporter_ion_table(reader.ms2, "TMTpro18", impurities=lot, normalize="sum")
+```
+
 ## Documentation
 
 Full documentation with API reference, guides, and interactive plots is available at
@@ -242,7 +255,7 @@ Full documentation with API reference, guides, and interactive plots is availabl
 - [Spectrum API](https://tacular-omics.github.io/spxtacular/spectrum/)
 - [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/)
 - [Readers](https://tacular-omics.github.io/spxtacular/readers/)
-- [Matching & Scoring](https://tacular-omics.github.io/spxtacular/scoring/)
+- [Matching, scoring & reporter ions](https://tacular-omics.github.io/spxtacular/scoring/)
 - [Visualization](https://tacular-omics.github.io/spxtacular/visualization/)
 - [API Reference](https://tacular-omics.github.io/spxtacular/api/)
 

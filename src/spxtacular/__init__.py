@@ -66,6 +66,13 @@ from .reader import (
     Reader,
     SpectrumLookup,
 )
+from .reporter import (
+    ReporterIons,
+    correct_isotope_impurities,
+    extract_reporter_ions,
+    isotope_correction_matrix,
+    reporter_ion_table,
+)
 from .scoring import score
 from .serialization import get_json_schema
 from .similarity import cosine, entropy_similarity, modified_cosine
@@ -162,6 +169,11 @@ __all__ = [
     "to_spectrum_utils",
     "from_spectrum_utils",
     "score",
+    "ReporterIons",
+    "extract_reporter_ions",
+    "reporter_ion_table",
+    "isotope_correction_matrix",
+    "correct_isotope_impurities",
     "build_plot_table",
     "build_annot_plot_table",
     "plot_from_table",

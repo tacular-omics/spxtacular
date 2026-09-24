@@ -12,8 +12,11 @@ if TYPE_CHECKING:
 
     import pandas as pd
     import plotly.graph_objects as go
+    from tacular import IsobaricTagInfo
+    from tacular.types import ToleranceUnit
 
     from .matching import FragmentInput, MatchedFragment
+    from .reporter import ImpurityTable, ReporterIons
 
 import numpy as np
 from numpy.typing import NDArray
@@ -1933,6 +1936,35 @@ class Spectrum:
             tolerance_type=tolerance_type,
             peak_selection=peak_selection,
             predicted_intensities=predicted_intensities,
+        )
+
+    # -------------------------------------------------------------------------
+    # Isobaric reporter ions
+    # -------------------------------------------------------------------------
+
+    def reporter_ions(
+        self,
+        plex: "str | IsobaricTagInfo",
+        *,
+        tolerance: float = 20.0,
+        tolerance_unit: "ToleranceUnit" = "ppm",
+        impurities: "ImpurityTable | pd.DataFrame | NDArray[np.float64] | None" = None,
+        normalize: "Literal['sum', 'max'] | None" = None,
+    ) -> "ReporterIons":
+        """TMT/TMTpro/iTRAQ reporter-ion intensities of this spectrum.
+
+        Thin wrapper around :func:`~spxtacular.reporter.extract_reporter_ions` (most intense
+        peak within 20 ppm of each reporter m/z by default; missing channels are 0.0).
+        """
+        from .reporter import extract_reporter_ions
+
+        return extract_reporter_ions(
+            self,
+            plex,
+            tolerance=tolerance,
+            tolerance_unit=tolerance_unit,
+            impurities=impurities,
+            normalize=normalize,
         )
 
     # -------------------------------------------------------------------------
