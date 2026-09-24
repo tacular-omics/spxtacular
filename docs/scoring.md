@@ -16,7 +16,7 @@ matches = match_fragments(
     spectrum,
     fragments,
     tolerance=0.02,
-    tolerance_type="da",         # "da" or "ppm"
+    tolerance_unit="da",         # "da" or "ppm"
     peak_selection="closest",    # "closest", "largest", or "all"
 )
 # matches: list[MatchedFragment], sorted by peak index
@@ -29,7 +29,7 @@ matches = match_fragments(
 | `spectrum` | | `Spectrum` to search |
 | `fragments` | | Iterable of fragment objects from `peptacular` |
 | `tolerance` | `0.02` | Matching tolerance |
-| `tolerance_type` | `"da"` | `"da"` or `"ppm"` |
+| `tolerance_unit` | `"da"` | `"da"` or `"ppm"` |
 | `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance (see below) |
 | `is_monoisotopic` | `True` | Forwarded to the constructed `Fragment` objects when `fragments` is a `dict[(IonType, charge_state), list[float]]` (peptacular's `fast_fragment` output); otherwise has no effect |
 
@@ -58,7 +58,7 @@ matches = match_fragments(
 **Example:**
 
 ```python
-matches = match_fragments(spec, fragments, tolerance=10, tolerance_type="ppm")
+matches = match_fragments(spec, fragments, tolerance=10, tolerance_unit="ppm")
 for m in matches:
     print(f"  Peak {m.peak_index} ({m.peak_mz:.4f} m/z) matched {m.fragment} (Δ={m.ppm_error:+.1f} ppm)")
 ```
@@ -72,7 +72,7 @@ Runs `match_fragments()` internally and returns all scoring metrics as a dict.
 ```python
 from spxtacular import score
 
-result = score(spectrum, fragments, tolerance=10, tolerance_type="ppm")
+result = score(spectrum, fragments, tolerance=10, tolerance_unit="ppm")
 ```
 
 **Parameters:**
@@ -82,7 +82,7 @@ result = score(spectrum, fragments, tolerance=10, tolerance_type="ppm")
 | `spectrum` | | `Spectrum` to score against |
 | `fragments` | | Iterable of fragment objects from `peptacular` |
 | `tolerance` | `0.02` | Matching tolerance |
-| `tolerance_type` | `"da"` | `"da"` or `"ppm"` |
+| `tolerance_unit` | `"da"` | `"da"` or `"ppm"` |
 | `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance — `"closest"`, `"largest"`, or `"all"` |
 | `predicted_intensities` | `None` | Optional predicted intensity for every fragment, in the same order. Enables the literature spectral-angle metric |
 
@@ -132,7 +132,7 @@ spectral angle of the literature (Toprak et al.; the metric Prosit and Spectrona
 ```python
 result = spx.score(
     spec, fragments,
-    tolerance=10, tolerance_type="ppm",
+    tolerance=10, tolerance_unit="ppm",
     predicted_intensities=predicted,   # aligned with `fragments`
 )
 ```
@@ -156,7 +156,7 @@ with MzmlReader("run.mzML") as reader:
     spec = next(iter(reader.ms2))
 
 fragments = pt.fragment("ACDEFGHIK", ion_types=("b", "y"), charges=(1, 2))
-result = score(spec, fragments, tolerance=10, tolerance_type="ppm")
+result = score(spec, fragments, tolerance=10, tolerance_unit="ppm")
 
 print(f"Hyperscore:      {result['hyperscore']:.3f}")
 print(f"Spectral angle:  {result['spectral_angle']:.3f}")
@@ -175,7 +175,7 @@ built on.
 ```python
 from spxtacular import cosine, modified_cosine, entropy_similarity
 
-cosine(query, reference, tolerance=20, tolerance_type="ppm")   # 0-1
+cosine(query, reference, tolerance=20, tolerance_unit="ppm")   # 0-1
 entropy_similarity(query, reference, tolerance=0.02)           # 0-1
 ```
 

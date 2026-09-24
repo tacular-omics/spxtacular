@@ -12,15 +12,15 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 import numpy as np
+from tacular.types import ToleranceUnit
 
 from .core import Spectrum
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceLike,
-    ToleranceType,
+    check_tolerance_unit,
 )
 from .errors import SpxtacularError
 from .matching import FragmentInput, MatchedFragment, match_fragments
@@ -181,7 +181,7 @@ def _probability_score(
     matches: list[MatchedFragment],
     n_unique: int,
     tolerance: float,
-    tolerance_type: ToleranceLike,
+    tolerance_unit: ToleranceUnit,
 ) -> float:
     n_exp = len(spectrum.mz)
     k = len(_unique_peak_indices(matches))
@@ -195,7 +195,7 @@ def _probability_score(
     mz_range = float(spectrum.mz.max() - spectrum.mz.min())
     if mz_range <= 0.0:
         return 0.0
-    if ToleranceType(str(tolerance_type).lower()) is ToleranceType.PPM:
+    if check_tolerance_unit(tolerance_unit) == "ppm":
         tol_da = tolerance * float(np.median(spectrum.mz)) / 1e6
     else:
         tol_da = float(tolerance)
@@ -419,7 +419,7 @@ def score(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     predicted_intensities: Sequence[float] | None = None,
 ) -> dict[str, float]:
@@ -450,7 +450,7 @@ def score(
         :meth:`~peptacular.ProFormaAnnotation.fast_fragment`.
     tolerance:
         Matching tolerance.
-    tolerance_type:
+    tolerance_unit:
         ``"da"`` or ``"ppm"`` (case-insensitive; anything else raises
         ``ValueError``).
     peak_selection:
@@ -467,18 +467,17 @@ def score(
     ``matched_fraction``, ``intensity_fraction``, ``mean_ppm_error``,
     ``spectral_angle``, ``longest_run``.
     """
-    # Normalise once so ``"PPM"``/``"Da"`` cannot mean one thing to the matcher and
-    # another to _probability_score, and so typos raise here rather than silently
-    # falling back to Da.
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    # Validate once so a typo (or ``"PPM"``) raises here rather than silently
+    # falling back to Da in _probability_score.
+    tol_unit = check_tolerance_unit(tolerance_unit)
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tol_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tol_unit, peak_selection=peak_selection
     )
     n_unique = _count_unique_ions(fragments)
 
     return {
         "hyperscore": _hyperscore(spectrum, matches),
-        "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tol_type),
+        "probability_score": _probability_score(spectrum, matches, n_unique, tolerance, tol_unit),
         "total_matched_intensity": _total_matched_intensity(spectrum, matches),
         "matched_fraction": _matched_fraction(matches, n_unique),
         "intensity_fraction": _intensity_fraction(spectrum, matches),

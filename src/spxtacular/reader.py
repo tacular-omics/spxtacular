@@ -18,6 +18,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, Self, runtime_checkable
 
 import numpy as np
+from tacular.types import Polarity, ToleranceUnit
 
 from ._scan_lookup import (
     IdIndex,
@@ -28,7 +29,7 @@ from ._scan_lookup import (
     native_id_scan_number,
 )
 from .core import MsnSpectrum, Precursor, SpectrumType
-from .enums import ActivationType, Analyzer, IMType, Polarity
+from .enums import ActivationType, Analyzer, IMToleranceUnit, IMType
 from .errors import SpxtacularError
 from .peaklist import MgfReader, Ms2Reader, MspReader
 from .thermo import ThermoReader
@@ -152,9 +153,9 @@ class CentroidConfig:
     """
 
     mz_tolerance: float = 8.0
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm"
+    mz_tolerance_unit: ToleranceUnit = "ppm"
     im_tolerance: float = 0.1
-    im_tolerance_type: Literal["relative", "absolute"] = "relative"
+    im_tolerance_unit: IMToleranceUnit = "relative"
     min_peaks: int = 3
     noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None
 
@@ -260,12 +261,12 @@ class DReaderMs2Lookup:
 
 
 def _tdf_polarity(value: str | None) -> Polarity | None:
-    """Map tdfpy's ``Polarity`` literal (``"positive"`` / ``"negative"``) to spxtacular's enum."""
+    """Narrow tdfpy's ``Polarity`` literal (``"positive"`` / ``"negative"``) to tacular's."""
     match value:
         case "positive":
-            return Polarity.POSITIVE
+            return "positive"
         case "negative":
-            return Polarity.NEGATIVE
+            return "negative"
         case _:
             return None
 
@@ -346,9 +347,9 @@ class DReader:
         return obj.centroid(
             centroid=tdfpy.MergePeaksCentroider(
                 mz_tolerance=cfg.mz_tolerance,
-                mz_tolerance_type=cfg.mz_tolerance_type,
+                mz_tolerance_unit=cfg.mz_tolerance_unit,
                 im_tolerance=cfg.im_tolerance,
-                im_tolerance_type=cfg.im_tolerance_type,
+                im_tolerance_unit=cfg.im_tolerance_unit,
                 min_peaks=cfg.min_peaks,
             ),
             noise=cfg.noise_filter,
@@ -1059,7 +1060,7 @@ class MzmlReader:
             injection_time=spec.ion_injection_time,
             total_ion_current=spec.total_ion_current,
             mz_range=spec.mz_range,
-            polarity=Polarity(polarity) if polarity is not None else None,
+            polarity=polarity,
             collision_energy=collision_energies[0] if collision_energies else None,
             activation_type=activation_types[0] if activation_types else None,
             precursors=precursors if precursors else None,

@@ -55,7 +55,7 @@ src/spxtacular/
   __init__.py        # public re-exports + __version__ (version source for hatch)
   core.py            # Peak, Precursor, Spectrum, MsnSpectrum, SpectrumType; every transform
                      # (filter, normalize, denoise, centroid, merge, deconvolute, decharge, ...)
-  enums.py           # ToleranceType, PeakSelection, Polarity, ActivationType, IMType, Analyzer + *Like aliases
+  enums.py           # PeakSelection, ActivationType, IMType, Analyzer + *Like aliases; unit/polarity checkers
   decon/greedy.py    # isotope-cluster finding helpers
   decon/scored.py    # greedy deconvolution with isotope-profile scoring (numba JIT if installed)
   isotopes.py        # IsotopeModel, BRAIN isotope distributions, built-in average-composition models
@@ -99,9 +99,10 @@ All names below are in `spxtacular.__all__` and import from the top level (check
 importing each one).
 
 - **Data model:** `Spectrum`, `MsnSpectrum`, `Peak`, `Precursor`, `SpectrumType`.
-- **Enums / aliases:** `ToleranceType`, `ToleranceLike`, `PeakSelection`, `PeakSelectionLike`,
-  `Polarity`, `PolarityLike`, `ActivationType`, `ActivationTypeLike`, `IMType`, `IMTypeLike`,
-  `Analyzer`, `AnalyzerLike`.
+- **Enums / aliases:** `PeakSelection`, `PeakSelectionLike`, `ActivationType`,
+  `ActivationTypeLike`, `IMType`, `IMTypeLike`, `Analyzer`, `AnalyzerLike`. Tolerance units and
+  polarity are plain lowercase strings typed by `tacular.types.ToleranceUnit` (`"da"`/`"ppm"`)
+  and `tacular.types.Polarity` (`"positive"`/`"negative"`); spxtacular does not re-export them.
 - **Isotope models:** `IsotopeModel`, `IsotopeModelLike`, `IsotopeModelType`, `ISOTOPE_MODELS`,
   `PEPTIDE_/GLYCAN_/LIPID_/DNA_/RNA_ISOTOPE_MODEL`, `brain_isotopic_distribution`,
   `resolve_isotope_model`.

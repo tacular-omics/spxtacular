@@ -63,7 +63,7 @@ def _provenance(model: IonizationModel) -> DeconvolutionProvenance:
         ionization_model=model,
         charge_range=(1, 5),
         tolerance=10.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         intensity_mode="total",
         min_intensity=0.0,
         min_score=0.0,
@@ -189,7 +189,7 @@ def test_deconvolution_records_models_and_parameters() -> None:
         max_isotope_gaps=1,
         max_isotopes=12,
         im_tolerance=0.03,
-        im_tolerance_type="absolute",
+        im_tolerance_unit="absolute",
         ionization_model="[M+Na]+",
     )
     assert result.deconvolution is not None
@@ -203,7 +203,7 @@ def test_deconvolution_records_models_and_parameters() -> None:
     assert result.deconvolution.max_isotope_gaps == 1
     assert result.deconvolution.max_isotopes == 12
     assert result.deconvolution.im_tolerance == 0.03
-    assert result.deconvolution.im_tolerance_type == "absolute"
+    assert result.deconvolution.im_tolerance_unit == "absolute"
 
 
 def test_provenance_roundtrips_native_persistence(tmp_path) -> None:
@@ -251,6 +251,8 @@ def test_schema_one_provenance_remains_readable() -> None:
     value["schema_version"] = 1
     value["isotope_model"] = "peptide"
     value.pop("isotope_model_definition")
+    value["tolerance_type"] = value.pop("tolerance_unit")
+    value["im_tolerance_type"] = value.pop("im_tolerance_unit")
 
     restored = DeconvolutionProvenance.from_dict(value)
 

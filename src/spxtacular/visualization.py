@@ -34,11 +34,10 @@ from .chromatogram import Chromatogram
 from .core import Spectrum, SpectrumType
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceLike,
-    ToleranceType,
+    check_tolerance_unit,
 )
 from .errors import SpxtacularError
 from .figspec import (
@@ -287,8 +286,8 @@ def _ion_type(fragment: Any) -> str:
     return str(ion.value if hasattr(ion, "value") else ion)
 
 
-def _unit_of(tolerance_type: ToleranceLike) -> Literal["ppm", "da"]:
-    return "ppm" if ToleranceType(str(tolerance_type).lower()) == ToleranceType.PPM else "da"
+def _unit_of(tolerance_unit: ToleranceUnit) -> ToleranceUnit:
+    return check_tolerance_unit(tolerance_unit)
 
 
 def _error_unit(unit: str) -> Literal["ppm", "da"]:
@@ -650,7 +649,7 @@ def _similarity_value(
     bottom: Spectrum,
     similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None,
     tolerance: float,
-    tolerance_type: ToleranceLike,
+    tolerance_unit: ToleranceUnit,
 ) -> tuple[str, float] | None:
     if similarity is None:
         return None
@@ -660,16 +659,16 @@ def _similarity_value(
 
     name = str(similarity).lower()
     if name == "cosine":
-        return "cosine", cosine(top, bottom, tolerance=tolerance, tolerance_type=tolerance_type)
+        return "cosine", cosine(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
     if name == "modified_cosine":
         mzs = [_first_precursor_mz(s) for s in (top, bottom)]
         if mzs[0] is None or mzs[1] is None:
             raise SpxtacularError("similarity='modified_cosine' needs a precursor m/z on both spectra")
         return "modified cosine", modified_cosine(
-            top, bottom, mzs[0], mzs[1], tolerance=tolerance, tolerance_type=tolerance_type
+            top, bottom, mzs[0], mzs[1], tolerance=tolerance, tolerance_unit=tolerance_unit
         )
     if name == "entropy":
-        return "entropy similarity", entropy_similarity(top, bottom, tolerance=tolerance, tolerance_type=tolerance_type)
+        return "entropy similarity", entropy_similarity(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
     raise SpxtacularError(
         f"similarity must be 'cosine', 'modified_cosine', 'entropy', a number, or None; got {similarity!r}"
     )
@@ -687,7 +686,7 @@ def mirror_plot(
     show_charges: bool = True,
     show_scores: bool = True,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
@@ -731,7 +730,7 @@ def mirror_plot(
         Without fragments: colour the upper sticks by charge state.
     show_scores:
         Without fragments: label upper peaks with isotope-profile scores.
-    tolerance, tolerance_type, peak_selection:
+    tolerance, tolerance_unit, peak_selection:
         Fragment matching and similarity parameters.
     max_labels:
         Label cap per half.
@@ -748,7 +747,7 @@ def mirror_plot(
                 s,
                 fragments,
                 tolerance=tolerance,
-                tolerance_type=tolerance_type,
+                tolerance_unit=tolerance_unit,
                 peak_selection=peak_selection,
                 max_labels=max_labels,
                 theme_mode=mode,
@@ -844,7 +843,7 @@ def mirror_plot(
             AxText(1.0, 0.0, RichText.plain(lower), fig_style.font_size, name_color, dx=-inset, dy=inset,
                    ha="right", va="bottom", name="half_name")
         )  # fmt: skip
-    sim = _similarity_value(deconvoluted, raw, similarity, tolerance, tolerance_type)
+    sim = _similarity_value(deconvoluted, raw, similarity, tolerance, tolerance_unit)
     if sim is not None:
         marks.append(
             AxText(1.0, 1.0, RichText.plain(f"{sim[0]} {sim[1]:.3f}"), fig_style.font_size, name_color,
@@ -1025,7 +1024,7 @@ def annotate_spectrum(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     title: str | None = None,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
@@ -1057,7 +1056,7 @@ def annotate_spectrum(
         Centroid spectrum to plot.
     fragments:
         Fragment objects from peptacular to match against peaks.
-    tolerance, tolerance_type:
+    tolerance, tolerance_unit:
         Matching tolerance and its unit (``"ppm"`` or ``"Da"``).
     title:
         Plot title.
@@ -1081,7 +1080,7 @@ def annotate_spectrum(
         fragment covers: above-left for a/b/c ions, below-right for x/y/z.
     mass_error_panel:
         Add a strip under the spectrum with each match's mass error, in the
-        unit of ``tolerance_type``, spanning the tolerance.
+        unit of ``tolerance_unit``, spanning the tolerance.
     absolute_axis:
         Add a right-hand axis in absolute intensity.
     backend, style, size, **layout_kwargs:
@@ -1092,7 +1091,7 @@ def annotate_spectrum(
         spectrum,
         fragments,
         tolerance=tolerance,
-        tolerance_type=tolerance_type,
+        tolerance_unit=tolerance_unit,
         peak_selection=peak_selection,
         include_sequence=include_sequence,
         max_labels=max_labels,
@@ -1108,7 +1107,7 @@ def annotate_spectrum(
     need_matches = peptide is not None or mass_error_panel
     matches = (
         match_fragments(
-            spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
         )
         if need_matches
         else []
@@ -1140,7 +1139,7 @@ def annotate_spectrum(
 
     panels = [panel]
     if mass_error_panel:
-        unit = _unit_of(tolerance_type)
+        unit = _unit_of(tolerance_unit)
         err_marks = _error_marks(
             matches,
             unit,
@@ -1176,7 +1175,7 @@ def sequence_coverage_plot(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
@@ -1200,7 +1199,7 @@ def sequence_coverage_plot(
         Residue sequence or ProForma string (modifications are marked, not spelled out).
     fragments:
         Fragment objects to match, as for :func:`~spxtacular.matching.match_fragments`.
-    tolerance, tolerance_type, peak_selection:
+    tolerance, tolerance_unit, peak_selection:
         Matching parameters.
     title:
         Plot title. Defaults to the covered-bond count.
@@ -1214,7 +1213,7 @@ def sequence_coverage_plot(
     if n_res == 0:
         raise SpxtacularError("peptide must contain at least one residue")
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
     )
     n_bonds, c_bonds = _bond_evidence(matches, n_res)
 
@@ -1301,7 +1300,7 @@ def mass_error_plot(
     fragments: FragmentInput,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     unit: str = "ppm",
     title: str | None = None,
@@ -1324,7 +1323,7 @@ def mass_error_plot(
         Spectrum to plot.
     fragments:
         Fragment objects from peptacular to match against peaks.
-    tolerance, tolerance_type, peak_selection:
+    tolerance, tolerance_unit, peak_selection:
         Matching parameters.
     unit:
         Error unit: ``"ppm"`` or ``"da"``.
@@ -1338,7 +1337,7 @@ def mass_error_plot(
     key, fig_style, mode = _setup(backend, style, theme_mode)
     err_unit = _error_unit(unit)
     matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
     )
     marks = _error_marks(
         matches,
@@ -1349,7 +1348,7 @@ def mass_error_plot(
         max_labels=max_labels,
         max_size=fig_style.font_size * 1.6,
     )
-    y_axis = _error_axis(err_unit, tolerance, _unit_of(tolerance_type), _errors(matches, err_unit))
+    y_axis = _error_axis(err_unit, tolerance, _unit_of(tolerance_unit), _errors(matches, err_unit))
     y_axis.headroom = True
     panel = Panel(marks=marks, x=Axis(label=mz_label(), pad=0.04), y=y_axis)
     default = "Mass errors" if matches else "Mass errors (no matches)"
@@ -1364,7 +1363,7 @@ def facet_plot(
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     include_sequence: bool = False,
     unit: str = "ppm",
@@ -1391,7 +1390,7 @@ def facet_plot(
         Optional second spectrum, drawn downward in the last panel.
     title:
         Plot title.
-    tolerance, tolerance_type, peak_selection, include_sequence:
+    tolerance, tolerance_unit, peak_selection, include_sequence:
         Matching parameters.
     unit:
         Mass-error unit: ``"ppm"`` or ``"da"``.
@@ -1407,7 +1406,7 @@ def facet_plot(
             spectrum,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
             max_labels=max_labels,
@@ -1423,7 +1422,7 @@ def facet_plot(
     extra = 0.0
     if fragments is not None:
         matches = match_fragments(
-            spectrum, fragments, tolerance=tolerance, tolerance_type=tolerance_type, peak_selection=peak_selection
+            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
         )
         err = _error_marks(
             matches,
@@ -1438,7 +1437,7 @@ def facet_plot(
             Panel(
                 marks=err,
                 x=Axis(label=mz_label()),
-                y=_error_axis(err_unit, tolerance, _unit_of(tolerance_type), _errors(matches, err_unit), short=True),
+                y=_error_axis(err_unit, tolerance, _unit_of(tolerance_unit), _errors(matches, err_unit), short=True),
                 weight=0.45,
                 share_x=True,
             )
@@ -1451,7 +1450,7 @@ def facet_plot(
                 mirror_spectrum,
                 fragments,
                 tolerance=tolerance,
-                tolerance_type=tolerance_type,
+                tolerance_unit=tolerance_unit,
                 peak_selection=peak_selection,
                 max_labels=max_labels,
                 theme_mode=mode,
@@ -1610,7 +1609,7 @@ def plot_xic(
     targets: Sequence[float] | float,
     *,
     tolerance: float = 20.0,
-    tolerance_type: ToleranceLike = "ppm",
+    tolerance_unit: ToleranceUnit = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Literal["sum", "max"] = "sum",
     title: str | None = None,
@@ -1636,11 +1635,11 @@ def plot_xic(
         spectra,
         targets,
         tolerance=tolerance,
-        tolerance_type=tolerance_type,
+        tolerance_unit=tolerance_unit,
         im_window=im_window,
         aggregate=aggregate,
     )
-    unit = "ppm" if str(tolerance_type).lower() == "ppm" else "Da"
+    unit = "ppm" if str(tolerance_unit).lower() == "ppm" else "Da"
     default_title = f"Extracted ion chromatogram{'s' if len(chroms) > 1 else ''} (±{tolerance:g} {unit})"
     return plot_chromatogram(
         chroms,

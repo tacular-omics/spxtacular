@@ -32,7 +32,7 @@ def _sodium_spectrum() -> Spectrum:
             ionization_model=SODIATED,
             charge_range=(1, 1),
             tolerance=10.0,
-            tolerance_type="ppm",
+            tolerance_unit="ppm",
             intensity_mode="total",
             min_intensity=0.0,
             min_score=0.0,

@@ -155,7 +155,7 @@ def has_peak(
     target_mz: float,
     *,
     tolerance: float = 0.01,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tolerance: float = 0.01,
@@ -166,7 +166,7 @@ Returns `True` if at least one peak matches all supplied criteria.
 
 ```python
 spec.has_peak(500.1, tolerance=0.02)
-spec.has_peak(500.1, tolerance=10, tolerance_type="ppm", target_charge=2)
+spec.has_peak(500.1, tolerance=10, tolerance_unit="ppm", target_charge=2)
 ```
 
 #### `get_peak`
@@ -177,7 +177,7 @@ def get_peak(
     target_mz: float,
     *,
     tolerance: float = 0.01,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tolerance: float = 0.01,
@@ -188,7 +188,7 @@ def get_peak(
 Returns a single matching peak, or `None` if no match is found. When multiple peaks fall within tolerance, `peak_selection="largest"` picks the most intense; `peak_selection="closest"` picks the nearest in m/z. Use `get_peaks` to get all of them.
 
 ```python
-peak = spec.get_peak(800.2, tolerance=5, tolerance_type="ppm")
+peak = spec.get_peak(800.2, tolerance=5, tolerance_unit="ppm")
 if peak:
     print(f"Found: {peak}")
 ```
@@ -201,7 +201,7 @@ def get_peaks(
     target_mz: float,
     *,
     tolerance: float = 0.01,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     target_charge: int | None = None,
     target_im: float | None = None,
     im_tolerance: float = 0.01,
@@ -351,9 +351,9 @@ centroided = profile_spec.centroid()
 def merge(
     self,
     mz_tolerance: float = 0.01,
-    mz_tolerance_type: Literal["ppm", "da"] = "da",
+    mz_tolerance_unit: Literal["ppm", "da"] = "da",
     im_tolerance: float = 0.05,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     inplace: bool = False,
 ) -> Self
 ```
@@ -361,8 +361,8 @@ def merge(
 Merges nearby peaks using a greedy intensity-ordered strategy. Peaks are processed from most to least intense; each unused neighbour within the tolerance window is merged into the current peak. The merged peak carries the intensity-weighted average m/z (and ion mobility if present) and the summed intensity. Charge arrays are preserved — only peaks with matching charge are merged together.
 
 ```python
-merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
-merged = spec.merge(mz_tolerance=5, mz_tolerance_type="ppm")
+merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
+merged = spec.merge(mz_tolerance=5, mz_tolerance_unit="ppm")
 ```
 
 #### `deconvolute`
@@ -371,7 +371,7 @@ merged = spec.merge(mz_tolerance=5, mz_tolerance_type="ppm")
 def deconvolute(
     self,
     tolerance: float = 50,
-    tolerance_type: Literal["ppm", "da"] = "ppm",
+    tolerance_unit: Literal["ppm", "da"] = "ppm",
     charge_range: tuple[int, int] = (1, 3),
     intensity: Literal["base", "total"] = "total",
     max_dpeaks: int = 2000,
@@ -384,7 +384,7 @@ def deconvolute(
     max_isotope_gaps: int = 0,
     max_isotopes: int | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
@@ -394,7 +394,7 @@ Assigns each peak to an isotope cluster and records the charge state. Returns a 
 | Parameter | Description |
 |---|---|
 | `tolerance` | Peak matching tolerance (default 50 ppm) |
-| `tolerance_type` | `"ppm"` (default) or `"da"` |
+| `tolerance_unit` | `"ppm"` (default) or `"da"` |
 | `charge_range` | `(min_charge, max_charge)` inclusive; default `(1, 3)` |
 | `intensity` | `"total"` sums matched peaks; `"base"` uses observed A+0 or zero when it is absent |
 | `max_dpeaks` | Maximum output peaks (default 2000) |
@@ -406,7 +406,7 @@ Assigns each peak to an isotope cluster and records the charge state. Returns a 
 | `max_isotope_gaps` | Missing positions allowed before stopping one direction. Default `0`. |
 | `max_isotopes` | Optional hard envelope-length limit. Default `None` is adaptive. |
 | `im_tolerance` | Candidate-to-seed mobility tolerance when ion mobility is available. Default `0.05`. |
-| `im_tolerance_type` | `"relative"` (default) or `"absolute"`. |
+| `im_tolerance_unit` | `"relative"` (default) or `"absolute"`. |
 | `ionization_model` | Adduct preset, signed carrier mass, or custom model. Defaults from scan polarity |
 
 After deconvolution the `charge` array follows the [charge conventions](#charge-conventions) table: `> 0` for assigned clusters, `-1` for singletons.
@@ -414,7 +414,7 @@ After deconvolution the `charge` array follows the [charge conventions](#charge-
 See [Deconvolution](deconvolution.md) for a detailed walkthrough.
 
 ```python
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
 ```
 
 #### `decharge`
@@ -676,7 +676,7 @@ def annotate(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
@@ -690,7 +690,7 @@ def annotate(
 Convenience wrapper around `annotate_spectrum()`. Plots the spectrum with matched fragment ion labels — matched peaks are coloured by ion series, unmatched peaks rendered in grey.
 
 ```python
-fig = ms2.annotate(fragments, tolerance=10, tolerance_type="ppm")
+fig = ms2.annotate(fragments, tolerance=10, tolerance_unit="ppm")
 fig.show()
 ```
 
@@ -701,7 +701,7 @@ def mass_error_plot(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     unit: Literal["ppm", "da"] = "ppm",
     title: str | None = None,
@@ -712,7 +712,7 @@ def mass_error_plot(
 Bubble chart of fragment mass errors vs m/z. Each matched fragment is a bubble whose x-position is the observed m/z, y-position is the mass error (ppm or Da), and size is proportional to the peak intensity. Bubbles are coloured by ion series. Useful for spotting calibration drifts or systematic mass errors.
 
 ```python
-ms2.mass_error_plot(fragments, tolerance=20, tolerance_type="ppm", unit="ppm").show()
+ms2.mass_error_plot(fragments, tolerance=20, tolerance_unit="ppm", unit="ppm").show()
 ```
 
 #### `facet_plot`
@@ -724,7 +724,7 @@ def facet_plot(
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     **layout_kwargs,
@@ -765,7 +765,7 @@ def annot_plot_table(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
 ) -> pd.DataFrame
@@ -774,7 +774,7 @@ def annot_plot_table(
 Like `plot_table()` but matched peaks are coloured by ion series and labelled with their fragment identifier. Unmatched peaks are grey. Modify the returned table and call `plot_from_table()` to render.
 
 ```python
-tbl = spec.annot_plot_table(fragments, tolerance=10, tolerance_type="ppm")
+tbl = spec.annot_plot_table(fragments, tolerance=10, tolerance_unit="ppm")
 tbl.loc[tbl["label"] != "", "label_size"] = 14
 fig = plot_from_table(tbl, title="Annotated")
 fig.show()
@@ -795,7 +795,7 @@ def match_fragments(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]
@@ -810,7 +810,7 @@ def score(
     self,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     predicted_intensities: Sequence[float] | None = None,
 ) -> dict[str, float]
@@ -830,7 +830,7 @@ def remove_precursor_peak(
     precursor_mz: float | None = None,
     precursor_charge: int | None = None,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     isotopes: int | Literal["auto"] = "auto",
     isotope_threshold: float = 0.01,
     remove_charge_states: bool = True,
@@ -853,7 +853,7 @@ When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method a
 
 ```python
 # Auto from MsnSpectrum.precursors
-cleaned = msn.remove_precursor_peak(tolerance=10, tolerance_type="ppm")
+cleaned = msn.remove_precursor_peak(tolerance=10, tolerance_unit="ppm")
 
 # Explicit
 cleaned = spec.remove_precursor_peak(precursor_mz=450.25, precursor_charge=2)
@@ -928,7 +928,7 @@ replicates = [spec1, spec2, spec3]          # e.g. the same precursor across run
 
 consensus = Spectrum.combine(
     [s.normalize(method="tic") for s in replicates]
-).merge(mz_tolerance=10, mz_tolerance_type="ppm")
+).merge(mz_tolerance=10, mz_tolerance_unit="ppm")
 ```
 
 Peaks seen in every replicate accumulate intensity across the merge window while one-off noise
@@ -961,7 +961,7 @@ class MsnSpectrum(Spectrum):
     im_type: IMType | str | None = None       # e.g. IMType.OOK0, "drift_time_ms"
 
     # Instrument settings
-    polarity: Polarity | Literal["positive", "negative"] | None = None
+    polarity: Literal["positive", "negative"] | None = None
 
     # Optional metadata
     resolution: float | None = None
@@ -980,7 +980,7 @@ All fields are keyword-only (`kw_only=True`), including the inherited `Spectrum`
 `mz_range` / `im_range` describe the **acquisition** window of the scan; `isolation_mz_range` /
 `isolation_ook0_range` describe the **precursor isolation** window used to select ions for MS2.
 
-`im_type` and `polarity` are **closed vocabulary**: a string must name a member (case-insensitive), anything else raises `SpxtacularError`. `analyzer` and `activation_type` are **open vocabulary**: a member name in any case or a PSI-MS accession (e.g. `"MS:1002481"` from `DReader`) becomes the enum member, and unknown vendor strings are kept as they are. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `Polarity`, `ActivationType`, `IMType`, and `Analyzer`.
+`im_type` is **closed vocabulary**: a string must name a member (case-insensitive), anything else raises `SpxtacularError`. `polarity` is the plain string `"positive"` or `"negative"` (`tacular.types.Polarity`), lowercase only; anything else raises `SpxtacularError`. `analyzer` and `activation_type` are **open vocabulary**: a member name in any case or a PSI-MS accession (e.g. `"MS:1002481"` from `DReader`) becomes the enum member, and unknown vendor strings are kept as they are. See [API reference — Metadata enums](api.md#metadata-enums) for the full member list of `ActivationType`, `IMType`, and `Analyzer`.
 
 ### Precursor
 

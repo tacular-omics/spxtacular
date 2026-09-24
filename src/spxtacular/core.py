@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
     from tacular import IsobaricTagInfo
-    from tacular.types import ToleranceUnit
 
     from .matching import FragmentInput, MatchedFragment
     from .reporter import ImpurityTable, ReporterIons
@@ -21,13 +20,14 @@ if TYPE_CHECKING:
 
 import numpy as np
 from numpy.typing import NDArray
+from tacular.types import Polarity, ToleranceUnit
 
 from ._merge import merge_peaks as _merge_peaks
 from .decon.greedy import NEUTRON_MASS
 from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
-    DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+    DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     ActivationType,
     ActivationTypeLike,
     Analyzer,
@@ -36,11 +36,10 @@ from .enums import (
     IMTypeLike,
     PeakSelection,
     PeakSelectionLike,
-    Polarity,
-    PolarityLike,
-    ToleranceLike,
-    ToleranceType,
     _SpxEnum,
+    check_im_tolerance_unit,
+    check_polarity,
+    check_tolerance_unit,
 )
 from .errors import SpxtacularError
 from .ionization import (
@@ -79,11 +78,17 @@ from .utils import precursor_charge_magnitude
 
 
 def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
-    """Validate canonical schema-v2 deconvolution provenance metadata."""
+    """Validate deconvolution provenance metadata and return it as canonical schema v3.
+
+    Provenance schema version 2 (spxtacular 0.8, keys ``tolerance_type`` and
+    ``im_tolerance_type``) is accepted so 0.8 files still load; it is returned as v3.
+    """
     if value is None:
         return None
     path = "payload.metadata.deconvolution"
     payload = require_mapping(value, path)
+    legacy = payload.get("schema_version") == 2
+    unit_keys = _LEGACY_PROVENANCE_UNIT_KEYS if legacy else ("tolerance_unit", "im_tolerance_unit")
     expected = {
         "schema_version",
         "isotope_model",
@@ -91,7 +96,6 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
         "ionization_model",
         "charge_range",
         "tolerance",
-        "tolerance_type",
         "intensity_mode",
         "min_intensity",
         "min_score",
@@ -100,11 +104,11 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
         "max_isotope_gaps",
         "max_isotopes",
         "im_tolerance",
-        "im_tolerance_type",
+        *unit_keys,
     }
     require_exact_keys(payload, expected, path)
-    if require_integer(payload["schema_version"], f"{path}.schema_version") != 2:
-        raise SpxtacularError(f"{path}.schema_version must be 2")
+    if require_integer(payload["schema_version"], f"{path}.schema_version") not in (2, 3):
+        raise SpxtacularError(f"{path}.schema_version must be 3")
     charge_range = require_integer_array_or_none(payload["charge_range"], f"{path}.charge_range")
     if charge_range is None or len(charge_range) != 2:
         raise SpxtacularError(f"{path}.charge_range must contain exactly two integers")
@@ -114,9 +118,17 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
         canonical = to_json_value(DeconvolutionProvenance.from_dict(dict(payload)).to_dict(), path)
     except (KeyError, TypeError, ValueError) as error:
         raise SpxtacularError(f"{path} is invalid: {error}") from error
-    if canonical != to_json_value(payload, path):
-        raise SpxtacularError(f"{path} must use canonical schema-v2 value types and fields")
+    comparable = dict(canonical)
+    if legacy:
+        comparable["schema_version"] = 2
+        for new_key, old_key in zip(("tolerance_unit", "im_tolerance_unit"), unit_keys, strict=True):
+            comparable[old_key] = comparable.pop(new_key)
+    if comparable != to_json_value(payload, path):
+        raise SpxtacularError(f"{path} must use canonical schema-v3 value types and fields")
     return canonical
+
+
+_LEGACY_PROVENANCE_UNIT_KEYS = ("tolerance_type", "im_tolerance_type")
 
 
 def _v1_isolation_range(value: Any) -> Any:
@@ -269,14 +281,14 @@ def _centroid_peaks(
     return centers[valid], heights[valid], mobility
 
 
-def _is_ppm(tolerance_type: ToleranceLike) -> bool:
-    """Resolve a tolerance type to a ppm/Da flag, rejecting unknown values.
+def _is_ppm(tolerance_unit: ToleranceUnit) -> bool:
+    """Resolve a tolerance unit to a ppm/Da flag, rejecting unknown values.
 
-    Comparing ``tolerance_type == "ppm"`` directly is case-sensitive and falls
-    through to Da for anything else, so ``"PPM"`` silently yields a window a
-    million times too wide.  Coercing through the enum raises instead.
+    Comparing ``tolerance_unit == "ppm"`` directly falls through to Da for anything
+    else, so ``"PPM"`` would silently yield a window a million times too wide.
+    :func:`check_tolerance_unit` raises instead.
     """
-    return ToleranceType(str(tolerance_type).lower()) == ToleranceType.PPM
+    return check_tolerance_unit(tolerance_unit) == "ppm"
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,14 +506,14 @@ class Spectrum:
         target_mz: float,
         *,
         tolerance: float = 0.01,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance_unit: ToleranceUnit = "da",
         target_charge: int | None = None,
         target_im: float | None = None,
         im_tolerance: float = 0.01,
     ) -> bool:
         """Check if spectrum contains a peak matching criteria."""
         matches = self._find_matching_peaks(
-            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+            target_mz, tolerance, tolerance_unit, target_charge, target_im, im_tolerance
         )
         return len(matches) > 0
 
@@ -510,7 +522,7 @@ class Spectrum:
         target_mz: float,
         *,
         tolerance: float = 0.01,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance_unit: ToleranceUnit = "da",
         target_charge: int | None = None,
         target_im: float | None = None,
         im_tolerance: float = 0.01,
@@ -527,7 +539,7 @@ class Spectrum:
             raise SpxtacularError("get_peak returns one peak; use get_peaks for peak_selection='all'")
 
         matches = self._find_matching_peaks(
-            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+            target_mz, tolerance, tolerance_unit, target_charge, target_im, im_tolerance
         )
 
         if len(matches) == 0:
@@ -552,14 +564,14 @@ class Spectrum:
         target_mz: float,
         *,
         tolerance: float = 0.01,
-        tolerance_type: ToleranceLike = ToleranceType.DA,
+        tolerance_unit: ToleranceUnit = "da",
         target_charge: int | None = None,
         target_im: float | None = None,
         im_tolerance: float = 0.01,
     ) -> list[Peak]:
         """Get all peaks matching criteria."""
         matches = self._find_matching_peaks(
-            target_mz, tolerance, tolerance_type, target_charge, target_im, im_tolerance
+            target_mz, tolerance, tolerance_unit, target_charge, target_im, im_tolerance
         )
 
         return [
@@ -577,14 +589,14 @@ class Spectrum:
         self,
         target_mz: float,
         tolerance: float,
-        tolerance_type: ToleranceLike,
+        tolerance_unit: ToleranceUnit,
         target_charge: int | None,
         target_im: float | None,
         im_tolerance: float,
     ) -> NDArray[np.int64]:
         """Find indices of peaks matching criteria."""
         # m/z tolerance
-        if _is_ppm(tolerance_type):
+        if _is_ppm(tolerance_unit):
             tol_da = target_mz * tolerance / 1e6
         else:
             tol_da = tolerance
@@ -806,9 +818,9 @@ class Spectrum:
         self,
         *,
         mz_tolerance: float = 0.01,
-        mz_tolerance_type: ToleranceLike = ToleranceType.DA,
+        mz_tolerance_unit: ToleranceUnit = "da",
         im_tolerance: float = 0.05,
-        im_tolerance_type: Literal["relative", "absolute"] = "relative",
+        im_tolerance_unit: Literal["relative", "absolute"] = "relative",
         inplace: bool = False,
     ) -> Self:
         """Merge nearby peaks within a given m/z (and optionally ion-mobility) tolerance.
@@ -823,12 +835,12 @@ class Spectrum:
         ----------
         mz_tolerance:
             m/z tolerance for merging. Default ``0.01``.
-        mz_tolerance_type:
+        mz_tolerance_unit:
             ``"da"`` or ``"ppm"``. Default ``"da"``.
         im_tolerance:
             Ion-mobility tolerance for merging (only used when ``self.im`` is
             present). Default ``0.05``.
-        im_tolerance_type:
+        im_tolerance_unit:
             ``"relative"`` (fraction of current peak's IM) or ``"absolute"``
             (in IM units). Default ``"relative"``.
         inplace:
@@ -839,14 +851,9 @@ class Spectrum:
         Self
             The merged spectrum.
         """
-        try:
-            is_ppm = _is_ppm(mz_tolerance_type)
-        except ValueError as exc:
-            raise SpxtacularError(f"mz_tolerance_type must be 'ppm' or 'da'; got {mz_tolerance_type!r}") from exc
+        is_ppm = check_tolerance_unit(mz_tolerance_unit, "mz_tolerance_unit") == "ppm"
 
-        im_tol_type = im_tolerance_type.lower()
-        if im_tol_type not in ("relative", "absolute"):
-            raise SpxtacularError("im_tolerance_type must be 'relative' or 'absolute'")
+        im_tol_unit = check_im_tolerance_unit(im_tolerance_unit)
 
         # The seed always belongs to its own cluster: im=NaN compares False even
         # against itself, and a merge must never lose a peak (see _merge.py).
@@ -859,7 +866,7 @@ class Spectrum:
             mz_tolerance=float(mz_tolerance),
             is_ppm=is_ppm,
             im_tolerance=float(im_tolerance),
-            im_relative=im_tol_type == "relative",
+            im_relative=im_tol_unit == "relative",
         )
 
         # Merging sums intensities, so any prior normalisation no longer holds;
@@ -1264,7 +1271,7 @@ class Spectrum:
         fragments: "FragmentInput",
         *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
     ) -> "pd.DataFrame":
@@ -1279,8 +1286,8 @@ class Spectrum:
             Fragment objects from peptacular to match against peaks.
         tolerance:
             Matching tolerance.
-        tolerance_type:
-            ``"Da"`` or ``"ppm"``.
+        tolerance_unit:
+            ``"da"`` or ``"ppm"``.
         peak_selection:
             ``"closest"``, ``"largest"``, or ``"all"``.
         include_sequence:
@@ -1296,7 +1303,7 @@ class Spectrum:
             self,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
         )
@@ -1306,7 +1313,7 @@ class Spectrum:
         fragments: "FragmentInput",
         *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         title: str | None = None,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
@@ -1326,8 +1333,8 @@ class Spectrum:
             Fragment objects from peptacular to match against peaks.
         tolerance:
             Matching tolerance.
-        tolerance_type:
-            ``"Da"`` or ``"ppm"``.
+        tolerance_unit:
+            ``"da"`` or ``"ppm"``.
         title:
             Plot title.
         peak_selection:
@@ -1350,7 +1357,7 @@ class Spectrum:
             self,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             title=title,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
@@ -1364,7 +1371,7 @@ class Spectrum:
         self,
         *,
         tolerance: float = 50,
-        tolerance_type: ToleranceLike = ToleranceType.PPM,
+        tolerance_unit: ToleranceUnit = "ppm",
         charge_range: tuple[int, int] = (1, 3),
         intensity: Literal["base", "total"] = "total",
         max_dpeaks: int = 2000,
@@ -1377,14 +1384,14 @@ class Spectrum:
         max_isotope_gaps: int = 0,
         max_isotopes: int | None = None,
         im_tolerance: float = 0.05,
-        im_tolerance_type: Literal["relative", "absolute"] = "relative",
+        im_tolerance_unit: Literal["relative", "absolute"] = "relative",
         ionization_model: IonizationModelLike | None = None,
     ) -> Self:
         """Collapse isotope envelopes and assign charge magnitudes.
 
         Parameters
         ----------
-        tolerance, tolerance_type:
+        tolerance, tolerance_unit:
             Isotope peak matching window. The default is 50 ppm.
         charge_range:
             Inclusive minimum and maximum positive charge magnitudes to test.
@@ -1411,7 +1418,7 @@ class Spectrum:
             Missing isotope positions allowed before expansion stops.
         max_isotopes:
             Optional hard envelope-length limit. ``None`` is adaptive.
-        im_tolerance, im_tolerance_type:
+        im_tolerance, im_tolerance_unit:
             Ion-mobility gate for spectra that carry an ``im`` array.
         ionization_model:
             Adduct preset, signed carrier mass, or custom ionization model.
@@ -1444,7 +1451,7 @@ class Spectrum:
             # isotope spacings it reports are shoulders of one ion, not ions.
             raise SpxtacularError("deconvolute() requires centroid data; call .centroid() first")
 
-        is_ppm = _is_ppm(tolerance_type)
+        is_ppm = _is_ppm(tolerance_unit)
         if min_intensity == "min":
             # Guard the reduction: an empty spectrum has no min. _deconvolve handles
             # the empty case and returns empty arrays, giving an empty DECONVOLUTED spectrum.
@@ -1472,7 +1479,7 @@ class Spectrum:
             max_isotopes=max_isotopes,
             ion_mobility=self.im,
             im_tolerance=im_tolerance,
-            im_tolerance_type=im_tolerance_type,
+            im_tolerance_unit=im_tolerance_unit,
             carrier_mass=resolved_ionization.carrier_mass,
         )
 
@@ -1494,7 +1501,7 @@ class Spectrum:
                 ionization_model=resolved_ionization,
                 charge_range=charge_range,
                 tolerance=float(tolerance),
-                tolerance_type="ppm" if is_ppm else "da",
+                tolerance_unit="ppm" if is_ppm else "da",
                 intensity_mode=str(intensity).lower(),
                 min_intensity=resolved_min_intensity,
                 min_score=float(min_score),
@@ -1503,7 +1510,7 @@ class Spectrum:
                 max_isotope_gaps=max_isotope_gaps,
                 max_isotopes=max_isotopes,
                 im_tolerance=float(im_tolerance),
-                im_tolerance_type=str(im_tolerance_type).lower(),
+                im_tolerance_unit=check_im_tolerance_unit(im_tolerance_unit),
             ),
             # Cluster intensities are sums (or base peaks) of the input peaks,
             # so a prior normalisation no longer holds; clearing the flag lets
@@ -1910,7 +1917,7 @@ class Spectrum:
         fragments: "FragmentInput",
         *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         is_monoisotopic: bool = True,
     ) -> "list[MatchedFragment]":
@@ -1926,7 +1933,7 @@ class Spectrum:
             self,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             is_monoisotopic=is_monoisotopic,
         )
@@ -1936,7 +1943,7 @@ class Spectrum:
         fragments: "FragmentInput",
         *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         predicted_intensities: "Sequence[float] | None" = None,
     ) -> "dict[str, float]":
@@ -1950,7 +1957,7 @@ class Spectrum:
             self,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             predicted_intensities=predicted_intensities,
         )
@@ -1994,7 +2001,7 @@ class Spectrum:
         precursor_mz: float | None = None,
         precursor_charge: int | None = None,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         isotopes: int | Literal["auto"] = "auto",
         isotope_threshold: float = 0.01,
         remove_charge_states: bool = True,
@@ -2030,8 +2037,8 @@ class Spectrum:
             automatic isotope detection.
         tolerance:
             Tolerance for matching precursor peaks.
-        tolerance_type:
-            ``"Da"`` or ``"ppm"``.
+        tolerance_unit:
+            ``"da"`` or ``"ppm"``.
         isotopes:
             Number of isotope peaks to remove. ``"auto"`` (default) uses the
             selected average-composition model to determine the significant
@@ -2140,7 +2147,7 @@ class Spectrum:
                         charge_targets.append(None)  # no charge filter for centroid
 
         # -- build removal mask -----------------------------------------------
-        is_ppm = _is_ppm(tolerance_type)
+        is_ppm = _is_ppm(tolerance_unit)
         mask = np.ones(len(self.mz), dtype=bool)
         for target, target_charge in zip(targets, charge_targets, strict=True):
             if is_ppm:
@@ -2281,7 +2288,7 @@ class Spectrum:
         fragments: "FragmentInput",
         *,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         unit: Literal["ppm", "da"] = "ppm",
         title: str | None = None,
@@ -2295,8 +2302,8 @@ class Spectrum:
             Fragment objects from peptacular to match against peaks.
         tolerance:
             Matching tolerance.
-        tolerance_type:
-            ``"Da"`` or ``"ppm"``.
+        tolerance_unit:
+            ``"da"`` or ``"ppm"``.
         peak_selection:
             ``"closest"``, ``"largest"``, or ``"all"``.
         unit:
@@ -2312,7 +2319,7 @@ class Spectrum:
             self,
             fragments,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             unit=unit,
             title=title,
@@ -2326,7 +2333,7 @@ class Spectrum:
         mirror_spectrum: "Spectrum | None" = None,
         title: str | None = None,
         tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-        tolerance_type: ToleranceLike = DEFAULT_FRAGMENT_TOLERANCE_TYPE,
+        tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
         **layout_kwargs,
@@ -2343,8 +2350,8 @@ class Spectrum:
             Plot title.
         tolerance:
             Matching tolerance.
-        tolerance_type:
-            ``"Da"`` or ``"ppm"``.
+        tolerance_unit:
+            ``"da"`` or ``"ppm"``.
         peak_selection:
             ``"closest"``, ``"largest"``, or ``"all"``.
         include_sequence:
@@ -2360,7 +2367,7 @@ class Spectrum:
             mirror_spectrum=mirror_spectrum,
             title=title,
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
             **layout_kwargs,
@@ -2491,7 +2498,7 @@ class MsnSpectrum(Spectrum):
     # -------------------------------------------------------------------------
     # Instrument Settings
     # -------------------------------------------------------------------------
-    polarity: PolarityLike | None = None
+    polarity: Polarity | None = None
 
     # -------------------------------------------------------------------------
     # Optional Metadata
@@ -2509,7 +2516,7 @@ class MsnSpectrum(Spectrum):
     def __post_init__(self) -> None:
         Spectrum.__post_init__(self)
         self.im_type = _closed_enum(self.im_type, IMType, "im_type")
-        self.polarity = _closed_enum(self.polarity, Polarity, "polarity")
+        self.polarity = check_polarity(self.polarity, "polarity")
         self.activation_type = _open_enum(self.activation_type, ActivationType, "activation_type")
         self.analyzer = _open_enum(self.analyzer, Analyzer, "analyzer")
         # Frozen Precursor values may be shared, but their list must be owned.

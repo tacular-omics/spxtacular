@@ -11,10 +11,6 @@ from .enums import (
     IMTypeLike,
     PeakSelection,
     PeakSelectionLike,
-    Polarity,
-    PolarityLike,
-    ToleranceLike,
-    ToleranceType,
 )
 from .errors import SpxtacularError
 from .figspec import FigureSpec, compose_figure, render
@@ -128,12 +124,8 @@ __all__ = [
     "Spectrum",
     "MsnSpectrum",
     "SpectrumType",
-    "ToleranceType",
-    "ToleranceLike",
     "PeakSelection",
     "PeakSelectionLike",
-    "Polarity",
-    "PolarityLike",
     "ActivationType",
     "ActivationTypeLike",
     "IMType",

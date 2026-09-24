@@ -25,7 +25,7 @@ def test_deconvolution_identifies_charge_2_cluster():
     intensity = np.concatenate((envelope_intensity, [500.0, 500.0]))
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=10, tolerance_type="ppm")
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=10, tolerance_unit="ppm")
 
     assert decon.charge is not None
     assert len(decon.mz) == 3  # one cluster representative + two singletons
@@ -49,7 +49,7 @@ def test_deconvolution_then_decharge():
     intensity = np.concatenate((envelope_intensity, [500.0, 500.0]))
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    decon = spec.deconvolute(charge_range=(1, 3), tolerance=10, tolerance_type="ppm")
+    decon = spec.deconvolute(charge_range=(1, 3), tolerance=10, tolerance_unit="ppm")
     decharged = decon.decharge()
 
     # Only the charge-2 peak survives decharge (singletons with charge=-1 are dropped)

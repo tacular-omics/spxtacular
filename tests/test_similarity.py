@@ -92,8 +92,8 @@ class TestCosine:
 
     def test_ppm_tolerance_scales_with_mz(self) -> None:
         shifted = _spec(mz=MZ * (1 + 10 / 1e6))  # 10 ppm everywhere
-        assert cosine(_spec(), shifted, tolerance=20, tolerance_type="ppm") > 0.99
-        assert cosine(_spec(), shifted, tolerance=1, tolerance_type="ppm") == pytest.approx(0.0, abs=1e-9)
+        assert cosine(_spec(), shifted, tolerance=20, tolerance_unit="ppm") > 0.99
+        assert cosine(_spec(), shifted, tolerance=1, tolerance_unit="ppm") == pytest.approx(0.0, abs=1e-9)
 
     def test_sqrt_transform_reduces_the_pull_of_one_dominant_peak(self) -> None:
         spiky = _spec(intensity=np.array([1e6, 1.0, 1.0, 1.0, 1.0]))

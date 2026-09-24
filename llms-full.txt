@@ -58,8 +58,8 @@ pip install "spxtacular[all]"           # everything above
    - Never test charge or `iso_score` by truthiness (`0` is meaningful).
 5. **Processing state.** `spectrum_type` is a `SpectrumType` (`CENTROID`, `PROFILE`,
    `DECONVOLUTED`). `deconvolute()` must come before `decharge()`.
-6. **Tolerances.** Every tolerance has a unit: `tolerance_type="da"` or `"ppm"`
-   (or `ToleranceType.DA` / `.PPM`). Matching and scoring default to `0.02 Da`;
+6. **Tolerances.** Every tolerance has a unit: `tolerance_unit="da"` or `"ppm"`
+   (lowercase only; typed as `tacular.types.ToleranceUnit`). Matching and scoring default to `0.02 Da`;
    deconvolution defaults to `50 ppm`; XIC extraction defaults to `20 ppm`.
 7. **Enum-like arguments** accept the enum member or its string value. Invalid values raise
    `ValueError`; nothing silently falls back.
@@ -79,7 +79,7 @@ dist = spx.PEPTIDE_ISOTOPE_MODEL.distribution(neutral, 5)
 mz = np.array([spx.PROTONATED.ion_mz(neutral + i * 1.003355, 2) for i in range(5)])
 spec = spx.Spectrum(mz=mz, intensity=dist * 1e6)
 
-decon = spec.deconvolute(charge_range=(1, 4), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 4), tolerance=10, tolerance_unit="ppm")
 print(decon.mz, decon.charge, decon.iso_score)   # [751.00727647] [2] [1.]
 neutral_spec = decon.decharge()
 print(neutral_spec.mz, neutral_spec.charge)      # [1500.] [0]
@@ -93,10 +93,10 @@ with spx.Reader("run.mzML") as reader:
         clean = (
             ms2.filter(min_intensity=1e3)
             .normalize()
-            .deconvolute(charge_range=(1, 4), tolerance=10, tolerance_type="ppm", min_score=0.4)
+            .deconvolute(charge_range=(1, 4), tolerance=10, tolerance_unit="ppm", min_score=0.4)
         )
         fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
-        scores = clean.score(fragments, tolerance=10, tolerance_type="ppm")
+        scores = clean.score(fragments, tolerance=10, tolerance_unit="ppm")
 ```
 
 ---------------------------------------------------------------------------------------------
@@ -151,11 +151,11 @@ Properties:
 Peak access:
 - `top_peaks(n: int, by: "intensity"|"mz"|"charge"|"im"|"score" = "intensity", reverse: bool = True) -> list[Peak]`
   — top N peaks by an attribute.
-- `has_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> bool`
+- `has_peak(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01) -> bool`
   — is there a peak matching the criteria.
-- `get_peak(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01, peak_selection: "largest"|"closest" = "largest") -> Peak | None`
+- `get_peak(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01, peak_selection: "largest"|"closest" = "largest") -> Peak | None`
   — one matching peak; `peak_selection` picks between several.
-- `get_peaks(target_mz, *, tolerance=0.01, tolerance_type="da", target_charge=None, target_im=None, im_tolerance=0.01) -> list[Peak]`
+- `get_peaks(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01) -> list[Peak]`
   — all matching peaks.
 
 Transforms (all return a new spectrum unless `inplace=True`):
@@ -171,7 +171,7 @@ Transforms (all return a new spectrum unless `inplace=True`):
 - `centroid(min_intensity: float | "noise" | None = None, inplace=False) -> Self`
   — centroid profile data with Gaussian fitting. **Pass a floor on real data**: with `None`
   every local maximum becomes a peak. `"noise"` uses a MAD estimate.
-- `merge(mz_tolerance=0.01, mz_tolerance_type="da", im_tolerance=0.05, im_tolerance_type: "relative"|"absolute" = "relative", inplace=False) -> Self`
+- `merge(mz_tolerance=0.01, mz_tolerance_unit="da", im_tolerance=0.05, im_tolerance_unit: "relative"|"absolute" = "relative", inplace=False) -> Self`
   — merge nearby peaks (optionally also within an ion-mobility tolerance) into
   intensity-weighted centroids.
 - `deconvolute(...) -> Self` — see section 5.
@@ -180,7 +180,7 @@ Transforms (all return a new spectrum unless `inplace=True`):
   (else `ValueError`: "call deconvolute() first"). Warns and returns the spectrum unchanged if
   there are no positively charged peaks. Uses the ionization model recorded by
   `deconvolute()` unless you pass one.
-- `remove_precursor_peak(precursor_mz=None, precursor_charge=None, tolerance=0.02, tolerance_type="da", isotopes: int | "auto" = "auto", isotope_threshold=0.01, remove_charge_states=True, inplace=False, isotope_model="peptide", ionization_model=None) -> Self`
+- `remove_precursor_peak(precursor_mz=None, precursor_charge=None, tolerance=0.02, tolerance_unit="da", isotopes: int | "auto" = "auto", isotope_threshold=0.01, remove_charge_states=True, inplace=False, isotope_model="peptide", ionization_model=None) -> Self`
   — remove the precursor, its isotope envelope and (optionally) its other charge states. On an
   `MsnSpectrum` the precursor is taken from `precursors` when not given.
 - `scale_intensity(method: "root"|"log"|"rank" = "root", degree=2, base=2.0, inplace=False) -> Self`
@@ -197,16 +197,16 @@ Transforms (all return a new spectrum unless `inplace=True`):
   provenance; decharge those separately first.
 
 Matching and scoring (thin wrappers over the module functions in section 6):
-- `match_fragments(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", is_monoisotopic=True) -> list[MatchedFragment]`
-- `score(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", predicted_intensities=None) -> dict[str, float]`
+- `match_fragments(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", is_monoisotopic=True) -> list[MatchedFragment]`
+- `score(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", predicted_intensities=None) -> dict[str, float]`
 
 Plotting (need plotly, which is a core dependency):
 - `plot(*, title=None, color: "charge"|"im"|None = "charge", show_scores=True, **layout_kwargs) -> go.Figure`
-- `annotate(fragments, tolerance=0.02, tolerance_type="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
-- `mass_error_plot(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
-- `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
+- `annotate(fragments, tolerance=0.02, tolerance_unit="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
+- `mass_error_plot(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
+- `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
 - `plot_table(*, show_scores=True, color: "charge"|None = "charge") -> pd.DataFrame`
-- `annot_plot_table(fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
+- `annot_plot_table(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
 
 Serialization and sharing:
 - `to_dict() -> dict` / `Spectrum.from_dict(payload) -> Spectrum | MsnSpectrum` — versioned
@@ -233,7 +233,7 @@ MsnSpectrum(mz, intensity, charge=None, im=None, iso_score=None, spectrum_type=N
             scan_number: int | None, ms_level: int | None, native_id: str | None,
             im_type: IMType | str | None, rt: float | None, injection_time: float | None,
             total_ion_current: float | None, mz_range: tuple[float, float] | None,
-            im_range: tuple[float, float] | None, polarity: Polarity | str | None,
+            im_range: tuple[float, float] | None, polarity: "positive"|"negative"|None,
             resolution: float | None, analyzer: Analyzer | str | None,
             ramp_time: float | None, collision_energy: float | None,
             activation_type: ActivationType | str | None,
@@ -248,9 +248,7 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 
 | enum | values | alias |
 |---|---|---|
-| `ToleranceType` | `da`, `ppm` | `ToleranceLike` = enum or `"da"`/`"ppm"` |
 | `PeakSelection` | `closest`, `largest`, `all` | `PeakSelectionLike` |
-| `Polarity` (closed) | `positive`, `negative` | `PolarityLike` |
 | `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
 | `IMType` (closed) | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or its `str` value |
 | `Analyzer` | `orbitrap`, `ft_icr`, `tof`, `quadrupole`, `ion_trap`, `linear_ion_trap`, `quadrupole_ion_trap`, `magnetic_sector`, `electrostatic_energy_analyzer` | `AnalyzerLike` = enum or any `str` |
@@ -258,7 +256,7 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 | `AcquisitionType` | `DDA`, `DIA`, `PRM`, `UNKNOWN` | — (Bruker runs) |
 | `IsotopeModelType` | `peptide`, `glycan`, `lipid`, `dna`, `rna` | — |
 
-`IMType` and `Polarity` are closed: a string must name a member (case-insensitive; `IMType` also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
+`IMType` is closed: a string must name a member (case-insensitive; also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. Tolerance units and polarity are not enums: they are plain lowercase strings, `tacular.types.ToleranceUnit` (`"da"`, `"ppm"`) and `tacular.types.Polarity` (`"positive"`, `"negative"`). Any other value, including `"Da"` or `"PPM"`, raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
 
 ---------------------------------------------------------------------------------------------
 
@@ -267,7 +265,7 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 ```python
 Spectrum.deconvolute(
     tolerance: float = 50,
-    tolerance_type: ToleranceLike = "ppm",
+    tolerance_unit: ToleranceUnit = "ppm",
     charge_range: tuple[int, int] = (1, 3),
     intensity: "base" | "total" = "total",
     max_dpeaks: int = 2000,
@@ -280,7 +278,7 @@ Spectrum.deconvolute(
     max_isotope_gaps: int = 0,
     max_isotopes: int | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: "relative" | "absolute" = "relative",
+    im_tolerance_unit: "relative" | "absolute" = "relative",
     ionization_model: IonizationModelLike | None = None,
 ) -> Self
 ```
@@ -324,7 +322,7 @@ Built-ins: `PEPTIDE_ISOTOPE_MODEL` (averagine), `GLYCAN_ISOTOPE_MODEL`, `LIPID_I
 Ionization models:
 
 ```python
-IonizationModel(name: str, polarity: Polarity | str, carrier_mass: float, *, carrier: str = "custom")
+IonizationModel(name: str, polarity: "positive"|"negative", carrier_mass: float, *, carrier: str = "custom")
 ```
 A repeated charge carrier.
 - `ion_mz(neutral_mass, charge)` — neutral mass to m/z (positive charge magnitudes).
@@ -339,11 +337,11 @@ Presets: `PROTONATED` (`[M+H]+`, default), `DEPROTONATED` (`[M-H]-`), `SODIATED`
 - `resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> IonizationModel`.
 
 `DeconvolutionProvenance(isotope_model, ionization_model, charge_range, tolerance,
-tolerance_type, intensity_mode, min_intensity, min_score, *, isotope_model_definition=None,
+tolerance_unit, intensity_mode, min_intensity, min_score, *, isotope_model_definition=None,
 min_isotope_abundance=0.01, max_isotope_fold_error=2.0, max_isotope_gaps=0,
-max_isotopes=None, im_tolerance=0.05, im_tolerance_type="relative")` — the parameters a
+max_isotopes=None, im_tolerance=0.05, im_tolerance_unit="relative")` — the parameters a
 deconvolution ran with; stored on `Spectrum.deconvolution`, serialized with the spectrum
-(`to_dict()` / `DeconvolutionProvenance.from_dict()`, schema versions 1 and 2 accepted).
+(`to_dict()` / `DeconvolutionProvenance.from_dict()`; writes schema version 3, reads 1-3).
 
 Negative mode example:
 
@@ -370,7 +368,7 @@ fragments = ProFormaAnnotation.parse("PEPTIDE").fragment(ion_types=["b", "y"], c
 
 ```python
 match_fragments(spectrum: Spectrum, fragments: FragmentInput, tolerance: float = 0.02,
-                tolerance_type: ToleranceLike = "da", peak_selection: PeakSelectionLike = "closest",
+                tolerance_unit: ToleranceUnit = "da", peak_selection: PeakSelectionLike = "closest",
                 is_monoisotopic: bool = True) -> list[MatchedFragment]
 ```
 Match fragments to peaks. Works on unsorted spectra and adapts to the spectrum state: on a
@@ -381,7 +379,7 @@ or `"all"`). Each `MatchedFragment` has `fragment`, `peak_index`, `peak_mz`,
 
 ```python
 score(spectrum: Spectrum, fragments: FragmentInput, tolerance: float = 0.02,
-      tolerance_type: ToleranceLike = "da", peak_selection: PeakSelectionLike = "closest",
+      tolerance_unit: ToleranceUnit = "da", peak_selection: PeakSelectionLike = "closest",
       predicted_intensities: Sequence[float] | None = None) -> dict[str, float]
 ```
 Match, then return all PSM metrics:
@@ -405,10 +403,10 @@ not numerically interchangeable with X!Tandem, OpenMS, Comet or MSFragger.
 Spectrum-to-spectrum similarity (one-to-one peak matching, values 0..1):
 
 ```python
-cosine(query, reference, tolerance=0.02, tolerance_type="da", transform="sqrt") -> float
+cosine(query, reference, tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
 modified_cosine(query, reference, query_precursor_mz, reference_precursor_mz,
-                tolerance=0.02, tolerance_type="da", transform="sqrt") -> float
-entropy_similarity(query, reference, tolerance=0.02, tolerance_type="da") -> float
+                tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
+entropy_similarity(query, reference, tolerance=0.02, tolerance_unit="da") -> float
 ```
 - `cosine` — cosine on transformed intensities.
 - `modified_cosine` — also matches peaks shifted by the precursor mass difference (analogues).
@@ -504,8 +502,8 @@ Bruker timsTOF `.d` via tdfpy (`[bruker]`). Detects `reader.acquisition_type`
 have `precursors=None`. Spectra are centroided on read and carry `im` (1/K0).
 
 ```python
-CentroidConfig(*, mz_tolerance: float = 8.0, mz_tolerance_type: "ppm"|"da" = "ppm",
-               im_tolerance: float = 0.1, im_tolerance_type: "relative"|"absolute" = "relative",
+CentroidConfig(*, mz_tolerance: float = 8.0, mz_tolerance_unit: "ppm"|"da" = "ppm",
+               im_tolerance: float = 0.1, im_tolerance_unit: "relative"|"absolute" = "relative",
                min_peaks: int = 3, noise_filter: str | float | None = None)
 ```
 Parameters forwarded to tdfpy's frame centroiding for `.d` MS1, DIA and PRM spectra. DDA MS2
@@ -590,7 +588,7 @@ full `http(s)://` PROXI base URL. `Spectrum.from_usi` is the same call.
 
 ```python
 Chromatogram(rt: NDArray, intensity: NDArray, *, label: str = "", mz: float | None = None,
-             tolerance: float | None = None, tolerance_type: str | None = None, meta: dict = {})
+             tolerance: float | None = None, tolerance_unit: "da"|"ppm"|None = None, meta: dict = {})
 ```
 Intensity against retention time. `apex_rt` (property, `None` if empty), `total` (sum of
 intensities, not an integral), `to_dict()` / `from_dict()`, `to_json()` / `from_json()`.
@@ -599,7 +597,7 @@ intensities, not an integral), `to_dict()` / `from_dict()`, `to_json()` / `from_
 extract_chromatogram(spectra: Iterable[Spectrum], mode: "tic"|"bpc" = "tic",
                      mz_range: tuple[float, float] | None = None) -> Chromatogram
 extract_xic(spectra: Iterable[Spectrum], targets: Sequence[float] | float,
-            tolerance: float = 20.0, tolerance_type: ToleranceLike = "ppm",
+            tolerance: float = 20.0, tolerance_unit: ToleranceUnit = "ppm",
             im_window: tuple[float, float] | None = None,
             aggregate: "sum"|"max" = "sum") -> list[Chromatogram]
 ```
@@ -641,7 +639,7 @@ Sticks for centroid data, a continuous trace for profile data (min/max decimated
 `max_points`). `absolute_axis=True` shows absolute intensity with a x10^n exponent in the title.
 
 ```python
-annotate_spectrum(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", title=None,
+annotate_spectrum(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", title=None,
                   peak_selection="closest", include_sequence=False, max_labels=60,
                   theme_mode=None, intensity_scale="relative", intensity_transform=None,
                   texture=False, show_precursor=True, peptide=None, mass_error_panel=False,
@@ -651,13 +649,13 @@ Spectrum with matched fragment labels (typeset: y7 subscript, 2+ superscript) co
 series. `peptide=` draws the sequence with b/y cleavage ticks above; `mass_error_panel=True` adds
 an error strip below. `texture=True` adds dash patterns.
 
-- `mirror_plot(raw, deconvoluted, *, fragments=None, names=None, similarity: "cosine"|"modified_cosine"|"entropy"|float|None = None, title=None, normalize=True, show_charges=True, show_scores=True, tolerance=0.02, tolerance_type="da", peak_selection="closest", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — second spectrum below. With `fragments=` both halves are annotated (query vs library); `similarity=` prints a score (`"modified_cosine"` needs precursor m/z on both).
-- `mass_error_plot(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit="ppm", title=None, max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — mass error vs m/z, axis symmetric around zero.
-- `facet_plot(spectrum, *, fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, unit="ppm", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — spectrum + mass errors + optional mirror panels.
-- `sequence_coverage_plot(spectrum, peptide: str | ProFormaAnnotation, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — backbone-bond coverage ladder.
+- `mirror_plot(raw, deconvoluted, *, fragments=None, names=None, similarity: "cosine"|"modified_cosine"|"entropy"|float|None = None, title=None, normalize=True, show_charges=True, show_scores=True, tolerance=0.02, tolerance_unit="da", peak_selection="closest", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — second spectrum below. With `fragments=` both halves are annotated (query vs library); `similarity=` prints a score (`"modified_cosine"` needs precursor m/z on both).
+- `mass_error_plot(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", unit="ppm", title=None, max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — mass error vs m/z, axis symmetric around zero.
+- `facet_plot(spectrum, *, fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, unit="ppm", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — spectrum + mass errors + optional mirror panels.
+- `sequence_coverage_plot(spectrum, peptide: str | ProFormaAnnotation, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — backbone-bond coverage ladder.
 - `profile_centroid_plot(profile, *, centroids=None, title=None, theme_mode=None, max_points=4000, backend, style, size, **layout_kwargs)` — profile trace with centroids on top, to check `centroid()`.
 - `plot_chromatogram(chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum], *, title=None, theme_mode=None, show_apex=True, fill=None, backend, style, size, **layout_kwargs)` — one or more chromatograms; an iterable of spectra is turned into a TIC.
-- `plot_xic(spectra, targets, *, tolerance=20.0, tolerance_type="ppm", im_window=None, aggregate="sum", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — `extract_xic` + `plot_chromatogram`.
+- `plot_xic(spectra, targets, *, tolerance=20.0, tolerance_unit="ppm", im_window=None, aggregate="sum", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — `extract_xic` + `plot_chromatogram`.
 - `reporter_ion_plot(spectrum, plex: str | IsobaricTagInfo | ReporterIons = "TMT10", *, tolerance=20.0, tolerance_unit="ppm", impurities=None, show_spectrum=True, normalize=True, title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — channel bars from `extract_reporter_ions`, reporter region above; missing channels marked n.d.
 - `compose_figure(figures: Sequence[FigureSpec], *, ncols=None, labels="abc"|"ABC"|list|None, size="double", style=None, backend="matplotlib", theme_mode=None)` — lettered multi-panel figure from `backend="spec"` parts.
 - `render(spec, backend="plotly"|"matplotlib")` / `spec.render(backend)`; `get_style(name) -> FigureStyle`; `FigureStyle.with_(**changes)`.
@@ -666,7 +664,7 @@ an error strip below. `texture=True` adds dash patterns.
 Plot tables (edit data between matching and drawing):
 
 - `build_plot_table(spectrum, *, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None) -> pd.DataFrame`
-- `build_annot_plot_table(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False) -> pd.DataFrame`
+- `build_annot_plot_table(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False) -> pd.DataFrame`
 - `plot_from_table(table, *, title=None, theme_mode=None, render=None, max_points=4000, backend="plotly", style=None, size=None, absolute_axis=False, **layout_kwargs)`
 - `table_view(table, max_rows=None, annotated_only=False) -> str` — HTML `<table>`, the accessible companion to a figure.
 
@@ -675,7 +673,7 @@ Table columns: `mz`, `intensity` (the displayed value), `intensity_abs` (origina
 (NaN = style default), `label_color`, `label_angle` (0 horizontal), `hover`.
 
 ```python
-table = spx.build_annot_plot_table(spec, fragments, tolerance=10, tolerance_type="ppm")
+table = spx.build_annot_plot_table(spec, fragments, tolerance=10, tolerance_unit="ppm")
 table.loc[table["series"] == "y", "linewidth"] = 3
 fig = spx.plot_from_table(table, title="edited")
 html = spx.table_view(table, annotated_only=True)
@@ -749,7 +747,7 @@ spec = spx.MsnSpectrum(
     scan_number=1,
     precursors=[spx.Precursor(precursor_mz=400.19, intensity=1e5, charge=2, is_monoisotopic=True)],
 )
-matches = spec.match_fragments(fragments, tolerance=10, tolerance_type="ppm")   # 6 matches
+matches = spec.match_fragments(fragments, tolerance=10, tolerance_unit="ppm")   # 6 matches
 scores = spec.score(fragments)            # dict with hyperscore, matched_fraction, ...
 fig = spx.annotate_spectrum(spec, fragments, max_labels=15)
 spx.save_figure(fig, "spectrum.html")
@@ -768,14 +766,14 @@ spx.write_mgf(cleaned, "run.mgf")
 ```python
 consensus = spx.Spectrum.combine(
     [s.normalize(method="tic") for s in replicates]
-).merge(mz_tolerance=10, mz_tolerance_type="ppm")
+).merge(mz_tolerance=10, mz_tolerance_unit="ppm")
 ```
 
 ### 11.4 Library search style similarity
 
 ```python
 query = query.filter(top_n=150).normalize()
-best = max(library, key=lambda ref: spx.cosine(query, ref, tolerance=10, tolerance_type="ppm"))
+best = max(library, key=lambda ref: spx.cosine(query, ref, tolerance=10, tolerance_unit="ppm"))
 ```
 
 ### 11.5 Share a spectrum as a link

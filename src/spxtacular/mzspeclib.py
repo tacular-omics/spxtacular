@@ -36,10 +36,11 @@ import numpy as np
 import paftacular as paf
 import peptacular as pt
 from paftacular import PafAnnotation
+from tacular.types import Polarity
 
 from ._peak_annotations import align_peak_annotations, item_text
 from .core import MsnSpectrum, Precursor, SpectrumType
-from .enums import ActivationType, IMType, Polarity
+from .enums import ActivationType, IMType
 from .errors import SpxtacularError
 from .peaklist import _check_writable, _fmt, _open_text_write
 from .spectrl_bridge import _ACTIVATION_ACCESSIONS_LOWER, _ACTIVATION_NAMES
@@ -89,9 +90,9 @@ _SCORE = ("MS:1002357", "PSM-level probability")
 _MIXTURE_MEMBERS = ("MS:1003163", "analyte mixture members")
 _UNIT = ("UO:0000000", "unit")
 
-_POLARITY_TERMS = {
-    Polarity.POSITIVE: ("MS:1000130", "positive scan"),
-    Polarity.NEGATIVE: ("MS:1000129", "negative scan"),
+_POLARITY_TERMS: dict[Polarity, tuple[str, str]] = {
+    "positive": ("MS:1000130", "positive scan"),
+    "negative": ("MS:1000129", "negative scan"),
 }
 _POLARITY_FROM_ACCESSION = {acc: polarity for polarity, (acc, _) in _POLARITY_TERMS.items()}
 
@@ -1690,7 +1691,7 @@ def _emit_spectrum_attributes(entry: LibraryEntry, key: int) -> list[CvParam]:
     if spec.native_id is not None:
         add(_NATIVE_ID, str(spec.native_id))
     if spec.polarity is not None:
-        accession, name = _POLARITY_TERMS[Polarity(spec.polarity)]
+        accession, name = _POLARITY_TERMS[spec.polarity]
         add(_POLARITY, name, accession)
     if spec.precursors:
         if len(spec.precursors) > 1:

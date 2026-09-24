@@ -7,9 +7,7 @@ from spxtacular import (
     # Core data structures
     Spectrum, MsnSpectrum, Peak, Precursor, SpectrumType,
     # Enums and their permissive type aliases
-    ToleranceType, ToleranceLike,
     PeakSelection, PeakSelectionLike,
-    Polarity, PolarityLike,
     ActivationType, ActivationTypeLike,
     IMType, IMTypeLike,
     Analyzer, AnalyzerLike,
@@ -173,7 +171,7 @@ positional mix-ups.
 | `.scale_intensity(method, ...)` | `Spectrum` | Non-linear scaling: `"root"`, `"log"`, `"rank"` |
 | `.denoise(method)` | `Spectrum` | Remove peaks below noise threshold |
 | `.centroid(min_intensity=...)` | `Spectrum` | Convert profile to centroid via Gaussian fit, optionally applying a noise or absolute intensity floor |
-| `.merge(mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type)` | `Spectrum` | Merge nearby peaks by weighted average |
+| `.merge(mz_tolerance, mz_tolerance_unit, im_tolerance, im_tolerance_unit)` | `Spectrum` | Merge nearby peaks by weighted average |
 | `.round_mz(decimals, combine)` | `Spectrum` | Round m/z, then sum / max-reduce duplicates |
 | `.deconvolute(..., ionization_model=...)` | `Spectrum` | Assign isotope clusters and charge magnitudes using a selected adduct/carrier model |
 | `.decharge(..., ionization_model=...)` | `Spectrum` | Convert charged m/z to neutral masses, reusing recorded ionization provenance by default |
@@ -225,7 +223,7 @@ Extends `Spectrum` with instrument metadata fields. Returned by every reader.
 | `isolation_mz_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (m/z) |
 | `isolation_ook0_range` | `tuple[float, float] \| None` | MS2 precursor isolation window (ion mobility) |
 | `im_type` | `IMType \| str \| None` | Ion mobility unit (closed vocabulary) |
-| `polarity` | `Polarity \| "positive" \| "negative" \| None` | Scan polarity (closed vocabulary) |
+| `polarity` | `"positive" \| "negative" \| None` | Scan polarity (`tacular.types.Polarity`, lowercase only) |
 | `resolution` | `float \| None` | Instrument resolution |
 | `analyzer` | `Analyzer \| str \| None` | Mass analyser type (open vocabulary) |
 | `ramp_time` | `float \| None` | timsTOF ramp time in ms |
@@ -233,7 +231,7 @@ Extends `Spectrum` with instrument metadata fields. Returned by every reader.
 | `activation_type` | `ActivationType \| str \| None` | Fragmentation type (open vocabulary) |
 | `precursors` | `list[Precursor] \| None` | Precursor ions (MS2 only) |
 
-See [Metadata enums](#metadata-enums) below for the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` member lists.
+See [Metadata enums](#metadata-enums) below for the `ActivationType`, `IMType`, and `Analyzer` member lists.
 
 Full documentation: [Spectrum reference — MsnSpectrum](spectrum.md#msnspectrum)
 
@@ -241,20 +239,19 @@ Full documentation: [Spectrum reference — MsnSpectrum](spectrum.md#msnspectrum
 
 ### Metadata enums
 
-Four `StrEnum`s are exported from `spxtacular` root and back the `MsnSpectrum` fields above:
+Three `StrEnum`s are exported from `spxtacular` root and back the `MsnSpectrum` fields above:
 
 ```python
-from spxtacular import Polarity, ActivationType, IMType, Analyzer
+from spxtacular import ActivationType, IMType, Analyzer
 ```
 
 | Enum | Vocabulary | Members |
 |---|---|---|
-| `Polarity` | Closed | `POSITIVE` (`"positive"`), `NEGATIVE` (`"negative"`) |
 | `ActivationType` | Open | `CID`, `HCD`, `ETD`, `ECD`, `ETHCD` (`"EThcD"`), `ETCID` (`"ETciD"`), `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` |
 | `IMType` | Closed | `OOK0` (`"ook0"`), `IM` (`"im"`), `DRIFT_TIME_MS` (`"drift_time_ms"`), `CCS` (`"ccs"`) |
 | `Analyzer` | Open | `ORBITRAP`, `FT_ICR`, `TOF`, `QUADRUPOLE`, `ION_TRAP`, `LINEAR_ION_TRAP`, `QUADRUPOLE_ION_TRAP`, `MAGNETIC_SECTOR`, `ELECTROSTATIC_ENERGY_ANALYZER` |
 
-`IMType` and `Polarity` are closed: a string must name a member (case-insensitive; `IMType` also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
+`IMType` is closed: a string must name a member (case-insensitive; also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. Polarity is not an enum: it is the plain string `"positive"` or `"negative"` (`tacular.types.Polarity`), lowercase only; anything else raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
 
 ```python
 from spxtacular import MsnSpectrum, ActivationType
@@ -269,25 +266,25 @@ fields are annotated with. Use them when you type your own wrappers so callers c
 enum member or a plain string.
 
 ```python
-from spxtacular import ToleranceLike, PeakSelectionLike, PolarityLike
-from spxtacular import ActivationTypeLike, IMTypeLike, AnalyzerLike
+from tacular.types import Polarity, ToleranceUnit
+from spxtacular import PeakSelectionLike, ActivationTypeLike, IMTypeLike, AnalyzerLike
 ```
 
 | Alias | Definition |
 |---|---|
-| `ToleranceLike` | `ToleranceType \| Literal["da", "ppm"]` |
+| `ToleranceUnit` (tacular) | `Literal["da", "ppm"]` |
 | `PeakSelectionLike` | `PeakSelection \| Literal["closest", "largest", "all"]` |
-| `PolarityLike` | `Polarity \| Literal["positive", "negative"]` |
+| `Polarity` (tacular) | `Literal["positive", "negative"]` |
 | `ActivationTypeLike` | `ActivationType \| str` |
 | `IMTypeLike` | `IMType \| str` |
 | `AnalyzerLike` | `Analyzer \| str` |
 
-The first three are closed unions (only the listed literals type-check); the last three are open —
+`ToleranceUnit`, `PeakSelectionLike` and `Polarity` are closed unions (only the listed literals type-check); the last three are open —
 any `str` is accepted so raw PSI-MS accessions and vendor shorthands pass through.
 
-`ToleranceType` (`DA` = `"da"`, `PPM` = `"ppm"`) and `PeakSelection` (`CLOSEST`, `LARGEST`, `ALL`)
-are the processing-side enums behind the `tolerance_type` and `peak_selection` parameters used
-throughout matching, scoring, and plotting.
+`PeakSelection` (`CLOSEST`, `LARGEST`, `ALL`) is the processing-side enum behind the
+`peak_selection` parameter. The `tolerance_unit` parameter used throughout matching, scoring,
+and plotting takes the plain strings `"da"` or `"ppm"` (lowercase only; `"Da"` raises).
 
 ---
 
@@ -587,9 +584,9 @@ from spxtacular import CentroidConfig
 CentroidConfig(
     *,
     mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: Literal["ppm", "da"] = "ppm",
     im_tolerance: float = 0.1,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
                   | float | None = None,
@@ -669,7 +666,7 @@ omitted, `fixed_composition` is an empty mapping.
 ```python
 IonizationModel(
     name: str,
-    polarity: Polarity | str,
+    polarity: Polarity,  # "positive" or "negative"
     carrier_mass: float,
     *,
     carrier: str = "custom",
@@ -801,8 +798,11 @@ chromatogram_schema = get_json_schema("chromatogram")
 ```
 
 The spectrum envelope uses schema name `spxtacular.spectrum`, schema version
-`1`, and kind `spectrum` or `msn_spectrum`. The chromatogram envelope uses
-schema name `spxtacular.chromatogram`, schema version `1`, and kind
+`2` (version `1` still loads), and kind `spectrum` or `msn_spectrum`. Its
+`deconvolution` provenance block has its own `schema_version` `3` (versions `1`
+and `2`, with the old `tolerance_type` keys, still load). The chromatogram
+envelope uses schema name `spxtacular.chromatogram`, schema version `2`
+(version `1`, with the old `tolerance_type` key, still loads), and kind
 `chromatogram`. Unknown schema versions are rejected so consumers never
 silently misinterpret a newer contract.
 
@@ -815,7 +815,7 @@ The JSON Schema documents are packaged as:
 
 ```text
 spxtacular/schemas/spectrum-v2.schema.json
-spxtacular/schemas/chromatogram-v1.schema.json
+spxtacular/schemas/chromatogram-v2.schema.json
 ```
 
 For large profile spectra, filter or decimate before transport when the browser
@@ -878,7 +878,7 @@ Chromatogram(
     label: str = "",
     mz: float | None = None,
     tolerance: float | None = None,
-    tolerance_type: str | None = None,
+    tolerance_unit: str | None = None,
     meta: dict = ...,
 )
 
@@ -892,7 +892,7 @@ extract_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
     tolerance: float = 20.0,
-    tolerance_type: Literal["ppm", "da"] = "ppm",
+    tolerance_unit: Literal["ppm", "da"] = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Literal["sum", "max"] = "sum",
 ) -> list[Chromatogram]
@@ -923,7 +923,7 @@ plot_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
     tolerance: float = 20.0,
-    tolerance_type: Literal["ppm", "da"] = "ppm",
+    tolerance_unit: Literal["ppm", "da"] = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Literal["sum", "max"] = "sum",
     title: str | None = None,
@@ -1009,7 +1009,7 @@ annotate_spectrum(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
@@ -1031,7 +1031,7 @@ annotate_spectrum(
 
 | Parameter | Default | Description |
 |---|---|---|
-| `tolerance` / `tolerance_type` | `0.02` / `"da"` | Matching tolerance |
+| `tolerance` / `tolerance_unit` | `0.02` / `"da"` | Matching tolerance |
 | `peak_selection` | `"closest"` | `"closest"`, `"largest"`, or `"all"` |
 | `include_sequence` | `False` | Embed the residue sequence in each label (`b3{PEP}` instead of `b3`) |
 | `max_labels` | `60` | Cap on directly drawn ion labels |
@@ -1064,7 +1064,7 @@ mirror_plot(
     show_charges: bool = True,
     show_scores: bool = True,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
@@ -1099,7 +1099,7 @@ mass_error_plot(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     unit: str = "ppm",              # "ppm" or "da"
     title: str | None = None,
@@ -1127,7 +1127,7 @@ facet_plot(
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     unit: str = "ppm",
@@ -1155,7 +1155,7 @@ sequence_coverage_plot(
     peptide: str,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
@@ -1172,7 +1172,7 @@ on one end of the molecule.
 | `spectrum` | | The spectrum the fragments are matched against |
 | `peptide` | | Residue sequence, **one character per residue**. Pass the *stripped* sequence — ProForma modification brackets are not rendered. Raises `ValueError` when empty |
 | `fragments` | | Fragment objects, as for `match_fragments` |
-| `tolerance` / `tolerance_type` / `peak_selection` | `0.02` / `"da"` / `"closest"` | Matching parameters |
+| `tolerance` / `tolerance_unit` / `peak_selection` | `0.02` / `"da"` / `"closest"` | Matching parameters |
 | `title` | `None` | Overrides the generated title |
 | `theme_mode` | `None` | `"light"` / `"dark"` |
 
@@ -1440,7 +1440,7 @@ match_fragments(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     is_monoisotopic: bool = True,
 ) -> list[MatchedFragment]
@@ -1462,7 +1462,7 @@ score(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     predicted_intensities: Sequence[float] | None = None,
 ) -> dict[str, float]
@@ -1477,7 +1477,7 @@ cosine(
     query: Spectrum,
     reference: Spectrum,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     transform: Literal["sqrt", "linear", "log"] = "sqrt",
 ) -> float
 
@@ -1487,7 +1487,7 @@ modified_cosine(
     query_precursor_mz: float,
     reference_precursor_mz: float,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     transform: Literal["sqrt", "linear", "log"] = "sqrt",
 ) -> float
 
@@ -1495,7 +1495,7 @@ entropy_similarity(
     query: Spectrum,
     reference: Spectrum,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
 ) -> float
 ```
 
@@ -1640,7 +1640,7 @@ build_annot_plot_table(
     spectrum: Spectrum,
     fragments,
     tolerance: float = 0.02,
-    tolerance_type: Literal["da", "ppm"] = "da",
+    tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
     max_labels: int | None = 60,

@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from spxtacular.core import Spectrum
-from spxtacular.enums import PeakSelectionLike, ToleranceLike
+from spxtacular.enums import PeakSelectionLike, ToleranceUnit
 from spxtacular.scoring import _binom_log10_survival, _count_unique_ions, score
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def test_position_free_fragments_match_and_score_without_a_ladder(ion_type: str)
     assert len(fragments) == 2
     assert all(fragment.position is None for fragment in fragments)
     spectrum = Spectrum(mz=np.array([f.mz for f in fragments]), intensity=np.array([10.0, 20.0]))
-    result = score(spectrum, fragments, tolerance=0.01, tolerance_type="da")
+    result = score(spectrum, fragments, tolerance=0.01, tolerance_unit="da")
     assert result["matched_fraction"] == 1.0
     assert result["hyperscore"] == pytest.approx(math.log10(30.0))
     assert result["longest_run"] == 0
@@ -67,14 +67,14 @@ def _spectrum() -> Spectrum:
 def test_score_returns_all_expected_keys() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert set(result.keys()) == _EXPECTED_KEYS
 
 
 def test_score_all_values_are_floats() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     for key, val in result.items():
         assert isinstance(val, float), f"{key} is not float"
 
@@ -87,35 +87,35 @@ def test_score_all_values_are_floats() -> None:
 def test_score_no_matches_hyperscore_is_zero() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0)  # far outside spectrum
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["hyperscore"] == pytest.approx(0.0)
 
 
 def test_score_no_matches_total_matched_intensity_is_zero() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["total_matched_intensity"] == pytest.approx(0.0)
 
 
 def test_score_no_matches_matched_fraction_is_zero() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["matched_fraction"] == pytest.approx(0.0)
 
 
 def test_score_no_matches_intensity_fraction_is_zero() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["intensity_fraction"] == pytest.approx(0.0)
 
 
 def test_score_no_matches_spectral_angle_is_zero() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["spectral_angle"] == pytest.approx(0.0)
 
 
@@ -127,21 +127,21 @@ def test_score_no_matches_spectral_angle_is_zero() -> None:
 def test_hyperscore_positive_when_fragment_matches() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["hyperscore"] > 0.0
 
 
 def test_total_matched_intensity_equals_matched_peak_intensity() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)  # matches peak at index 1 with intensity 50.0
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["total_matched_intensity"] == pytest.approx(50.0)
 
 
 def test_mean_ppm_error_zero_for_perfect_match() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)  # exact m/z
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["mean_ppm_error"] == pytest.approx(0.0)
 
 
@@ -153,21 +153,21 @@ def test_mean_ppm_error_zero_for_perfect_match() -> None:
 def test_matched_fraction_in_zero_to_one() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert 0.0 <= result["matched_fraction"] <= 1.0
 
 
 def test_intensity_fraction_in_zero_to_one() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert 0.0 <= result["intensity_fraction"] <= 1.0
 
 
 def test_spectral_angle_in_minus_one_to_one() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert -1.0 <= result["spectral_angle"] <= 1.0
 
 
@@ -180,21 +180,21 @@ def test_longest_run_three_consecutive_b_ions() -> None:
     spec = _spectrum()
     # b1=100, b2=200, b3=300 — all match spectrum peaks
     frags = [_make_frag(float(pos * 100), ion_type="b", position=pos) for pos in [1, 2, 3]]
-    result = score(spec, frags, tolerance=0.02, tolerance_type="da")
+    result = score(spec, frags, tolerance=0.02, tolerance_unit="da")
     assert result["longest_run"] >= 3.0
 
 
 def test_longest_run_zero_when_no_match() -> None:
     spec = _spectrum()
     frag = _make_frag(999.0, ion_type="b", position=1)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["longest_run"] == pytest.approx(0.0)
 
 
 def test_longest_run_one_for_single_match() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0, ion_type="b", position=5)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["longest_run"] >= 1.0
 
 
@@ -205,7 +205,7 @@ def test_longest_run_one_for_single_match() -> None:
 
 def test_score_empty_fragments_returns_all_zeros() -> None:
     spec = _spectrum()
-    result = score(spec, [], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [], tolerance=0.02, tolerance_unit="da")
     for key in (
         "hyperscore",
         "total_matched_intensity",
@@ -283,7 +283,7 @@ def test_probability_score_zero_for_empty_spectrum() -> None:
         intensity=np.array([], dtype=np.float64),
     )
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["probability_score"] == pytest.approx(0.0)
 
 
@@ -293,14 +293,14 @@ def test_probability_score_zero_for_single_peak_zero_range() -> None:
         intensity=np.array([100.0], dtype=np.float64),
     )
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=0.02, tolerance_type="da")
+    result = score(spec, [frag], tolerance=0.02, tolerance_unit="da")
     assert result["probability_score"] == pytest.approx(0.0)
 
 
 def test_probability_score_ppm_tolerance_path() -> None:
     spec = _spectrum()
     frag = _make_frag(200.0)
-    result = score(spec, [frag], tolerance=10.0, tolerance_type="ppm")
+    result = score(spec, [frag], tolerance=10.0, tolerance_unit="ppm")
     assert result["probability_score"] >= 0.0
 
 
@@ -320,24 +320,24 @@ class TestProbabilityScoreIgnoresPeakOrder:
     def _frags(self) -> list[MagicMock]:
         return [_make_frag(float(pos * 100), ion_type="b", position=pos) for pos in (1, 2, 3)]
 
-    @pytest.mark.parametrize("tolerance_type", ["da", "ppm"])
-    def test_shuffled_spectrum_scores_the_same(self, tolerance_type: ToleranceLike) -> None:
+    @pytest.mark.parametrize("tolerance_unit", ["da", "ppm"])
+    def test_shuffled_spectrum_scores_the_same(self, tolerance_unit: ToleranceUnit) -> None:
         mz = np.array([100.0, 200.0, 300.0, 400.0], dtype=np.float64)
         intensity = np.array([10.0, 50.0, 20.0, 15.0], dtype=np.float64)
         order = np.array([2, 0, 3, 1])  # ion-mobility-style ordering
 
-        tolerance = 0.02 if tolerance_type == "da" else 50.0
+        tolerance = 0.02 if tolerance_unit == "da" else 50.0
         sorted_result = score(
             Spectrum(mz=mz.copy(), intensity=intensity.copy()),
             self._frags(),
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
         )
         shuffled_result = score(
             Spectrum(mz=mz[order], intensity=intensity[order]),
             self._frags(),
             tolerance=tolerance,
-            tolerance_type=tolerance_type,
+            tolerance_unit=tolerance_unit,
         )
         assert sorted_result["probability_score"] > 0.0
         assert shuffled_result["probability_score"] == pytest.approx(sorted_result["probability_score"])
@@ -348,7 +348,7 @@ class TestProbabilityScoreIgnoresPeakOrder:
             mz=np.array([400.0, 300.0, 200.0, 100.0], dtype=np.float64),
             intensity=np.array([15.0, 20.0, 50.0, 10.0], dtype=np.float64),
         )
-        result = score(descending, self._frags(), tolerance=0.02, tolerance_type="da")
+        result = score(descending, self._frags(), tolerance=0.02, tolerance_unit="da")
         assert result["probability_score"] > 0.0
 
 
@@ -375,7 +375,7 @@ class TestMatchedFractionCountsIons:
 
     def test_one_ion_on_three_peaks_is_a_full_match_not_three(self) -> None:
         frag = _make_frag(200.0, ion_type="b", position=1)
-        result = score(self._crowded(), [frag], tolerance=0.05, tolerance_type="da", peak_selection="all")
+        result = score(self._crowded(), [frag], tolerance=0.05, tolerance_unit="da", peak_selection="all")
         assert result["matched_fraction"] == pytest.approx(1.0)
 
     def test_half_the_ions_matched_is_a_half(self) -> None:
@@ -383,13 +383,13 @@ class TestMatchedFractionCountsIons:
             _make_frag(200.0, ion_type="b", position=1),  # claims all three peaks
             _make_frag(999.0, ion_type="b", position=2),  # matches nothing
         ]
-        result = score(self._crowded(), frags, tolerance=0.05, tolerance_type="da", peak_selection="all")
+        result = score(self._crowded(), frags, tolerance=0.05, tolerance_unit="da", peak_selection="all")
         assert result["matched_fraction"] == pytest.approx(0.5)
 
     @pytest.mark.parametrize("peak_selection", ["closest", "largest", "all"])
     def test_never_exceeds_one_for_any_peak_selection(self, peak_selection: PeakSelectionLike) -> None:
         frags = [_make_frag(200.0, ion_type="b", position=p) for p in (1, 2)]
-        result = score(self._crowded(), frags, tolerance=0.05, tolerance_type="da", peak_selection=peak_selection)
+        result = score(self._crowded(), frags, tolerance=0.05, tolerance_unit="da", peak_selection=peak_selection)
         assert 0.0 < result["matched_fraction"] <= 1.0
 
 
@@ -405,7 +405,7 @@ def test_score_dict_fragments_returns_expected_keys() -> None:
     frag_dict: dict = {
         (IonType.B, 1): [100.0, 200.0],
     }
-    result = score(spec, frag_dict, tolerance=0.02, tolerance_type="da")
+    result = score(spec, frag_dict, tolerance=0.02, tolerance_unit="da")
     assert set(result.keys()) == _EXPECTED_KEYS
 
 
@@ -433,7 +433,7 @@ class TestHyperscoreFormula:
 
     def test_matches_the_dot_product_factorial_formula(self) -> None:
         spec, frags, b, y = self._by_spectrum()
-        result = score(spec, frags, tolerance=0.01, tolerance_type="da")
+        result = score(spec, frags, tolerance=0.01, tolerance_unit="da")
         # Unit theoretical intensities give a dot product of 100.
         expected = math.log10(100.0 * math.factorial(2) * math.factorial(2))
         assert result["hyperscore"] == pytest.approx(expected, rel=1e-12)
@@ -444,7 +444,7 @@ class TestHyperscoreFormula:
         # Keep only the y peaks in the spectrum; b was still searched for.
         y_mz = np.array(sorted(f.mz for f in y), dtype=np.float64)
         y_only = Spectrum(mz=y_mz, intensity=np.array([30.0, 40.0]))
-        result = score(y_only, frags, tolerance=0.01, tolerance_type="da")
+        result = score(y_only, frags, tolerance=0.01, tolerance_unit="da")
         assert result["matched_fraction"] > 0.0, "the y ions really did match"
         assert result["hyperscore"] == pytest.approx(math.log10(70.0 * math.factorial(2)))
 
@@ -455,14 +455,14 @@ class TestHyperscoreFormula:
         frags = pt.fragment("PEPTIDEK", ion_types=("c", "z"), charges=(1,))
         mz = np.array(sorted(f.mz for f in frags), dtype=np.float64)
         spec = Spectrum(mz=mz, intensity=np.linspace(10.0, 100.0, len(mz)))
-        assert score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"] > 0.0
+        assert score(spec, frags, tolerance=0.01, tolerance_unit="da")["hyperscore"] > 0.0
 
     def test_is_intensity_scale_dependent(self) -> None:
         """Documented caveat — pin it so it cannot change silently."""
         spec, frags, _, _ = self._by_spectrum()
-        base = score(spec, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
+        base = score(spec, frags, tolerance=0.01, tolerance_unit="da")["hyperscore"]
         scaled = Spectrum(mz=spec.mz, intensity=spec.intensity * 100.0)
-        got = score(scaled, frags, tolerance=0.01, tolerance_type="da")["hyperscore"]
+        got = score(scaled, frags, tolerance=0.01, tolerance_unit="da")["hyperscore"]
         # A single dot product scales once, regardless of the number of series.
         assert got == pytest.approx(base + math.log10(100.0), rel=1e-12)
 
@@ -485,7 +485,7 @@ class TestSpectralAngleWithPrediction:
     def test_identical_to_prediction_scores_one(self) -> None:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[order])
-        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        got = score(spec, frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
         # arccos is ill-conditioned near cos = 1, so ~1e-16 of float error in the
         # cosine surfaces as ~1e-8 here. That is inherent to the metric, not slack.
         assert got["spectral_angle"] == pytest.approx(1.0, abs=1e-7)
@@ -494,7 +494,7 @@ class TestSpectralAngleWithPrediction:
         """Unlike hyperscore, the spectral angle is a cosine — scaling must not move it."""
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=(pred * 1000.0)[order])
-        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        got = score(spec, frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
         assert got["spectral_angle"] == pytest.approx(1.0, abs=1e-7)
 
     def test_charge_states_remain_distinct(self) -> None:
@@ -508,14 +508,14 @@ class TestSpectralAngleWithPrediction:
             spec,
             frags,
             tolerance=0.001,
-            tolerance_type="da",
+            tolerance_unit="da",
             predicted_intensities=[0.0, 1.0],
         )
         mismatched_prediction = score(
             spec,
             frags,
             tolerance=0.001,
-            tolerance_type="da",
+            tolerance_unit="da",
             predicted_intensities=[1.0, 0.0],
         )
 
@@ -526,22 +526,22 @@ class TestSpectralAngleWithPrediction:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[order])
 
-        direct = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
-        via_method = spec.score(frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        direct = score(spec, frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
+        via_method = spec.score(frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
 
         assert via_method == direct
 
     def test_a_mismatched_pattern_scores_lower(self) -> None:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[::-1][order])
-        got = score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+        got = score(spec, frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
         assert 0.0 <= got["spectral_angle"] < 0.9
 
     def test_length_mismatch_raises(self) -> None:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[order])
         with pytest.raises(ValueError, match="predicted_intensities"):
-            score(spec, frags, tolerance=0.01, tolerance_type="da", predicted_intensities=pred[:-1])
+            score(spec, frags, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred[:-1])
 
     def test_dict_fragments_are_rejected(self) -> None:
         """Predictions must be pairable with ions, which the dict form cannot do."""
@@ -551,10 +551,10 @@ class TestSpectralAngleWithPrediction:
         spec = Spectrum(mz=mz[order], intensity=pred[order])
         as_dict = pt.ProFormaAnnotation.parse("PEPTIDEK").fast_fragment(ion_types=("b", "y"), charges=[1])
         with pytest.raises(TypeError, match="Sequence"):
-            score(spec, as_dict, tolerance=0.01, tolerance_type="da", predicted_intensities=pred)
+            score(spec, as_dict, tolerance=0.01, tolerance_unit="da", predicted_intensities=pred)
 
     def test_without_prediction_the_coverage_measure_is_still_returned(self) -> None:
         frags, pred, mz, order = self._setup()
         spec = Spectrum(mz=mz[order], intensity=pred[order])
-        got = score(spec, frags, tolerance=0.01, tolerance_type="da")
+        got = score(spec, frags, tolerance=0.01, tolerance_unit="da")
         assert 0.0 <= got["spectral_angle"] <= 1.0

@@ -230,7 +230,7 @@ fig = mirror_plot(query, library, fragments=fragments, names=("query", "library"
 from spxtacular import Spectrum
 from spxtacular.visualization import mirror_plot
 
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
 fig = mirror_plot(spec, decon, title="Raw vs deconvoluted")
 fig.show()
 ```
@@ -264,7 +264,7 @@ fig = annotate_spectrum(
     spectrum,
     fragments,
     tolerance=0.02,
-    tolerance_type="da",         # or "ppm"
+    tolerance_unit="da",         # or "ppm"
     title=None,
     peak_selection="closest",    # "closest" | "largest" | "all"
     include_sequence=False,
@@ -296,7 +296,7 @@ lead rather than competing with the context behind them.
 | `spectrum` | | `Spectrum` to plot |
 | `fragments` | | Iterable of fragment objects from `peptacular` |
 | `tolerance` | `0.02` | Matching tolerance |
-| `tolerance_type` | `"da"` | `"da"` or `"ppm"` |
+| `tolerance_unit` | `"da"` | `"da"` or `"ppm"` |
 | `title` | `None` | Plot title |
 | `peak_selection` | `"closest"` | How to resolve multiple peaks within tolerance — `"closest"`, `"largest"`, or `"all"` |
 | `include_sequence` | `False` | Embed the residue sequence in each label (e.g. `b3{PEP}`) |
@@ -334,7 +334,7 @@ fig = mass_error_plot(
     spectrum,
     fragments,
     tolerance=0.02,
-    tolerance_type="da",         # or "ppm"
+    tolerance_unit="da",         # or "ppm"
     peak_selection="closest",    # "closest" | "largest" | "all"
     unit="ppm",                  # error units
     title=None,
@@ -369,7 +369,7 @@ fig = facet_plot(
     mirror_spectrum=None,     # adds a mirror panel below when provided
     title=None,
     tolerance=0.02,
-    tolerance_type="da",
+    tolerance_unit="da",
     peak_selection="closest",
     include_sequence=False,
     unit="ppm",
@@ -402,7 +402,7 @@ fig = sequence_coverage_plot(
     "FDSFGDLSSASAIMGNPK",   # stripped residue sequence
     fragments,
     tolerance=5,
-    tolerance_type="da",
+    tolerance_unit="da",
     theme_mode=None,
     **layout_kwargs,
 )
@@ -634,7 +634,7 @@ theme.set_palette(
 survives print, forced-colours, and readers who cannot separate two hues:
 
 ```python
-spx.annotate_spectrum(spec, fragments, tolerance=5, tolerance_type="da", texture=True)
+spx.annotate_spectrum(spec, fragments, tolerance=5, tolerance_unit="da", texture=True)
 ```
 
 ---
@@ -644,7 +644,7 @@ spx.annotate_spectrum(spec, fragments, tolerance=5, tolerance_type="da", texture
 ```python
 from spxtacular import build_annot_plot_table, table_view
 
-table = build_annot_plot_table(spec, fragments, tolerance=5, tolerance_type="da")
+table = build_annot_plot_table(spec, fragments, tolerance=5, tolerance_unit="da")
 html = table_view(table, max_rows=50, annotated_only=True)
 ```
 

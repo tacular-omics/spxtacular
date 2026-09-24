@@ -281,7 +281,7 @@ class TestMirrorPlot:
     def test_lower_half_is_negated(self) -> None:
         # The defining property of a mirror plot, and previously never asserted.
         raw = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([5e4, 2.5e4]))
-        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_type="ppm")
+        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_unit="ppm")
         fig = mirror_plot(raw, dec)
         raw_y = [v for v in fig.data[0].y if v == v]
         assert min(raw_y) < 0
@@ -289,14 +289,14 @@ class TestMirrorPlot:
 
     def test_hover_reports_true_intensity_not_the_normalised_value(self) -> None:
         raw = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([5e4, 2.5e4]))
-        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_type="ppm")
+        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_unit="ppm")
         fig = mirror_plot(raw, dec, normalize=True)
         shown = [v for v in fig.data[0].customdata if v == v]
         assert max(shown) == pytest.approx(5e4)
 
     def test_all_zero_half_does_not_produce_nan(self) -> None:
         raw = Spectrum(mz=np.array([100.0, 200.0]), intensity=np.zeros(2))
-        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_type="ppm")
+        dec = raw.deconvolute(charge_range=(1, 2), tolerance=100, tolerance_unit="ppm")
         fig = mirror_plot(raw, dec, normalize=True)
         ys = [v for v in fig.data[0].y if v == v]
         assert np.isfinite(ys).all()
@@ -305,7 +305,7 @@ class TestMirrorPlot:
         # Put the two figures side by side and z=1 must be the same colour.
         mz = np.array([100.0, 100.5, 101.0])
         raw = Spectrum(mz=mz, intensity=np.array([1e5, 5e4, 2e4]))
-        dec = raw.deconvolute(charge_range=(1, 3), tolerance=500, tolerance_type="ppm")
+        dec = raw.deconvolute(charge_range=(1, 3), tolerance=500, tolerance_unit="ppm")
         mirror = mirror_plot(raw, dec)
         by_name = {tr.name: tr.line.color for tr in mirror.data if tr.name}
         for name, color in by_name.items():
@@ -390,13 +390,13 @@ class TestSequenceCoverage:
 
     def test_full_coverage_is_reported(self) -> None:
         spec, frags = self._matched("PEPTIDEK")
-        fig = sequence_coverage_plot(spec, "PEPTIDEK", frags, tolerance=0.02, tolerance_type="da")
+        fig = sequence_coverage_plot(spec, "PEPTIDEK", frags, tolerance=0.02, tolerance_unit="da")
         assert "100%" in fig.layout.title.text
 
     def test_one_annotation_per_residue(self) -> None:
         peptide = "PEPTIDEK"
         spec, frags = self._matched(peptide)
-        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.02, tolerance_type="da")
+        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.02, tolerance_unit="da")
         residues = [a.text for a in fig.layout.annotations if len(str(a.text)) == 1]
         assert residues == list(peptide)
 
@@ -404,7 +404,7 @@ class TestSequenceCoverage:
         peptide = "PEPTIDEK"
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
         _, frags = self._matched(peptide)
-        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.001, tolerance_type="da")
+        fig = sequence_coverage_plot(spec, peptide, frags, tolerance=0.001, tolerance_unit="da")
         assert "0/7" in fig.layout.title.text
         assert len(fig.layout.shapes) == 0
 
@@ -482,7 +482,7 @@ class TestTableViewAndTexture:
         frags = pt.fragment("PEPTIDEK", ion_types=("b", "y"), charges=[1])
         mz = np.sort(np.array([f.mz for f in frags]))
         spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
-        table = build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_type="da", texture=True)
+        table = build_annot_plot_table(spec, frags, tolerance=0.02, tolerance_unit="da", texture=True)
         dashes = set(table.loc[table["series"].isin(["b", "y"]), "dash"])
         assert len(dashes) == 2, "b and y need distinguishable textures, not just hues"
 
@@ -568,7 +568,7 @@ class TestDegenerateInputs:
         )
         # Bubble sizes divide by the max intensity; an all-zero match set used to
         # raise ZeroDivisionError, and zero-intensity peaks are real.
-        mass_error_plot(spec, frags, tolerance=0.5, tolerance_type="da")
+        mass_error_plot(spec, frags, tolerance=0.5, tolerance_unit="da")
         facet_plot(spec)
 
     def test_empty_spectrum_renders(self) -> None:
@@ -833,7 +833,7 @@ class TestMassErrorPlot:
 
     def test_labels_are_capped_not_one_per_bubble(self) -> None:
         spec, frags = self._many_matches()
-        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=5)
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", max_labels=5)
         drawn = _label_texts(fig)
         assert len(drawn) <= 5, f"expected at most 5 labels, got {len(drawn)}"
         # The bubbles themselves are all still there -- only the text is thinned.
@@ -841,7 +841,7 @@ class TestMassErrorPlot:
 
     def test_labels_do_not_collide(self) -> None:
         spec, frags = self._many_matches()
-        spec_fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=None, backend="spec")
+        spec_fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", max_labels=None, backend="spec")
         boxes = label_boxes(resolve_figure(spec_fig).panels[0])
         assert boxes
         assert not _any_overlap(boxes)
@@ -849,7 +849,7 @@ class TestMassErrorPlot:
     def test_a_dropped_label_is_still_reachable_on_hover(self) -> None:
         """Capping thins the plot, it must not make a bubble's identity unreachable."""
         spec, frags = self._many_matches()
-        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=3)
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", max_labels=3)
         drawn = {re.sub(r"<[^>]+>", "", t) for t in _label_texts(fig)}
         hovered = {str(row[1]) for row in fig.data[0].customdata}
         assert len(hovered) > len(drawn)
@@ -859,7 +859,7 @@ class TestMassErrorPlot:
     def test_bubble_outline_comes_from_the_theme_not_a_literal(self) -> None:
         spec, frags = self._many_matches()
         for mode in ("light", "dark"):
-            fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", theme_mode=mode)  # type: ignore[arg-type]
+            fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", theme_mode=mode)  # type: ignore[arg-type]
             outline = fig.data[0].marker.line.color
             assert outline != "#333", "hardcoded hex is invisible on the dark surface"
             assert outline == theme.marker_outline(mode)  # type: ignore[arg-type]
@@ -869,7 +869,7 @@ class TestMassErrorPlot:
         """A dark-mode caller with no matches got a default white plotly figure."""
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
         _, frags = self._many_matches()
-        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", theme_mode="dark")
+        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_unit="da", theme_mode="dark")
         assert not fig.data
         assert fig.layout.template.layout.paper_bgcolor == theme.surface("dark")
         assert fig.layout.xaxis.title.text == "<i>m/z</i>"
@@ -880,13 +880,13 @@ class TestMassErrorPlot:
         """unit="PPM" plotted Da errors under an "Error (PPM)" label."""
         spec, frags = self._many_matches()
         want = "ppm" if unit.lower() == "ppm" else "da"
-        ref = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=want)
-        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
+        ref = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", unit=want)
+        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", unit=unit)
         assert list(fig.data[0].y) == list(ref.data[0].y)
         label = "ppm" if want == "ppm" else "Da"
         assert fig.layout.yaxis.title.text == f"Mass error ({label})"
-        facet = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=unit)
-        facet_ref = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=want)
+        facet = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_unit="da", unit=unit)
+        facet_ref = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_unit="da", unit=want)
         assert list(facet.data[-1].y) == list(facet_ref.data[-1].y)
         # The facet strip is short, so it uses the short title.
         assert facet.layout.yaxis2.title.text == f"Error ({label})"
@@ -894,12 +894,12 @@ class TestMassErrorPlot:
     def test_unknown_error_unit_raises(self) -> None:
         spec, frags = self._many_matches()
         with pytest.raises(ValueError, match="unit"):
-            mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit="mDa")
+            mass_error_plot(spec, frags, tolerance=0.02, tolerance_unit="da", unit="mDa")
         with pytest.raises(ValueError, match="unit"):
-            facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit="mDa")
+            facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_unit="da", unit="mDa")
 
     def test_the_empty_figure_keeps_the_error_unit(self) -> None:
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
         _, frags = self._many_matches()
-        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", unit="da")
+        fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_unit="da", unit="da")
         assert fig.layout.yaxis.title.text == "Mass error (Da)"

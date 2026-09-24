@@ -21,7 +21,7 @@ import numpy as np
 
 from ._scan_lookup import by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, SpectrumType
-from .enums import ActivationType, Analyzer, AnalyzerLike, Polarity
+from .enums import ActivationType, Analyzer, AnalyzerLike
 from .errors import SpxtacularError
 
 #: The native ids ThermoReader.get_by_native_id accepts: the full Thermo id, or bare ``scan=N``.
@@ -333,9 +333,9 @@ class ThermoReader:
 
         match scan_filter.polarity.name:
             case "Positive":
-                polarity = Polarity.POSITIVE
+                polarity = "positive"
             case "Negative":
-                polarity = Polarity.NEGATIVE
+                polarity = "negative"
             case _:
                 polarity = None
 

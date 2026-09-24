@@ -33,13 +33,14 @@ from typing import Any, Literal, Self
 
 import numpy as np
 from numpy.typing import NDArray
+from tacular.types import ToleranceUnit
 
 from .core import Spectrum
-from .enums import ToleranceLike, ToleranceType
+from .enums import check_tolerance_unit
 from .errors import SpxtacularError
 from .serialization import (
     CHROMATOGRAM_SCHEMA,
-    JSON_SCHEMA_VERSION,
+    CHROMATOGRAM_SCHEMA_VERSION,
     require_exact_keys,
     require_mapping,
     require_number,
@@ -69,8 +70,9 @@ class Chromatogram:
         Short name for the legend, e.g. ``"TIC"`` or ``"m/z 500.2649"``.
     mz:
         Target m/z, for an extracted ion chromatogram. ``None`` for a TIC/BPC.
-    tolerance, tolerance_type:
-        The extraction window, kept so a figure can say what it plotted.
+    tolerance, tolerance_unit:
+        The extraction window (``tolerance_unit`` ``"da"`` or ``"ppm"``), kept so a
+        figure can say what it plotted.
     """
 
     rt: NDArray[np.float64]
@@ -79,7 +81,7 @@ class Chromatogram:
     label: str = ""
     mz: float | None = None
     tolerance: float | None = None
-    tolerance_type: str | None = None
+    tolerance_unit: ToleranceUnit | None = None
     meta: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -92,6 +94,8 @@ class Chromatogram:
             raise SpxtacularError(f"intensity array must be one-dimensional; got shape {self.intensity.shape}")
         if len(self.rt) != len(self.intensity):
             raise SpxtacularError("rt and intensity must have the same length")
+        if self.tolerance_unit is not None:
+            self.tolerance_unit = check_tolerance_unit(self.tolerance_unit)
 
     def __len__(self) -> int:
         return len(self.rt)
@@ -100,7 +104,7 @@ class Chromatogram:
         """Return a versioned, JSON-compatible representation."""
         return {
             "schema": CHROMATOGRAM_SCHEMA,
-            "schema_version": JSON_SCHEMA_VERSION,
+            "schema_version": CHROMATOGRAM_SCHEMA_VERSION,
             "kind": "chromatogram",
             "arrays": to_json_value({"rt": self.rt, "intensity": self.intensity}, "arrays"),
             "metadata": to_json_value(
@@ -108,7 +112,7 @@ class Chromatogram:
                     "label": self.label,
                     "mz": self.mz,
                     "tolerance": self.tolerance,
-                    "tolerance_type": self.tolerance_type,
+                    "tolerance_unit": self.tolerance_unit,
                     "meta": self.meta,
                 },
                 "metadata",
@@ -117,9 +121,14 @@ class Chromatogram:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> Self:
-        """Reconstruct a chromatogram from :meth:`to_dict` output."""
+        """Reconstruct a chromatogram from :meth:`to_dict` output.
+
+        Schema version 1 (spxtacular 0.8) names the unit ``tolerance_type`` and spells
+        Da ``"Da"``; it still loads.
+        """
         data = require_mapping(payload, "payload")
-        require_schema(data, CHROMATOGRAM_SCHEMA, {"chromatogram"})
+        require_schema(data, CHROMATOGRAM_SCHEMA, {"chromatogram"}, versions=(1, CHROMATOGRAM_SCHEMA_VERSION))
+        unit_key = "tolerance_type" if data["schema_version"] == 1 else "tolerance_unit"
 
         arrays = require_mapping(data["arrays"], "payload.arrays")
         require_exact_keys(arrays, {"rt", "intensity"}, "payload.arrays")
@@ -131,11 +140,14 @@ class Chromatogram:
         metadata = require_mapping(data["metadata"], "payload.metadata")
         require_exact_keys(
             metadata,
-            {"label", "mz", "tolerance", "tolerance_type", "meta"},
+            {"label", "mz", "tolerance", unit_key, "meta"},
             "payload.metadata",
         )
         normalized_metadata = to_json_value(metadata, "payload.metadata")
         meta = require_mapping(normalized_metadata["meta"], "payload.metadata.meta")
+        unit = require_string(normalized_metadata[unit_key], f"payload.metadata.{unit_key}", nullable=True)
+        if unit is not None and data["schema_version"] == 1:
+            unit = unit.lower()
 
         return cls(
             rt=np.asarray(rt, dtype=np.float64),
@@ -143,9 +155,7 @@ class Chromatogram:
             label=require_string(normalized_metadata["label"], "payload.metadata.label"),
             mz=require_number(normalized_metadata["mz"], "payload.metadata.mz", nullable=True),
             tolerance=require_number(normalized_metadata["tolerance"], "payload.metadata.tolerance", nullable=True),
-            tolerance_type=require_string(
-                normalized_metadata["tolerance_type"], "payload.metadata.tolerance_type", nullable=True
-            ),
+            tolerance_unit=check_tolerance_unit(unit, f"payload.metadata.{unit_key}") if unit is not None else None,
             meta=dict(meta),
         )
 
@@ -258,7 +268,7 @@ def extract_xic(
     targets: Sequence[float] | float,
     *,
     tolerance: float = 20.0,
-    tolerance_type: ToleranceLike = ToleranceType.PPM,
+    tolerance_unit: ToleranceUnit = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Aggregate = "sum",
 ) -> list[Chromatogram]:
@@ -274,7 +284,7 @@ def extract_xic(
         Any iterable of spectra, typically ``reader.ms1``. Consumed once.
     targets:
         One m/z, or a sequence of them.
-    tolerance, tolerance_type:
+    tolerance, tolerance_unit:
         Extraction window, ``"ppm"`` (default) or ``"da"``.
     im_window:
         Optional ``(low, high)`` ion-mobility window. On timsTOF data this is
@@ -291,7 +301,7 @@ def extract_xic(
     -------
     One :class:`Chromatogram` per target, in the order given.
     """
-    tol_type = ToleranceType(str(tolerance_type).lower())
+    tol_unit = check_tolerance_unit(tolerance_unit)
     if aggregate not in ("sum", "max"):
         raise SpxtacularError(f"aggregate must be 'sum' or 'max', got {aggregate!r}")
 
@@ -300,7 +310,7 @@ def extract_xic(
     if target_arr.size == 0:
         return []
 
-    if tol_type is ToleranceType.PPM:
+    if tol_unit == "ppm":
         lo_targets = target_arr * (1.0 - tolerance / 1e6)
         hi_targets = target_arr * (1.0 + tolerance / 1e6)
     else:
@@ -365,7 +375,6 @@ def extract_xic(
     order = np.argsort(rt, kind="stable")
     matrix = np.vstack(rows)[order] if rows else np.zeros((0, target_arr.size))
 
-    unit = "ppm" if tol_type is ToleranceType.PPM else "Da"
     time_metadata = _time_metadata(rt_present)
     out = [
         Chromatogram(
@@ -374,7 +383,7 @@ def extract_xic(
             label=f"m/z {target_arr[k]:.4f}",
             mz=float(target_arr[k]),
             tolerance=float(tolerance),
-            tolerance_type=unit,
+            tolerance_unit=tol_unit,
             meta={
                 **time_metadata,
                 "im_window": im_window,

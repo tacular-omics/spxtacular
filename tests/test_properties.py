@@ -264,11 +264,11 @@ FRAGMENTS = {(IonType("b"), 1): [98.06004031562, 227.10263340359], (IonType("y")
 
 @given(spectrum=spectra(), tolerance=st.floats(0.0, 1.0), unit=st.sampled_from(["da", "ppm"]))
 def test_match_fragments_and_score_do_not_crash(spectrum: Spectrum, tolerance: float, unit: str) -> None:
-    matches = spectrum.match_fragments(FRAGMENTS, tolerance=tolerance, tolerance_type=unit)
+    matches = spectrum.match_fragments(FRAGMENTS, tolerance=tolerance, tolerance_unit=unit)
     assert all(0 <= m.peak_index < len(spectrum.mz) for m in matches)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        result = score(spectrum, FRAGMENTS, tolerance=tolerance, tolerance_type=unit)
+        result = score(spectrum, FRAGMENTS, tolerance=tolerance, tolerance_unit=unit)
     assert isinstance(result, dict)
 
 

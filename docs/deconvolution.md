@@ -20,7 +20,7 @@ spec = Spectrum(mz=mz, intensity=intensity)
 decon = spec.deconvolute(
     charge_range=(1, 5),
     tolerance=15,
-    tolerance_type="ppm",
+    tolerance_unit="ppm",
 )
 
 print(decon.mz)         # monoisotopic m/z, one entry per cluster (or singleton)
@@ -109,7 +109,7 @@ until every input peak has been consumed or `max_dpeaks` is reached.
 def deconvolute(
     self,
     tolerance: float = 50,
-    tolerance_type: Literal["ppm", "da"] = "ppm",
+    tolerance_unit: Literal["ppm", "da"] = "ppm",
     charge_range: tuple[int, int] = (1, 3),
     intensity: Literal["base", "total"] = "total",
     max_dpeaks: int = 2000,
@@ -122,7 +122,7 @@ def deconvolute(
     max_isotope_gaps: int = 0,
     max_isotopes: int | None = None,
     im_tolerance: float = 0.05,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
@@ -133,7 +133,7 @@ latter two by keyword.
 | Parameter | Default | Description |
 |---|---|---|
 | `tolerance` | `50` | Peak matching tolerance |
-| `tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
+| `tolerance_unit` | `"ppm"` | `"ppm"` or `"da"` |
 | `charge_range` | `(1, 3)` | Min and max charge to try, inclusive. Requires `1 <= min <= max`, else `ValueError` |
 | `intensity` | `"total"` | `"total"` sums matched peaks; `"base"` uses observed A+0, or zero when A+0 is absent |
 | `max_dpeaks` | `2000` | Upper bound on output peaks |
@@ -146,7 +146,7 @@ latter two by keyword.
 | `max_isotope_gaps` | `0` | Missing isotope positions allowed before stopping one direction |
 | `max_isotopes` | `None` | Adaptive by default; an integer imposes a hard envelope-length limit |
 | `im_tolerance` | `0.05` | Candidate-to-seed mobility gate when the spectrum contains ion mobility |
-| `im_tolerance_type` | `"relative"` | Scale the mobility tolerance by the seed value or use it as an absolute difference |
+| `im_tolerance_unit` | `"relative"` | Scale the mobility tolerance by the seed value or use it as an absolute difference |
 | `ionization_model` | `None` | Adduct preset/alias, custom model, or signed carrier mass. Negative scans use `[M-H]-`, and other scans use `[M+H]+` |
 
 Calling `deconvolute()` on an already-`DECONVOLUTED` spectrum is a silent no-op: it returns an
@@ -186,7 +186,7 @@ exact formula or a class-specific custom model when that information is availabl
 After deconvolution, `spectrum.iso_score` is a `float64` array parallel to `mz`/`intensity`. Each assigned cluster carries a score in 0–1 representing how well its observed intensity distribution matches the theoretical isotope envelope. Singletons always have `iso_score=0.0`.
 
 ```python
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
 print(decon.iso_score)   # array of float64, same length as decon.mz
 
 # Keep only well-matched clusters (score >= 0.5) and assigned peaks (charge > 0)
@@ -253,7 +253,7 @@ mz = np.array([
 intensity = np.array([1e3, 80000.0, 58614.0, 21276.0, 3828.0], dtype=np.float64)
 
 spec = Spectrum(mz=mz, intensity=intensity)
-decon = spec.deconvolute(charge_range=(1, 4), tolerance=10, tolerance_type="ppm")
+decon = spec.deconvolute(charge_range=(1, 4), tolerance=10, tolerance_unit="ppm")
 
 for mz_val, z, inten, score in zip(decon.mz, decon.charge, decon.intensity, decon.iso_score):
     label = f"z={z}" if z != -1 else "singleton"

@@ -1,8 +1,10 @@
 from typing import Any, cast
 
 import numpy as np
+import pytest
 
 from spxtacular.core import Spectrum
+from spxtacular.errors import SpxtacularError
 
 
 def test_merge_peaks_basic():
@@ -10,7 +12,7 @@ def test_merge_peaks_basic():
     intensity = np.array([100.0, 100.0, 50.0, 20.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
 
     assert len(merged) == 3
     # 100.0 and 100.01 should merge
@@ -26,7 +28,7 @@ def test_merge_peaks_ppm():
     intensity = np.array([100.0, 100.0, 50.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    merged = spec.merge(mz_tolerance=10, mz_tolerance_type="ppm")
+    merged = spec.merge(mz_tolerance=10, mz_tolerance_unit="ppm")
 
     assert len(merged) == 2
     assert np.isclose(merged.mz[0], 100.00025)
@@ -39,7 +41,7 @@ def test_merge_peaks_ion_mobility():
     im = np.array([1.0, 1.2, 2.0])
 
     spec = Spectrum(mz=mz, intensity=intensity, im=im)
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da", im_tolerance=0.3, im_tolerance_type="absolute")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da", im_tolerance=0.3, im_tolerance_unit="absolute")
 
     assert len(merged) == 2
     assert merged.im is not None
@@ -51,7 +53,7 @@ def test_merge_peaks_inplace():
     intensity = np.array([100.0, 100.0, 50.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    spec.merge(mz_tolerance=0.02, mz_tolerance_type="da", inplace=True)
+    spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da", inplace=True)
     assert len(spec) == 2
     assert np.isclose(spec.mz[0], 100.005)
 
@@ -63,7 +65,7 @@ def test_merge_peaks_charge_separation():
     charge = np.array([1, 2, 1])
 
     spec = Spectrum(mz=mz, intensity=intensity, charge=charge, spectrum_type="deconvoluted")
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
 
     # Expect 3 peaks because 100.0 (z=1) and 100.01 (z=2) shouldn't merge
     # m/z 100.0 (z=1) -> 100.0, charge 1
@@ -84,7 +86,7 @@ def test_merge_peaks_charge_merge():
     charge = np.array([2, 2, 1])
 
     spec = Spectrum(mz=mz, intensity=intensity, charge=charge, spectrum_type="deconvoluted")
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
 
     # Expect 2 peaks, 100.0/100.01 merged
     assert len(merged) == 2
@@ -104,7 +106,7 @@ def test_merge_im_tolerance_relative():
 
     spec = Spectrum(mz=mz, intensity=intensity, im=im)
 
-    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_type="da", im_tolerance=0.06, im_tolerance_type="relative")
+    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_unit="da", im_tolerance=0.06, im_tolerance_unit="relative")
 
     # Expect:
     # 100.0 and 100.01 merged
@@ -143,7 +145,7 @@ def test_merge_im_tolerance_absolute():
     im = np.array([1.0, 1.04, 1.1])
 
     spec = Spectrum(mz=mz, intensity=intensity, im=im)
-    merged = spec.merge(mz_tolerance=0.1, im_tolerance=0.05, im_tolerance_type="absolute")
+    merged = spec.merge(mz_tolerance=0.1, im_tolerance=0.05, im_tolerance_unit="absolute")
 
     assert len(merged) == 2
     assert merged.im is not None
@@ -161,22 +163,22 @@ def test_merge_keeps_a_peak_whose_im_fails_its_own_window():
     im = np.array([np.nan, 0.9])
 
     spec = Spectrum(mz=mz, intensity=intensity, im=im)
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type="da")
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
 
     assert len(merged) == 2
     assert merged.intensity.sum() == 30.0
 
 
-def test_merge_accepts_capitalised_tolerance_type():
-    """Regression: 'Da' raised while every other API entry point accepts it."""
+def test_merge_rejects_capitalised_tolerance_unit():
+    """Units are lowercase only, as everywhere else in the API."""
     mz = np.array([100.0, 100.01, 200.0])
     intensity = np.array([100.0, 100.0, 50.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    # The Literal type spells the canonical lowercase values; the case-insensitive
-    # spellings are a runtime affordance, so the cast is the point of the test.
     capitalised: Any = cast(Any, "Da")
-    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_type=capitalised)
+    with pytest.raises(SpxtacularError, match="mz_tolerance_unit must be 'da' or 'ppm'"):
+        spec.merge(mz_tolerance=0.02, mz_tolerance_unit=capitalised)
+    merged = spec.merge(mz_tolerance=0.02, mz_tolerance_unit="da")
 
     assert len(merged) == 2
     assert np.isclose(merged.mz[0], 100.005)
@@ -186,7 +188,7 @@ def test_merge_clears_the_normalized_flag():
     """Regression: merge sums intensities, so leaving the flag set made the next
     normalize() warn and silently return unnormalised data."""
     spec = Spectrum(mz=np.array([100.0, 100.01, 200.0]), intensity=np.array([100.0, 100.0, 50.0]))
-    renormalized = spec.normalize().merge(mz_tolerance=0.02, mz_tolerance_type="da").normalize()
+    renormalized = spec.normalize().merge(mz_tolerance=0.02, mz_tolerance_unit="da").normalize()
 
     assert renormalized.normalized == "max"
     assert renormalized.intensity.max() == 1.0
@@ -198,7 +200,7 @@ def test_merge_zero_intensity():
     intensity = np.array([0.0, 0.0])
 
     spec = Spectrum(mz=mz, intensity=intensity)
-    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_type="da")
+    merged = spec.merge(mz_tolerance=0.1, mz_tolerance_unit="da")
 
     assert len(merged) == 1
     assert merged.intensity[0] == 0.0

@@ -48,9 +48,10 @@ import re
 from typing import TYPE_CHECKING
 
 import numpy as np
+from tacular.types import Polarity
 
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
-from .enums import ActivationType, Analyzer, IMType, Polarity
+from .enums import ActivationType, Analyzer, IMType
 from .errors import SpxtacularError
 from .ionization import DeconvolutionProvenance
 
@@ -220,8 +221,8 @@ def _precursor_im_type(accession: str) -> IMType | None:
 
 
 _POLARITY_FROM_ACCESSION: dict[str, Polarity] = {
-    _POSITIVE: Polarity.POSITIVE,
-    _NEGATIVE: Polarity.NEGATIVE,
+    _POSITIVE: "positive",
+    _NEGATIVE: "negative",
 }
 
 # ---------------------------------------------------------------------------
@@ -356,9 +357,9 @@ def to_inline_spectrum(spec: Spectrum) -> InlineSpectrum:
             params.append(_cv(_MS_LEVEL, value=int(msn_spec.ms_level)))
         # Open vocabulary: normalise casing so "POSITIVE" isn't silently dropped.
         polarity_key = str(msn_spec.polarity).lower() if msn_spec.polarity is not None else None
-        if polarity_key == Polarity.POSITIVE:
+        if polarity_key == "positive":
             params.append(_cv(_POSITIVE))
-        elif polarity_key == Polarity.NEGATIVE:
+        elif polarity_key == "negative":
             params.append(_cv(_NEGATIVE))
         if msn_spec.total_ion_current is not None:
             params.append(_cv(_TIC, value=float(msn_spec.total_ion_current)))

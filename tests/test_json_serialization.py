@@ -34,7 +34,7 @@ def _provenance() -> DeconvolutionProvenance:
         ionization_model=PROTONATED,
         charge_range=(1, 5),
         tolerance=10.0,
-        tolerance_type="ppm",
+        tolerance_unit="ppm",
         intensity_mode="total",
         min_intensity=0.0,
         min_score=0.0,
@@ -428,8 +428,51 @@ class TestSpectrumValidation:
         with pytest.raises(SpxtacularError, match="max_isotope_gaps must be an integer"):
             Spectrum.from_dict(payload)
 
+    def test_legacy_v2_deconvolution_provenance_loads(self) -> None:
+        """0.8 wrote provenance schema 2 with ``tolerance_type`` / ``im_tolerance_type``."""
+        payload = _plain_spectrum().to_dict()
+        provenance = payload["metadata"]["deconvolution"]
+        assert provenance["schema_version"] == 3
+        provenance["schema_version"] = 2
+        provenance["tolerance_type"] = provenance.pop("tolerance_unit")
+        provenance["im_tolerance_type"] = provenance.pop("im_tolerance_unit")
+
+        restored = Spectrum.from_dict(payload)
+
+        assert restored.deconvolution == _provenance()
+        assert restored.to_dict()["metadata"]["deconvolution"]["tolerance_unit"] == "ppm"
+
+    def test_legacy_provenance_from_dict_lowercases_units(self) -> None:
+        legacy = _provenance().to_dict()
+        legacy["schema_version"] = 2
+        legacy.pop("tolerance_unit")
+        legacy.pop("im_tolerance_unit")
+        legacy["tolerance_type"] = "Da"
+        legacy["im_tolerance_type"] = "Absolute"
+
+        restored = DeconvolutionProvenance.from_dict(legacy)
+
+        assert restored.tolerance_unit == "da"
+        assert restored.im_tolerance_unit == "absolute"
+
 
 class TestChromatogramJson:
+    def test_v1_payload_loads(self) -> None:
+        """0.8 wrote chromatogram schema 1 with ``tolerance_type`` and ``"Da"``."""
+        payload = Chromatogram(
+            rt=np.array([1.0]), intensity=np.array([2.0]), mz=500.0, tolerance=0.01, tolerance_unit="da"
+        ).to_dict()
+        assert payload["schema_version"] == 2
+        payload["schema_version"] = 1
+        payload["metadata"]["tolerance_type"] = "Da"
+        del payload["metadata"]["tolerance_unit"]
+
+        assert Chromatogram.from_dict(payload).tolerance_unit == "da"
+
+    def test_invalid_tolerance_unit_is_rejected(self) -> None:
+        with pytest.raises(SpxtacularError, match="tolerance_unit must be 'da' or 'ppm'"):
+            Chromatogram(rt=np.array([1.0]), intensity=np.array([2.0]), tolerance_unit="Da")  # ty: ignore[invalid-argument-type]
+
     def test_round_trip(self) -> None:
         chromatogram = Chromatogram(
             rt=np.array([10.0, 20.0, 30.0]),
@@ -437,7 +480,7 @@ class TestChromatogramJson:
             label="m/z 523.2764",
             mz=523.2764,
             tolerance=20.0,
-            tolerance_type="ppm",
+            tolerance_unit="ppm",
             meta={"aggregate": "sum", "targets": np.array([523.2764])},
         )
 
@@ -451,7 +494,7 @@ class TestChromatogramJson:
         assert restored.label == chromatogram.label
         assert restored.mz == chromatogram.mz
         assert restored.tolerance == chromatogram.tolerance
-        assert restored.tolerance_type == chromatogram.tolerance_type
+        assert restored.tolerance_unit == chromatogram.tolerance_unit
         assert restored.meta == {"aggregate": "sum", "targets": [523.2764]}
 
     def test_empty_chromatogram_round_trip(self) -> None:
@@ -578,11 +621,11 @@ class TestReaderAndPersistenceCompatibility:
 def test_packaged_json_schemas_are_valid_json() -> None:
     schema_package = files("spxtacular.schemas")
     spectrum_schema = json.loads(schema_package.joinpath("spectrum-v2.schema.json").read_text())
-    chromatogram_schema = json.loads(schema_package.joinpath("chromatogram-v1.schema.json").read_text())
+    chromatogram_schema = json.loads(schema_package.joinpath("chromatogram-v2.schema.json").read_text())
 
     assert spectrum_schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert spectrum_schema["properties"]["schema_version"] == {"const": 2}
-    assert chromatogram_schema["properties"]["schema_version"] == {"const": 1}
+    assert chromatogram_schema["properties"]["schema_version"] == {"const": 2}
     Draft202012Validator.check_schema(spectrum_schema)
     Draft202012Validator.check_schema(chromatogram_schema)
 

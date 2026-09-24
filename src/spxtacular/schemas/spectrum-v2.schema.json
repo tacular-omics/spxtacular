@@ -96,7 +96,7 @@
         "ionization_model",
         "charge_range",
         "tolerance",
-        "tolerance_type",
+        "tolerance_unit",
         "intensity_mode",
         "min_intensity",
         "min_score",
@@ -105,10 +105,10 @@
         "max_isotope_gaps",
         "max_isotopes",
         "im_tolerance",
-        "im_tolerance_type"
+        "im_tolerance_unit"
       ],
       "properties": {
-        "schema_version": {"const": 2},
+        "schema_version": {"const": 3},
         "isotope_model": {"type": "string"},
         "isotope_model_definition": {
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/isotopeModel"}]
@@ -121,7 +121,7 @@
           "maxItems": 2
         },
         "tolerance": {"type": "number", "minimum": 0},
-        "tolerance_type": {"type": "string"},
+        "tolerance_unit": {"enum": ["da", "ppm"]},
         "intensity_mode": {"type": "string"},
         "min_intensity": {"type": "number", "minimum": 0},
         "min_score": {"type": "number", "minimum": 0},
@@ -130,7 +130,7 @@
         "max_isotope_gaps": {"type": "integer", "minimum": 0},
         "max_isotopes": {"type": ["integer", "null"], "minimum": 1},
         "im_tolerance": {"type": "number", "minimum": 0},
-        "im_tolerance_type": {"type": "string"}
+        "im_tolerance_unit": {"enum": ["relative", "absolute"]}
       }
     },
     "arrays": {

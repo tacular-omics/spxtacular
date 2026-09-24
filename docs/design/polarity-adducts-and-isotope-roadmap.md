@@ -12,7 +12,7 @@ the mass of the repeated charge carrier are represented separately by `Ionizatio
 @dataclass(frozen=True, slots=True)
 class IonizationModel:
     name: str
-    polarity: Polarity
+    polarity: Polarity  # tacular.types.Polarity: "positive" | "negative"
     carrier_mass: float
     carrier: str = "custom"
 

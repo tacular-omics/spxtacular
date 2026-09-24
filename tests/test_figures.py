@@ -176,7 +176,7 @@ class TestLayout:
 
     def test_error_axis_uses_the_tolerance_when_units_match(self) -> None:
         spec, frags = _psm()
-        fs = spx.mass_error_plot(spec, frags, tolerance=15, tolerance_type="ppm", unit="ppm", backend="spec")
+        fs = spx.mass_error_plot(spec, frags, tolerance=15, tolerance_unit="ppm", unit="ppm", backend="spec")
         y = fs.cells[0].panels[0].y
         # The tolerance band fits with a little headroom, and the axis stays symmetric.
         assert 15.0 <= y.hi <= 20.0
