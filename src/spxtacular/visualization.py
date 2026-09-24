@@ -21,7 +21,7 @@ and draws it with the engine you ask for:
 from __future__ import annotations
 
 import importlib.util
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -81,16 +81,26 @@ from .plot_table import (
     table_marks,
     table_panel,
 )
+from .reporter import (
+    DEFAULT_REPORTER_TOLERANCE,
+    DEFAULT_REPORTER_TOLERANCE_UNIT,
+    ReporterIons,
+    extract_reporter_ions,
+)
 from .style import PT_PER_MM, FigureStyle, SizeLike, StyleName, resolve_size, resolve_style
 from .utils import format_precursor_charge, signed_precursor_charge
 
 if TYPE_CHECKING:
+    import pandas as pd
     from peptacular.annotation.annotation import ProFormaAnnotation
+    from tacular import IsobaricTagInfo
+    from tacular.types import ToleranceUnit
+
+    from .reporter import ImpurityTable
 
 StyleLike = StyleName | str | FigureStyle | None
 
 __all__ = [
-    "REPORTER_ION_SETS",
     "annotate_spectrum",
     "facet_plot",
     "mass_error_plot",
@@ -99,7 +109,6 @@ __all__ = [
     "plot_spectrum",
     "plot_xic",
     "profile_centroid_plot",
-    "reporter_intensities",
     "reporter_ion_plot",
     "save_figure",
     "sequence_coverage_plot",
@@ -1727,133 +1736,14 @@ def profile_centroid_plot(
 # Reporter ions
 # ---------------------------------------------------------------------------
 
-#: Reporter-ion m/z for common isobaric labels (singly protonated reporters).
-REPORTER_ION_SETS: dict[str, dict[str, float]] = {
-    "tmt6": {
-        "126": 126.127726,
-        "127": 127.124761,
-        "128": 128.134436,
-        "129": 129.131471,
-        "130": 130.141145,
-        "131": 131.138180,
-    },
-    "tmt10": {
-        "126": 126.127726,
-        "127N": 127.124761,
-        "127C": 127.131081,
-        "128N": 128.128116,
-        "128C": 128.134436,
-        "129N": 129.131471,
-        "129C": 129.137790,
-        "130N": 130.134825,
-        "130C": 130.141145,
-        "131": 131.138180,
-    },
-    "tmt11": {
-        "126": 126.127726,
-        "127N": 127.124761,
-        "127C": 127.131081,
-        "128N": 128.128116,
-        "128C": 128.134436,
-        "129N": 129.131471,
-        "129C": 129.137790,
-        "130N": 130.134825,
-        "130C": 130.141145,
-        "131N": 131.138180,
-        "131C": 131.144500,
-    },
-    "tmtpro16": {
-        "126": 126.127726,
-        "127N": 127.124761,
-        "127C": 127.131081,
-        "128N": 128.128116,
-        "128C": 128.134436,
-        "129N": 129.131471,
-        "129C": 129.137790,
-        "130N": 130.134825,
-        "130C": 130.141145,
-        "131N": 131.138180,
-        "131C": 131.144500,
-        "132N": 132.141535,
-        "132C": 132.147855,
-        "133N": 133.144890,
-        "133C": 133.151210,
-        "134N": 134.148245,
-    },
-    "tmtpro18": {
-        "126": 126.127726,
-        "127N": 127.124761,
-        "127C": 127.131081,
-        "128N": 128.128116,
-        "128C": 128.134436,
-        "129N": 129.131471,
-        "129C": 129.137790,
-        "130N": 130.134825,
-        "130C": 130.141145,
-        "131N": 131.138180,
-        "131C": 131.144500,
-        "132N": 132.141535,
-        "132C": 132.147855,
-        "133N": 133.144890,
-        "133C": 133.151210,
-        "134N": 134.148245,
-        "134C": 134.154565,
-        "135N": 135.151600,
-    },
-    "itraq4": {"114": 114.1112, "115": 115.1082, "116": 116.1116, "117": 117.1149},
-    "itraq8": {
-        "113": 113.1079,
-        "114": 114.1112,
-        "115": 115.1082,
-        "116": 116.1116,
-        "117": 117.1149,
-        "118": 118.1120,
-        "119": 119.1153,
-        "121": 121.1220,
-    },
-}
-
-
-def _reporter_channels(reporters: str | Mapping[str, float] | Sequence[float]) -> dict[str, float]:
-    if isinstance(reporters, str):
-        key = reporters.lower().replace("-", "").replace("_", "").replace("plex", "")
-        if key not in REPORTER_ION_SETS:
-            raise SpxtacularError(
-                f"unknown reporter set {reporters!r}; expected one of {', '.join(REPORTER_ION_SETS)} "
-                "or a mapping of channel name to m/z"
-            )
-        return dict(REPORTER_ION_SETS[key])
-    if isinstance(reporters, Mapping):
-        return {str(k): float(v) for k, v in reporters.items()}
-    return {f"{float(v):.3f}": float(v) for v in reporters}
-
-
-def reporter_intensities(
-    spectrum: Spectrum,
-    reporters: str | Mapping[str, float] | Sequence[float],
-    *,
-    tolerance: float = 20.0,
-    tolerance_unit: Literal["ppm", "da"] = "ppm",
-) -> dict[str, float]:
-    """Intensity of each reporter channel: the most intense peak within tolerance, else 0."""
-    channels = _reporter_channels(reporters)
-    unit = _error_unit(tolerance_unit)
-    mz = np.asarray(spectrum.mz, dtype=np.float64)
-    inten = np.asarray(spectrum.intensity, dtype=np.float64)
-    out: dict[str, float] = {}
-    for name, target in channels.items():
-        tol = target * tolerance * 1e-6 if unit == "ppm" else tolerance
-        hit = np.abs(mz - target) <= tol
-        out[name] = float(inten[hit].max()) if hit.any() else 0.0
-    return out
-
 
 def reporter_ion_plot(
     spectrum: Spectrum,
-    reporters: str | Mapping[str, float] | Sequence[float] = "tmt10",
+    plex: str | IsobaricTagInfo | ReporterIons = "TMT10",
     *,
-    tolerance: float = 20.0,
-    tolerance_unit: Literal["ppm", "da"] = "ppm",
+    tolerance: float = DEFAULT_REPORTER_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_REPORTER_TOLERANCE_UNIT,
+    impurities: ImpurityTable | pd.DataFrame | NDArray[np.float64] | None = None,
     show_spectrum: bool = True,
     normalize: bool = True,
     title: str | None = None,
@@ -1867,37 +1757,46 @@ def reporter_ion_plot(
 
     The lower panel is one bar per channel, in channel order, as % of the
     strongest channel. The upper panel (``show_spectrum``) is the raw reporter
-    region, with the peaks assigned to a channel highlighted, so an
+    region, with the peak picked for each channel highlighted, so an
     interfering or missing reporter is visible rather than hidden in a bar.
+    Channels with no peak are marked "n.d.".
 
     Parameters
     ----------
     spectrum:
         An MS2 or MS3 spectrum carrying reporter ions.
-    reporters:
-        A preset name (``"tmt6"``, ``"tmt10"``, ``"tmt11"``, ``"tmtpro16"``,
-        ``"tmtpro18"``, ``"itraq4"``, ``"itraq8"``; see
-        :data:`REPORTER_ION_SETS`), a mapping of channel name to m/z, or a
-        list of m/z values.
-    tolerance, tolerance_unit:
-        Matching window around each reporter m/z, in ``"ppm"`` (default) or ``"da"``.
+    plex:
+        A plex name from tacular (``"TMT6"``, ``"TMT10"``, ``"TMT11"``, ``"TMT16"``,
+        ``"TMT18"``, ``"iTRAQ4"``, ``"iTRAQ8"``, ...), an :class:`~tacular.IsobaricTagInfo`,
+        or a :class:`~spxtacular.reporter.ReporterIons` already extracted from ``spectrum``.
+    tolerance, tolerance_unit, impurities:
+        Passed to :func:`~spxtacular.reporter.extract_reporter_ions`; ignored when
+        ``plex`` is a :class:`~spxtacular.reporter.ReporterIons`.
     show_spectrum:
         Draw the reporter m/z region above the bars.
     normalize:
-        Bars as % of the strongest channel. ``False`` plots raw intensities.
+        Bars as % of the strongest channel. ``False`` plots the intensities as extracted.
     title:
         Plot title.
     theme_mode, backend, style, size, **layout_kwargs:
         As for :func:`plot_spectrum`.
+
+    Raises
+    ------
+    SpxtacularError
+        As :func:`~spxtacular.reporter.extract_reporter_ions` (unknown plex, bad unit, ...).
     """
     key, fig_style, mode = _setup(backend, style, theme_mode)
-    channels = _reporter_channels(reporters)
-    if not channels:
-        raise SpxtacularError("reporter_ion_plot needs at least one reporter channel")
-    unit = _error_unit(tolerance_unit)
-    values = reporter_intensities(spectrum, channels, tolerance=tolerance, tolerance_unit=unit)
-    names = list(channels)
-    heights = np.asarray([values[n] for n in names], dtype=np.float64)
+    if isinstance(plex, ReporterIons):
+        ions = plex
+    else:
+        ions = extract_reporter_ions(
+            spectrum, plex, tolerance=tolerance, tolerance_unit=tolerance_unit, impurities=impurities
+        )
+    names = list(ions.channels)
+    reporter_mz = np.asarray(ions.reporter_mz, dtype=np.float64)
+    heights = np.asarray(ions.intensity, dtype=np.float64)
+    observed = np.asarray(ions.observed_mz, dtype=np.float64)
     top = float(heights.max()) if len(heights) else 0.0
     plotted = heights / top * 100.0 if normalize and top > 0 else heights
     # The dark end of the ordinal blue ramp: the light end washes out as a filled bar.
@@ -1911,13 +1810,13 @@ def reporter_ion_plot(
             width=0.72,
             colors=[bar_color] * len(names),
             name="reporters",
-            customdata=[[n, float(channels[n]), float(values[n])] for n in names],
+            customdata=[[n, float(m), float(h)] for n, m, h in zip(names, reporter_mz, heights, strict=True)],
             hovertemplate=(
                 "%{customdata[0]} (m/z %{customdata[1]:.4f})<br>intensity: %{customdata[2]:.3e}<extra></extra>"
             ),
         )
     ]
-    absent = [i for i, h in enumerate(heights) if h <= 0]
+    absent = [i for i, found in enumerate(ions.found) if not found]
     if absent:
         bar_marks.append(
             LabelSet(
@@ -1943,7 +1842,7 @@ def reporter_ion_plot(
     bar_panel = Panel(
         marks=bar_marks,
         x=Axis(
-            label=RichText.plain("Reporter channel"),
+            label=RichText.plain(f"{ions.plex} channel"),
             lo=-0.6,
             hi=len(names) - 0.4,
             ticks=positions.tolist(),
@@ -1953,18 +1852,16 @@ def reporter_ion_plot(
     )
     panels = [bar_panel]
     if show_spectrum:
-        lo_mz = min(channels.values()) - 0.4
-        hi_mz = max(channels.values()) + 0.4
+        lo_mz = float(reporter_mz.min()) - 0.4
+        hi_mz = float(reporter_mz.max()) + 0.4
         mz = np.asarray(spectrum.mz, dtype=np.float64)
         inten = np.asarray(spectrum.intensity, dtype=np.float64)
         window = (mz >= lo_mz) & (mz <= hi_mz)
         w_mz, w_int = mz[window], inten[window]
         w_top = float(w_int.max()) if len(w_int) else 0.0
         w_rel = w_int / w_top * 100.0 if w_top > 0 else w_int
-        assigned = np.zeros(len(w_mz), dtype=bool)
-        for target in channels.values():
-            tol = target * tolerance * 1e-6 if unit == "ppm" else tolerance
-            assigned |= np.abs(w_mz - target) <= tol
+        # The peak extract_reporter_ions picked for each channel, not everything in the window.
+        assigned = np.isin(w_mz, observed[~np.isnan(observed)])
         context = theme.neutral_color(mode) if fig_style.strong_context else theme.unmatched_color(mode)
         spec_marks: list[Mark] = [
             Sticks(x=w_mz[~assigned], y=w_rel[~assigned], color=context, width=fig_style.stick_width_context,

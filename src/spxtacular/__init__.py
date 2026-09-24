@@ -90,7 +90,6 @@ from .thermo import ThermoReader, ThermoScanLookup
 from .usi import fetch_usi, spectrum_from_proxi_response
 from .utils import da_to_ppm, ppm_to_da
 from .visualization import (
-    REPORTER_ION_SETS,
     annotate_spectrum,
     facet_plot,
     mass_error_plot,
@@ -99,7 +98,6 @@ from .visualization import (
     plot_spectrum,
     plot_xic,
     profile_centroid_plot,
-    reporter_intensities,
     reporter_ion_plot,
     save_figure,
     sequence_coverage_plot,
@@ -112,8 +110,6 @@ __all__ = [
     "FigureStyle",
     "get_style",
     "reporter_ion_plot",
-    "reporter_intensities",
-    "REPORTER_ION_SETS",
     "entropy_similarity",
     "modified_cosine",
     "cosine",
