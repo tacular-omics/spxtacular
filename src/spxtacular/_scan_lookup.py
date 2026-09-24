@@ -124,8 +124,17 @@ def by_sage_scannr(reader: _NativeIdAndScanReader, scannr: str | int) -> MsnSpec
 
     Sage writes the spectrum's id verbatim into ``results.sage.tsv``: the mzML
     native id, or the MGF ``TITLE``. Its ``.pin`` output instead keeps only the
-    number from ``scan=(\\d+)``. So the value is tried as a native id first and,
-    if nothing matches and it is a bare integer, as a scan number.
+    number from ``scan=(\\d+)``. So the value is tried as a native id and, when it
+    is a bare integer, as a scan number too.
+
+    Raises
+    ------
+    SpxtacularError
+        If a bare integer names one spectrum as a native id and a different one
+        as a scan number (an MGF with ``TITLE=12`` on one spectrum and
+        ``SCANS=12`` on another).
+    KeyError
+        If neither lookup finds a spectrum.
     """
     if isinstance(scannr, bool) or not isinstance(scannr, (str, int)):
         raise SpxtacularError(f"scannr must be a str or int, got {type(scannr).__name__} {scannr!r}")
@@ -133,8 +142,29 @@ def by_sage_scannr(reader: _NativeIdAndScanReader, scannr: str | int) -> MsnSpec
     if not text:
         raise SpxtacularError("scannr is empty")
     try:
-        return reader.get_by_native_id(text)
+        by_id: MsnSpectrum | None = reader.get_by_native_id(text)
     except KeyError:
         if not text.isdigit():
             raise
-    return reader.get_by_scan(int(text))
+        by_id = None
+    if not text.isdigit():
+        assert by_id is not None
+        return by_id
+    if by_id is None:
+        return reader.get_by_scan(int(text))
+    try:
+        by_scan = reader.get_by_scan(int(text))
+    except (KeyError, SpxtacularError):
+        return by_id
+    if not _same_spectrum(by_id, by_scan):
+        raise SpxtacularError(
+            f"scannr {text!r} is ambiguous: it is the native id {by_id.native_id!r} "
+            f"and the scan number of spectrum {by_scan.native_id!r}"
+        )
+    return by_id
+
+
+def _same_spectrum(a: MsnSpectrum, b: MsnSpectrum) -> bool:
+    if a.native_id is not None or b.native_id is not None:
+        return a.native_id == b.native_id and a.scan_number == b.scan_number
+    return a.to_dict() == b.to_dict()

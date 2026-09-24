@@ -111,7 +111,7 @@ def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     ------
     FileNotFoundError
         If the folder holds no ``analysis.tdf``.
-    ValueError
+    SpxtacularError
         If the run's only MS/MS frames are of a scheme spxtacular cannot read
         (see ``_MSMS_TYPE_UNSUPPORTED``).
     """
@@ -627,8 +627,9 @@ class DReader:
         """Fetch the DDA MS2 spectrum a Sage ``scannr`` refers to.
 
         For a Bruker ``.d`` run Sage writes timsrust's spectrum index as a bare
-        integer. Upstream Sage (timsrust 0.4) numbers spectra from 0 in
-        precursor order, so ``scannr`` N is precursor ``N + 1``: the default.
+        integer. Upstream Sage (checked against Sage 0.15.0-beta.1, which uses
+        timsrust 0.4.2: 2000 of 2000 DDA PSMs matched) numbers spectra from 0
+        in precursor order, so ``scannr`` N is precursor ``N + 1``: the default.
         Sage builds on timsrust 0.6 or later write the precursor id itself;
         pass ``precursor_offset=0`` for those.
 
@@ -832,16 +833,8 @@ def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
 
 
 def _mzml_spectrum_ids(handle: Any) -> list[str]:
-    """Every spectrum id of an open mzmlpy handle, in file order.
-
-    Uses mzmlpy's id index when it exposes one (no spectrum is decoded), else
-    walks the spectra.
-    """
-    file_object = getattr(handle.spectra, "_file_object", None)
-    ids = getattr(file_object, "spectrum_ids", None) if file_object is not None else None
-    if ids is None:
-        ids = [spec.id for spec in handle.spectra]
-    return list(ids)
+    """Every spectrum id of an open mzmlpy handle, in file order, from mzmlpy's id index (nothing is decoded)."""
+    return list(handle.spectra.ids)
 
 
 class MzmlReader:
@@ -1181,14 +1174,15 @@ class MzmlReader:
 
         ``results.sage.tsv`` holds the mzML native id verbatim; Sage's ``.pin``
         output holds only the number from ``scan=N``. The value is tried as a
-        native id first, then, if it is a bare integer, as a scan number.
+        native id and, if it is a bare integer, as a scan number too.
 
         Raises
         ------
         KeyError
             If nothing matches.
         SpxtacularError
-            As :meth:`get_by_native_id` and :meth:`get_by_scan`.
+            If a bare integer is one spectrum's native id and another's scan
+            number, or as :meth:`get_by_native_id` and :meth:`get_by_scan`.
         """
         return by_sage_scannr(self, scannr)
 
@@ -1264,7 +1258,7 @@ class Reader:
 
     Raises
     ------
-    ValueError
+    SpxtacularError
         If the path extension is not recognised.
     FileNotFoundError
         If the path does not exist.

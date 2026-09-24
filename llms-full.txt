@@ -456,10 +456,11 @@ reader.get_by_sage_scannr(scannr: str | int) -> MsnSpectrum  # DReader/Reader: p
 - Native id: mzML `spectrum/@id`; Thermo `controllerType=0 controllerNumber=1 scan=N` or
   `scan=N`; MGF `TITLE`; MS2 `I NativeID` else `scan=N`; MSP `Name`; Bruker `frame=F`,
   `precursor=P`, `F@wI` (DIA), `F@tT` (PRM).
-- Sage `scannr`: tried as a native id, then as a scan number if it is a bare integer (covers
-  `results.sage.tsv` and `.pin`). Bruker `.d`: DDA only, precursor id = `scannr + 1` for
-  upstream Sage (timsrust 0.4, 0-based); pass `precursor_offset=0` for Sage builds on timsrust
-  >= 0.6. DIA/PRM raise `SpxtacularError`.
+- Sage `scannr`: tried as a native id and, if it is a bare integer, as a scan number (covers
+  `results.sage.tsv` and `.pin`); if the two name different spectra, `SpxtacularError`.
+  Bruker `.d`: DDA only, precursor id = `scannr + 1` for upstream Sage (checked on
+  0.15.0-beta.1, timsrust 0.4.2, 0-based); pass `precursor_offset=0` for Sage builds on
+  timsrust >= 0.6. DIA/PRM raise `SpxtacularError`. `DReader` lookups need an open reader.
 - Peak lists build a byte-offset index on the first lookup (one full parse), then seek; the
   index is rebuilt if the file's size or mtime changes.
 
@@ -531,9 +532,10 @@ entry.peptidoform       # peptacular ProFormaAnnotation with charge (first analy
 entry.peak_annotations  # tuple[tuple[PafAnnotation, ...], ...] per peak, or None
 entry.attributes        # CvParam(accession, name, value, value_accession, group) for unmapped terms
 ```
-Attribute sets are resolved on reading and never written. Not stored: native_id, resolution,
-analyzer, ranges, per-peak charge/im arrays; PASEF reads back as HCD. JSON peak annotations
-must be mzPAF strings. Invalid input raises `SpxtacularError`.
+Attribute sets are resolved on reading and never written. native_id is kept (MS:1000767). Not
+stored: resolution, analyzer, ranges, per-peak charge/im arrays; PASEF reads back as HCD. JSON
+peak annotations are one comma-joined mzPAF string per peak, "?" when unannotated (a bare "?"
+reads as no annotation). Invalid input raises `SpxtacularError`.
 
 ```python
 write_indexed_mzml_gzip(source: str | Path, output: str | Path, *, compression_level: int = 6)

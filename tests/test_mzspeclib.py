@@ -35,6 +35,8 @@ from spxtacular import (
 
 DATA = Path(__file__).parent / "data" / "mzspeclib"
 DIANN = DATA / "phl004_canonical_sall_pv_plasma.head.diann.mzSpecLib.txt"
+SPECTRAST_TEXT = DATA / "fetal_brain_tiny.mzSpecLib.txt.gz"
+SPECTRAST_JSON = DATA / "fetal_brain_tiny.mzSpecLib.json.gz"
 
 
 def make_spectrum(**overrides: object) -> MsnSpectrum:
@@ -44,6 +46,7 @@ def make_spectrum(**overrides: object) -> MsnSpectrum:
         "spectrum_type": SpectrumType.CENTROID,
         "ms_level": 2,
         "scan_number": 17,
+        "native_id": "controllerType=0 controllerNumber=1 scan=17",
         "rt": 1234.5,
         "polarity": Polarity.POSITIVE,
         "collision_energy": 27.0,
@@ -75,7 +78,7 @@ def make_entry(**overrides: object) -> LibraryEntry:
             ),
         ),
         "interpretations": (Interpretation(score=0.99),),
-        "peak_annotations": ["y1/0.3ppm", None, "b3/-1.1ppm,y2-H2O^2/0.5ppm", "?"],
+        "peak_annotations": ["y1/0.3ppm", None, "b3/-1.1ppm,y2-H2O^2/0.5ppm", "?^2"],
         "attributes": (
             CvParam("MS:1003063", "universal spectrum identifier", "mzspec:PXD000001:run:scan:17"),
             CvParam("MS:1003275", "other attribute name", "Source", group=7),
@@ -121,6 +124,7 @@ def test_fields_map_to_spectrum(tmp_path: Path) -> None:
     assert spec.activation_type == ActivationType.HCD
     assert spec.collision_energy == 27.0
     assert spec.scan_number == 17
+    assert spec.native_id == "controllerType=0 controllerNumber=1 scan=17"
     (prec,) = spec.precursors or []
     assert (prec.precursor_mz, prec.charge, prec.im, prec.im_type) == (400.2, 2, 0.95, IMType.OOK0)
     assert prec.is_monoisotopic is True
@@ -149,8 +153,15 @@ def test_json_output_shape(tmp_path: Path) -> None:
     assert doc["format_version"] == "1.0"
     (spectrum,) = doc["spectra"]
     assert {"accession": "MS:1003237", "name": "library spectrum key", "value": 1} in spectrum["attributes"]
-    assert spectrum["peak_annotations"][1] == []
-    assert spectrum["peak_annotations"][2] == ["b3/-1.1ppm", "y2-H2O^2/0.5ppm"]
+    # One comma-joined mzPAF string per peak, "?" when unannotated (mzspeclib-py's form).
+    assert spectrum["peak_annotations"] == ["y1/0.3ppm", "?", "b3/-1.1ppm,y2-H2O^2/0.5ppm", "?^2"]
+    assert {
+        "accession": "MS:1000767",
+        "name": "native spectrum identifier",
+        "value": "controllerType=0 controllerNumber=1 scan=17",
+    } in spectrum["attributes"]
+    unannotated = json.loads(write_mzspeclib([make_entry(peak_annotations=None)], tmp_path / "b.json").read_text())
+    assert unannotated["spectra"][0]["peak_annotations"] == ["?"] * 4
     assert spectrum["analytes"]["1"]["attributes"][0]["accession"] == "MS:1003270"
 
 
@@ -196,6 +207,34 @@ def test_annotations_are_paf_objects(tmp_path: Path) -> None:
     assert entry.peak_annotations[1] == ()
     assert [a.serialize() for a in entry.peak_annotations[2]] == ["b3/-1.1ppm", "y2-H2O^2/0.5ppm"]
     assert all(isinstance(a, paf.PafAnnotation) for peak in entry.peak_annotations for a in peak)
+
+
+def test_bare_question_mark_is_unannotated(tmp_path: Path) -> None:
+    """A bare "?" marks an unannotated peak in both forms; "?" with more is kept."""
+    doc = {
+        "format_version": "1.0",
+        "attributes": [],
+        "spectra": [
+            {
+                "attributes": [{"accession": "MS:1003237", "name": "library spectrum key", "value": 1}],
+                "mzs": [100.0, 200.0, 300.0],
+                "intensities": [1.0, 2.0, 3.0],
+                "peak_annotations": ["?", ["b2", "?"], "?^2"],
+            }
+        ],
+    }
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(doc))
+    (entry,) = read_mzspeclib(path)
+    assert entry.peak_annotations is not None
+    assert [[a.serialize() for a in peak] for peak in entry.peak_annotations] == [[], ["b2"], ["?^2"]]
+    text = tmp_path / "a.txt"
+    text.write_text(
+        "<mzSpecLib>\nMS:1003186|library format version=1.0\n<Spectrum=1>\n<Peaks>\n100\t1\t?\n200\t2\tb2\n"
+    )
+    (entry,) = read_mzspeclib(text)
+    assert entry.peak_annotations is not None
+    assert entry.peak_annotations[0] == ()
 
 
 def test_matched_fragments_as_annotations(tmp_path: Path) -> None:
@@ -254,6 +293,56 @@ def test_spec_example_round_trips(tmp_path: Path) -> None:
     library = read_mzspeclib(DIANN)
     assert read_mzspeclib(write_mzspeclib(library, tmp_path / "a.txt")) == library
     assert read_mzspeclib(write_mzspeclib(library, tmp_path / "a.json")) == library
+
+
+@pytest.mark.parametrize("source", [SPECTRAST_TEXT, SPECTRAST_JSON], ids=["text", "json"])
+@pytest.mark.parametrize("suffix", ["txt", "json"])
+def test_spectrast_example_round_trips(tmp_path: Path, source: Path, suffix: str) -> None:
+    library = read_mzspeclib(source)
+    assert len(library) == 21
+    assert read_mzspeclib(write_mzspeclib(library, tmp_path / f"out.{suffix}")) == library
+
+
+def test_spectrast_text_and_json_agree() -> None:
+    # The upstream pair is not attribute-for-attribute identical (the JSON repeats
+    # a collision-energy group), so compare what both forms carry.
+    text, as_json = read_mzspeclib(SPECTRAST_TEXT), read_mzspeclib(SPECTRAST_JSON)
+    assert text.attributes == as_json.attributes
+    assert len(text) == len(as_json)
+    for a, b in zip(text, as_json, strict=True):
+        assert a.key == b.key
+        assert a.spectrum == b.spectrum
+        assert a.analytes == b.analytes
+        assert a.interpretations == b.interpretations
+        assert a.peak_annotations == b.peak_annotations
+    assert all(entry.peak_annotations for entry in text)
+
+
+def test_text_cluster_key_attribute(tmp_path: Path) -> None:
+    """A <Cluster=N> section may repeat its key as MS:1003267; it must not be written twice to JSON."""
+    path = tmp_path / "a.txt"
+    path.write_text(
+        "<mzSpecLib>\nMS:1003186|library format version=1.0\n<Cluster=1>\n"
+        "MS:1003267|spectrum cluster key=1\nMS:1003268|spectrum cluster member spectrum keys=1\n"
+    )
+    library = read_mzspeclib(path)
+    assert [a.accession for a in library.clusters[1]] == ["MS:1003268"]
+    assert read_mzspeclib(write_mzspeclib(library, tmp_path / "a.json")) == library
+    path.write_text(
+        "<mzSpecLib>\nMS:1003186|library format version=1.0\n<Cluster=1>\nMS:1003267|spectrum cluster key=2\n"
+    )
+    with pytest.raises(SpxtacularError, match="does not match the section key"):
+        read_mzspeclib(path)
+
+
+def test_native_id_round_trips(tmp_path: Path) -> None:
+    entry = make_entry()
+    text = write_mzspeclib([entry], tmp_path / "a.txt").read_text()
+    assert "MS:1000767|native spectrum identifier=controllerType=0 controllerNumber=1 scan=17\n" in text
+    for name in ("a.txt", "a.json"):
+        back = read_mzspeclib(write_mzspeclib([entry], tmp_path / name))[0]
+        assert back.spectrum.native_id == "controllerType=0 controllerNumber=1 scan=17"
+        assert back.attributes == entry.attributes
 
 
 def test_attribute_sets_resolve(tmp_path: Path) -> None:
@@ -372,6 +461,21 @@ def test_peak_list_annotations(tmp_path: Path, writer, reader, suffix: str) -> N
         (back,) = list(r)
     np.testing.assert_allclose(back.mz, spec.mz)
     np.testing.assert_allclose(back.intensity, spec.intensity)
+
+
+@pytest.mark.parametrize(("writer", "reader", "suffix"), [(write_msp, MspReader, "msp"), (write_mgf, MgfReader, "mgf")])
+def test_peak_list_annotation_with_equals_sign(tmp_path: Path, writer, reader, suffix: str) -> None:  # noqa: ANN001
+    """An mzPAF SMILES holds "="; the MGF reader must still see an ion line, not a header."""
+    spec = make_spectrum(native_id='title "with quotes" = x')
+    anns = [["s{CC(=O)O}/0.1", None, "b3", "s{C=C}"]]
+    path = writer([spec], tmp_path / f"a.{suffix}", annotations=anns)
+    assert "s{CC(=O)O}/0.1" in path.read_text()
+    with reader(path) as r:
+        (back,) = list(r)
+    np.testing.assert_allclose(back.mz, spec.mz)
+    np.testing.assert_allclose(back.intensity, spec.intensity)
+    if suffix == "mgf":
+        assert back.native_id == 'title "with quotes" = x'
 
 
 def test_peak_list_annotations_errors(tmp_path: Path) -> None:

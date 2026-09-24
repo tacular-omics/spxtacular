@@ -87,7 +87,7 @@ identify one spectrum raises `SpxtacularError`:
 |---|---|---|---|
 | `MzmlReader` | The number in a `scan=`, Thermo, `index=` or `spectrum=` id (not the 0-based position: use `reader[i]`) | `spectrum/@id` | First call lists the file's ids once; then mzmlpy's random access |
 | `ThermoReader` | 1-based scan number (same as `reader[n]`) | `controllerType=0 controllerNumber=1 scan=N`, or `scan=N` | Direct |
-| `DReader` | MS1 `frame_id`, DDA `precursor_id`, DIA / PRM MS2 `frame_id` | `frame=F` (MS1), `precursor=P` (DDA), `F@wI` (DIA window), `F@tT` (PRM target) | Direct; DIA / PRM group their windows once per `open()` |
+| `DReader` | MS1 `frame_id`, DDA `precursor_id`, DIA / PRM MS2 `frame_id` | `frame=F` (MS1), `precursor=P` (DDA), `F@wI` (DIA window), `F@tT` (PRM target) | Direct; DIA / PRM group their windows once per `open()`. Needs an open reader (`with DReader(...)`), like the rest of `DReader`; unopened it raises `SpxtacularError` |
 | `MgfReader` | `SCANS` | `TITLE` | First call parses the whole file once and keeps the byte offset of each record; later calls seek to it. The index is rebuilt when the file's size or mtime changes. A gzipped file still decompresses up to the record |
 | `Ms2Reader` | `S` line | `I NativeID`, else `scan=N` | As MGF |
 | `MspReader` | always `SpxtacularError` | `Name` | As MGF |
@@ -97,14 +97,15 @@ reads each:
 
 - mzML: the native id (`results.sage.tsv`), or only the number from `scan=N` (`.pin`).
 - MGF: the `TITLE` (`results.sage.tsv`), or the number from `scan=N` in it (`.pin`).
-- Bruker `.d`: a bare integer, timsrust's 0-based spectrum index. Upstream Sage (timsrust 0.4)
-  counts DDA precursors from 0, so `scannr` N is precursor `N + 1`: the default
+- Bruker `.d`: a bare integer, timsrust's 0-based spectrum index. Upstream Sage (checked against
+  Sage 0.15.0-beta.1, built on timsrust 0.4.2) counts DDA precursors from 0, so `scannr` N is precursor `N + 1`: the default
   `precursor_offset=1`. Sage builds on timsrust 0.6 or later write the precursor id itself;
   pass `precursor_offset=0`. DIA and PRM raise `SpxtacularError`: Sage numbers them by
   timsrust's expanded window list, which spxtacular does not reproduce.
 
-Everywhere but `.d`, the value is tried as a native id first and, if nothing matches and it is a
-bare integer, as a scan number. A `.pin` scannr from a file without scan numbers (Bruker mzML)
+Everywhere but `.d`, the value is tried as a native id and, if it is a bare integer, as a scan
+number too. If both match and name different spectra (an MGF with `TITLE=12` on one spectrum and
+`SCANS=12` on another), it raises `SpxtacularError` rather than guess. A `.pin` scannr from a file without scan numbers (Bruker mzML)
 therefore raises `SpxtacularError`; use `results.sage.tsv`, which keeps the full id.
 
 The `ms1` / `ms2` indexing below is unchanged and still works.

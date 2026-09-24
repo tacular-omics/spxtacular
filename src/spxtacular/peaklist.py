@@ -32,7 +32,7 @@ import gzip
 import os
 import re
 from collections import deque
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -247,16 +247,18 @@ def _iter_mgf(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
             # text between blocks. Deliberately ignored rather than rejected.
             continue
 
-        if "=" in line:
+        # A quoted tail is a peak annotation (``100.0 25.0 "b2/0.1"``), written by
+        # write_mgf(annotations=...) and other tools. It is skipped, not parsed. It
+        # can hold "=" (a SMILES in ``s{CC(=O)O}``), so only the text before the
+        # quote decides header vs peak; a header keeps its whole value (a quoted
+        # TITLE stays intact).
+        quote = line.find('"')
+        head = line if quote < 0 else line[:quote]
+        if "=" in head:
             key, _, value = line.partition("=")
             block.headers[key.strip().upper()] = (value.strip(), line_no)
             continue
-
-        # A quoted tail is a peak annotation (``100.0 25.0 "b2/0.1"``), written by
-        # write_mgf(annotations=...) and other tools. It is skipped, not parsed.
-        quote = line.find('"')
-        if quote >= 0:
-            line = line[:quote].rstrip()
+        line = head.rstrip()
         parts = _PEAK_SPLIT_RE.split(line)
         if len(parts) < 2:
             raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
@@ -862,6 +864,19 @@ class _PeakListReader:
                 return spec
         raise SpxtacularError(f"{self.path}:{record.line}: no record here; the file changed after it was indexed")
 
+    def _read_checked(self, record: _Record, matches: Callable[[MsnSpectrum], bool]) -> MsnSpectrum | None:
+        """Parse ``record`` and return it if it is still the spectrum the index says it is.
+
+        The index is stamped with the file's size and mtime; an edit that keeps
+        both (same-size rewrite within the mtime granularity) would otherwise
+        return the wrong spectrum. ``None`` means stale: the caller rebuilds.
+        """
+        try:
+            spec = self._read_record(record)
+        except SpxtacularError:
+            return None
+        return spec if matches(spec) else None
+
     def get_by_native_id(self, native_id: str) -> MsnSpectrum:
         """Fetch a spectrum by its ``native_id`` (MGF ``TITLE``, MS2 ``I NativeID`` or ``scan=N``, MSP ``Name``).
 
@@ -879,13 +894,18 @@ class _PeakListReader:
         """
         if not isinstance(native_id, str):
             raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
-        index = self._id_index()
-        record = index.ids.get(native_id)
-        if record is None:
-            if native_id in index.duplicate_ids:
-                raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
-            raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
-        return self._read_record(record)
+        for _ in range(2):
+            index = self._id_index()
+            record = index.ids.get(native_id)
+            if record is None:
+                if native_id in index.duplicate_ids:
+                    raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
+                raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
+            spec = self._read_checked(record, lambda s: s.native_id == native_id)
+            if spec is not None:
+                return spec
+            self._index = None
+        raise SpxtacularError(f"{self.path}: native id {native_id!r} moved while it was being read")
 
     def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
         """Fetch a spectrum by its scan number (MGF ``SCANS``, MS2 ``S`` line).
@@ -903,36 +923,42 @@ class _PeakListReader:
         """
         scan_number = check_scan_number(scan_number)
         check_ms_level(ms_level)
-        index = self._id_index()
-        record = index.scans.get(scan_number)
-        if record is None:
-            if scan_number in index.duplicate_scans:
-                raise SpxtacularError(
-                    f"{self.path}: scan number {scan_number} is shared by several spectra; "
-                    "use get_by_native_id() instead"
-                )
-            if not index.scans and not index.duplicate_scans:
-                raise SpxtacularError(
-                    f"{self.path}: no spectrum in this file has a scan number; use get_by_native_id() instead"
-                )
-            raise KeyError(f"no spectrum with scan number {scan_number} in {self.path}")
-        if ms_level is not None and ms_level != 2:
-            raise KeyError(f"scan {scan_number} is MS2, not MS{ms_level}")
-        return self._read_record(record)
+        for _ in range(2):
+            index = self._id_index()
+            record = index.scans.get(scan_number)
+            if record is None:
+                if scan_number in index.duplicate_scans:
+                    raise SpxtacularError(
+                        f"{self.path}: scan number {scan_number} is shared by several spectra; "
+                        "use get_by_native_id() instead"
+                    )
+                if not index.scans and not index.duplicate_scans:
+                    raise SpxtacularError(
+                        f"{self.path}: no spectrum in this file has a scan number; use get_by_native_id() instead"
+                    )
+                raise KeyError(f"no spectrum with scan number {scan_number} in {self.path}")
+            if ms_level is not None and ms_level != 2:
+                raise KeyError(f"scan {scan_number} is MS2, not MS{ms_level}")
+            spec = self._read_checked(record, lambda s: s.scan_number == scan_number)
+            if spec is not None:
+                return spec
+            self._index = None
+        raise SpxtacularError(f"{self.path}: scan {scan_number} moved while it was being read")
 
     def get_by_sage_scannr(self, scannr: str | int) -> MsnSpectrum:
         """Fetch the spectrum a Sage ``scannr`` refers to.
 
         ``results.sage.tsv`` holds the MGF ``TITLE`` verbatim; Sage's ``.pin``
         output holds only the number from ``scan=N``. The value is tried as a
-        native id first, then, if it is a bare integer, as a scan number.
+        native id and, if it is a bare integer, as a scan number too.
 
         Raises
         ------
         KeyError
             If nothing matches.
         SpxtacularError
-            As :meth:`get_by_native_id` and :meth:`get_by_scan`.
+            If a bare integer is one spectrum's native id and another's scan
+            number, or as :meth:`get_by_native_id` and :meth:`get_by_scan`.
         """
         return by_sage_scannr(self, scannr)
 
@@ -953,7 +979,7 @@ class MgfReader(_PeakListReader):
     Parsing is deliberately lenient: unknown ``KEY=VALUE`` headers, comment lines
     (``#;!/``), blank lines, and text outside ``BEGIN IONS``/``END IONS`` are all
     skipped. Structural damage — a stray ``END IONS``, a nested ``BEGIN IONS``, an
-    unterminated block, an unparsable number — raises ``ValueError`` naming the
+    unterminated block, an unparsable number — raises ``SpxtacularError`` naming the
     file and line number.
 
     ``PEPMASS``, ``CHARGE``, ``TITLE``, ``SCANS``, ``RTINSECONDS`` and the
@@ -974,7 +1000,7 @@ class Ms2Reader(_PeakListReader):
     ``H`` header lines and ``D`` analysis lines are skipped; ``S`` opens a scan,
     ``Z`` gives a candidate precursor charge (repeatable — the first is used),
     ``I`` carries info values, and everything else is an ion line. Structural
-    damage raises ``ValueError`` naming the file and line number.
+    damage raises ``SpxtacularError`` naming the file and line number.
     """
 
     def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
@@ -997,7 +1023,7 @@ class MspReader(_PeakListReader):
 
     Records are count-driven — ``Num Peaks: N`` ends the header and exactly
     ``N`` peaks must follow, so a count mismatch, a record with no ``Num
-    Peaks`` line, or an unparsable number raises ``ValueError`` naming the
+    Peaks`` line, or an unparsable number raises ``SpxtacularError`` naming the
     file and line number.
     """
 
@@ -1118,7 +1144,7 @@ def write_mgf(
 
     Raises
     ------
-    ValueError
+    SpxtacularError
         If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
         or ``annotations`` does not line up with the spectra and their peaks.
 
@@ -1193,7 +1219,7 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
     Raises
     ------
-    ValueError
+    SpxtacularError
         If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
 
     Notes
@@ -1270,7 +1296,7 @@ def write_msp(
 
     Raises
     ------
-    ValueError
+    SpxtacularError
         If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
         or ``annotations`` does not line up with the spectra and their peaks.
 

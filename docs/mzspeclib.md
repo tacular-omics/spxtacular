@@ -69,16 +69,17 @@ order.
 | `MS:1000041` charge state (spectrum) | precursor `charge` |
 | `MS:1003085` previous MSn-1 scan precursor intensity | precursor `intensity` |
 | `MS:1002815` / `MS:1002476` / `MS:1002954` | precursor `im` with `im_type` `ook0` / `drift_time_ms` / `ccs` |
-| `MS:1000894` retention time | `rt` in seconds (minutes are converted) |
+| `MS:1000894` retention time | `rt` in seconds (minutes are converted; a value with no unit is taken as seconds, although NIST-derived files often mean minutes) |
 | `MS:1000045` collision energy | `collision_energy` (eV) |
 | `MS:1000044` dissociation method | `activation_type` |
 | `MS:1000465` scan polarity | `polarity` |
 | `MS:1000511` ms level | `ms_level` (2 when absent) |
+| `MS:1000767` native spectrum identifier | `native_id` |
 | `MS:1003057` scan number, `MS:1000285` TIC, `MS:1000927` ion injection time | `scan_number`, `total_ion_current`, `injection_time` |
 | `MS:1003270` proforma peptidoform ion notation, or `MS:1003169` + `MS:1000041` | `analyte.peptidoform`, `analyte.charge` |
 | `MS:1002357` PSM-level probability | `interpretation.score` |
 | `MS:1003163` analyte mixture members | `interpretation.members` |
-| Peak column 3 (mzPAF) | `entry.peak_annotations`: a tuple of paftacular `PafAnnotation` per peak |
+| Peak column 3 (mzPAF) | `entry.peak_annotations`: a tuple of paftacular `PafAnnotation` per peak. A bare `?` marks an unannotated peak and reads as `()` |
 | Peak columns 4+ | `entry.peak_attributes` |
 
 A term is only moved when it appears once and any group it is in holds just its unit. Two
@@ -93,7 +94,7 @@ attribute sets, so a read/write cycle expands them.
 ## What is not stored
 
 mzSpecLib has no term for these `MsnSpectrum` fields, so `write_mzspeclib` drops them:
-`native_id`, `resolution`, `analyzer`, `ramp_time`, the m/z, ion-mobility and isolation
+`resolution`, `analyzer`, `ramp_time`, the m/z, ion-mobility and isolation
 ranges, the precursor `iso_score`, the per-peak `charge`, `im` and `iso_score` arrays, and the
 spectrum-level `im_type`. `ActivationType.PASEF` is written as `MS:1002481` (higher energy
 beam-type CID) and reads back as `HCD`. EThcD and ETciD are written as their combined terms
@@ -107,8 +108,10 @@ field it writes.
 
 ## Limits
 
-- JSON peak annotations are read as mzPAF strings (or lists of strings). The spec's
-  structured annotation objects are not supported and raise `SpxtacularError`.
+- JSON peak annotations are written as one comma-joined mzPAF string per peak, `"?"` when
+  unannotated, as the upstream examples and mzspeclib-py do. They are read in that form or as
+  lists of strings. The spec's structured annotation objects are not supported and raise
+  `SpxtacularError`.
 - Only mzPAF annotations are parsed. A peak column in another format raises, naming the
   file and line.
 - Text values carry no type: a value that looks like a number is read as one, except for

@@ -71,6 +71,7 @@ _POLARITY = ("MS:1000465", "scan polarity")
 _COLLISION_ENERGY = ("MS:1000045", "collision energy")
 _DISSOCIATION = ("MS:1000044", "dissociation method")
 _SCAN_NUMBER = ("MS:1003057", "scan number")
+_NATIVE_ID = ("MS:1000767", "native spectrum identifier")
 _TIC = ("MS:1000285", "total ion current")
 _INJECTION_TIME = ("MS:1000927", "ion injection time")
 _NUM_PEAKS = ("MS:1003059", "number of peaks")
@@ -139,6 +140,7 @@ _STRING_TERMS = frozenset(
         "MS:1003190",  # library version
         "MS:1003191",  # library URI
         _SPECTRUM_NAME[0],
+        _NATIVE_ID[0],
         "MS:1003063",  # universal spectrum identifier
         "MS:1003203",  # constituent spectrum file
         "MS:1000512",  # filter string
@@ -535,6 +537,10 @@ def _as_float(value: object, where: str) -> float:
 
 
 def _parse_mzpaf(text: str, where: str) -> tuple[PafAnnotation, ...]:
+    # A bare "?" is how mzSpecLib (and the JSON writer here) marks an unannotated
+    # peak. "?" with more (``?^2``, ``?/0.5ppm``) still carries information and is kept.
+    if text.strip() == "?":
+        return ()
     try:
         return tuple(paf.parse_multi(text))
     except ValueError as exc:
@@ -772,6 +778,8 @@ def _build_entry(raw: _RawSpectrum, sets: Mapping[str, Mapping[str, list[_RawAtt
 
     name_attr = attrs.take_value(_SPECTRUM_NAME[0])
     name = None if name_attr is None or name_attr.value is None else str(name_attr.value)
+    native_attr = attrs.take_value(_NATIVE_ID[0])
+    native_id = None if native_attr is None or native_attr.value is None else str(native_attr.value)
 
     n_declared = _int_term(attrs, _NUM_PEAKS)
     if n_declared is not None and n_declared != len(raw.mz):
@@ -826,6 +834,7 @@ def _build_entry(raw: _RawSpectrum, sets: Mapping[str, Mapping[str, list[_RawAtt
         spectrum_type=SpectrumType.CENTROID,
         ms_level=2 if ms_level is None else ms_level,
         scan_number=_int_term(attrs, _SCAN_NUMBER),
+        native_id=native_id,
         rt=_float_term(attrs, _RT),
         injection_time=_float_term(attrs, _INJECTION_TIME),
         total_ion_current=_float_term(attrs, _TIC),
@@ -1076,6 +1085,13 @@ def _build_library(
     keys = [entry.key for entry in entries]
     if len(set(keys)) != len(keys):
         raise SpxtacularError(f"{path}: duplicate library spectrum keys")
+    for key, attrs in clusters.items():
+        # The text form may repeat the key as an attribute inside <Cluster=N>; the
+        # JSON form must. Either way it is the section key, not an attribute.
+        for attr in attrs:
+            if attr.accession == _CLUSTER_KEY[0] and _as_id(attr.value, f"{path} cluster {key}") != key:
+                raise SpxtacularError(f"{path}: {_CLUSTER_KEY[1]} {attr.value} does not match the section key {key}")
+        attrs[:] = [a for a in attrs if a.accession != _CLUSTER_KEY[0]]
     built_clusters = {
         key: tuple(
             _resolve(attrs, sets["cluster"], f"{path} cluster {key}")
@@ -1290,6 +1306,8 @@ def _emit_spectrum_attributes(entry: LibraryEntry, key: int) -> list[CvParam]:
         add(_MS_LEVEL, int(spec.ms_level))
     if spec.scan_number is not None:
         add(_SCAN_NUMBER, int(spec.scan_number))
+    if spec.native_id is not None:
+        add(_NATIVE_ID, str(spec.native_id))
     if spec.polarity is not None:
         accession, name = _POLARITY_TERMS[Polarity(spec.polarity)]
         add(_POLARITY, name, accession)
@@ -1513,9 +1531,10 @@ def _json_document(library: SpectralLibrary, keyed: list[tuple[int, LibraryEntry
             "interpretations": {},
             "mzs": [float(v) for v in spec.mz],
             "intensities": [float(v) for v in spec.intensity],
+            # One comma-joined mzPAF string per peak, "?" when unannotated: the form
+            # the upstream examples and mzspeclib-py use.
             "peak_annotations": [
-                [a.serialize() for a in peak] if entry.peak_annotations is not None else []
-                for peak in (entry.peak_annotations or [()] * len(spec.mz))
+                ",".join(a.serialize() for a in peak) or "?" for peak in (entry.peak_annotations or [()] * len(spec.mz))
             ],
         }
         for interpretation in entry.interpretations:

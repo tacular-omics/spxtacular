@@ -542,9 +542,9 @@ CvParam(accession, name, value=None, value_accession=None, group=None)
 | Behaviour | Detail |
 |---|---|
 | Format | Read: detected from content and gzip magic. Write: JSON for `*.json[.gz]`, else text |
-| Spectrum fields | Precursor m/z and charge, RT, ion mobility, CE, dissociation, polarity, MS level, scan number, TIC, injection time map to `MsnSpectrum`; other terms stay in `attributes` |
+| Spectrum fields | Precursor m/z and charge, RT, ion mobility, CE, dissociation, polarity, MS level, scan number, native id, TIC, injection time map to `MsnSpectrum`; other terms stay in `attributes` |
 | Analytes | `peptidoform` is a peptacular `ProFormaAnnotation` carrying the charge |
-| Peaks | `peak_annotations`: tuple of paftacular `PafAnnotation` per peak, or `None` |
+| Peaks | `peak_annotations`: tuple of paftacular `PafAnnotation` per peak, or `None`. JSON writes one mzPAF string per peak, `"?"` when unannotated |
 | Invalid input | `SpxtacularError` (bad structure, version other than 1.x, bad mzPAF or ProForma) |
 
 Full documentation: [Spectral libraries](mzspeclib.md)
