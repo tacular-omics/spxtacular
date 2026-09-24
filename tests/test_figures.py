@@ -1,0 +1,678 @@
+"""Tests for the backend-neutral figure layer: styles, rich text, layout, and both renderers.
+
+Content-layer checks run on the :class:`FigureSpec` (``backend="spec"``) and the
+resolved layout, so they hold for every backend. The backend tests are smoke
+tests: the figure draws and saves, and a few properties that matter for
+publication (vector text, embedded TrueType fonts) hold. No pixel comparisons.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+import peptacular as pt
+import pytest
+
+import spxtacular as spx
+from spxtacular._layout import (
+    fit_axis_title,
+    fit_tick_labels,
+    label_boxes,
+    resolve_figure,
+    text_problems,
+    tick_values,
+)
+from spxtacular._text import RichText, best_label
+from spxtacular.core import MsnSpectrum, Precursor, Spectrum
+from spxtacular.errors import SpxtacularError
+from spxtacular.figspec import SLIDE_SIZE_MM, FigureSpec, LabelSet
+
+HAS_MPL = importlib.util.find_spec("matplotlib") is not None
+needs_mpl = pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+
+PEPTIDE = "PEPTIDEK"
+
+
+def _psm() -> tuple[MsnSpectrum, list]:
+    frags = pt.fragment(PEPTIDE, ion_types=("b", "y"), charges=[1, 2])
+    rng = np.random.default_rng(1)
+    matched = np.array([f.mz for f in frags])
+    noise = rng.uniform(100.0, 900.0, 40)
+    mz = np.concatenate([matched + rng.normal(0, 0.002, len(matched)), noise])
+    inten = np.concatenate([rng.uniform(2e4, 1e5, len(matched)), rng.uniform(1e3, 1e4, len(noise))])
+    order = np.argsort(mz)
+    spec = MsnSpectrum(
+        mz=mz[order],
+        intensity=inten[order],
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=464.73, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+    )
+    return spec, frags
+
+
+def _any_overlap(boxes: list[tuple[float, float, float, float]], tol: float = 0.01) -> bool:
+    for i, (ax0, ay0, ax1, ay1) in enumerate(boxes):
+        for bx0, by0, bx1, by1 in boxes[i + 1 :]:
+            if ax0 < bx1 - tol and bx0 < ax1 - tol and ay0 < by1 - tol and by0 < ay1 - tol:
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Styles and sizes
+# ---------------------------------------------------------------------------
+
+
+class TestStyle:
+    def test_presets_exist_and_differ(self) -> None:
+        paper, screen, talk = (spx.get_style(n) for n in ("paper", "screen", "talk"))
+        assert paper.font_size < screen.font_size <= talk.font_size
+        assert paper.print_ink and not screen.print_ink
+
+    def test_unknown_style_raises(self) -> None:
+        with pytest.raises(SpxtacularError, match="unknown figure style"):
+            spx.get_style("poster-glossy")
+
+    def test_with_returns_a_modified_copy(self) -> None:
+        paper = spx.get_style("paper")
+        small = paper.with_(font_size=6.0)
+        assert small.font_size == 6.0 and paper.font_size != 6.0
+
+    @pytest.mark.parametrize(
+        ("size", "width_mm"), [("single", 85.0), ("onehalf", 114.0), ("double", 175.0), (120, 120.0)]
+    )
+    def test_journal_column_widths(self, size, width_mm) -> None:
+        spec, _ = _psm()
+        fs = spx.plot_spectrum(spec, backend="spec", style="paper", size=size)
+        assert fs.width_mm == pytest.approx(width_mm)
+
+    def test_explicit_height(self) -> None:
+        spec, _ = _psm()
+        fs = spx.plot_spectrum(spec, backend="spec", size=(100, 40))
+        assert (fs.width_mm, fs.height_mm) == pytest.approx((100.0, 40.0))
+
+    def test_bad_size_raises(self) -> None:
+        spec, _ = _psm()
+        with pytest.raises(SpxtacularError, match="size"):
+            spx.plot_spectrum(spec, backend="spec", size="quarter")
+
+    def test_default_style_follows_backend(self) -> None:
+        spec, _ = _psm()
+        assert spx.plot_spectrum(spec, backend="spec").style.name == "paper"
+
+
+# ---------------------------------------------------------------------------
+# Rich text and ion labels
+# ---------------------------------------------------------------------------
+
+
+class TestRichText:
+    def test_charge_is_superscript_and_ordinal_subscript(self) -> None:
+        label = best_label("b2^2")
+        assert label.rich.runs == (("b", "n"), ("2", "sub"), ("2+", "sup"))
+        assert label.series == "b"
+
+    def test_neutral_loss_formula_gets_subscripts(self) -> None:
+        runs = best_label("y7-H2O").rich.runs
+        assert ("2", "sub") in runs[2:]
+        assert "\u2212" in "".join(t for t, _ in runs), "a loss uses a real minus sign"
+
+    def test_ambiguous_annotation_prefers_the_simpler_ion(self) -> None:
+        assert best_label("b2-H2O,y3^2").rich.text == "y32+"
+
+    def test_html_and_mathtext(self) -> None:
+        rich = best_label("y3^2").rich
+        assert rich.html() == "y<sub>3</sub><sup>2+</sup>"
+        assert rich.mathtext() == r"y$_{\mathrm{3}}$$^{\mathrm{2}{+}}$"
+
+    def test_italic_mz_stays_italic_in_mathtext(self) -> None:
+        assert RichText((("m/z", "it"),)).mathtext() == r"$\mathit{m/z}$"
+
+    def test_literal_dollar_cannot_start_mathtext(self) -> None:
+        assert RichText.plain("$5").mathtext() == r"\$5"
+
+    def test_scripts_are_narrower_than_plain_text(self) -> None:
+        plain = RichText.plain("y32+").width(10)
+        scripted = best_label("y3^2").rich.width(10)
+        assert scripted < plain
+
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+
+
+class TestLayout:
+    def test_value_axes_get_at_least_three_ticks(self) -> None:
+        ticks, _ = tick_values(0.0, 1.9, length_pt=100.0, spacing_pt=60.0)
+        assert len(ticks) >= 3
+
+    def test_annotated_labels_never_overlap(self) -> None:
+        spec, frags = _psm()
+        fs = spx.annotate_spectrum(spec, frags, backend="spec", style="paper")
+        panel = resolve_figure(fs).panels[0]
+        boxes = label_boxes(panel)
+        assert boxes
+        assert not _any_overlap(boxes)
+
+    def test_labels_stay_inside_the_panel(self) -> None:
+        spec, frags = _psm()
+        fs = spx.annotate_spectrum(spec, frags, backend="spec", style="paper")
+        panel = resolve_figure(fs).panels[0]
+        _, _, w, h = panel.rect
+        for x0, y0, x1, y1 in label_boxes(panel):
+            assert x0 >= -0.5 and x1 <= w + 0.5
+            assert y0 >= -0.5 and y1 <= h + 0.5
+
+    def test_sequence_header_adds_a_band_above_the_spectrum(self) -> None:
+        spec, frags = _psm()
+        plain = spx.annotate_spectrum(spec, frags, backend="spec")
+        headed = spx.annotate_spectrum(spec, frags, peptide=PEPTIDE, backend="spec")
+        assert headed.cells[0].panels[0].header_height > plain.cells[0].panels[0].header_height
+        assert headed.height_mm > plain.height_mm
+
+    def test_error_panel_is_symmetric_around_zero(self) -> None:
+        spec, frags = _psm()
+        fs = spx.annotate_spectrum(spec, frags, mass_error_panel=True, backend="spec")
+        panels = fs.cells[0].panels
+        assert len(panels) == 2
+        err_axis = panels[1].y
+        assert err_axis.lo == pytest.approx(-err_axis.hi)
+        assert err_axis.ticks is not None and 0.0 in err_axis.ticks
+
+    def test_error_axis_uses_the_tolerance_when_units_match(self) -> None:
+        spec, frags = _psm()
+        fs = spx.mass_error_plot(spec, frags, tolerance=15, tolerance_unit="ppm", unit="ppm", backend="spec")
+        y = fs.cells[0].panels[0].y
+        # The tolerance band fits with a little headroom, and the axis stays symmetric.
+        assert 15.0 <= y.hi <= 20.0
+        assert y.lo == pytest.approx(-y.hi)
+
+    def test_precursor_is_marked(self) -> None:
+        spec, _ = _psm()
+        fs = spx.plot_spectrum(spec, backend="spec")
+        names = {getattr(m, "name", None) for m in fs.cells[0].panels[0].marks}
+        assert "precursor" in names
+        fs = spx.plot_spectrum(spec, backend="spec", show_precursor=False)
+        names = {getattr(m, "name", None) for m in fs.cells[0].panels[0].marks}
+        assert "precursor" not in names
+
+    def test_mirror_halves_share_one_scale(self) -> None:
+        spec, frags = _psm()
+        fs = spx.mirror_plot(spec, spec, fragments=frags, backend="spec")
+        panel = resolve_figure(fs).panels[0]
+        assert panel.y.lo == pytest.approx(-panel.y.hi)
+
+
+# ---------------------------------------------------------------------------
+# Reporter ions
+# ---------------------------------------------------------------------------
+
+
+class TestReporterIons:
+    """The plot draws what :func:`extract_reporter_ions` reads; extraction itself is tested in test_reporter."""
+
+    def _spectrum(self, *, drop: int | None = None) -> Spectrum:
+        ions = spx.extract_reporter_ions(Spectrum(mz=np.array([100.0]), intensity=np.array([1.0])), "TMT6")
+        mz = [m for i, m in enumerate(ions.reporter_mz) if i != drop]
+        inten = [(i + 1) * 1e4 for i in range(6) if i != drop]
+        mz.append(127.5)  # an interfering peak between channels
+        inten.append(1e6)
+        order = np.argsort(mz)
+        return Spectrum(mz=np.asarray(mz)[order], intensity=np.asarray(inten)[order])
+
+    def _bars(self, fs: FigureSpec):
+        return [m for p in fs.cells[0].panels for m in p.marks if type(m).__name__ == "Bars"]
+
+    def test_one_bar_per_channel_scaled_to_the_strongest(self) -> None:
+        fs = spx.reporter_ion_plot(self._spectrum(), "TMT6", backend="spec")
+        (bars,) = self._bars(fs)
+        assert len(bars.x) == 6
+        assert np.asarray(bars.height) == pytest.approx([100 / 6 * k for k in range(1, 7)])
+
+    def test_interfering_peak_is_not_a_channel(self) -> None:
+        fs = spx.reporter_ion_plot(self._spectrum(), "TMT6", backend="spec")
+        (bars,) = self._bars(fs)
+        assert max(bars.height) == pytest.approx(100.0)  # the 1e6 peak at 127.5 is ignored
+
+    def test_missing_channel_is_marked_not_detected(self) -> None:
+        fs = spx.reporter_ion_plot(self._spectrum(drop=2), "TMT6", backend="spec")
+        texts = [t.text for p in fs.cells[0].panels for m in p.marks if type(m).__name__ == "LabelSet" for t in m.texts]
+        assert texts == ["n.d."]
+
+    def test_accepts_extracted_reporter_ions(self) -> None:
+        spec = self._spectrum()
+        ions = spx.extract_reporter_ions(spec, "TMT6", tolerance=0.005, tolerance_unit="da")
+        (bars,) = self._bars(spx.reporter_ion_plot(spec, ions, backend="spec", normalize=False))
+        assert np.asarray(bars.height) == pytest.approx(ions.intensity)
+
+    def test_unknown_plex_raises(self) -> None:
+        with pytest.raises(SpxtacularError):
+            spx.reporter_ion_plot(self._spectrum(), "TMT99", backend="spec")
+
+
+# ---------------------------------------------------------------------------
+# Backends
+# ---------------------------------------------------------------------------
+
+
+class TestBackends:
+    def test_unknown_backend_raises(self) -> None:
+        spec, _ = _psm()
+        with pytest.raises(SpxtacularError, match="backend"):
+            spx.plot_spectrum(spec, backend="bokeh")  # ty: ignore[invalid-argument-type]
+
+    def test_spec_backend_returns_a_figure_spec(self) -> None:
+        spec, frags = _psm()
+        assert isinstance(spx.annotate_spectrum(spec, frags, backend="spec"), FigureSpec)
+
+    def test_plotly_is_the_default(self) -> None:
+        spec, _ = _psm()
+        fig = spx.plot_spectrum(spec)
+        assert type(fig).__module__.startswith("plotly")
+
+    def test_spectrum_methods_forward_backend(self) -> None:
+        spec, frags = _psm()
+        assert isinstance(spec.plot(backend="spec"), FigureSpec)
+        assert isinstance(spec.annotate(frags, backend="spec"), FigureSpec)
+
+    def test_spec_renders_with_plotly(self) -> None:
+        spec, frags = _psm()
+        fig = spx.annotate_spectrum(spec, frags, peptide=PEPTIDE, backend="spec").render("plotly")
+        assert fig.layout.annotations
+
+    @needs_mpl
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda s, f: spx.plot_spectrum(s, backend="matplotlib"),
+            lambda s, f: spx.annotate_spectrum(s, f, peptide=PEPTIDE, mass_error_panel=True, backend="matplotlib"),
+            lambda s, f: spx.mirror_plot(s, s, fragments=f, backend="matplotlib"),
+            lambda s, f: spx.mass_error_plot(s, f, backend="matplotlib"),
+            lambda s, f: spx.sequence_coverage_plot(s, PEPTIDE, f, backend="matplotlib"),
+            lambda s, f: spx.facet_plot(s, fragments=f, mirror_spectrum=s, backend="matplotlib"),
+            lambda s, f: spx.reporter_ion_plot(s, "TMT6", backend="matplotlib"),
+        ],
+        ids=["spectrum", "annotated", "mirror", "mass_error", "coverage", "facet", "reporter"],
+    )
+    def test_matplotlib_draws_every_figure(self, make, tmp_path) -> None:
+        spec, frags = _psm()
+        fig = make(spec, frags)
+        out = spx.save_figure(fig, tmp_path / "fig.png", dpi=72)
+        assert out.stat().st_size > 1000
+
+    @needs_mpl
+    def test_pdf_embeds_truetype_fonts(self, tmp_path) -> None:
+        spec, frags = _psm()
+        fig = spx.annotate_spectrum(spec, frags, backend="matplotlib")
+        data = spx.save_figure(fig, tmp_path / "fig.pdf").read_bytes()
+        assert b"/FontFile2" in data, "fonts must be embedded as TrueType (Type 42), not Type 3"
+        assert b"/Subtype /Type3" not in data
+
+    @needs_mpl
+    def test_svg_keeps_text_as_text(self, tmp_path) -> None:
+        spec, frags = _psm()
+        fig = spx.annotate_spectrum(spec, frags, backend="matplotlib")
+        svg = spx.save_figure(fig, tmp_path / "fig.svg").read_text()
+        assert "<text" in svg
+
+    @needs_mpl
+    def test_saving_a_spec_uses_matplotlib(self, tmp_path) -> None:
+        spec, _ = _psm()
+        out = spx.save_figure(spx.plot_spectrum(spec, backend="spec"), tmp_path / "fig.svg")
+        assert "<text" in out.read_text()
+
+    @needs_mpl
+    def test_compose_letters_the_parts(self) -> None:
+        spec, frags = _psm()
+        parts = [
+            spx.plot_spectrum(spec, backend="spec"),
+            spx.mass_error_plot(spec, frags, backend="spec"),
+            spx.reporter_ion_plot(spec, "TMT6", backend="spec"),
+        ]
+        composed = spx.compose_figure(parts, ncols=2, backend="spec")
+        assert [c.letter for c in composed.cells] == ["a", "b", "c"]
+        assert composed.width_mm == pytest.approx(175.0)
+        fig = spx.compose_figure(parts, labels="ABC", backend="matplotlib")
+        texts = {t.get_text() for t in fig.texts}
+        assert {"A", "B", "C"} <= texts
+
+    def test_compose_rejects_rendered_figures(self) -> None:
+        spec, _ = _psm()
+        with pytest.raises(SpxtacularError):
+            spx.compose_figure([spx.plot_spectrum(spec)], backend="spec")
+
+
+def test_import_does_not_load_matplotlib() -> None:
+    """matplotlib is imported on first use of the matplotlib backend, not with the package."""
+    code = (
+        "import sys\n"
+        "import spxtacular as spx\n"
+        "spx.plot_spectrum(spx.Spectrum(mz=[100.0], intensity=[1.0]), backend='spec')\n"
+        "assert 'matplotlib' not in sys.modules, 'matplotlib was imported'\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Awkward input, backend parity, label placement
+# ---------------------------------------------------------------------------
+
+
+def _spectrum(mz, intensity) -> MsnSpectrum:
+    return MsnSpectrum(
+        mz=np.asarray(mz, dtype=np.float64),
+        intensity=np.asarray(intensity, dtype=np.float64),
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=464.73, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+    )
+
+
+_EDGE_FRAGS = pt.fragment(PEPTIDE, ion_types=("b", "y"), charges=[1, 2])
+_EDGE_MZ = np.sort(np.array([f.mz for f in _EDGE_FRAGS]))
+_EDGE_CASES = {
+    "empty": ([], []),
+    "single": ([300.0], [1e4]),
+    "all_zero": (_EDGE_MZ, np.zeros(len(_EDGE_MZ))),
+    "nan_intensity": (_EDGE_MZ, np.where(np.arange(len(_EDGE_MZ)) % 3 == 0, np.nan, 1e4)),
+}
+_EDGE_PLOTS = {
+    "plot_spectrum": lambda s, **kw: spx.plot_spectrum(s, **kw),
+    "annotate": lambda s, **kw: spx.annotate_spectrum(s, _EDGE_FRAGS, peptide=PEPTIDE, mass_error_panel=True, **kw),
+    "mirror": lambda s, **kw: spx.mirror_plot(s, s, fragments=_EDGE_FRAGS, **kw),
+    "mass_error": lambda s, **kw: spx.mass_error_plot(s, _EDGE_FRAGS, **kw),
+    "facet": lambda s, **kw: spx.facet_plot(s, fragments=_EDGE_FRAGS, mirror_spectrum=s, **kw),
+    "coverage": lambda s, **kw: spx.sequence_coverage_plot(s, PEPTIDE, _EDGE_FRAGS, **kw),
+}
+
+
+class TestAwkwardInput:
+    @pytest.mark.parametrize("case", list(_EDGE_CASES))
+    @pytest.mark.parametrize("plot", list(_EDGE_PLOTS))
+    def test_draws_with_plotly(self, case, plot) -> None:
+        mz, inten = _EDGE_CASES[case]
+        fig = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="plotly")
+        fig.to_json()  # plotly validates every property here
+
+    @pytest.mark.parametrize("plot", list(_EDGE_PLOTS))
+    def test_nan_intensity_resolves_on_the_spec(self, plot) -> None:
+        mz, inten = _EDGE_CASES["nan_intensity"]
+        fs = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="spec")
+        for rp in resolve_figure(fs).panels:
+            assert np.isfinite([rp.y.lo, rp.y.hi]).all()
+            for lab in rp.labels:
+                assert np.isfinite([lab.dx, lab.dy, lab.size]).all()
+
+    @needs_mpl
+    @pytest.mark.parametrize("case", list(_EDGE_CASES))
+    def test_draws_with_matplotlib(self, case) -> None:
+        import matplotlib.pyplot as plt
+
+        mz, inten = _EDGE_CASES[case]
+        for plot in ("annotate", "mass_error"):
+            fig = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="matplotlib")
+            fig.canvas.draw()
+            plt.close(fig)
+
+
+class TestBackendParity:
+    def _spec(self, style: str) -> FigureSpec:
+        spec, frags = _psm()
+        return spx.annotate_spectrum(spec, frags, peptide=PEPTIDE, mass_error_panel=True, backend="spec", style=style)
+
+    @pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+    def test_plotly_draws_the_resolved_labels_and_ranges(self, style) -> None:
+        fs = self._spec(style)
+        resolved = resolve_figure(fs)
+        fig = fs.render("plotly")
+        placed = sorted((round(lab.x, 4), lab.text.html()) for rp in resolved.panels for lab in rp.labels)
+        drawn = sorted((round(a.x, 4), a.text) for a in fig.layout.annotations if a.name == "label")
+        assert placed == drawn
+        for rp in resolved.panels:
+            suffix = "" if rp.index == 1 else str(rp.index)
+            xr = fig.layout[f"xaxis{suffix}"].range
+            yr = fig.layout[f"yaxis{suffix}"].range
+            assert xr == pytest.approx([rp.x.lo, rp.x.hi])
+            assert yr == pytest.approx([rp.y.lo, rp.y.hi])
+
+    @needs_mpl
+    @pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+    def test_matplotlib_draws_the_resolved_labels_and_ranges(self, style) -> None:
+        import matplotlib.pyplot as plt
+
+        fs = self._spec(style)
+        resolved = resolve_figure(fs)
+        fig = fs.render("matplotlib")
+        try:
+            axes = fig.axes[: len(resolved.panels)]
+            for rp, ax in zip(resolved.panels, axes, strict=True):
+                assert ax.get_xlim() == pytest.approx((rp.x.lo, rp.x.hi))
+                assert ax.get_ylim() == pytest.approx((rp.y.lo, rp.y.hi))
+                want = {lab.text.mathtext() for lab in rp.labels}
+                drawn = sorted(t.get_text() for t in ax.texts if t.get_text() in want)
+                assert drawn == sorted(lab.text.mathtext() for lab in rp.labels)
+        finally:
+            plt.close(fig)
+
+    def test_talk_style_labels_do_not_overlap(self) -> None:
+        resolved = resolve_figure(self._spec("talk"))
+        panel = resolved.panels[0]
+        assert panel.labels
+        assert not _any_overlap([lab.box for lab in panel.labels])
+
+
+class TestLabelPlacement:
+    def test_top_matched_peak_is_labelled_beside_a_taller_unmatched_peak(self) -> None:
+        # The strongest matched ion sits at the left edge, next to a taller
+        # unmatched peak: the label may cover the grey stick, not be dropped.
+        frags = pt.fragment(PEPTIDE, ion_types=("b", "y"), charges=[1, 2])
+        mzs = np.sort(np.array([f.mz for f in frags]))
+        first = float(mzs[0])
+        mz = np.concatenate([[first, first + 1.2], mzs[1:]])
+        inten = np.concatenate([[8e4, 1e5], np.linspace(1e4, 3e4, len(mzs) - 1)])
+        order = np.argsort(mz)
+        s = _spectrum(mz[order], inten[order])
+        for style in ("paper", "screen"):
+            fs = spx.annotate_spectrum(s, frags, backend="spec", style=style)
+            labelled = {round(lab.x, 3) for lab in resolve_figure(fs).panels[0].labels}
+            assert round(first, 3) in labelled, style
+
+    def test_top_matched_peak_is_labelled(self) -> None:
+        spec, frags = _psm()
+        for style in ("paper", "screen", "talk"):
+            fs = spx.annotate_spectrum(spec, frags, backend="spec", style=style)
+            resolved = resolve_figure(fs).panels[0]
+            table = spx.build_annot_plot_table(spec, frags)
+            matched = table[table["series"] != "unmatched"]
+            top = float(matched.loc[matched["intensity"].idxmax(), "mz"])
+            assert any(abs(lab.x - top) < 1e-6 for lab in resolved.labels), style
+
+    def test_many_labels_place_quickly(self) -> None:
+        import time
+
+        rng = np.random.default_rng(0)
+        mz = np.sort(rng.uniform(100.0, 4000.0, 20000))
+        inten = rng.uniform(1e2, 1e5, len(mz))
+        fs = spx.plot_spectrum(_spectrum(mz, inten), max_labels=500, backend="spec")
+        start = time.perf_counter()
+        resolve_figure(fs)
+        elapsed = time.perf_counter() - start
+        # About 0.1 s on a desktop (7.6 s before vectorising); slack left for slow CI runners.
+        assert elapsed < 1.5
+
+    def test_per_row_label_columns_are_honoured(self) -> None:
+        spec, frags = _psm()
+        table = spx.build_annot_plot_table(spec, frags)
+        labelled = table.index[table["label"].notna() & (table["label"] != "")]
+        big, turned, coloured = labelled[0], labelled[1], labelled[2]
+        table.loc[big, "label_size"] = 11.0
+        table.loc[turned, "label_angle"] = 90.0
+        table.loc[coloured, "label_color"] = "#123456"
+        fs = spx.plot_from_table(table, backend="spec", style="screen")
+        by_x = {round(lab.x, 6): lab for lab in resolve_figure(fs).panels[0].labels}
+        assert by_x[round(float(table.loc[big, "mz"]), 6)].size == 11.0
+        assert by_x[round(float(table.loc[turned, "mz"]), 6)].rotation == -90.0
+        assert by_x[round(float(table.loc[coloured, "mz"]), 6)].color == "#123456"
+
+    def test_table_without_scale_attr_keeps_the_relative_axis(self) -> None:
+        spec, _ = _psm()
+        table = spx.build_plot_table(spec)
+        table.attrs.pop("intensity_scale", None)
+        fs = spx.plot_from_table(table, backend="spec")
+        axis = fs.cells[0].panels[0].y
+        assert axis.tick_max == 100.0
+
+
+# ---------------------------------------------------------------------------
+# Mirror labels
+# ---------------------------------------------------------------------------
+
+
+def _half_labels(fs: FigureSpec) -> dict[str, list[tuple[float, str]]]:
+    """``{"up": [(m/z, text)], "down": [...]}`` for the labels on each half of a mirror."""
+    out: dict[str, list[tuple[float, str]]] = {"up": [], "down": []}
+    for mark in fs.cells[0].panels[0].marks:
+        if isinstance(mark, LabelSet):
+            out[mark.direction] += [(float(x), t.text) for x, t in zip(mark.x, mark.texts, strict=True) if t]
+    return out
+
+
+def _modified_psm() -> tuple[MsnSpectrum, MsnSpectrum, list, list]:
+    """A query and a library of the phosphorylated form: ions carrying T4 are shifted."""
+    spec, frags = _psm()
+    mod_frags = pt.fragment("PEPT[Phospho]IDEK", ion_types=("b", "y"), charges=[1, 2])
+    mz = spec.mz.copy()
+    for plain, mod in zip(frags, mod_frags, strict=True):
+        i = int(np.argmin(np.abs(mz - plain.mz)))
+        if abs(mz[i] - plain.mz) <= 0.02:
+            mz[i] = mod.mz
+    order = np.argsort(mz)
+    library = _spectrum(mz[order], spec.intensity[order])
+    return spec, library, frags, mod_frags
+
+
+class TestMirrorLabels:
+    def test_identical_annotations_are_labelled_once(self) -> None:
+        spec, frags = _psm()
+        halves = _half_labels(spx.mirror_plot(spec, spec, fragments=frags, backend="spec"))
+        assert halves["up"]
+        assert halves["down"] == []
+
+    def test_both_repeats_every_label(self) -> None:
+        spec, frags = _psm()
+        halves = _half_labels(spx.mirror_plot(spec, spec, fragments=frags, mirror_labels="both", backend="spec"))
+        assert sorted(t for _, t in halves["down"]) == sorted(t for _, t in halves["up"])
+
+    def test_differing_annotations_are_labelled_on_both_halves(self) -> None:
+        query, library, frags, mod_frags = _modified_psm()
+        fs = spx.mirror_plot(library, query, fragments=frags, lower_fragments=mod_frags, backend="spec")
+        halves = _half_labels(fs)
+        up = {t for _, t in halves["up"]}
+        down = halves["down"]
+        assert down, "shifted ions must be labelled on the library side"
+        # Every lower label is either a new annotation or one at a different m/z.
+        up_at = {(round(x, 1), t) for x, t in halves["up"]}
+        assert all((round(x, 1), t) not in up_at for x, t in down)
+        # A shifted ion (it carries the phospho-T) is labelled on both halves, at different m/z.
+        assert up & {t for _, t in down}
+
+    def test_top_labels_the_query_only(self) -> None:
+        query, library, frags, mod_frags = _modified_psm()
+        fs = spx.mirror_plot(
+            library, query, fragments=frags, lower_fragments=mod_frags, mirror_labels="top", backend="spec"
+        )
+        halves = _half_labels(fs)
+        assert halves["up"]
+        assert halves["down"] == []
+
+    def test_facet_mirror_is_deduplicated(self) -> None:
+        spec, frags = _psm()
+        fs = spx.facet_plot(spec, fragments=frags, mirror_spectrum=spec, backend="spec")
+        mirror = fs.cells[0].panels[-1]
+        down = [t for m in mirror.marks if isinstance(m, LabelSet) for t in m.texts if t]
+        assert down == []
+
+    def test_bad_value_is_rejected(self) -> None:
+        spec, frags = _psm()
+        with pytest.raises(SpxtacularError):
+            spx.mirror_plot(spec, spec, fragments=frags, mirror_labels="bottom", backend="spec")  # ty: ignore[invalid-argument-type]
+        with pytest.raises(SpxtacularError):
+            spx.mirror_plot(spec, spec, lower_fragments=frags, backend="spec")
+
+
+# ---------------------------------------------------------------------------
+# Fitting text to small panels
+# ---------------------------------------------------------------------------
+
+
+class TestTextFit:
+    def test_short_axis_gets_fewer_ticks(self) -> None:
+        long, _ = tick_values(0.0, 100.0, length_pt=300.0, spacing_pt=40.0, min_sep_pt=20.0)
+        short, _ = tick_values(0.0, 100.0, length_pt=40.0, spacing_pt=40.0, min_sep_pt=20.0)
+        assert len(short) < len(long)
+        assert len(short) >= 2
+
+    def test_crowded_ticks_are_thinned(self) -> None:
+        values = [float(v) for v in range(0, 1001, 100)]
+        texts = [str(int(v)) for v in values]
+        vals, kept, angle = fit_tick_labels(values, texts, 0.0, 1000.0, 60.0, 10.0, vertical=False)
+        assert angle == 0.0
+        assert 1 <= len(vals) < len(values)
+        assert len(vals) == len(kept)
+
+    def test_category_labels_rotate(self) -> None:
+        values = [float(v) for v in range(10)]
+        texts = [f"{126 + i // 2}{'NC'[i % 2]}" for i in range(10)]
+        _, kept, angle = fit_tick_labels(values, texts, -0.5, 9.5, 200.0, 12.0, vertical=False, rotate=True)
+        assert angle == 90.0
+        assert len(kept) == 10
+
+    def test_long_axis_title_is_abbreviated(self) -> None:
+        title = RichText.plain("Relative intensity (%)")
+        fitted, size = fit_axis_title(title, 1000.0, 10.0)
+        assert fitted is title and size is None
+        fitted, _ = fit_axis_title(title, title.width(10.0) * 0.8, 10.0)
+        assert fitted is not None and fitted.text.startswith("Rel. int.")
+
+    def test_compose_in_talk_style_uses_a_slide(self) -> None:
+        spec, frags = _psm()
+        parts = [spx.plot_spectrum(spec, backend="spec"), spx.mass_error_plot(spec, frags, backend="spec")]
+        composed = spx.compose_figure(parts, style="talk", backend="spec")
+        assert (composed.width_mm, composed.height_mm) == pytest.approx(SLIDE_SIZE_MM)
+
+    def test_compose_warns_when_panels_are_too_small(self) -> None:
+        spec, frags = _psm()
+        parts = [spx.annotate_spectrum(spec, frags, mass_error_panel=True, backend="spec") for _ in range(6)]
+        composed = spx.compose_figure(parts, ncols=1, style="talk", size=(80.0, 60.0), backend="spec")
+        with pytest.warns(UserWarning, match="too short"):
+            resolve_figure(composed)
+
+
+# ---------------------------------------------------------------------------
+# Gallery-wide invariant: no text overlaps, all text inside the figure
+# ---------------------------------------------------------------------------
+
+
+def _gallery() -> dict:
+    path = Path(__file__).resolve().parents[1] / "docs" / "gallery" / "build.py"
+    spec = importlib.util.spec_from_file_location("_spx_gallery", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.figures()
+
+
+_GALLERY = _gallery()
+
+
+@pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+@pytest.mark.parametrize("name", list(_GALLERY))
+def test_gallery_text_fits(name: str, style: str) -> None:
+    fs = _GALLERY[name](backend="spec", style=style)
+    problems = text_problems(resolve_figure(fs))
+    assert problems == [], "\n".join(problems)

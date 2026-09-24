@@ -37,6 +37,13 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `MatchedFragment` is frozen, slotted and keyword-only, with an `annotation` property that returns the match as a paftacular `PafAnnotation`.
 - Fragment labels come straight from paftacular 2's mzPAF writer, including negative charges.
 - `DReader` MS1 spectra have `native_id` `"frame=F"` and DDA MS2 spectra `"precursor=P"` (was `None`), so `write_mgf` writes those as `TITLE`.
+- Figures are drawn through a backend-neutral figure layer and restyled for print: horizontal typeset fragment labels (y₇²⁺ as subscript and superscript), italic *m/z*, "Mass error (ppm)" and "Intensity (×10ⁿ)" axis titles, and new fonts and sizes in plotly too. Plotting functions return `Any` (a plotly `Figure` by default).
+- Plot tables drop the `label_font`, `label_yshift` and `label_xanchor` columns; `label_angle` defaults to 0 (was -90) and `label_size` is NaN for the style default. `plot_from_table` requires fewer columns.
+- `save_figure(scale=)` defaults to `None` (the figure style's resolution, 600 dpi for `"paper"`) instead of 2.0, takes `dpi=`, writes matplotlib figures and figure specs as well as plotly, and raises `SpxtacularError` for an unsupported suffix. A missing kaleido (plotly to PNG, SVG or PDF) raises `ImportError` naming the `spxtacular[plotly-export]` extra.
+- `style="paper"` draws no default title (pass `title=` to add one). `backend="matplotlib"` defaults to `style="paper"`; plotly keeps `"screen"`.
+- Plot-table `linewidth` is relative to the default 1.6 and scaled to the style's stick width. `label_size`, `label_angle` and `label_color` are honoured per row. `label_color` stays as set; only rows that keep the series colour get the style's label colour. Unmatched peaks no longer block labels: a label may sit over a grey stick, on a background patch. A plot table without the `intensity_scale` attr is treated as relative when its y label starts with "Relative" and no intensity exceeds 100.
+- Labelled plotly figures in the `"screen"` style keep their design width instead of autosizing, so placed labels do not collide at other widths. Unlabelled ones still autosize.
+- `sequence_coverage_plot` sizes its height to the sequence rows, without the fixed blank band at the bottom. `reporter_ion_plot` labels both panels "Relative intensity (%)" with ticks at 0-100 when normalised. `facet_plot` fixes the mirror ticks at -100 and -50 only for relative intensities.
 
 ### Added
 
@@ -48,6 +55,11 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `write_msp` and `write_mgf` take `annotations=` to write mzPAF peak annotations (strings, `PafAnnotation`s or `match_fragments` output) as a quoted peak column. Default output is unchanged, and `MgfReader` now skips a quoted annotation column.
 - Isobaric reporter-ion quantification for TMT, TMTpro and iTRAQ: `extract_reporter_ions` / `Spectrum.reporter_ions` (one spectrum, `ReporterIons`) and `reporter_ion_table` (many spectra or a reader, one DataFrame row each). Channels and m/z come from tacular; the most intense peak within `tolerance` (default 20 ppm) is used. Optional isotope impurity correction from the reagent lot sheet or a matrix (`isotope_correction_matrix`, `correct_isotope_impurities`, non-negative least squares) and `normalize="sum"|"max"`. An impurity counts on a channel within min(0.02 Da, half the plex's smallest channel spacing), as in OpenMS; numeric lot-sheet shifts are 13C, 15N impurities need `"-15N"` labels.
 - `get_by_sage_scannr` reads Sage's `scannr` for mzML, MGF, Thermo and Bruker DDA `.d` (precursor id = scannr + 1 for upstream Sage; `precursor_offset=0` for Sage on timsrust 0.6 or later).
+- Publication figures. Every plot takes `backend="plotly"|"matplotlib"|"spec"`, `style="paper"|"screen"|"talk"` (or a `FigureStyle`) and `size="single"|"onehalf"|"double"`, a width in mm, or `(width, height)` mm. `"paper"` is 7 pt text at 85 mm and 600 dpi; matplotlib writes PDF/SVG/EPS with embedded TrueType fonts. New extras: `spxtacular[matplotlib]` and `spxtacular[plotly-export]` (kaleido), both in `all`.
+- `compose_figure` lays out `backend="spec"` figures as one lettered multi-panel figure; `render`, `FigureSpec`, `FigureStyle` and `get_style` are exported. `size=None` (default) is the double-column width, or a 16:9 slide (254 × 143 mm) with `style="talk"`, and a panel too short for the style's text raises a `UserWarning`.
+- Axes fit small panels in every figure: tick count follows axis length and font size, long axis titles are abbreviated ("Rel. int. (%)") or set smaller, the sequence header shrinks to its width, and crowded category labels are rotated or thinned with room reserved.
+- `reporter_ion_plot(spectrum, plex="TMT10")`: channel bars from `extract_reporter_ions` with the reporter m/z region above, missing channels marked "n.d.". Takes any tacular plex name, an `IsobaricTagInfo` or a `ReporterIons`.
+- `annotate_spectrum(peptide=)` draws the sequence with b/y cleavage marks above the spectrum, and `mass_error_panel=True` adds an error strip below. `mirror_plot` takes `fragments=` (annotate both halves), `names=` and `similarity=` (cosine, modified cosine, entropy or a number), plus `lower_fragments=` for a library half with another annotation. `mirror_labels="auto"` (default, also on `facet_plot`) labels an ion both halves share once, on the upper half; `"both"` and `"top"` label both halves or the upper only. `absolute_axis=True` shows absolute intensity with a ×10ⁿ exponent. `sequence_coverage_plot` accepts a ProForma annotation.
 
 ### Performance
 
@@ -55,6 +67,7 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `Spectrum.merge` runs as a single greedy kernel, numba-compiled when installed (about 50x faster without ion mobility, 2x with it, on 50,000 peaks).
 - Bruker DDA MS2 reading uses tdfpy's batched per-precursor peaks (about 8x faster).
 - Label collision checks in plot tables are O(n log n).
+- Label placement is vectorised: 500 labels on 20,000 peaks resolve in about 0.15 s.
 
 ## [0.8.0] (2026-09-23)
 

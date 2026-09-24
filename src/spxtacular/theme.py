@@ -252,6 +252,57 @@ def surface(theme: ThemeMode | None = None) -> str:
     return _SURFACE[resolve_mode(theme)]
 
 
+def print_surface(theme: ThemeMode | None = None) -> str:
+    """Background for print figures: pure white in light mode, so a PDF sits on the page
+    without a tinted box. Dark mode keeps the screen surface."""
+    mode = resolve_mode(theme)
+    return "#ffffff" if mode == "light" else _SURFACE[mode]
+
+
+def axis_color(theme: ThemeMode | None = None) -> str:
+    """Recessive axis-line and tick colour used by the screen style."""
+    return _AXIS[resolve_mode(theme)]
+
+
+def grid_color(theme: ThemeMode | None = None) -> str:
+    """Gridline colour, one step off the surface."""
+    return _GRID[resolve_mode(theme)]
+
+
+def _luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return 0.0
+    chans = []
+    for i in (0, 2, 4):
+        c = int(h[i : i + 2], 16) / 255.0
+        chans.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    r, g, b = chans
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(a: str, b: str) -> float:
+    """WCAG contrast ratio between two ``#rrggbb`` colours (1 to 21)."""
+    la, lb = _luminance(a), _luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def label_color(series_color: str, theme: ThemeMode | None = None, background: str | None = None) -> str:
+    """Colour for a direct label on a mark of ``series_color``.
+
+    The series hue when it reads as text against the background (WCAG 3:1, the
+    large-text and graphics threshold), otherwise the secondary ink. Tying the
+    label to its stick by colour lets a reader match the two without a legend
+    lookup; falling back to ink keeps a pale hue from producing unreadable text.
+    """
+    mode = resolve_mode(theme)
+    bg = background or _SURFACE[mode]
+    if series_color.startswith("#") and contrast_ratio(series_color, bg) >= 3.0:
+        return series_color
+    return _TEXT_SECONDARY[mode]
+
+
 def unmatched_color(theme: ThemeMode | None = None) -> str:
     """Colour for peaks carrying no annotation."""
     return _UNMATCHED[resolve_mode(theme)]
@@ -296,6 +347,28 @@ def ion_color(ion_type: str, theme: ThemeMode | None = None) -> str:
 def sequential_scale(theme: ThemeMode | None = None) -> list[list]:
     """Plotly colourscale for continuous magnitude (iso_score, ion mobility)."""
     return _SEQUENTIAL[resolve_mode(theme)]
+
+
+def sequential_colors(n: int, theme: ThemeMode | None = None) -> list[str]:
+    """``n`` hex colours evenly spaced along :func:`sequential_scale`, low to high.
+
+    Linear interpolation in RGB between the scale's stops, the same as
+    ``plotly.colors.sample_colorscale``, without importing plotly.
+    """
+    scale = sequential_scale(theme)
+    stops = [float(pos) for pos, _ in scale]
+    rgbs = [tuple(int(str(c)[k : k + 2], 16) for k in (1, 3, 5)) for _, c in scale]
+    out: list[str] = []
+    for i in range(n):
+        t = i / (n - 1) if n > 1 else 0.0
+        j = 0
+        while j < len(stops) - 2 and t > stops[j + 1]:
+            j += 1
+        span = stops[j + 1] - stops[j]
+        f = (t - stops[j]) / span if span > 0 else 0.0
+        rgb = [a + (b - a) * f for a, b in zip(rgbs[j], rgbs[j + 1], strict=True)]
+        out.append("#" + "".join(f"{round(v):02x}" for v in rgb))
+    return out
 
 
 def charge_color(charge: int, theme: ThemeMode | None = None) -> str:

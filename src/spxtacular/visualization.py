@@ -1,21 +1,35 @@
 """
-Visualization tools for mass spectrometry data.
+Figures for mass spectrometry data.
+
+Every function here builds a backend-neutral :class:`~spxtacular.figspec.FigureSpec`
+and draws it with the engine you ask for:
+
+``backend="plotly"`` (default)
+    An interactive ``plotly.graph_objects.Figure`` with hover on every peak.
+``backend="matplotlib"``
+    A ``matplotlib.figure.Figure`` for print: vector PDF/SVG with embedded
+    TrueType fonts. Needs ``pip install 'spxtacular[matplotlib]'``.
+``backend="spec"``
+    The :class:`~spxtacular.figspec.FigureSpec` itself, to edit, render later,
+    or pass to :func:`~spxtacular.figspec.compose_figure`.
+
+``style=`` picks the typography and line weights (``"screen"``, ``"paper"``,
+``"talk"``; see :mod:`spxtacular.style`) and ``size=`` the physical size
+(``"single"``, ``"onehalf"``, ``"double"`` journal columns, or millimetres).
 """
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable, Iterable, Sequence
+import importlib.util
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
-
-if TYPE_CHECKING:
-    import plotly.graph_objects as go
 
 import numpy as np
 from numpy.typing import NDArray
 
 from . import theme
+from ._text import RichText, best_label
 from .chromatogram import Chromatogram
 from .core import Spectrum, SpectrumType
 from .enums import (
@@ -23,95 +37,194 @@ from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE_UNIT,
     PeakSelection,
     PeakSelectionLike,
-    ToleranceUnit,
+    check_tolerance_unit,
 )
 from .errors import SpxtacularError
-from .matching import FragmentInput
+from .figspec import (
+    Axis,
+    AxSegments,
+    AxText,
+    Backend,
+    Band,
+    Bars,
+    Cell,
+    Colorbar,
+    FigureSpec,
+    HitLayer,
+    LabelSet,
+    Line,
+    Mark,
+    Panel,
+    Points,
+    RefLine,
+    Sticks,
+    check_backend,
+    finish,
+    new_spec,
+)
+from .matching import FragmentInput, MatchedFragment, match_fragments
 from .plot_table import (
     _HIT_TARGET_SIZE,
-    _LABEL_ANGLE_DEFAULT,
     _MAX_LABELS_DEFAULT,
     _PROFILE_MAX_POINTS,
     _cap_labels,
     _charge_series,
     _decimate_profile,
     _fragment_label,
-    _rgba,
     _scaled_intensity,
-    _sticks,
     build_annot_plot_table,
     build_plot_table,
-    plot_from_table,
+    figure_title,
+    intensity_axis,
+    mz_label,
+    table_marks,
+    table_panel,
 )
-from .utils import format_precursor_charge
+from .reporter import (
+    DEFAULT_REPORTER_TOLERANCE,
+    DEFAULT_REPORTER_TOLERANCE_UNIT,
+    ReporterIons,
+    extract_reporter_ions,
+)
+from .style import PT_PER_MM, FigureStyle, SizeLike, StyleName, resolve_size, resolve_style
+from .utils import format_precursor_charge, signed_precursor_charge
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from peptacular.annotation.annotation import ProFormaAnnotation
+    from tacular import IsobaricTagInfo
+    from tacular.types import ToleranceUnit
+
+    from .reporter import ImpurityTable
+
+StyleLike = StyleName | str | FigureStyle | None
+
+__all__ = [
+    "annotate_spectrum",
+    "facet_plot",
+    "mass_error_plot",
+    "mirror_plot",
+    "plot_chromatogram",
+    "plot_spectrum",
+    "plot_xic",
+    "profile_centroid_plot",
+    "reporter_ion_plot",
+    "save_figure",
+    "sequence_coverage_plot",
+]
 
 
-def _add_precursor_marker(
-    fig: go.Figure,
-    spectrum: Spectrum,
-    theme_mode: theme.ThemeMode | None = None,
-) -> None:
-    """Mark the precursor m/z and its isolation window on an MSn figure.
+# ---------------------------------------------------------------------------
+# Shared pieces
+# ---------------------------------------------------------------------------
 
-    Reference chrome, not data: the window is a faint band and the precursor a
-    hairline, both behind the peaks. Silently does nothing for a spectrum that
-    carries no precursor information.
+
+def _setup(backend: str, style: StyleLike, theme_mode: theme.ThemeMode | None) -> tuple[str, FigureStyle, Any]:
+    key = check_backend(backend)
+    return key, resolve_style(style, key), theme.resolve_mode(theme_mode)
+
+
+def _build(
+    cell: Cell,
+    *,
+    key: str,
+    fig_style: FigureStyle,
+    size: SizeLike,
+    mode: theme.ThemeMode,
+    layout_kwargs: dict[str, Any],
+) -> Any:
+    spec = new_spec(cell, style=fig_style, backend=key, size=size, theme_mode=mode, layout_kwargs=layout_kwargs)
+    return finish(spec, key)
+
+
+def _first_precursor_mz(spectrum: Spectrum) -> float | None:
+    precursors = getattr(spectrum, "precursors", None) or []
+    return float(precursors[0].precursor_mz) if precursors else None
+
+
+def _precursor_label(mz: float, charge: int | None, polarity: Any, style: FigureStyle) -> RichText:
+    """``precursor 500.2500 (2+)`` on screen, ``[M+2H]²⁺`` in print."""
+    if style.name == "screen":
+        charge_text = format_precursor_charge(charge, polarity)
+        return RichText.plain(f"precursor {mz:.4f}" + (f" ({charge_text})" if charge_text is not None else ""))
+    signed = signed_precursor_charge(charge, polarity)
+    if signed is None or signed == 0:
+        return RichText.plain("precursor")
+    z = abs(signed)
+    sign = "+" if signed > 0 else "\u2212"
+    count = "" if z == 1 else str(z)
+    return RichText((("[M" + sign + count + "H]", "n"), (f"{count}{'+' if signed > 0 else '\u2212'}", "sup")))
+
+
+def _precursor_marks(spectrum: Spectrum, style: FigureStyle, mode: theme.ThemeMode) -> list[Mark]:
+    """The isolation window as a faint band and each precursor as a hairline.
+
+    Reference furniture, not data: both sit behind the peaks. Nothing is drawn
+    for a spectrum without precursor information.
     """
     precursors = getattr(spectrum, "precursors", None)
     if not precursors:
-        return
-
-    muted = theme.text_color("muted", theme_mode)
+        return []
+    muted = theme.text_color("muted", mode)
+    marks: list[Mark] = []
     window = getattr(spectrum, "isolation_mz_range", None)
     if window is not None and len(window) == 2:
         lo, hi = float(window[0]), float(window[1])
         if hi > lo:
-            fig.add_vrect(
-                x0=lo,
-                x1=hi,
-                fillcolor=muted,
-                opacity=0.08,
-                line_width=0,
-                layer="below",
-            )
-
+            marks.append(Band("v", lo, hi, muted, alpha=0.08))
     for prec in precursors:
         mz_val = getattr(prec, "precursor_mz", None)
         if mz_val is None:
             continue
-        charge = getattr(prec, "charge", None)
-        charge_text = format_precursor_charge(charge, getattr(spectrum, "polarity", None))
-        text = f"precursor {float(mz_val):.4f}" + (f" ({charge_text})" if charge_text is not None else "")
-        fig.add_vline(
-            x=float(mz_val),
-            line_width=1,
-            line_color=muted,
-            layer="below",
-            annotation_text=text,
-            annotation_position="top right",
-            annotation_font={"size": 10, "color": muted},
+        marks.append(
+            RefLine(
+                "v",
+                float(mz_val),
+                muted,
+                width=style.axis_width,
+                dash="dash" if style.print_ink else "solid",
+                label=_precursor_label(
+                    float(mz_val), getattr(prec, "charge", None), getattr(spectrum, "polarity", None), style
+                ),
+                label_color=theme.text_color("secondary", mode),
+                name="precursor",
+            )
         )
+    return marks
 
 
-def save_figure(fig: go.Figure, path: str | Path, *, scale: float = 2.0, **kwargs) -> Path:
+def save_figure(
+    fig: Any,
+    path: str | Path,
+    *,
+    scale: float | None = None,
+    dpi: float | None = None,
+    **kwargs: Any,
+) -> Path:
     """Write a figure to disk, choosing the writer from the file extension.
 
-    ``.html`` always works. Static formats (``.png``, ``.svg``, ``.pdf``,
-    ``.jpg``, ``.jpeg``, ``.webp``) go through plotly's static export, which needs the
-    ``kaleido`` package. Missing-package errors include an install command;
-    export failures such as an invalid destination remain their original type.
+    Works for plotly figures, matplotlib figures and figure specs (a spec is
+    drawn with matplotlib when it is installed, else plotly).
+
+    ``.pdf`` and ``.svg`` are vector output; matplotlib embeds the fonts as
+    TrueType (Type 42), which journals accept and which stays editable in
+    Illustrator or Inkscape. ``.png`` is rendered at the figure style's
+    resolution (600 dpi for ``"paper"``) unless ``dpi`` says otherwise.
+    ``.html`` is plotly only and always works. Plotly static export needs
+    ``kaleido``: ``pip install 'spxtacular[plotly-export]'``.
 
     Parameters
     ----------
     fig:
-        Figure to write.
+        A plotly figure, a matplotlib figure, or a :class:`~spxtacular.figspec.FigureSpec`.
     path:
         Destination. The suffix picks the format.
     scale:
-        Device pixel ratio for raster formats; ``2.0`` gives a figure that still
-        looks sharp in a paper or on a high-density display.
+        Plotly raster only: device pixel ratio. Overrides ``dpi``.
+    dpi:
+        Raster resolution in dots per inch. Defaults to the figure style's ``dpi``.
     **kwargs:
-        Forwarded to Plotly's HTML or static-image writer.
+        Forwarded to the backend writer (``write_html``/``write_image`` or ``savefig``).
 
     Returns
     -------
@@ -119,6 +232,23 @@ def save_figure(fig: go.Figure, path: str | Path, *, scale: float = 2.0, **kwarg
     """
     out = Path(path)
     suffix = out.suffix.lower()
+
+    if isinstance(fig, FigureSpec):
+        backend = "matplotlib" if importlib.util.find_spec("matplotlib") is not None else "plotly"
+        if suffix in ("", ".html"):
+            backend = "plotly"
+        fig = fig.render(backend)  # type: ignore[arg-type]
+
+    if hasattr(fig, "savefig") and not hasattr(fig, "write_image"):
+        mpl_formats = (".png", ".svg", ".pdf", ".eps", ".jpg", ".jpeg", ".tif", ".tiff", ".webp")
+        if suffix not in mpl_formats:
+            raise SpxtacularError(
+                f"unsupported format {suffix!r} for a matplotlib figure; expected one of {', '.join(mpl_formats)}"
+            )
+        if dpi is not None:
+            kwargs.setdefault("dpi", dpi)
+        fig.savefig(str(out), **kwargs)
+        return out
 
     if suffix in ("", ".html"):
         out = out.with_suffix(".html")
@@ -130,58 +260,184 @@ def save_figure(fig: go.Figure, path: str | Path, *, scale: float = 2.0, **kwarg
         raise SpxtacularError(f"unsupported figure format {suffix!r}; expected .html or one of {', '.join(static)}")
 
     try:
-        import importlib
-
         importlib.import_module("kaleido")
     except (ImportError, OSError) as exc:
         raise ImportError(
-            f"writing {suffix} requires the kaleido package: pip install kaleido "
+            f"writing {suffix} requires the kaleido package: pip install 'spxtacular[plotly-export]' "
             "(or save to .html, which needs nothing extra)"
         ) from exc
+    layout = getattr(fig, "layout", None)
+    meta = getattr(layout, "meta", None)
+    meta = meta if isinstance(meta, dict) else {}
+    if scale is None:
+        target_dpi = dpi if dpi is not None else meta.get("spx_dpi")
+        # Plotly lays out in CSS pixels at 96 per inch.
+        scale = float(target_dpi) / 96.0 if target_dpi else 2.0
+    if getattr(layout, "width", None) is None and "spx_width" in meta:
+        # An autosized screen figure has no width until a browser gives it one;
+        # export it at its design width rather than plotly's 700 px default.
+        kwargs.setdefault("width", meta["spx_width"])
     fig.write_image(str(out), scale=scale, **kwargs)
     return out
 
 
-def requires_plotly(func: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator to check if plotly is installed."""
-
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        try:
-            import plotly.graph_objects  # noqa: F401
-        except ImportError as exc:
-            raise ImportError("plotly required for plotting: pip install plotly") from exc
-        return func(*args, **kwargs)
-
-    return wrapper
+def _ion_type(fragment: Any) -> str:
+    ion = getattr(fragment, "ion_type", "")
+    return str(ion.value if hasattr(ion, "value") else ion)
 
 
-def _plot_spectrum_im(
-    spectrum: Spectrum,
-    title: str | None = None,
-    show_scores: bool = True,
-    max_labels: int | None = _MAX_LABELS_DEFAULT,
-    theme_mode: theme.ThemeMode | None = None,
-    intensity_scale: Literal["absolute", "relative"] = "relative",
-    intensity_transform: Literal["sqrt", "log"] | None = None,
-    **layout_kwargs,
-) -> go.Figure:
-    """Stick plot with sticks coloured by ion mobility.
+def _unit_of(tolerance_unit: ToleranceUnit) -> ToleranceUnit:
+    return check_tolerance_unit(tolerance_unit)
 
-    The ramp is quantised into 20 bins of a single-hue sequential scale, so each
-    stick takes one flat colour; the colourbar carries the mapping.
 
-    Intensity is scaled the same way the plot-table path scales it, so switching
-    ``color=`` does not silently switch the y-axis between relative and absolute.
-    As there, the tooltip always reports the unscaled value.
+def _error_unit(unit: str) -> Literal["ppm", "da"]:
+    """Normalise a mass-error unit to ``"ppm"`` or ``"da"``, rejecting anything else."""
+    normalised = str(unit).lower()
+    if normalised not in ("ppm", "da"):
+        raise SpxtacularError(f"Unsupported error unit {unit!r}; expected 'ppm' or 'da'")
+    return normalised
+
+
+def _error_title(unit: str, short: bool = False) -> RichText:
+    """``Mass error (ppm)``; ``Error (ppm)`` for a strip too short to hold the long form."""
+    return RichText.plain(f"{'Error' if short else 'Mass error'} ({'ppm' if unit == 'ppm' else 'Da'})")
+
+
+def _error_marks(
+    matches: Sequence[MatchedFragment],
+    unit: str,
+    *,
+    style: FigureStyle,
+    mode: theme.ThemeMode,
+    labels: bool,
+    max_labels: int | None,
+    max_size: float,
+) -> list[Mark]:
+    """Mass-error dots (area proportional to intensity), a zero line, and optional labels."""
+    muted = theme.text_color("muted", mode)
+    marks: list[Mark] = [RefLine("h", 0.0, muted, width=style.axis_width * 0.8, name="zero")]
+    if not matches:
+        return marks
+    mzs = np.asarray([m.peak_mz for m in matches], dtype=np.float64)
+    errors = np.asarray([m.ppm_error if unit == "ppm" else m.da_error for m in matches], dtype=np.float64)
+    inten = np.asarray([m.peak_intensity for m in matches], dtype=np.float64)
+    finite = inten[np.isfinite(inten)]
+    top = float(finite.max()) if len(finite) and finite.max() > 0 else 1.0
+    rel = np.clip(np.nan_to_num(inten / top, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
+    # Area, not diameter, tracks intensity, so a 4x stronger peak does not look 16x bigger.
+    min_size = max_size * 0.28
+    sizes = min_size + (max_size - min_size) * np.sqrt(rel)
+    ion_types = [_ion_type(m.fragment) for m in matches]
+    colors = [theme.ion_color(t, mode) for t in ion_types]
+    names = [_fragment_label(m.fragment, False) for m in matches]
+    order = np.argsort(-np.nan_to_num(inten, nan=-np.inf))  # small dots drawn last, on top
+    marks.append(
+        Points(
+            x=mzs[order],
+            y=errors[order],
+            sizes=sizes[order],
+            colors=[colors[i] for i in order],
+            outline=theme.marker_outline(mode),
+            outline_width=max(0.3, style.axis_width * 0.6),
+            opacity=0.85,
+            name="errors",
+            customdata=[[float(inten[i]), names[i]] for i in order],
+            hovertemplate=(
+                f"m/z: %{{x:.4f}}<br>error ({'ppm' if unit == 'ppm' else 'Da'}): %{{y:.4f}}<br>"
+                "intensity: %{customdata[0]:.2e}<br>%{customdata[1]}<extra></extra>"
+            ),
+        )
+    )
+    if labels:
+        capped = _cap_labels(list(names), inten, max_labels)
+        keep = [i for i, t in enumerate(capped) if t]
+        if keep:
+            parsed = [best_label(names[i]) for i in keep]
+            marks.append(
+                LabelSet(
+                    x=mzs[keep],
+                    y=errors[keep],
+                    texts=[p.rich for p in parsed],
+                    colors=[theme.label_color(colors[i], mode) if style.label_series_color else muted for i in keep],
+                    priority=np.asarray([p.priority * (0.2 + rel[i]) for p, i in zip(parsed, keep, strict=True)]),
+                    size=style.label_size,
+                    anchor_offset=sizes[keep] / 2.0,
+                    gap=style.label_gap,
+                )
+            )
+    return marks
+
+
+def _errors(matches: Sequence[MatchedFragment], unit: str) -> list[float]:
+    return [m.ppm_error if unit == "ppm" else m.da_error for m in matches]
+
+
+def _nice_ceil(value: float) -> float:
+    """Smallest 1, 2, 2.5 or 5 times a power of ten that is >= ``value``."""
+    if value <= 0 or not np.isfinite(value):
+        return 1.0
+    exp = np.floor(np.log10(value))
+    for step in (1.0, 2.0, 2.5, 5.0, 10.0):
+        if step * 10**exp >= value * (1 - 1e-9):
+            return float(step * 10**exp)
+    return float(10 ** (exp + 1))
+
+
+def _error_axis(
+    unit: str,
+    tolerance: float | None,
+    tolerance_unit: str | None,
+    errors: Sequence[float] | NDArray[np.float64] = (),
+    *,
+    short: bool = False,
+) -> Axis:
+    """Symmetric error axis with ticks at -span, 0, +span.
+
+    The span is the matching tolerance when it is in the displayed unit (the
+    window edges are the numbers a reader checks), else a round number just
+    above the largest error.
     """
-    import plotly.colors as pc
-    import plotly.graph_objects as go
+    if tolerance is not None and tolerance_unit == unit and tolerance > 0:
+        span = float(tolerance)
+    else:
+        finite = np.abs(np.asarray(errors, dtype=np.float64))
+        finite = finite[np.isfinite(finite)]
+        span = _nice_ceil(float(finite.max()) if len(finite) else 0.0)
+    text = f"{span:g}"
+    return Axis(
+        label=_error_title(unit, short),
+        lo=-span * 1.15,
+        hi=span * 1.15,
+        ticks=[-span, 0.0, span],
+        ticktext=[f"\u2212{text}", "0", text],
+        zeroline=False,
+    )
 
-    mz = spectrum.mz
-    intensity = spectrum.intensity
-    # Scaled values are what gets drawn; `intensity` stays the number the hover
-    # reports, so rescaling only ever moves the axis.
+
+# ---------------------------------------------------------------------------
+# Spectrum plots
+# ---------------------------------------------------------------------------
+
+
+def _im_panel(
+    spectrum: Spectrum,
+    *,
+    show_scores: bool,
+    max_labels: int | None,
+    style: FigureStyle,
+    mode: theme.ThemeMode,
+    intensity_scale: Literal["absolute", "relative"],
+    intensity_transform: Literal["sqrt", "log"] | None,
+    absolute_axis: bool,
+) -> Panel:
+    """Sticks coloured by ion mobility, quantised into 20 bins of a single-hue ramp.
+
+    Each stick takes one flat colour and the colour bar carries the mapping.
+    Intensity is scaled as the plot-table path scales it; the hover always
+    reports the unscaled value.
+    """
+    mz = np.asarray(spectrum.mz, dtype=np.float64)
+    intensity = np.asarray(spectrum.intensity, dtype=np.float64)
     plotted, intensity_label = _scaled_intensity(intensity, intensity_scale, intensity_transform)
     im = spectrum.im
     assert im is not None
@@ -197,105 +453,66 @@ def _plot_spectrum_im(
         norm = np.zeros(len(im_arr))
     else:
         im_min, im_max = float(np.nanmin(im_arr)), float(np.nanmax(im_arr))
-        if im_min == im_max:
-            norm = np.zeros(len(im_arr))
-        else:
-            norm = np.nan_to_num((im_arr - im_min) / (im_max - im_min), nan=0.0)
+        norm = np.zeros(len(im_arr)) if im_min == im_max else np.nan_to_num((im_arr - im_min) / (im_max - im_min))
     bin_idx = np.clip((norm * n_bins).astype(int), 0, n_bins - 1)
-    # Single-hue sequential ramp rather than Viridis: ion mobility is a magnitude,
-    # and a multi-hue ramp invents banding that isn't in the data.
-    scale = theme.sequential_scale(theme_mode)
-    bin_colors: list[str] = pc.sample_colorscale(scale, n_bins)
+    # Single-hue sequential ramp rather than Viridis: ion mobility is a
+    # magnitude, and a multi-hue ramp invents banding that is not in the data.
+    scale = theme.sequential_scale(mode)
+    bin_hex = theme.sequential_colors(n_bins, mode)
 
-    traces: list[go.Scatter] = []
+    marks: list[Mark] = []
     for b in range(n_bins):
         mask = bin_idx == b
         if not mask.any():
             continue
-        mz_b = mz[mask]
-        int_b = intensity[mask]
-        plot_b = plotted[mask]
-        im_b = im_arr[mask]
-        xs, ys = _sticks(mz_b, plot_b)
-        hover_data: list[str] = []
-        for i in range(len(mz_b)):
-            tip = f"m/z: {float(mz_b[i]):.4f}<br>intensity: {float(int_b[i]):.2e}<br>{im_label}: {float(im_b[i]):.4f}"
-            hover_data += [tip, tip, ""]
-        traces.append(
-            go.Scatter(
-                x=xs,
-                y=ys,
-                mode="lines",
-                line={"color": bin_colors[b], "width": 1},
-                customdata=hover_data,
+        hover = [
+            f"m/z: {m:.4f}<br>intensity: {i:.2e}<br>{im_label}: {v:.4f}"
+            for m, i, v in zip(mz[mask], intensity[mask], im_arr[mask], strict=True)
+        ]
+        marks.append(
+            Sticks(
+                x=mz[mask],
+                y=plotted[mask],
+                color=bin_hex[b],
+                width=style.stick_width,
+                customdata=hover,
                 hovertemplate="%{customdata}<extra></extra>",
-                showlegend=False,
             )
         )
 
-    # Invisible dummy trace whose sole purpose is rendering the colorbar
-    traces.append(
-        go.Scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            marker={
-                "colorscale": scale,
-                "showscale": True,
-                "cmin": im_min,
-                "cmax": im_max,
-                "colorbar": {
-                    "title": {"text": im_label, "font": {"size": 11}},
-                    "thickness": 12,
-                    "outlinewidth": 0,
-                    "tickfont": {"size": 10},
-                    "len": 0.8,
-                },
-                "size": 0,
-            },
-            hoverinfo="none",
-            showlegend=False,
-        )
-    )
-
-    annotations = []
     if show_scores and spectrum.iso_score is not None:
         texts = _cap_labels(
-            [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in spectrum.iso_score],
-            intensity,
-            max_labels,
-            mz,
+            [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in spectrum.iso_score], intensity, max_labels
         )
-        for i, text in enumerate(texts):
-            if text:
-                annotations.append(
-                    dict(
-                        x=float(mz[i]),
-                        y=float(plotted[i]),
-                        text=text,
-                        showarrow=False,
-                        yshift=6,
-                        yanchor="bottom",
-                        textangle=_LABEL_ANGLE_DEFAULT,
-                        font={"size": 11, "color": theme.text_color("secondary", theme_mode)},
-                        xanchor="center",
-                    )
+        keep = [i for i, t in enumerate(texts) if t]
+        if keep:
+            marks.append(
+                LabelSet(
+                    x=mz[keep],
+                    y=plotted[keep],
+                    texts=[RichText.plain(texts[i]) for i in keep],
+                    colors=[theme.text_color("secondary", mode)] * len(keep),
+                    priority=intensity[keep],
+                    size=style.label_size,
+                    gap=style.label_gap,
                 )
-
-    fig = go.Figure(traces)
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or str(spectrum.spectrum_type or "Spectrum"),
-        xaxis_title="m/z",
-        yaxis_title=intensity_label,
-        annotations=annotations,
-        **layout_kwargs,
+            )
+    relative = intensity_scale == "relative" and intensity_transform is None
+    y_axis, secondary = intensity_axis(
+        intensity_label,
+        relative=relative,
+        base_peak=float(intensity.max()) if len(intensity) else None,
+        absolute_axis=absolute_axis,
     )
-    fig.update_yaxes(rangemode="tozero")
-    return fig
+    return Panel(
+        marks=marks,
+        x=Axis(label=mz_label()),
+        y=y_axis,
+        y_secondary=secondary,
+        colorbar=Colorbar(lo=im_min, hi=im_max, scale=scale, title=RichText.plain(im_label)),
+    )
 
 
-@requires_plotly
 def plot_spectrum(
     spectrum: Spectrum,
     *,
@@ -309,8 +526,12 @@ def plot_spectrum(
     show_precursor: bool = True,
     render: Literal["sticks", "profile"] | None = None,
     max_points: int | None = _PROFILE_MAX_POINTS,
-    **layout_kwargs,
-) -> go.Figure:
+    absolute_axis: bool = False,
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
     """Plot a spectrum: sticks for centroid data, a continuous trace for profile.
 
     Parameters
@@ -318,54 +539,52 @@ def plot_spectrum(
     spectrum:
         Spectrum to plot.
     title:
-        Plot title. Defaults to the spectrum type.
+        Plot title. Defaults to the spectrum type in the ``"screen"`` and
+        ``"talk"`` styles; the ``"paper"`` style draws a title only when given one.
     color:
-        Coloring mode for peaks.  ``"charge"`` (default) colours sticks by
-        charge state on an ordinal ramp when charge data is present.  ``"im"``
-        colours sticks by ion mobility, quantised into 20 bins of a single-hue
-        sequential scale, when IM data is present; falls back to ``"charge"``
-        when no IM array is available.  ``None`` renders every stick in one colour.
-
-        ``"im"`` is a stick encoding, so it is rejected for profile data --
-        centroid first, or pass ``render="sticks"`` if you really mean to draw
-        every sample as a bar.
+        ``"charge"`` (default) colours sticks by charge state on an ordinal
+        ramp when charge data is present. ``"im"`` colours sticks by ion
+        mobility on a 20-step single-hue ramp with a colour bar; it falls back
+        to ``"charge"`` without an IM array, and is rejected for profile data
+        (centroid first, or pass ``render="sticks"``). ``None`` draws every
+        stick in one colour.
     show_scores:
-        Annotate peaks with their isotope profile score when score data is
-        present. Only peaks with score > 0 are labelled. Defaults to True.
+        Label peaks with their isotope-profile score (score > 0 only).
+    max_labels:
+        Cap on direct labels, highest intensity first (default 60). The layout
+        also drops labels that cannot be placed without an overlap; every value
+        stays on hover and in :func:`~spxtacular.plot_table.build_plot_table`.
+    theme_mode:
+        ``"light"`` or ``"dark"``. Defaults to the global plot theme.
     intensity_scale:
-        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
-        raw intensities on the y-axis.
+        ``"relative"`` scales the base peak to 100 %. ``"absolute"`` keeps raw values.
     intensity_transform:
         Optional ``"sqrt"`` or ``"log"`` display transform.
     show_precursor:
-        Draw precursor m/z and isolation-window markers when available.
+        Mark the precursor m/z and isolation window when available.
     render:
-        ``"sticks"`` or ``"profile"``. ``None`` (default) picks from
-        ``spectrum.spectrum_type``: profile data is drawn as a continuous trace
-        with a light fill, everything else as sticks.
+        ``"sticks"`` or ``"profile"``. ``None`` picks from ``spectrum.spectrum_type``.
     max_points:
-        Cap on samples drawn for a profile trace (default 4000). Thinning keeps
-        the minimum and maximum of each bucket, so no peak apex is lost;
-        ``None`` draws every sample. Applies to profile renders only; a stick
-        render draws every peak.
-    max_labels:
-        Cap on directly-drawn labels, highest-intensity peaks first (default
-        ``_MAX_LABELS_DEFAULT``, currently 60). Labels are also thinned by
-        collision, so a dense region keeps fewer than the cap. ``None`` labels
-        every scored peak, which on a large spectrum produces an unreadable
-        pile-up along the baseline -- the remaining values stay available on
-        hover.
-    theme_mode:
-        ``"light"`` or ``"dark"``. Defaults to the global mode set by
-        :func:`~spxtacular.theme.set_plot_theme`.
+        Cap on samples drawn for a profile trace (min/max decimation keeps
+        every apex). ``None`` draws every sample.
+    absolute_axis:
+        With relative intensities, add a right-hand axis in absolute counts.
+    backend:
+        ``"plotly"`` (default), ``"matplotlib"``, or ``"spec"``.
+    style:
+        ``"screen"``, ``"paper"``, ``"talk"`` or a :class:`~spxtacular.style.FigureStyle`.
+        ``None`` is ``"screen"`` for plotly and ``"paper"`` for matplotlib.
+    size:
+        ``"single"`` (85 mm), ``"onehalf"`` (114 mm), ``"double"`` (175 mm), a
+        width in mm, or ``(width_mm, height_mm)``.
     **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
+        Plotly only: forwarded to ``fig.update_layout`` last.
     """
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    default_title = str(spectrum.spectrum_type or "Spectrum")
     if color == "im" and spectrum.im is not None and len(spectrum.im) == len(spectrum.mz):
-        # The type check has to come *first*. The im path only knows how to draw
-        # sticks, so routing to it before asking what kind of spectrum this is
-        # drew profile data as one bar per sample -- the peak shape thrown away,
-        # and the very thing profile data exists to carry.
+        # The type check comes first: the im path only draws sticks, and routing
+        # profile data there would draw one bar per sample and lose the peak shape.
         resolved = (
             render
             if render is not None
@@ -377,208 +596,483 @@ def plot_spectrum(
                 "Centroid it first (spectrum.centroid()), or pass render='sticks' to draw every "
                 "sample as a stick anyway."
             )
-        fig = _plot_spectrum_im(
+        panel = _im_panel(
             spectrum,
-            title=title,
             show_scores=show_scores,
             max_labels=max_labels,
-            theme_mode=theme_mode,
+            style=fig_style,
+            mode=mode,
             intensity_scale=intensity_scale,
             intensity_transform=intensity_transform,
-            **layout_kwargs,
+            absolute_axis=absolute_axis,
         )
-        if show_precursor:
-            _add_precursor_marker(fig, spectrum, theme_mode)
-        return fig
-    table = build_plot_table(
-        spectrum,
-        show_charges=color == "charge",
-        show_scores=show_scores,
-        max_labels=max_labels,
-        theme_mode=theme_mode,
-        intensity_scale=intensity_scale,
-        intensity_transform=intensity_transform,
-    )
-    fig = plot_from_table(
-        table,
-        title=title or str(spectrum.spectrum_type or "Spectrum"),
-        theme_mode=theme_mode,
-        render=render,
-        max_points=max_points,
-        **layout_kwargs,
-    )
+    else:
+        table = build_plot_table(
+            spectrum,
+            show_charges=color == "charge",
+            show_scores=show_scores,
+            max_labels=max_labels,
+            theme_mode=mode,
+            intensity_scale=intensity_scale,
+            intensity_transform=intensity_transform,
+        )
+        render_mode = render if render is not None else table.attrs.get("render", "sticks")
+        if render_mode not in ("sticks", "profile"):
+            raise SpxtacularError(f"render must be 'sticks' or 'profile', got {render_mode!r}")
+        panel = table_panel(
+            table,
+            style=fig_style,
+            theme_mode=mode,
+            render=render_mode,
+            max_points=max_points,
+            absolute_axis=absolute_axis,
+        )
     if show_precursor:
-        _add_precursor_marker(fig, spectrum, theme_mode)
-    return fig
+        panel.marks[:0] = _precursor_marks(spectrum, fig_style, mode)
+    cell = Cell(panels=[panel], title=figure_title(title, default_title, fig_style), aspect=fig_style.aspect)
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
 
-@requires_plotly
+def _similarity_value(
+    top: Spectrum,
+    bottom: Spectrum,
+    similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None,
+    tolerance: float,
+    tolerance_unit: ToleranceUnit,
+) -> tuple[str, float] | None:
+    if similarity is None:
+        return None
+    if isinstance(similarity, int | float) and not isinstance(similarity, bool):
+        return "similarity", float(similarity)
+    from .similarity import cosine, entropy_similarity, modified_cosine
+
+    name = str(similarity).lower()
+    if name == "cosine":
+        return "cosine", cosine(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
+    if name == "modified_cosine":
+        mzs = [_first_precursor_mz(s) for s in (top, bottom)]
+        if mzs[0] is None or mzs[1] is None:
+            raise SpxtacularError("similarity='modified_cosine' needs a precursor m/z on both spectra")
+        return "modified cosine", modified_cosine(
+            top, bottom, mzs[0], mzs[1], tolerance=tolerance, tolerance_unit=tolerance_unit
+        )
+    if name == "entropy":
+        return "entropy similarity", entropy_similarity(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
+    raise SpxtacularError(
+        f"similarity must be 'cosine', 'modified_cosine', 'entropy', a number, or None; got {similarity!r}"
+    )
+
+
+MirrorLabels = Literal["auto", "both", "top"]
+_MIRROR_LABELS = ("auto", "both", "top")
+
+
+def _mirror_lower_labels(
+    upper: pd.DataFrame,
+    lower: pd.DataFrame,
+    mirror_labels: str,
+    tolerance: float,
+    tolerance_unit: ToleranceUnit,
+) -> pd.DataFrame:
+    """The lower half's plot table with the labels ``mirror_labels`` leaves out blanked.
+
+    ``"auto"`` blanks a lower label when the upper half carries the same
+    annotation on a matching peak (within twice the matching tolerance: each
+    peak may sit a full tolerance from the theoretical m/z). ``"top"`` blanks
+    them all; ``"both"`` keeps them all.
+    """
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
+    if mirror_labels == "both" or not len(lower):
+        return lower
+    lower = lower.copy()
+    has_label = lower["label"].notna() & (lower["label"] != "")
+    if mirror_labels == "top":
+        lower.loc[has_label, "label"] = ""
+        return lower
+    unit = _unit_of(tolerance_unit)
+    up_rows = upper[upper["label"].notna() & (upper["label"] != "")]
+    by_label: dict[str, NDArray[np.float64]] = {
+        str(text): group["mz"].to_numpy(dtype=np.float64) for text, group in up_rows.groupby("label", sort=False)
+    }
+    blank = []
+    for idx, text, mz in zip(lower.index[has_label], lower["label"][has_label], lower["mz"][has_label], strict=True):
+        mzs = by_label.get(str(text))
+        if mzs is None:
+            continue
+        window = 2.0 * (float(mz) * tolerance * 1e-6 if unit == "ppm" else tolerance)
+        if np.any(np.abs(mzs - float(mz)) <= window):
+            blank.append(idx)
+    lower.loc[blank, "label"] = ""
+    return lower
+
+
 def mirror_plot(
     raw: Spectrum,
     deconvoluted: Spectrum,
     *,
+    fragments: FragmentInput | None = None,
+    lower_fragments: FragmentInput | None = None,
+    mirror_labels: MirrorLabels = "auto",
+    names: tuple[str, str] | None = None,
+    similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None = None,
     title: str | None = None,
     normalize: bool = True,
     show_charges: bool = True,
     show_scores: bool = True,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
     max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
-    **layout_kwargs,
-) -> go.Figure:
-    """Mirror plot: raw spectrum (upside-down, below) vs deconvoluted (above).
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Mirror plot: one spectrum above the axis, the other reflected below it.
 
-    Both spectra share the same m/z axis.  The raw spectrum is reflected below
-    y=0 so you can visually trace which raw peaks contributed to each
-    deconvoluted cluster.
+    Built for two jobs:
+
+    * **Raw vs deconvoluted** (the default reading of the arguments): the
+      deconvoluted spectrum above, coloured by charge, the raw spectrum below,
+      so you can trace which raw peaks fed each cluster.
+    * **Experimental vs reference** (pass ``fragments``): both halves are
+      annotated with the same ion colours and labels, styled identically, so
+      matched ions line up across the axis.
+
+    The lower half's tick labels read positive: both halves run 0-100 %.
 
     Parameters
     ----------
     raw:
-        The undeconvoluted spectrum.
+        Spectrum drawn below the axis.
     deconvoluted:
-        The deconvoluted spectrum (output of ``raw.deconvolute()``).
+        Spectrum drawn above the axis.
+    fragments:
+        Annotate both halves with these fragments.
+    lower_fragments:
+        Annotate the lower half with these instead, when its annotation
+        differs: another peptide, a modified form, a chimeric spectrum.
+        Defaults to ``fragments``.
+    mirror_labels:
+        Which half labels a peak. ``"auto"`` (default) labels a peak once, on
+        the upper half, when both halves carry the same annotation on matching
+        peaks; the lower half keeps only the labels that differ or that the
+        upper half lacks. ``"both"`` labels every match on both halves;
+        ``"top"`` labels the upper half only.
+    names:
+        ``(upper, lower)`` names written inside each half. Defaults to
+        ``("deconvoluted", "raw")`` without fragments and no names with them.
+    similarity:
+        ``"cosine"``, ``"modified_cosine"`` or ``"entropy"`` to compute and
+        show a similarity score between the halves, or a number to show as is.
     title:
         Plot title.
     normalize:
-        If True (default), each half is independently scaled to its own
-        maximum so both fill their half of the plot symmetrically.
+        Scale each half to its own base peak (relative %). ``False`` plots raw values.
     show_charges:
-        Colour deconvoluted sticks by charge state when charge data is present.
+        Without fragments: colour the upper sticks by charge state.
     show_scores:
-        Annotate deconvoluted peaks with isotope profile scores (score > 0).
+        Without fragments: label upper peaks with isotope-profile scores.
+    tolerance, tolerance_unit, peak_selection:
+        Fragment matching and similarity parameters.
     max_labels:
-        Maximum number of score labels, strongest peaks first.
-    theme_mode:
-        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
+        Label cap per half.
+    theme_mode, backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
     """
-    import plotly.graph_objects as go
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    scale: Literal["absolute", "relative"] = "relative" if normalize else "absolute"
+    marks: list[Mark] = []
 
-    raw_mz = raw.mz
-    raw_int = raw.intensity
-    dec_mz = deconvoluted.mz
-    dec_int = deconvoluted.intensity
-    charge = deconvoluted.charge
-
-    # Keep the pre-normalisation values: the hover must report the intensity the
-    # data actually has, not the 0-1 figure used to lay the halves out.
-    raw_true = np.asarray(raw_int, dtype=np.float64)
-    dec_true = np.asarray(dec_int, dtype=np.float64)
-
-    # Normalise each half independently so they fill their half symmetrically.
-    # `or 1.0` guards an all-zero (or empty) half: dividing by zero produced an
-    # all-NaN array and a silently blank panel.
-    if normalize:
-        raw_scale = (float(raw_int.max()) if len(raw_int) > 0 else 1.0) or 1.0
-        dec_scale = (float(dec_int.max()) if len(dec_int) > 0 else 1.0) or 1.0
-        raw_int = raw_int / raw_scale
-        dec_int = dec_int / dec_scale
-
-    traces: list[go.Scatter] = []
-
-    def _tri(values: NDArray[np.float64]) -> list[float]:
-        """Repeat each value across the (base, tip, gap) triple `_sticks` emits."""
-        out: list[float] = []
-        for v in values:
-            out += [float(v), float(v), float("nan")]
-        return out
-
-    # ── raw spectrum: sticks pointing downward ─────────────────────────────────
-    x_raw, y_raw = _sticks(raw_mz, -raw_int)
-    traces.append(
-        go.Scatter(
-            x=x_raw,
-            y=y_raw,
-            mode="lines",
-            line={"color": theme.unmatched_color(theme_mode), "width": 1.0},
-            name="raw",
-            hovertemplate="m/z: %{x:.4f}<br>intensity: %{customdata:.2e}<extra>raw</extra>",
-            customdata=_tri(raw_true),
-        )
-    )
-
-    # ── deconvoluted spectrum: sticks pointing upward, coloured by charge ──────
-    # Colours come from the same ordinal ramp plot_spectrum uses, so a spectrum
-    # keeps its colours when you put the two figures side by side.
-    has_charge = show_charges and charge is not None
-    if has_charge and charge is not None:
-        unique_charges = sorted(set(int(c) for c in charge))
-        for z in unique_charges:
-            mask = charge == z
-            label = _charge_series(z)
-            x, y = _sticks(dec_mz[mask], dec_int[mask])
-            traces.append(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    mode="lines",
-                    name=label,
-                    line={"color": theme.charge_color(z, theme_mode), "width": 1.6},
-                    customdata=_tri(dec_true[mask]),
-                    hovertemplate="m/z: %{x:.4f}<br>intensity: %{customdata:.2e}<extra></extra>",
-                )
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
+    if lower_fragments is not None and fragments is None:
+        raise SpxtacularError("lower_fragments needs fragments for the upper half")
+    if fragments is not None:
+        lower = fragments if lower_fragments is None else lower_fragments
+        tables = [
+            build_annot_plot_table(
+                s,
+                frags,
+                tolerance=tolerance,
+                tolerance_unit=tolerance_unit,
+                peak_selection=peak_selection,
+                max_labels=max_labels,
+                theme_mode=mode,
+                intensity_scale=scale,
             )
+            for s, frags in ((raw, lower), (deconvoluted, fragments))
+        ]
+        tables[0] = _mirror_lower_labels(tables[1], tables[0], mirror_labels, tolerance, tolerance_unit)
+        marks += table_marks(tables[0], style=fig_style, theme_mode=mode, direction="down", legend=False)
+        marks += table_marks(tables[1], style=fig_style, theme_mode=mode, direction="up", legend=True)
+        label = str(tables[1].attrs["intensity_label"])
     else:
-        x, y = _sticks(dec_mz, dec_int)
-        traces.append(
-            go.Scatter(
-                x=x,
-                y=y,
-                mode="lines",
-                line={"color": theme.charge_color(1, theme_mode), "width": 1.6},
-                name="deconvoluted",
-                customdata=_tri(dec_true),
-                hovertemplate="m/z: %{x:.4f}<br>intensity: %{customdata:.2e}<extra></extra>",
+        raw_true = np.asarray(raw.intensity, dtype=np.float64)
+        dec_true = np.asarray(deconvoluted.intensity, dtype=np.float64)
+        raw_plot, label = _scaled_intensity(raw_true, scale, None)
+        dec_plot, _ = _scaled_intensity(dec_true, scale, None)
+        raw_mz = np.asarray(raw.mz, dtype=np.float64)
+        dec_mz = np.asarray(deconvoluted.mz, dtype=np.float64)
+        context = theme.neutral_color(mode) if fig_style.strong_context else theme.unmatched_color(mode)
+        marks.append(
+            Sticks(
+                x=raw_mz,
+                y=-raw_plot,
+                color=context,
+                width=fig_style.stick_width_context * 1.2,
+                name="raw",
+                customdata=raw_true.tolist(),
+                hovertemplate="m/z: %{x:.4f}<br>intensity: %{customdata:.2e}<extra>raw</extra>",
             )
         )
-
-    # ── score annotations above deconvoluted peaks ─────────────────────────────
-    annotations = []
-    if show_scores and deconvoluted.iso_score is not None:
-        texts = _cap_labels(
-            [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in deconvoluted.iso_score],
-            dec_true,
-            max_labels,
-            dec_mz,
-        )
-        for i, text in enumerate(texts):
-            if text:
-                annotations.append(
-                    dict(
-                        x=float(dec_mz[i]),
-                        y=float(dec_int[i]),
-                        text=text,
-                        showarrow=False,
-                        yshift=6,
-                        yanchor="bottom",
-                        textangle=_LABEL_ANGLE_DEFAULT,
-                        font={"size": 11, "color": theme.text_color("secondary", theme_mode)},
-                        xanchor="center",
+        charge = deconvoluted.charge
+        hover = "m/z: %{x:.4f}<br>intensity: %{customdata:.2e}<extra></extra>"
+        if show_charges and charge is not None:
+            zs = sorted({int(c) for c in charge})
+            for z in zs:
+                mask = charge == z
+                marks.append(
+                    Sticks(
+                        x=dec_mz[mask],
+                        y=dec_plot[mask],
+                        color=theme.charge_color(z, mode),
+                        width=fig_style.stick_width,
+                        name=_charge_series(z),
+                        legend=len(zs) > 1,
+                        customdata=dec_true[mask].tolist(),
+                        hovertemplate=hover,
                     )
                 )
+        else:
+            marks.append(
+                Sticks(
+                    x=dec_mz,
+                    y=dec_plot,
+                    color=theme.charge_color(1, mode),
+                    width=fig_style.stick_width,
+                    name="deconvoluted",
+                    customdata=dec_true.tolist(),
+                    hovertemplate=hover,
+                )
+            )
+        if show_scores and deconvoluted.iso_score is not None:
+            texts = _cap_labels(
+                [f"{float(s):.2f}" if float(s) > 0.0 else "" for s in deconvoluted.iso_score], dec_true, max_labels
+            )
+            keep = [i for i, t in enumerate(texts) if t]
+            if keep:
+                marks.append(
+                    LabelSet(
+                        x=dec_mz[keep],
+                        y=dec_plot[keep],
+                        texts=[RichText.plain(texts[i]) for i in keep],
+                        colors=[theme.text_color("secondary", mode)] * len(keep),
+                        priority=dec_true[keep],
+                        size=fig_style.label_size,
+                        gap=fig_style.label_gap,
+                    )
+                )
+        if names is None:
+            names = ("deconvoluted", "raw")
 
-    fig = go.Figure(traces)
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or "Raw vs Deconvoluted",
-        xaxis_title="m/z",
-        yaxis_title="Normalised intensity" if normalize else "Intensity",
-        # The mirror axis is the one place a zero line is data, not chrome: it is
-        # the boundary the two spectra are reflected across.
-        yaxis={
-            "zeroline": True,
-            "zerolinewidth": 1,
-            "zerolinecolor": theme.text_color("muted", theme_mode),
-        },
-        showlegend=True,
-        annotations=annotations,
-        **layout_kwargs,
+    # Names and the score sit in the right-hand corners: the low-m/z end of a
+    # peptide spectrum holds immonium ions and is rarely empty, the high end usually is.
+    name_color = theme.text_color("secondary", mode)
+    inset = fig_style.font_size * 0.6
+    line = fig_style.font_size * 1.3
+    upper, lower = names if names is not None else ("", "")
+    if upper:
+        marks.append(
+            AxText(1.0, 1.0, RichText.plain(upper), fig_style.font_size, name_color, dx=-inset, dy=-inset,
+                   ha="right", va="top", name="half_name")
+        )  # fmt: skip
+    if lower:
+        marks.append(
+            AxText(1.0, 0.0, RichText.plain(lower), fig_style.font_size, name_color, dx=-inset, dy=inset,
+                   ha="right", va="bottom", name="half_name")
+        )  # fmt: skip
+    sim = _similarity_value(deconvoluted, raw, similarity, tolerance, tolerance_unit)
+    if sim is not None:
+        marks.append(
+            AxText(1.0, 1.0, RichText.plain(f"{sim[0]} {sim[1]:.3f}"), fig_style.font_size, name_color,
+                   dx=-inset, dy=-inset - (line if upper else 0.0), ha="right", va="top", name="similarity")
+        )  # fmt: skip
+
+    y_axis, _ = intensity_axis(label, relative=normalize, base_peak=None, absolute_axis=False, mirrored=True)
+    if not normalize:
+        y_axis.scale_exponent = True
+    panel = Panel(marks=marks, x=Axis(label=mz_label()), y=y_axis)
+    cell = Cell(
+        panels=[panel],
+        title=figure_title(title, "Raw vs deconvoluted" if fragments is None else "Mirror plot", fig_style),
+        aspect=fig_style.aspect * 1.25,
     )
-    return fig
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
 
-@requires_plotly
+# ---------------------------------------------------------------------------
+# Sequence header and coverage
+# ---------------------------------------------------------------------------
+
+_N_TERM = {"a", "b", "c"}
+_C_TERM = {"x", "y", "z"}
+
+
+def _as_annotation(peptide: str | ProFormaAnnotation) -> ProFormaAnnotation:
+    import peptacular as pt
+
+    if isinstance(peptide, str):
+        return pt.parse(peptide)
+    return peptide
+
+
+def _bond_evidence(matches: Sequence[MatchedFragment], n_res: int) -> tuple[dict[int, str], dict[int, str]]:
+    """Bonds evidenced by N- and C-terminal fragments, as ``{bond: ion type}``.
+
+    Bond ``k`` is the one after residue ``k`` (1-based). When several ion types
+    evidence a bond, the one earliest in the fixed series order wins, so the
+    colour does not depend on input order.
+    """
+    n_bonds: dict[int, str] = {}
+    c_bonds: dict[int, str] = {}
+    slots = theme._ION_SLOTS
+    rank = {s: i for i, s in enumerate(slots)}
+    for m in matches:
+        frag = m.fragment
+        ion = _ion_type(frag).lower()
+        pos = getattr(frag, "position", None)
+        if not isinstance(pos, int) or pos <= 0 or pos >= n_res:
+            continue
+        if ion in _N_TERM:
+            bond, target = pos, n_bonds
+        elif ion in _C_TERM:
+            bond, target = n_res - pos, c_bonds
+        else:
+            continue
+        if bond not in target or rank.get(ion, 99) < rank.get(target[bond], 99):
+            target[bond] = ion
+    return n_bonds, c_bonds
+
+
+def _ladder_marks(
+    residues: list[str],
+    modified: list[bool],
+    n_bonds: dict[int, str],
+    c_bonds: dict[int, str],
+    *,
+    letter_size: float,
+    step: float,
+    xf: float,
+    yf: float,
+    dy: float,
+    mode: theme.ThemeMode,
+    tick_width: float,
+    first_index: int = 0,
+    total: int | None = None,
+) -> list[Mark]:
+    """Residue letters with b-style ticks above-left and y-style ticks below-right of each bond.
+
+    Letters are centred on ``(xf, yf)`` offset by ``dy`` pt, ``step`` pt apart.
+    ``first_index`` and ``total`` let a long sequence wrap over several rows.
+    """
+    n = len(residues)
+    total = n if total is None else total
+    ink = theme.text_color("primary", mode)
+    mod_color = theme.text_color("secondary", mode)
+    marks: list[Mark] = []
+    centre = (n - 1) / 2.0
+    for i, (res, is_mod) in enumerate(zip(residues, modified, strict=True)):
+        marks.append(
+            AxText(
+                xf,
+                yf,
+                RichText.plain(res),
+                letter_size,
+                ink,
+                dx=(i - centre) * step,
+                dy=dy,
+                ha="center",
+                va="middle",
+                bold=is_mod,
+                name="residue",
+                fit_width=True,
+            )
+        )
+        if is_mod:
+            # A small dot under a modified residue: bold alone is easy to miss.
+            marks.append(
+                AxText(
+                    xf,
+                    yf,
+                    RichText.plain("•"),
+                    letter_size * 0.55,
+                    mod_color,
+                    dx=(i - centre) * step,
+                    # Just clear of the letter's line box.
+                    dy=dy - letter_size * 0.93,
+                    ha="center",
+                    va="middle",
+                    name="mod_marker",
+                    fit_width=True,
+                )
+            )
+    h = letter_size * 0.62  # tick reach from the letter centre line
+    foot = step * 0.32
+    by_color: dict[str, list[tuple[float, float, float, float, float, float]]] = {}
+    for bonds, up in ((n_bonds, True), (c_bonds, False)):
+        for bond, ion in bonds.items():
+            local = bond - first_index  # bond after local residue (local - 1)
+            if local < 1 or local > n - 1 + (1 if first_index + n < total else 0):
+                continue
+            x = (local - 1 - centre) * step + step / 2.0
+            color = theme.ion_color(ion, mode)
+            segs = by_color.setdefault(color, [])
+            if up:
+                segs.append((xf, yf, x, dy + h * 0.15, x, dy + h))
+                segs.append((xf, yf, x, dy + h, x - foot, dy + h))
+            else:
+                segs.append((xf, yf, x, dy - h * 0.15, x, dy - h))
+                segs.append((xf, yf, x, dy - h, x + foot, dy - h))
+    for color, segs in by_color.items():
+        marks.append(AxSegments(segs, color, tick_width, name="coverage_tick", fit_width=True))
+    return marks
+
+
+def _residues(annotation: ProFormaAnnotation) -> tuple[list[str], list[bool]]:
+    seq = str(annotation.stripped_sequence)
+    mods = []
+    for i in range(len(seq)):
+        try:
+            mods.append(bool(annotation.has_internal_mods_at_index(i)))
+        except (AttributeError, IndexError, TypeError):
+            mods.append(False)
+    if seq and _flag(annotation, "has_nterm_mods"):
+        mods[0] = True
+    if seq and _flag(annotation, "has_cterm_mods"):
+        mods[-1] = True
+    return list(seq), mods
+
+
+def _flag(obj: object, name: str) -> bool:
+    """A peptacular boolean that may be a property or a method, depending on version."""
+    value = getattr(obj, name, False)
+    return bool(value() if callable(value) else value)
+
+
+def _header_geometry(n_res: int, width_pt: float, style: FigureStyle) -> tuple[float, float]:
+    """Letter size and spacing for a one-line sequence header that fits ``width_pt``."""
+    letter = style.axis_title_size * 1.3
+    step = letter * 1.45
+    avail = width_pt * 0.8
+    if n_res * step > avail:
+        step = avail / max(n_res, 1)
+        letter = min(letter, step / 1.2)
+    return letter, step
+
+
 def annotate_spectrum(
     spectrum: Spectrum,
     fragments: FragmentInput,
@@ -594,12 +1088,21 @@ def annotate_spectrum(
     intensity_transform: Literal["sqrt", "log"] | None = None,
     texture: bool = False,
     show_precursor: bool = True,
-    **layout_kwargs,
-) -> go.Figure:
-    """Plot a spectrum with matched fragment ion annotations.
+    peptide: str | ProFormaAnnotation | None = None,
+    mass_error_panel: bool = False,
+    absolute_axis: bool = False,
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Plot a spectrum with matched fragment ions coloured and labelled.
 
-    Unmatched peaks are drawn in light grey.  Matched peaks are coloured by
-    ion series (b=blue, y=red, a=green, …) and labelled.
+    Unmatched peaks are thin grey context; matched peaks take their ion-series
+    colour (b blue, y red, ...) and a label such as y₇²⁺. Labels are placed
+    without overlaps: straight above the peak, or beside it with a leader
+    line, and dropped only when nothing nearby is free. Plain b/y ions are
+    placed before neutral losses and isotopes.
 
     Parameters
     ----------
@@ -607,38 +1110,37 @@ def annotate_spectrum(
         Centroid spectrum to plot.
     fragments:
         Fragment objects from peptacular to match against peaks.
-    tolerance:
-        Matching tolerance.
-    tolerance_unit:
-        ``"da"`` or ``"ppm"``.
+    tolerance, tolerance_unit:
+        Matching tolerance and its unit (``"ppm"`` or ``"Da"``).
     title:
         Plot title.
     peak_selection:
-        Which peak(s) to annotate per fragment — ``"closest"``, ``"largest"``,
-        or ``"all"``.  See :func:`~spxtacular.matching.match_fragments`.
+        ``"closest"``, ``"largest"`` or ``"all"``; see :func:`~spxtacular.matching.match_fragments`.
     include_sequence:
-        Embed the residue sequence in each label (e.g. ``b3{PEP}``).
-        Set to ``False`` for compact labels (``b3``).
+        Embed the residue sequence in each label's hover and table text.
     max_labels:
-        Maximum number of direct ion labels, strongest peaks first.
+        Label cap, strongest peaks first.
     theme_mode:
-        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
-    intensity_scale:
-        ``"relative"`` scales the base peak to 100. ``"absolute"`` preserves
-        raw intensities on the y-axis.
-    intensity_transform:
-        Optional ``"sqrt"`` or ``"log"`` display transform.
+        ``"light"`` or ``"dark"``.
+    intensity_scale, intensity_transform:
+        As for :func:`plot_spectrum`.
     texture:
-        Give each ion series a distinct dash pattern.
+        Give each ion series a distinct dash pattern (for greyscale print).
     show_precursor:
-        Draw precursor m/z and isolation-window markers when available.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
-
-    Returns
-    -------
-    plotly ``Figure``.
+        Mark the precursor m/z and isolation window when available.
+    peptide:
+        A sequence or ProForma string (or a peptacular annotation). Draws the
+        sequence above the spectrum with a tick at each bond a matched
+        fragment covers: above-left for a/b/c ions, below-right for x/y/z.
+    mass_error_panel:
+        Add a strip under the spectrum with each match's mass error, in the
+        unit of ``tolerance_unit``, spanning the tolerance.
+    absolute_axis:
+        Add a right-hand axis in absolute intensity.
+    backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
     """
+    key, fig_style, mode = _setup(backend, style, theme_mode)
     table = build_annot_plot_table(
         spectrum,
         fragments,
@@ -647,18 +1149,407 @@ def annotate_spectrum(
         peak_selection=peak_selection,
         include_sequence=include_sequence,
         max_labels=max_labels,
-        theme_mode=theme_mode,
+        theme_mode=mode,
         intensity_scale=intensity_scale,
         intensity_transform=intensity_transform,
         texture=texture,
     )
-    fig = plot_from_table(table, title=title or "Annotated spectrum", theme_mode=theme_mode, **layout_kwargs)
+    panel = table_panel(table, style=fig_style, theme_mode=mode, absolute_axis=absolute_axis)
     if show_precursor:
-        _add_precursor_marker(fig, spectrum, theme_mode)
-    return fig
+        panel.marks[:0] = _precursor_marks(spectrum, fig_style, mode)
+
+    need_matches = peptide is not None or mass_error_panel
+    matches = (
+        match_fragments(
+            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
+        )
+        if need_matches
+        else []
+    )
+    extra_mm = 0.0
+    if peptide is not None:
+        annotation = _as_annotation(peptide)
+        residues, modified = _residues(annotation)
+        if residues:
+            n_bonds, c_bonds = _bond_evidence(matches, len(residues))
+            width_mm, _ = resolve_size(size, fig_style)
+            letter, step = _header_geometry(len(residues), width_mm * PT_PER_MM, fig_style)
+            header = letter * 2.9
+            panel.header_height = header
+            panel.marks += _ladder_marks(
+                residues,
+                modified,
+                n_bonds,
+                c_bonds,
+                letter_size=letter,
+                step=step,
+                xf=0.5,
+                yf=1.0,
+                dy=header * 0.5,
+                mode=mode,
+                tick_width=max(fig_style.stick_width, fig_style.axis_width * 1.4),
+            )
+            extra_mm += header / PT_PER_MM
+
+    panels = [panel]
+    if mass_error_panel:
+        unit = _unit_of(tolerance_unit)
+        err_marks = _error_marks(
+            matches,
+            unit,
+            style=fig_style,
+            mode=mode,
+            labels=False,
+            max_labels=max_labels,
+            max_size=fig_style.font_size * 0.8,
+        )
+        strip = fig_style.font_size * 6.5
+        panels.append(
+            Panel(
+                marks=err_marks,
+                x=Axis(label=mz_label()),
+                y=_error_axis(unit, tolerance, unit, _errors(matches, unit), short=True),
+                fixed_height=strip,
+                share_x=True,
+            )
+        )
+        extra_mm += (strip + fig_style.font_size) / PT_PER_MM
+    cell = Cell(
+        panels=panels,
+        title=figure_title(title, "Annotated spectrum", fig_style),
+        aspect=fig_style.aspect,
+        extra_height_mm=extra_mm,
+    )
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
 
-@requires_plotly
+def sequence_coverage_plot(
+    spectrum: Spectrum,
+    peptide: str | ProFormaAnnotation,
+    fragments: FragmentInput,
+    *,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    title: str | None = None,
+    theme_mode: theme.ThemeMode | None = None,
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Sequence coverage ladder: which backbone bonds the spectrum evidences.
+
+    Residues run left to right. A tick above and to the left of a bond marks an
+    N-terminal (a/b/c) fragment ending there; a tick below and to the right a
+    C-terminal (x/y/z) fragment starting there. Ticks take the ion-series
+    colour; modified residues are bold with a dot beneath. Long sequences wrap.
+
+    Parameters
+    ----------
+    spectrum:
+        The spectrum the fragments were matched against.
+    peptide:
+        Residue sequence or ProForma string (modifications are marked, not spelled out).
+    fragments:
+        Fragment objects to match, as for :func:`~spxtacular.matching.match_fragments`.
+    tolerance, tolerance_unit, peak_selection:
+        Matching parameters.
+    title:
+        Plot title. Defaults to the covered-bond count.
+    theme_mode, backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
+    """
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    annotation = _as_annotation(peptide)
+    residues, modified = _residues(annotation)
+    n_res = len(residues)
+    if n_res == 0:
+        raise SpxtacularError("peptide must contain at least one residue")
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
+    )
+    n_bonds, c_bonds = _bond_evidence(matches, n_res)
+
+    width_mm, _ = resolve_size(size, fig_style)
+    width_pt = width_mm * PT_PER_MM
+    letter = fig_style.axis_title_size * 1.6
+    step = letter * 1.5
+    per_row = max(8, int(width_pt * 0.9 // step))
+    rows = -(-n_res // per_row)
+    row_height = letter * 2.8
+    summary_strip = fig_style.font_size * 1.6 if not (title or fig_style.show_title) else 0.0
+    panel_height = rows * row_height + summary_strip
+
+    marks: list[Mark] = []
+    for r in range(rows):
+        lo = r * per_row
+        hi = min(n_res, lo + per_row)
+        row_n = {b: t for b, t in n_bonds.items() if lo < b <= hi}
+        row_c = {b: t for b, t in c_bonds.items() if lo < b <= hi}
+        # Rows fill the panel from the top; the summary line (if any) sits below them.
+        yf = 1.0 - (r + 0.5) * row_height / panel_height
+        chunk = residues[lo:hi]
+        # Left-align wrapped rows so residue columns line up across rows.
+        centre_shift = ((per_row - len(chunk)) / 2.0) * step if rows > 1 else 0.0
+        row_marks = _ladder_marks(
+            chunk,
+            modified[lo:hi],
+            row_n,
+            row_c,
+            letter_size=letter,
+            step=step,
+            xf=0.5,
+            yf=yf,
+            dy=0.0,
+            mode=mode,
+            tick_width=max(fig_style.stick_width * 1.3, fig_style.axis_width * 1.6),
+            first_index=lo,
+            total=n_res,
+        )
+        for m in row_marks:
+            if isinstance(m, AxText):
+                m.dx -= centre_shift
+            elif isinstance(m, AxSegments):
+                m.segments = [
+                    (a, b, x0 - centre_shift, y0, x1 - centre_shift, y1) for a, b, x0, y0, x1, y1 in m.segments
+                ]
+        marks += row_marks
+
+    n_color = theme.ion_color("b", mode)
+    c_color = theme.ion_color("y", mode)
+    # One NaN point, not an empty array: plotly leaves empty traces out of the legend.
+    empty = np.full(1, np.nan)
+    for name, color in (("N-terminal (a/b/c)", n_color), ("C-terminal (x/y/z)", c_color)):
+        marks.append(Line(x=empty, y=empty, color=color, width=fig_style.stick_width * 1.3, name=name, legend=True))
+
+    n_bond_total = max(n_res - 1, 1)
+    covered = len(set(n_bonds) | set(c_bonds))
+    summary = f"{covered}/{n_bond_total} backbone bonds covered ({covered / n_bond_total:.0%})"
+    if not (title or fig_style.show_title):
+        marks.append(
+            AxText(0.0, 0.0, RichText.plain(summary), fig_style.font_size, theme.text_color("secondary", mode),
+                   ha="left", va="bottom", name="summary")
+        )  # fmt: skip
+    panel = Panel(
+        marks=marks,
+        x=Axis(lo=0.0, hi=1.0, visible=False),
+        y=Axis(lo=0.0, hi=1.0, visible=False),
+        fixed_height=panel_height,
+    )
+    cell = Cell(
+        panels=[panel],
+        title=figure_title(title, f"Sequence coverage — {summary}", fig_style),
+        fit_height=True,
+    )
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Mass errors and facets
+# ---------------------------------------------------------------------------
+
+
+def mass_error_plot(
+    spectrum: Spectrum,
+    fragments: FragmentInput,
+    *,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    unit: str = "ppm",
+    title: str | None = None,
+    max_labels: int | None = _MAX_LABELS_DEFAULT,
+    theme_mode: theme.ThemeMode | None = None,
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Mass error of each matched fragment against its m/z.
+
+    Dot area follows peak intensity and colour the ion series. Labels are
+    sub/superscripted ion names placed without overlaps; every match stays on
+    hover.
+
+    Parameters
+    ----------
+    spectrum:
+        Spectrum to plot.
+    fragments:
+        Fragment objects from peptacular to match against peaks.
+    tolerance, tolerance_unit, peak_selection:
+        Matching parameters.
+    unit:
+        Error unit: ``"ppm"`` or ``"da"``.
+    title:
+        Plot title.
+    max_labels:
+        Label cap, strongest peaks first.
+    theme_mode, backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
+    """
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    err_unit = _error_unit(unit)
+    matches = match_fragments(
+        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
+    )
+    marks = _error_marks(
+        matches,
+        err_unit,
+        style=fig_style,
+        mode=mode,
+        labels=True,
+        max_labels=max_labels,
+        max_size=fig_style.font_size * 1.6,
+    )
+    y_axis = _error_axis(err_unit, tolerance, _unit_of(tolerance_unit), _errors(matches, err_unit))
+    y_axis.headroom = True
+    panel = Panel(marks=marks, x=Axis(label=mz_label(), pad=0.04), y=y_axis)
+    default = "Mass errors" if matches else "Mass errors (no matches)"
+    cell = Cell(panels=[panel], title=figure_title(title, default, fig_style), aspect=fig_style.aspect)
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
+
+
+def facet_plot(
+    spectrum: Spectrum,
+    *,
+    fragments: FragmentInput | None = None,
+    mirror_spectrum: Spectrum | None = None,
+    mirror_labels: MirrorLabels = "auto",
+    title: str | None = None,
+    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
+    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
+    include_sequence: bool = False,
+    unit: str = "ppm",
+    max_labels: int | None = _MAX_LABELS_DEFAULT,
+    theme_mode: theme.ThemeMode | None = None,
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Stacked panels on one m/z axis: spectrum, mass errors, mirror.
+
+    1. The (annotated) spectrum, always.
+    2. Mass errors, when ``fragments`` is given.
+    3. ``mirror_spectrum`` reflected below, when given.
+
+    Parameters
+    ----------
+    spectrum:
+        Primary spectrum.
+    fragments:
+        Fragments for annotation and the mass-error panel.
+    mirror_spectrum:
+        Optional second spectrum, drawn downward in the last panel.
+    mirror_labels:
+        As for :func:`mirror_plot`: ``"auto"`` (default) labels an ion the
+        top panel already labels only once, ``"both"`` repeats it on the
+        mirror, ``"top"`` leaves the mirror unlabelled.
+    title:
+        Plot title.
+    tolerance, tolerance_unit, peak_selection, include_sequence:
+        Matching parameters.
+    unit:
+        Mass-error unit: ``"ppm"`` or ``"da"``.
+    max_labels:
+        Label cap per panel.
+    theme_mode, backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
+    """
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    err_unit = _error_unit(unit)
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
+    if fragments is not None:
+        table = build_annot_plot_table(
+            spectrum,
+            fragments,
+            tolerance=tolerance,
+            tolerance_unit=tolerance_unit,
+            peak_selection=peak_selection,
+            include_sequence=include_sequence,
+            max_labels=max_labels,
+            theme_mode=mode,
+        )
+    else:
+        table = build_plot_table(spectrum, max_labels=max_labels, theme_mode=mode)
+    top = table_panel(table, style=fig_style, theme_mode=mode)
+    top.marks = [m for m in top.marks if not isinstance(m, HitLayer)] + [
+        m for m in top.marks if isinstance(m, HitLayer)
+    ]
+    panels = [top]
+    extra = 0.0
+    if fragments is not None:
+        matches = match_fragments(
+            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
+        )
+        err = _error_marks(
+            matches,
+            err_unit,
+            style=fig_style,
+            mode=mode,
+            labels=False,
+            max_labels=max_labels,
+            max_size=fig_style.font_size * 1.1,
+        )
+        panels.append(
+            Panel(
+                marks=err,
+                x=Axis(label=mz_label()),
+                y=_error_axis(err_unit, tolerance, _unit_of(tolerance_unit), _errors(matches, err_unit), short=True),
+                weight=0.45,
+                share_x=True,
+            )
+        )
+        extra += 0.3
+    if mirror_spectrum is not None:
+        # Same colouring as the top panel, so matched ions read identically on both halves.
+        if fragments is not None:
+            mirror_table = build_annot_plot_table(
+                mirror_spectrum,
+                fragments,
+                tolerance=tolerance,
+                tolerance_unit=tolerance_unit,
+                peak_selection=peak_selection,
+                max_labels=max_labels,
+                theme_mode=mode,
+            )
+        else:
+            mirror_table = build_plot_table(mirror_spectrum, max_labels=max_labels, theme_mode=mode)
+        mirror_table = _mirror_lower_labels(table, mirror_table, mirror_labels, tolerance, tolerance_unit)
+        marks = table_marks(mirror_table, style=fig_style, theme_mode=mode, direction="down", legend=False)
+        y_axis, _ = intensity_axis(
+            str(mirror_table.attrs.get("intensity_label", "Intensity")),
+            relative=True,
+            base_peak=None,
+            absolute_axis=False,
+            mirrored=True,
+        )
+        y_axis.hi = 0.0
+        # No tick label at 0: it would sit against the panel above. The fixed
+        # ticks assume the relative (0-100) scale the plot tables use by default.
+        top = mirror_table["intensity"].abs().max() if len(mirror_table) else 0.0
+        if mirror_table.attrs.get("intensity_scale") == "relative" and not (top > 100.0 + 1e-9):
+            y_axis.ticks = [-100.0, -50.0]
+            y_axis.ticktext = ["100", "50"]
+        panels.append(Panel(marks=marks, x=Axis(label=mz_label()), y=y_axis, weight=0.7, share_x=True))
+        extra += 0.45
+    cell = Cell(
+        panels=panels,
+        title=figure_title(title, "Facet plot", fig_style),
+        aspect=fig_style.aspect * (1.0 + extra),
+    )
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Chromatograms and profile data
+# ---------------------------------------------------------------------------
+
+
 def plot_chromatogram(
     chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
     *,
@@ -666,13 +1557,15 @@ def plot_chromatogram(
     theme_mode: theme.ThemeMode | None = None,
     show_apex: bool = True,
     fill: bool | None = None,
-    **layout_kwargs,
-) -> go.Figure:
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
     """Plot one or more chromatograms against retention time.
 
-    Accepts :class:`~spxtacular.chromatogram.Chromatogram` objects, or an iterable
-    of spectra -- in which case a TIC is extracted for you, which is the usual
-    "what does this run look like" first glance::
+    Accepts :class:`~spxtacular.chromatogram.Chromatogram` objects, or an
+    iterable of spectra, from which a TIC is extracted::
 
         with spx.Reader("run.d") as reader:
             spx.plot_chromatogram(reader.ms1).show()
@@ -680,41 +1573,31 @@ def plot_chromatogram(
     Parameters
     ----------
     chromatograms:
-        A chromatogram, a sequence of them, or an iterable of spectra to
-        extract a TIC from.
+        A chromatogram, a sequence of them, or an iterable of spectra.
     title:
         Plot title.
     theme_mode:
         ``"light"`` or ``"dark"``.
     show_apex:
-        Label each trace's apex with its retention time. Suppressed above four
-        traces, where the labels start competing with the data.
+        Label each trace's apex with its retention time (up to four traces).
     fill:
-        Fill under the trace. Defaults to on for a single trace and off for
-        several, where overlapping washes obscure each other.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
-
-    Returns
-    -------
-    plotly ``Figure``.
+        Fill under the trace. Defaults to on for one trace, off for several.
+    backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
     """
-    import plotly.graph_objects as go
-
     from .chromatogram import Chromatogram as _Chrom
     from .chromatogram import extract_chromatogram
 
+    key, fig_style, mode = _setup(backend, style, theme_mode)
     if isinstance(chromatograms, _Chrom):
         traces_in = [chromatograms]
     elif isinstance(chromatograms, Sequence) and all(isinstance(c, _Chrom) for c in chromatograms):
         traces_in = list(cast("Sequence[_Chrom]", chromatograms))
     else:
-        spectra = cast("Iterable[Spectrum]", chromatograms)
-        traces_in = [extract_chromatogram(spectra)]
+        traces_in = [extract_chromatogram(cast("Iterable[Spectrum]", chromatograms))]
 
     if fill is None:
         fill = len(traces_in) == 1
-
     units = {chrom.meta.get("rt_unit", "s") for chrom in traces_in if len(chrom)}
     if len(units) > 1:
         raise SpxtacularError("Cannot plot retention times and scan indices on the same axis")
@@ -724,23 +1607,28 @@ def plot_chromatogram(
     axis_title = "Scan index" if unit == "scan_index" else "Retention time (s)"
     time_label = "Scan index" if unit == "scan_index" else "RT"
     time_suffix = "" if unit == "scan_index" else " s"
-    fig = go.Figure()
-    for i, chrom in enumerate(traces_in):
-        # Several traces are distinct series, so they take categorical slots; a
-        # lone trace has no identity to signal and takes the default hue.
-        color = theme.ion_color(theme._ION_SLOTS[i % len(theme._ION_SLOTS)], theme_mode)
-        if len(traces_in) == 1:
-            color = theme.charge_color(1, theme_mode)
 
-        fig.add_trace(
-            go.Scatter(
-                x=chrom.rt,
-                y=chrom.intensity,
-                mode="lines",
-                name=chrom.label or f"trace {i + 1}",
-                line={"color": color, "width": 1.8},
-                fill="tozeroy" if fill else None,
-                fillcolor=_rgba(color, 0.12) if fill else None,
+    marks: list[Mark] = []
+    apex_x: list[float] = []
+    apex_y: list[float] = []
+    apex_t: list[RichText] = []
+    apex_c: list[str] = []
+    for i, chrom in enumerate(traces_in):
+        if len(traces_in) == 1:
+            color = theme.charge_color(1, mode)
+        else:
+            color = theme.ion_color(theme._ION_SLOTS[i % len(theme._ION_SLOTS)], mode)
+        name = chrom.label or f"trace {i + 1}"
+        marks.append(
+            Line(
+                x=np.asarray(chrom.rt, dtype=np.float64),
+                y=np.asarray(chrom.intensity, dtype=np.float64),
+                color=color,
+                width=fig_style.line_width,
+                fill=bool(fill),
+                fill_alpha=0.12,
+                name=name,
+                legend=len(traces_in) > 1,
                 hovertemplate=(
                     time_label
                     + ": %{x:.2f}"
@@ -751,33 +1639,37 @@ def plot_chromatogram(
                 ),
             )
         )
-
         if show_apex and len(traces_in) <= 4 and len(chrom):
             apex = int(np.argmax(chrom.intensity))
             if chrom.intensity[apex] > 0:
-                fig.add_annotation(
-                    x=float(chrom.rt[apex]),
-                    y=float(chrom.intensity[apex]),
-                    text=f"{chrom.rt[apex]:.1f}{time_suffix}",
-                    showarrow=False,
-                    yshift=10,
-                    font={"size": 10, "color": theme.text_color("secondary", theme_mode)},
-                    xanchor="center",
+                apex_x.append(float(chrom.rt[apex]))
+                apex_y.append(float(chrom.intensity[apex]))
+                apex_t.append(RichText.plain(f"{chrom.rt[apex]:.1f}{time_suffix}"))
+                apex_c.append(
+                    theme.label_color(color, mode) if len(traces_in) > 1 else theme.text_color("secondary", mode)
                 )
-
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or (traces_in[0].label if len(traces_in) == 1 else "Chromatograms"),
-        xaxis_title=axis_title,
-        yaxis_title="Intensity",
-        showlegend=len(traces_in) > 1,
-        **layout_kwargs,
+    if apex_x:
+        marks.append(
+            LabelSet(
+                x=np.asarray(apex_x),
+                y=np.asarray(apex_y),
+                texts=apex_t,
+                colors=apex_c,
+                priority=np.asarray(apex_y),
+                size=fig_style.label_size,
+                gap=fig_style.label_gap,
+            )
+        )
+    panel = Panel(
+        marks=marks,
+        x=Axis(label=RichText.plain(axis_title)),
+        y=Axis(label=RichText.plain("Intensity"), lo=0.0, headroom=True, scale_exponent=True),
     )
-    fig.update_yaxes(rangemode="tozero")
-    return fig
+    default = traces_in[0].label if len(traces_in) == 1 and traces_in[0].label else "Chromatograms"
+    cell = Cell(panels=[panel], title=figure_title(title, default, fig_style), aspect=fig_style.aspect)
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
 
-@requires_plotly
 def plot_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
@@ -788,19 +1680,20 @@ def plot_xic(
     aggregate: Literal["sum", "max"] = "sum",
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
-    **layout_kwargs,
-) -> go.Figure:
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
     """Extract and plot ion chromatograms in one call.
 
-    Every target is extracted in a single pass over ``spectra``, so tracing ten
-    m/z values costs one walk of the reader rather than ten::
+    Every target is extracted in a single pass over ``spectra``::
 
         with spx.Reader("run.d") as reader:
             spx.plot_xic(reader.ms1, [500.2649, 622.0290], tolerance=20).show()
 
     See :func:`~spxtacular.chromatogram.extract_xic` for the extraction
-    parameters, including ``im_window``, which is what makes a trace selective on
-    ion-mobility data.
+    parameters, and :func:`plot_chromatogram` for the rest.
     """
     from .chromatogram import extract_xic
 
@@ -814,10 +1707,17 @@ def plot_xic(
     )
     unit = "ppm" if str(tolerance_unit).lower() == "ppm" else "Da"
     default_title = f"Extracted ion chromatogram{'s' if len(chroms) > 1 else ''} (±{tolerance:g} {unit})"
-    return plot_chromatogram(chroms, title=title or default_title, theme_mode=theme_mode, **layout_kwargs)
+    return plot_chromatogram(
+        chroms,
+        title=title or default_title,
+        theme_mode=theme_mode,
+        backend=backend,
+        style=style,
+        size=size,
+        **layout_kwargs,
+    )
 
 
-@requires_plotly
 def profile_centroid_plot(
     profile: Spectrum,
     *,
@@ -825,18 +1725,16 @@ def profile_centroid_plot(
     title: str | None = None,
     theme_mode: theme.ThemeMode | None = None,
     max_points: int | None = _PROFILE_MAX_POINTS,
-    **layout_kwargs,
-) -> go.Figure:
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
     """Profile trace with the centroided peaks drawn on top.
 
-    The view for checking that centroiding did the right thing: the continuous
-    signal underneath, and a stick at each m/z the centroider decided was a peak.
-    A stick off the apex means a mis-assigned centre; an apex with no stick means
-    a peak was dropped.
-
-    Use this view to verify that thresholding did not remove a real peak and
-    that fitted centers remain aligned with their profile apexes. Flat-topped
-    peaks are supported and produce one centroid at the middle of the plateau.
+    The check that centroiding did the right thing: a stick off its apex is a
+    mis-assigned centre, and an apex with no stick is a dropped peak.
+    Flat-topped peaks give one centroid at the middle of the plateau.
 
     Parameters
     ----------
@@ -849,577 +1747,217 @@ def profile_centroid_plot(
     theme_mode:
         ``"light"`` or ``"dark"``.
     max_points:
-        Cap on drawn profile samples; see :func:`~spxtacular.plot_table.plot_from_table`.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
-
-    Returns
-    -------
-    plotly ``Figure``.
+        Cap on drawn profile samples (min/max decimation).
+    backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
     """
-    import plotly.graph_objects as go
-
+    key, fig_style, mode = _setup(backend, style, theme_mode)
     if centroids is None:
         centroids = profile.centroid()
-
     prof_mz, prof_int = _decimate_profile(
         np.asarray(profile.mz, dtype=np.float64),
         np.asarray(profile.intensity, dtype=np.float64),
         max_points,
     )
-
-    profile_color = theme.unmatched_color(theme_mode)
-    centroid_color = theme.charge_color(1, theme_mode)
-
-    fig = go.Figure()
-    # Profile underneath and recessive: it is the context the centroids are
-    # checked against, not the subject.
-    fig.add_trace(
-        go.Scatter(
+    profile_color = theme.neutral_color(mode) if fig_style.print_ink else theme.unmatched_color(mode)
+    centroid_color = theme.charge_color(1, mode)
+    marks: list[Mark] = [
+        Line(
             x=prof_mz,
             y=prof_int,
-            mode="lines",
-            line={"color": profile_color, "width": 1.2},
-            fill="tozeroy",
-            fillcolor=_rgba(profile_color, 0.18),
+            color=profile_color,
+            width=fig_style.line_width,
+            fill=True,
+            fill_alpha=0.18,
             name="profile",
+            legend=True,
             hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:.4g}<extra>profile</extra>",
         )
-    )
-
-    if len(centroids) > 0:
-        xs, ys = _sticks(
-            np.asarray(centroids.mz, dtype=np.float64),
-            np.asarray(centroids.intensity, dtype=np.float64),
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=xs,
-                y=ys,
-                mode="lines",
-                line={"color": centroid_color, "width": 1.6},
-                name="centroids",
-                hoverinfo="skip",
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=centroids.mz,
-                y=centroids.intensity,
-                mode="markers",
-                marker={"size": _HIT_TARGET_SIZE, "color": "rgba(0,0,0,0)"},
-                customdata=[
-                    f"m/z: {m:.4f}<br>intensity: {i:.4g}"
-                    for m, i in zip(centroids.mz, centroids.intensity, strict=True)
-                ],
-                hovertemplate="%{customdata}<extra>centroid</extra>",
-                showlegend=False,
-            )
-        )
-
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or f"Profile vs centroids — {len(centroids)} peaks from {len(profile)} samples",
-        xaxis_title="m/z",
-        yaxis_title="Intensity",
-        showlegend=True,
-        **layout_kwargs,
-    )
-    fig.update_yaxes(rangemode="tozero")
-    return fig
-
-
-@requires_plotly
-def sequence_coverage_plot(
-    spectrum: Spectrum,
-    peptide: str,
-    fragments: FragmentInput,
-    *,
-    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
-    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
-    title: str | None = None,
-    theme_mode: theme.ThemeMode | None = None,
-    **layout_kwargs,
-) -> go.Figure:
-    """Sequence coverage ladder: which backbone bonds the spectrum actually evidences.
-
-    The residues run left to right. A tick above and to the *left* of a residue
-    marks an N-terminal (a/b/c) fragment ending at that bond; a tick below and to
-    the *right* marks a C-terminal (x/y/z) fragment starting there. A bond with
-    ticks on both sides is confirmed from both directions.
-
-    This is the standard companion to an annotated spectrum: the spectrum shows
-    that peaks matched, the ladder shows *where along the peptide* they matched,
-    which is what tells you whether an identification is localised or leaning on
-    one end of the molecule.
-
-    Parameters
-    ----------
-    spectrum:
-        The spectrum the fragments were matched against.
-    peptide:
-        Residue sequence, one character per residue. Modifications in ProForma
-        brackets are not rendered -- pass the stripped sequence.
-    fragments:
-        Fragment objects to match, as for :func:`~spxtacular.matching.match_fragments`.
-    tolerance, tolerance_unit, peak_selection:
-        Matching parameters.
-    title:
-        Plot title.
-    theme_mode:
-        ``"light"`` or ``"dark"``.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
-
-    Returns
-    -------
-    plotly ``Figure``.
-    """
-    import plotly.graph_objects as go
-
-    from .matching import match_fragments
-
-    residues = list(peptide)
-    n_res = len(residues)
-    if n_res == 0:
-        raise SpxtacularError("peptide must contain at least one residue")
-
-    matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
-    )
-
-    # A fragment of length k evidences the bond after residue k (N-terminal
-    # series) or before residue n-k (C-terminal series).
-    n_term_bonds: set[int] = set()
-    c_term_bonds: set[int] = set()
-    n_series = {"a", "b", "c"}
-    c_series = {"x", "y", "z"}
-
-    for m in matches:
-        frag = m.fragment
-        ion = str(getattr(frag, "ion_type", "")).lower()
-        pos = getattr(frag, "position", None)
-        if not isinstance(pos, int) or pos <= 0 or pos >= n_res:
-            continue
-        if ion in n_series:
-            n_term_bonds.add(pos)
-        elif ion in c_series:
-            c_term_bonds.add(n_res - pos)
-
-    fig = go.Figure()
-    ink = theme.text_color("primary", theme_mode)
-    n_color = theme.ion_color("b", theme_mode)
-    c_color = theme.ion_color("y", theme_mode)
-
-    for i, residue in enumerate(residues):
-        fig.add_annotation(
-            x=i,
-            y=0,
-            text=residue,
-            showarrow=False,
-            font={"size": 15, "color": ink, "family": theme._FONT_FAMILY},
-            xanchor="center",
-            yanchor="middle",
-        )
-
-    # Ticks sit on the bond, i.e. halfway between two residues.
-    for bond in n_term_bonds:
-        x = bond - 0.5
-        fig.add_shape(type="line", x0=x, x1=x, y0=0.18, y1=0.55, line={"color": n_color, "width": 2})
-        fig.add_shape(type="line", x0=x, x1=x - 0.28, y0=0.55, y1=0.55, line={"color": n_color, "width": 2})
-    for bond in c_term_bonds:
-        x = bond - 0.5
-        fig.add_shape(type="line", x0=x, x1=x, y0=-0.18, y1=-0.55, line={"color": c_color, "width": 2})
-        fig.add_shape(type="line", x0=x, x1=x + 0.28, y0=-0.55, y1=-0.55, line={"color": c_color, "width": 2})
-
-    n_bonds = max(n_res - 1, 1)
-    covered = len(n_term_bonds | c_term_bonds)
-    subtitle = f"{covered}/{n_bonds} backbone bonds covered ({covered / n_bonds:.0%})"
-
-    # Legend proxies: two invisible traces so the ion-series colours are named
-    # rather than left for the reader to infer from the ticks.
-    for name, color in (("N-term (a/b/c)", n_color), ("C-term (x/y/z)", c_color)):
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", line={"color": color, "width": 2}, name=name))
-
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        # The count belongs in the title, not repeated underneath it.
-        title=title or f"Sequence coverage — {subtitle}",
-        showlegend=True,
-        height=210,
-        # Wider right margin so the legend keys are not clipped by the paper edge.
-        margin={"l": 28, "r": 64, "t": 64, "b": 28},
-        **layout_kwargs,
-    )
-    fig.update_xaxes(range=[-0.8, n_res - 0.2], visible=False)
-    fig.update_yaxes(range=[-1.0, 1.0], visible=False)
-    return fig
-
-
-def _error_unit(unit: str) -> str:
-    """Normalise a mass-error unit to ``"ppm"`` or ``"da"``, rejecting anything else.
-
-    Comparing ``unit == "ppm"`` directly let ``"PPM"`` plot Da errors under a ppm label.
-    """
-    normalised = str(unit).lower()
-    if normalised not in ("ppm", "da"):
-        raise SpxtacularError(f"Unsupported error unit {unit!r}; expected 'ppm' or 'da'")
-    return normalised
-
-
-@requires_plotly
-def mass_error_plot(
-    spectrum: Spectrum,
-    fragments: FragmentInput,
-    *,
-    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
-    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
-    unit: str = "ppm",
-    title: str | None = None,
-    max_labels: int | None = _MAX_LABELS_DEFAULT,
-    theme_mode: theme.ThemeMode | None = None,
-    **layout_kwargs,
-) -> go.Figure:
-    """Bubble plot of mass errors vs m/z.
-
-    Each matched fragment is shown as a bubble whose x-position is the
-    observed m/z, y-position is the mass error (ppm or Da), and size is
-    proportional to the peak intensity.  Bubbles are coloured by ion series.
-
-    Parameters
-    ----------
-    spectrum:
-        Spectrum to plot.
-    fragments:
-        Fragment objects from peptacular to match against peaks.
-    tolerance:
-        Matching tolerance.
-    tolerance_unit:
-        ``"da"`` or ``"ppm"``.
-    peak_selection:
-        ``"closest"``, ``"largest"``, or ``"all"``.
-    unit:
-        Error unit: ``"ppm"`` or ``"da"``.
-    title:
-        Plot title.
-    max_labels:
-        Cap on directly-drawn mzPAF labels, highest-intensity first (default
-        ``_MAX_LABELS_DEFAULT``, currently 60), with the same collision
-        avoidance the spectrum plots use. ``None`` labels every bubble, which
-        for a few hundred matches is an unreadable smear -- the labels stay on
-        hover regardless.
-    theme_mode:
-        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
-    """
-    import plotly.graph_objects as go
-
-    from .matching import match_fragments
-
-    unit = _error_unit(unit)
-    matches = match_fragments(
-        spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
-    )
-
-    if not matches:
-        # The empty case is still a figure someone looks at: without the template
-        # a dark-mode caller got a white plotly default, and without axis titles
-        # an unlabelled empty box.
-        fig = go.Figure()
-        fig.update_layout(
-            template=theme.template(theme_mode),
-            title=title or "Mass Errors (no matches)",
-            xaxis_title="m/z",
-            yaxis_title=f"Error ({unit})",
-            showlegend=False,
-            **layout_kwargs,
-        )
-        return fig
-
-    mzs = [m.peak_mz for m in matches]
-    errors = [m.ppm_error if unit == "ppm" else m.da_error for m in matches]
-    intensities = [m.peak_intensity for m in matches]
-    ion_types = [
-        m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value") else str(m.fragment.ion_type)
-        for m in matches
     ]
-
-    # Normalise bubble sizes. `or 1.0` catches an all-zero-intensity match set,
-    # which is real (thresholded or fully background-subtracted data) and used to
-    # raise ZeroDivisionError -- the `if intensities` guard only caught an empty list.
-    max_int = (max(intensities) if intensities else 1.0) or 1.0
-    sizes = [max(6, 36 * i / max_int) for i in intensities]
-
-    colors = [theme.ion_color(it, theme_mode) for it in ion_types]
-
-    # mzPAF labels, so a 2+ and a 1+ of the same ion don't both render as "b3".
-    # Thinned exactly as the spectrum plots thin theirs: a label on every bubble
-    # is the same unreadable smear here as it is along a baseline.
-    all_labels = [_fragment_label(m.fragment, False) for m in matches]
-    labels = _cap_labels(
-        list(all_labels),
-        np.asarray(intensities, dtype=np.float64),
-        max_labels,
-        np.asarray(mzs, dtype=np.float64),
-    )
-    # Thinning drops labels off the plot, so the hover has to carry the full set
-    # -- otherwise capping would make a bubble's identity unreachable.
-    hover_data = [[float(i), lab] for i, lab in zip(intensities, all_labels, strict=True)]
-
-    fig = go.Figure(
-        go.Scatter(
-            x=mzs,
-            y=errors,
-            mode="markers+text",
-            marker={
-                "size": sizes,
-                "color": colors,
-                "opacity": 0.7,
-                # Separates two overlapping bubbles. Theme-aware: a fixed dark
-                # grey disappeared into the dark surface.
-                "line": {"width": 1, "color": theme.marker_outline(theme_mode)},
-            },
-            text=labels,
-            textposition="top center",
-            textfont={"size": 9},
-            hovertemplate=(
-                f"m/z: %{{x:.4f}}<br>error ({unit}): %{{y:.4f}}<br>"
-                "intensity: %{customdata[0]:.2e}<br>%{customdata[1]}<extra></extra>"
-            ),
-            customdata=hover_data,
+    if len(centroids) > 0:
+        c_mz = np.asarray(centroids.mz, dtype=np.float64)
+        c_int = np.asarray(centroids.intensity, dtype=np.float64)
+        marks.append(Sticks(x=c_mz, y=c_int, color=centroid_color, width=fig_style.stick_width, name="centroids",
+                            legend=True))  # fmt: skip
+        marks.append(
+            HitLayer(
+                x=c_mz,
+                y=c_int,
+                hover=[f"m/z: {m:.4f}<br>intensity: {i:.4g}" for m, i in zip(c_mz, c_int, strict=True)],
+                size_px=_HIT_TARGET_SIZE,
+            )
         )
+    panel = Panel(
+        marks=marks,
+        x=Axis(label=mz_label()),
+        y=Axis(label=RichText.plain("Intensity"), lo=0.0, pad=0.05, scale_exponent=True),
     )
-
-    # Solid hairline, not dashed: dashing reads as "threshold" or "projection"
-    # when this is just the zero-error reference.
-    fig.add_hline(y=0, line_color=theme.text_color("muted", theme_mode), line_width=1)
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or "Mass Errors",
-        xaxis_title="m/z",
-        yaxis_title=f"Error ({unit})",
-        showlegend=False,
-        **layout_kwargs,
-    )
-    return fig
+    default = f"Profile vs centroids — {len(centroids)} peaks from {len(profile)} samples"
+    cell = Cell(panels=[panel], title=figure_title(title, default, fig_style), aspect=fig_style.aspect)
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
 
-def _add_stick_traces(
-    fig: go.Figure,
-    table,
-    row: int,
-    col: int,
-    theme_mode: theme.ThemeMode | None = None,
-    negate: bool = False,
-) -> None:
-    """Add a plot table to a subplot as one trace per (series, colour) group.
-
-    One trace *per group*, not per peak. Drawing a separate trace for every peak
-    makes plotly allocate per-trace state thousands of times over -- a 5000-peak
-    spectrum became 5000 traces and a figure the browser struggles to render,
-    for a picture identical to the handful of traces this produces.
-    """
-    import pandas as pd
-    import plotly.graph_objects as go
-
-    for (series, color), group in table.groupby(["series", "color"], sort=False, dropna=False):
-        if pd.isna(color):
-            color = theme.unmatched_color(theme_mode)
-        mz_arr = group["mz"].to_numpy(dtype=np.float64)
-        int_arr = group["intensity"].to_numpy(dtype=np.float64)
-        if negate:
-            int_arr = -int_arr
-        xs, ys = _sticks(mz_arr, int_arr)
-
-        hover_data: list[str] = []
-        for h in group["hover"].tolist():
-            hover_data += [h, h, ""]
-
-        first = group.iloc[0]
-        fig.add_trace(
-            go.Scatter(
-                x=xs,
-                y=ys,
-                mode="lines",
-                name=str(series),
-                line={"color": str(color), "width": float(first["linewidth"])},
-                opacity=float(first["opacity"]),
-                customdata=hover_data,
-                hovertemplate="%{customdata}<extra></extra>",
-                showlegend=False,
-            ),
-            row=row,
-            col=col,
-        )
+# ---------------------------------------------------------------------------
+# Reporter ions
+# ---------------------------------------------------------------------------
 
 
-@requires_plotly
-def facet_plot(
+def reporter_ion_plot(
     spectrum: Spectrum,
+    plex: str | IsobaricTagInfo | ReporterIons = "TMT10",
     *,
-    fragments: FragmentInput | None = None,
-    mirror_spectrum: Spectrum | None = None,
+    tolerance: float = DEFAULT_REPORTER_TOLERANCE,
+    tolerance_unit: ToleranceUnit = DEFAULT_REPORTER_TOLERANCE_UNIT,
+    impurities: ImpurityTable | pd.DataFrame | NDArray[np.float64] | None = None,
+    show_spectrum: bool = True,
+    normalize: bool = True,
     title: str | None = None,
-    tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
-    tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
-    peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
-    include_sequence: bool = False,
-    unit: str = "ppm",
-    max_labels: int | None = _MAX_LABELS_DEFAULT,
     theme_mode: theme.ThemeMode | None = None,
-    **layout_kwargs,
-) -> go.Figure:
-    """Multi-panel facet plot combining spectrum, mass errors, and mirror.
+    backend: Backend = "plotly",
+    style: StyleLike = None,
+    size: SizeLike = None,
+    **layout_kwargs: Any,
+) -> Any:
+    """Isobaric-label reporter ions: channel intensities, with the reporter region above.
 
-    Panels (top to bottom):
-    1. Annotated spectrum (always shown)
-    2. Mass errors bubble chart (shown if ``fragments`` is provided)
-    3. Mirror spectrum (shown if ``mirror_spectrum`` is provided)
+    The lower panel is one bar per channel, in channel order, as % of the
+    strongest channel. The upper panel (``show_spectrum``) is the raw reporter
+    region, with the peak picked for each channel highlighted, so an
+    interfering or missing reporter is visible rather than hidden in a bar.
+    Channels with no peak are marked "n.d.".
 
     Parameters
     ----------
     spectrum:
-        Primary spectrum to plot.
-    fragments:
-        Fragment objects for annotation and mass error panels.
-    mirror_spectrum:
-        Optional second spectrum shown as a mirror below.
+        An MS2 or MS3 spectrum carrying reporter ions.
+    plex:
+        A plex name from tacular (``"TMT6"``, ``"TMT10"``, ``"TMT11"``, ``"TMT16"``,
+        ``"TMT18"``, ``"iTRAQ4"``, ``"iTRAQ8"``, ...), an :class:`~tacular.IsobaricTagInfo`,
+        or a :class:`~spxtacular.reporter.ReporterIons` already extracted from ``spectrum``.
+    tolerance, tolerance_unit, impurities:
+        Passed to :func:`~spxtacular.reporter.extract_reporter_ions`; ignored when
+        ``plex`` is a :class:`~spxtacular.reporter.ReporterIons`.
+    show_spectrum:
+        Draw the reporter m/z region above the bars.
+    normalize:
+        Bars as % of the strongest channel. ``False`` plots the intensities as extracted.
     title:
         Plot title.
-    tolerance:
-        Matching tolerance.
-    tolerance_unit:
-        ``"da"`` or ``"ppm"``.
-    peak_selection:
-        ``"closest"``, ``"largest"``, or ``"all"``.
-    include_sequence:
-        Embed residue sequence in annotation labels.
-    unit:
-        Error unit for mass error panel: ``"ppm"`` or ``"da"``.
-    max_labels:
-        Maximum number of direct labels in the annotated and mass-error panels.
-    theme_mode:
-        ``"light"`` or ``"dark"``. ``None`` uses the global plot theme.
-    **layout_kwargs:
-        Forwarded to ``fig.update_layout``.
+    theme_mode, backend, style, size, **layout_kwargs:
+        As for :func:`plot_spectrum`.
+
+    Raises
+    ------
+    SpxtacularError
+        As :func:`~spxtacular.reporter.extract_reporter_ions` (unknown plex, bad unit, ...).
     """
-    from plotly.subplots import make_subplots
-
-    unit = _error_unit(unit)
-    n_rows = 1
-    subtitles = ["Spectrum"]
-    if fragments is not None:
-        n_rows += 1
-        subtitles.append("Mass Errors")
-    if mirror_spectrum is not None:
-        n_rows += 1
-        subtitles.append("Mirror")
-
-    fig = make_subplots(
-        rows=n_rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=subtitles,
-    )
-
-    # Panel 1: annotated spectrum (or plain spectrum)
-    if fragments is not None:
-        table = build_annot_plot_table(
-            spectrum,
-            fragments,
-            tolerance=tolerance,
-            tolerance_unit=tolerance_unit,
-            peak_selection=peak_selection,
-            include_sequence=include_sequence,
-            max_labels=max_labels,
-            theme_mode=theme_mode,
-        )
+    key, fig_style, mode = _setup(backend, style, theme_mode)
+    if isinstance(plex, ReporterIons):
+        ions = plex
     else:
-        table = build_plot_table(spectrum, max_labels=max_labels, theme_mode=theme_mode)
-
-    import plotly.graph_objects as go
-
-    _add_stick_traces(fig, table, row=1, col=1, theme_mode=theme_mode)
-
-    # Carry the ion labels through. The panel exists to show the annotation, so
-    # silently dropping the labels defeated its purpose.
-    label_mask = table["label"].notna() & (table["label"] != "")
-    for _, lrow in table[label_mask].iterrows():
-        fig.add_annotation(
-            x=float(lrow["mz"]),
-            y=float(lrow["intensity"]),
-            text=str(lrow["label"]),
-            showarrow=False,
-            yshift=6,
-            yanchor="bottom",
-            textangle=_LABEL_ANGLE_DEFAULT,
-            font={"size": 10, "color": theme.text_color("secondary", theme_mode)},
-            xanchor="center",
-            row=1,
-            col=1,
+        ions = extract_reporter_ions(
+            spectrum, plex, tolerance=tolerance, tolerance_unit=tolerance_unit, impurities=impurities
         )
-    # The table knows what scaling it applied; hardcoding "Intensity" here
-    # mislabels the panel, which is relative-scaled by default.
-    fig.update_yaxes(title_text=table.attrs.get("intensity_label", "Intensity"), row=1, col=1, rangemode="tozero")
-
-    current_row = 2
-
-    # Panel 2: mass errors
-    if fragments is not None:
-        from .matching import match_fragments
-
-        matches = match_fragments(
-            spectrum, fragments, tolerance=tolerance, tolerance_unit=tolerance_unit, peak_selection=peak_selection
+    names = list(ions.channels)
+    reporter_mz = np.asarray(ions.reporter_mz, dtype=np.float64)
+    heights = np.asarray(ions.intensity, dtype=np.float64)
+    observed = np.asarray(ions.observed_mz, dtype=np.float64)
+    top = float(heights.max()) if len(heights) else 0.0
+    plotted = heights / top * 100.0 if normalize and top > 0 else heights
+    # The dark end of the ordinal blue ramp: the light end washes out as a filled bar.
+    bar_color = theme.charge_color(3, mode)
+    missing = theme.text_color("muted", mode)
+    positions = np.arange(len(names), dtype=np.float64)
+    bar_marks: list[Mark] = [
+        Bars(
+            x=positions,
+            height=plotted,
+            width=0.72,
+            colors=[bar_color] * len(names),
+            name="reporters",
+            customdata=[[n, float(m), float(h)] for n, m, h in zip(names, reporter_mz, heights, strict=True)],
+            hovertemplate=(
+                "%{customdata[0]} (m/z %{customdata[1]:.4f})<br>intensity: %{customdata[2]:.3e}<extra></extra>"
+            ),
         )
-        if matches:
-            mzs = [m.peak_mz for m in matches]
-            errors = [m.ppm_error if unit == "ppm" else m.da_error for m in matches]
-            intensities = [m.peak_intensity for m in matches]
-            max_int = max(intensities) or 1.0
-            sizes = [max(6, 28 * i / max_int) for i in intensities]
-
-            ion_types = [
-                m.fragment.ion_type.value if hasattr(m.fragment.ion_type, "value") else str(m.fragment.ion_type)
-                for m in matches
-            ]
-            colors = [theme.ion_color(it, theme_mode) for it in ion_types]
-
-            fig.add_trace(
-                go.Scatter(
-                    x=mzs,
-                    y=errors,
-                    mode="markers",
-                    marker={"size": sizes, "color": colors, "opacity": 0.7},
-                    showlegend=False,
-                ),
-                row=current_row,
-                col=1,
+    ]
+    absent = [i for i, found in enumerate(ions.found) if not found]
+    if absent:
+        bar_marks.append(
+            LabelSet(
+                x=positions[absent],
+                y=np.zeros(len(absent)),
+                texts=[RichText.plain("n.d.")] * len(absent),
+                colors=[missing] * len(absent),
+                priority=np.ones(len(absent)),
+                size=fig_style.label_size * 0.9,
+                leaders=False,
+                gap=fig_style.label_gap,
             )
-        fig.update_yaxes(title_text=f"Error ({unit})", row=current_row, col=1)
-        current_row += 1
-
-    # Panel 3: mirror spectrum
-    if mirror_spectrum is not None:
-        mirror_table = build_plot_table(mirror_spectrum, max_labels=max_labels, theme_mode=theme_mode)
-        _add_stick_traces(fig, mirror_table, row=current_row, col=1, theme_mode=theme_mode, negate=True)
-        # As for panel 1: take the label from the table rather than hardcoding
-        # "Intensity" onto axis values that are relative-scaled by default.
-        fig.update_yaxes(title_text=mirror_table.attrs.get("intensity_label", "Intensity"), row=current_row, col=1)
-
-    fig.update_xaxes(title_text="m/z", row=n_rows, col=1)
-    fig.update_layout(
-        template=theme.template(theme_mode),
-        title=title or "Facet Plot",
-        height=300 * n_rows,
-        showlegend=False,
-        **layout_kwargs,
+        )
+    rel_label = "Relative intensity (%)"
+    # Both panels of a normalised figure read on the same 0-100 scale, so give them the same ticks.
+    rel_ticks = [0.0, 25.0, 50.0, 75.0, 100.0]
+    y_label = rel_label if normalize else "Intensity"
+    bar_axis = Axis(
+        label=RichText.plain(y_label),
+        lo=0.0,
+        hi=None,
+        ticks=rel_ticks if normalize else None,
+        tick_max=100.0 if normalize else None,
+        headroom=True,
+        scale_exponent=not normalize,
     )
-    # Subplot titles are annotations; style them as headings rather than leaving
-    # them at plotly's default so they don't compete with the figure title.
-    for annotation in fig.layout.annotations[:n_rows]:
-        annotation.font = {"size": 12, "color": theme.text_color("secondary", theme_mode)}
-    return fig
+    bar_panel = Panel(
+        marks=bar_marks,
+        x=Axis(
+            label=RichText.plain(f"{ions.plex} channel"),
+            lo=-0.6,
+            hi=len(names) - 0.4,
+            ticks=positions.tolist(),
+            ticktext=names,
+        ),
+        y=bar_axis,
+    )
+    panels = [bar_panel]
+    if show_spectrum:
+        lo_mz = float(reporter_mz.min()) - 0.4
+        hi_mz = float(reporter_mz.max()) + 0.4
+        mz = np.asarray(spectrum.mz, dtype=np.float64)
+        inten = np.asarray(spectrum.intensity, dtype=np.float64)
+        window = (mz >= lo_mz) & (mz <= hi_mz)
+        w_mz, w_int = mz[window], inten[window]
+        w_top = float(w_int.max()) if len(w_int) else 0.0
+        w_rel = w_int / w_top * 100.0 if w_top > 0 else w_int
+        # The peak extract_reporter_ions picked for each channel, not everything in the window.
+        assigned = np.isin(w_mz, observed[~np.isnan(observed)])
+        context = theme.neutral_color(mode) if fig_style.strong_context else theme.unmatched_color(mode)
+        spec_marks: list[Mark] = [
+            Sticks(x=w_mz[~assigned], y=w_rel[~assigned], color=context, width=fig_style.stick_width_context,
+                   name="other peaks", legend=bool((~assigned).any()) and bool(assigned.any())),
+            Sticks(x=w_mz[assigned], y=w_rel[assigned], color=bar_color, width=fig_style.stick_width,
+                   name="reporter", legend=bool((~assigned).any()) and bool(assigned.any())),
+        ]  # fmt: skip
+        if len(w_mz):
+            spec_marks.append(
+                HitLayer(
+                    x=w_mz,
+                    y=w_rel,
+                    hover=[f"m/z: {m:.4f}<br>intensity: {i:.3e}" for m, i in zip(w_mz, w_int, strict=True)],
+                )
+            )
+        panels.insert(
+            0,
+            Panel(
+                marks=spec_marks,
+                x=Axis(label=mz_label(), lo=lo_mz, hi=hi_mz),
+                y=Axis(label=RichText.plain(rel_label), lo=0.0, ticks=rel_ticks, tick_max=100.0, pad=0.08),
+                weight=0.8,
+            ),
+        )
+    cell = Cell(
+        panels=panels,
+        title=figure_title(title, "Reporter ions", fig_style),
+        aspect=fig_style.aspect * (1.55 if show_spectrum else 1.0),
+    )
+    return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)

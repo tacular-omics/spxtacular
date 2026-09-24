@@ -10,7 +10,7 @@ spxtacular is a Python 3.12+ library for mass-spectrum processing behind one cha
 `Spectrum` / `MsnSpectrum` object: filtering, denoising, centroiding, isotope deconvolution,
 charge assignment and decharging, fragment matching, PSM scoring, spectrum similarity,
 chromatograms, readers/writers for Bruker `.d`, mzML, Thermo `.raw`, MGF/MS2/MSP, and
-accessible plotly figures. Users are people writing proteomics, metabolomics, lipidomics,
+accessible, publication-ready figures (plotly or matplotlib). Users are people writing proteomics, metabolomics, lipidomics,
 glycomics or oligonucleotide analysis code.
 
 Place in the tacular-omics graph (tier 2, the top of the core workspace):
@@ -22,7 +22,8 @@ Place in the tacular-omics graph (tier 2, the top of the core workspace):
   `spectrum-utils` (`[interop]`), `numba` (`[numba]`).
 - **Downstream:** `msbit`, `pepbit` (not in the workspace). Note breaking changes for them.
 
-Other runtime deps: numpy, pandas, plotly. Version sources and pins are in `pyproject.toml`.
+Other runtime deps: numpy, pandas, plotly. Figure extras: `matplotlib` (`[matplotlib]`, the print
+backend) and `kaleido` (`[plotly-export]`, static plotly export). Version sources and pins are in `pyproject.toml`.
 
 ## Commands
 
@@ -75,8 +76,14 @@ src/spxtacular/
   serialization.py   # versioned to_dict/to_json helpers; schemas/*.schema.json + get_json_schema
   utils.py           # da_to_ppm, ppm_to_da
   theme.py           # the ONLY source of plot colours, templates, light/dark mode
+  style.py           # FigureStyle presets (paper/screen/talk), journal widths, pt/mm/px units
+  _text.py           # RichText (sub/superscript runs -> HTML / mathtext), best_label for mzPAF ion labels
+  figspec.py         # FigureSpec/Cell/Panel/Axis + marks (Sticks, Line, Bars, LabelSet, ...), render, compose_figure
+  _layout.py         # backend-neutral layout in pt: ticks, panel rects, 2-D label placement without overlap
+  _backend_plotly.py # draws a resolved FigureSpec with plotly
+  _backend_mpl.py    # draws it with matplotlib (lazy import; Type 42 fonts, SVG text as text)
   plot_table.py      # plot tables (DataFrame between data and figure), plot_from_table, table_view
-  visualization.py   # plot_spectrum, annotate_spectrum, mirror_plot, facet_plot, ... save_figure
+  visualization.py   # plot_spectrum, annotate_spectrum, mirror_plot, ... reporter_ion_plot, save_figure
 ```
 
 Data flow: a reader yields `MsnSpectrum` objects -> chained transforms return new spectra
@@ -115,7 +122,8 @@ importing each one).
   `from_spectrl_url`, `to_inline_spectrum`, `get_json_schema`.
 - **Plotting:** `plot_spectrum`, `annotate_spectrum`, `mirror_plot`, `facet_plot`,
   `mass_error_plot`, `sequence_coverage_plot`, `profile_centroid_plot`, `plot_chromatogram`,
-  `plot_xic`, `save_figure`, `build_plot_table`, `build_annot_plot_table`, `plot_from_table`,
+  `plot_xic`, `reporter_ion_plot`, `compose_figure`, `render`, `FigureSpec`, `FigureStyle`,
+  `get_style`, `save_figure`, `build_plot_table`, `build_annot_plot_table`, `plot_from_table`,
   `table_view`, `theme` (module).
 - **Utils:** `da_to_ppm`, `ppm_to_da`.
 
@@ -164,6 +172,12 @@ Load-bearing rules (kept from the previous guide, all still true of the code):
 - Keep `peaklist.py` standard-library-only apart from numpy.
 - `theme.py` is the only source of plot colours: ion type is categorical, charge is ordinal,
   isotope score and mobility are sequential.
+- Plots build a `FigureSpec` and call `finish(spec, backend)`; never draw plotly or matplotlib
+  directly in `visualization.py`. Layout decisions (ticks, label placement, sizes) belong in
+  `_layout.py` so both backends agree; backends only draw. Work in points (pt); plotly px = pt*96/72.
+- `matplotlib` must stay lazy: it is imported only when `backend="matplotlib"` is used.
+- Test figures on the spec (`backend="spec"`) and resolved layout (`_layout.resolve_figure`,
+  `label_boxes`), not on pixels. `docs/gallery/build.py` renders every figure for a visual check.
 - Render profile spectra as traces and decimate with min/max buckets, never stride sampling.
 - Keep labels capped and collision-avoided; full data stays in hover/table output.
 - Non-inplace methods must not share mutable arrays (or precursor lists) with their input.

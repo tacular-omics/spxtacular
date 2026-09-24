@@ -84,6 +84,10 @@ spectrl = ["spectrl>=3.0,<4"]
 matchms = ["matchms>=0.33.1"]
 spectrum-utils = ["spectrum-utils>=0.5.0"]
 interop = ["matchms>=0.33.1", "spectrum-utils>=0.5.0"]
+# Print figures: backend="matplotlib" (vector PDF/SVG with embedded fonts).
+matplotlib = ["matplotlib>=3.8"]
+# Static PNG/SVG/PDF export of plotly figures (save_figure). Needs Chrome/Chromium.
+plotly-export = ["kaleido>=1.0"]
 all = [
     "numba>=0.64.0",
     "tdfpy>=5,<6",
@@ -92,6 +96,8 @@ all = [
     "spectrl>=3.0,<4",
     "matchms>=0.33.1",
     "spectrum-utils>=0.5.0",
+    "matplotlib>=3.8",
+    "kaleido>=1.0",
 ]
 
 [dependency-groups]

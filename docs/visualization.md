@@ -1,9 +1,26 @@
 # Visualization
 
-spxtacular uses [Plotly](https://plotly.com/python/) for interactive HTML visualizations.
-Every function on this page returns a `plotly.graph_objects.Figure` object. Plotly is a **required**
-dependency of spxtacular (as is `pandas`, which backs the plot-table API), so nothing extra needs
-installing.
+Every plot function on this page draws the same figure with one of three backends:
+
+| `backend=` | Returns | For | Needs |
+|---|---|---|---|
+| `"plotly"` (default) | `plotly.graph_objects.Figure` | notebooks, dashboards, HTML reports: hover, zoom | nothing (plotly is required) |
+| `"matplotlib"` | `matplotlib.figure.Figure` | papers: vector PDF/SVG with embedded fonts | `pip install 'spxtacular[matplotlib]'` |
+| `"spec"` | `spxtacular.FigureSpec` | composing multi-panel figures, testing, custom renderers | nothing |
+
+A plot is first described as a backend-neutral `FigureSpec` (panels, marks, axes, rich-text
+labels). One layout pass then fixes the tick positions, the label placement and the sizes in
+points, and the backend only draws what it is given. So a figure looks the same in both backends,
+and a label that clears its neighbours in plotly clears them in the PDF too.
+
+```python
+import spxtacular as spx
+
+fig = spx.annotate_spectrum(spec, fragments, peptide="PEPTIDEK")                  # plotly, on screen
+fig = spx.annotate_spectrum(spec, fragments, peptide="PEPTIDEK",
+                            backend="matplotlib", style="paper", size="single")  # print
+spx.save_figure(fig, "figure2.pdf")
+```
 
 ## How these plots are built
 
@@ -17,13 +34,14 @@ rescaling changes the axis, never the number you are told. For data spanning ord
 `intensity_transform="sqrt"` or `"log"` compresses the range so low-abundance matched ions stay
 visible beside a dominant base peak.
 
-**Labels are vertical, and deliberately sparse.** Direct labels are rotated to read bottom-to-top,
-the spectrum-viewer convention — a horizontal label occupies its full text width, so neighbours
-collide almost immediately, while a rotated one takes about one line-height and several times as
-many peaks can be labelled. Set `label_angle` to `0` in the plot table for horizontal labels.
+**Labels are typeset and never overlap.** Ion labels are rich text: `b₅`, `y₇²⁺`, `y₄−H₂O`, with a
+real minus sign and subscripted formulas, coloured by ion series. They read horizontally and are
+placed in two dimensions: a label that would collide with a stronger one moves up, and a leader
+line joins it back to its peak when it has moved far. A label with no free space is dropped rather
+than drawn over another. Set `label_angle` to `-90` in the plot table for the old vertical labels.
 
-They are still capped (`max_labels`, default 60) and collision-avoided along the m/z axis, strongest
-peak first: labelling every annotated peak turns a deconvoluted spectrum into an unreadable smear.
+Labels are also capped (`max_labels`, default 60), strongest peak first: labelling every annotated
+peak turns a deconvoluted spectrum into an unreadable smear.
 Nothing is lost — the dropped values remain in the hover text, in the plot table, and in
 [`table_view()`](#table_view).
 
@@ -37,6 +55,72 @@ profile data becomes a continuous line with a light fill so the peak *shape* —
 profile data exists — survives. Everything else stays a stick plot. Override with `render=`.
 
 **Colour is assigned by the job it does**, not by taste — see [Theme](#theme) below.
+
+---
+
+## Publication figures
+
+### Styles
+
+`style=` sets fonts, font sizes, line weights, tick density and colour for the medium:
+
+| Style | Base font | Width | For |
+|---|---|---|---|
+| `"paper"` | 7 pt Arial/Helvetica | 85 mm | journal figures: thin lines, no title (the caption is the title), 600 dpi raster |
+| `"screen"` | 11 px system sans | 900 px (238 mm) | notebooks and reports; the default for `backend="plotly"` |
+| `"talk"` | 14 pt Arial/Helvetica | 254 mm (10 in, 16:9) | slides: heavy lines, few ticks |
+
+`"paper"` is the default for `backend="matplotlib"` and `"spec"`. `spx.get_style("paper")` returns
+the `FigureStyle` dataclass; change any field with `.with_(...)` and pass the result as `style=`:
+
+```python
+tight = spx.get_style("paper").with_(font_size=6.0, label_size=5.5)
+fig = spx.annotate_spectrum(spec, fragments, backend="matplotlib", style=tight)
+```
+
+An unknown style name raises `SpxtacularError`.
+
+### Sizes
+
+`size=` takes a journal column width or millimetres. Heights follow the style's aspect ratio, with
+fixed extra height for a sequence header or an error strip, so those do not squash the spectrum.
+
+| `size=` | Width |
+|---|---|
+| `"single"` | 85 mm (one column) |
+| `"onehalf"` | 114 mm |
+| `"double"` | 175 mm (full page width) |
+| `120` | 120 mm |
+| `(120, 60)` | 120 mm by 60 mm |
+
+Fonts are set in points at the final size, so a `"paper"` figure placed at 100% in the manuscript
+has 7 pt text, which is what most journals ask for. Do not rescale it in the layout program.
+
+### Output
+
+`save_figure(fig, "fig.pdf")` from a matplotlib figure writes vector PDF with the fonts embedded as
+TrueType (Type 42), not Type 3. Journals accept this, and the text stays editable in Illustrator or
+Inkscape. SVG keeps text as `<text>` elements. PNG is rendered at the style's `dpi` (600 for
+`"paper"`). The plotly backend writes the same formats through kaleido (`spxtacular[plotly-export]`).
+
+### What changes in print
+
+- The m/z axis title is an italic *m/z*, and absolute intensity axes carry a shared exponent
+  (`Intensity (×10⁵)`) instead of `1.2e5` on every tick.
+- Unmatched peaks are a darker grey than on screen, so they survive printing and photocopying.
+- The precursor is labelled `[M+2H]²⁺` rather than `precursor 500.2500 (2+)`.
+- Mass-error axes are symmetric around zero and span the matching tolerance when it is in the
+  displayed unit, so a point near the edge is near the tolerance.
+
+### Gallery
+
+`docs/gallery/build.py` renders every figure in both backends and both styles, as PNG and SVG,
+from the mzSpecLib fixture in the tests and a few synthetic spectra:
+
+```bash
+python docs/gallery/build.py                                # everything into docs/gallery/out
+python docs/gallery/build.py --only annotated --backend matplotlib --style paper
+```
 
 ---
 
@@ -57,7 +141,11 @@ fig = plot_spectrum(
     show_precursor=True,         # draw precursor m/z + isolation window on MSn
     render=None,                 # None | "sticks" | "profile"
     max_points=4000,             # profile-sample cap, or None for every sample
-    **layout_kwargs,             # passed to fig.update_layout()
+    absolute_axis=False,         # absolute intensities with a x10^n axis exponent
+    backend="plotly",            # "plotly" | "matplotlib" | "spec"
+    style=None,                  # "paper" | "screen" | "talk" | FigureStyle
+    size=None,                   # "single" | "onehalf" | "double" | mm | (w, h) mm
+    **layout_kwargs,             # plotly only: passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -72,6 +160,9 @@ score values label the strongest scored peaks.
 
 On an `MsnSpectrum` carrying precursor information, the precursor m/z and its isolation window are
 drawn as recessive reference chrome behind the peaks. Pass `show_precursor=False` to suppress them.
+
+Every function on this page takes `backend=`, `style=` and `size=` as above. `**layout_kwargs` is
+plotly-only; passing it with `backend="matplotlib"` raises `SpxtacularError`.
 
 `Spectrum.plot()` is a convenience wrapper around this function:
 
@@ -101,6 +192,11 @@ from spxtacular.visualization import mirror_plot
 fig = mirror_plot(
     raw,                 # Spectrum -- drawn inverted below the x-axis
     deconvoluted,        # Spectrum -- drawn upright above the x-axis
+    fragments=None,      # annotate both halves with matched fragments
+    lower_fragments=None,  # annotate the lower half with these instead (another peptide or form)
+    mirror_labels="auto",  # "auto" | "both" | "top": which half labels a shared ion
+    names=None,          # ("query", "library"): labels for the two halves
+    similarity=None,     # "cosine" | "modified_cosine" | "entropy" | a number to print
     title=None,
     normalize=True,      # scale each half to its own maximum independently
     show_charges=True,   # colour the deconvoluted half by charge state
@@ -120,6 +216,25 @@ two figures sit side by side; with `show_scores=True` the `iso_score` annotation
 cluster. Each half is normalised to its own maximum, but the hover reports the true intensity.
 
 The second parameter is named `deconvoluted` — pass it by that name if you use keywords.
+
+The same function compares a query against a library spectrum. With `fragments=`, both halves are
+annotated and coloured by ion series, and `names=` labels each half. `similarity=` computes the
+score and prints it in the corner (`"modified_cosine"` needs a precursor m/z on both spectra and
+raises `SpxtacularError` otherwise):
+
+```python
+fig = mirror_plot(query, library, fragments=fragments, names=("query", "library"), similarity="cosine")
+```
+
+`mirror_labels=` decides which half labels an ion. `"auto"` (default) labels an ion once, on the
+upper half, when both halves carry the same annotation on matching peaks; the lower half keeps only
+the labels that differ, such as the shifted ions of a modified form passed as `lower_fragments=`.
+`"both"` labels every match on both halves and `"top"` labels the upper half only:
+
+```python
+phospho = pt.parse("PEPT[Phospho]IDEK/2").fragment(ion_types=("b", "y"), charges=[1, 2])
+fig = mirror_plot(library, query, fragments=fragments, lower_fragments=phospho)
+```
 
 **Example:**
 
@@ -171,6 +286,12 @@ fig = annotate_spectrum(
     intensity_transform=None,
     texture=False,
     show_precursor=True,
+    peptide=None,                # draw the sequence with fragment ticks above the spectrum
+    mass_error_panel=False,      # add a mass-error strip below
+    absolute_axis=False,
+    backend="plotly",
+    style=None,
+    size=None,
     **layout_kwargs,
 )
 fig.show()
@@ -197,6 +318,8 @@ lead rather than competing with the context behind them.
 | `intensity_transform` | `None` | `None`, `"sqrt"` or `"log"` |
 | `texture` | `False` | Give each ion series its own dash pattern |
 | `show_precursor` | `True` | Draw the precursor m/z and isolation window on an `MsnSpectrum` |
+| `peptide` | `None` | Sequence (string or peptacular annotation) drawn above the spectrum with a tick for each observed b/y cleavage |
+| `mass_error_panel` | `False` | Add a mass-error strip below the spectrum, sharing its m/z axis |
 
 When one peak matches several ions, its colour is chosen by the fixed ion-series order rather than
 by whichever fragment you happened to list first, so reordering your fragment list never repaints
@@ -406,6 +529,54 @@ middle of the plateau.
 
 ---
 
+## `reporter_ion_plot()`
+
+```python
+fig = spx.reporter_ion_plot(
+    spectrum,
+    "TMT10",                 # plex name, IsobaricTagInfo, or an extracted ReporterIons
+    tolerance=20.0,
+    tolerance_unit="ppm",    # or "da"
+    impurities=None,         # lot-sheet impurity table, for corrected bars
+    show_spectrum=True,      # the raw reporter region above the bars
+    normalize=True,          # bars as % of the strongest channel
+)
+```
+
+One bar per channel, in channel order, from
+[`extract_reporter_ions`](scoring.md) (so the plot and the quantification read the same peaks).
+Above it, the raw reporter m/z region, with the peak picked for each channel highlighted: an
+interfering peak or a missing channel is visible, not hidden in a bar. A channel with no peak is
+marked *n.d.*. Pass an already extracted `ReporterIons` to plot corrected or normalized values
+exactly as you computed them.
+
+---
+
+## `compose_figure()`
+
+```python
+parts = [
+    spx.annotate_spectrum(spec, fragments, peptide=peptide, backend="spec"),
+    spx.mirror_plot(query, library, fragments=fragments, backend="spec"),
+    spx.mass_error_plot(spec, fragments, backend="spec"),
+    spx.reporter_ion_plot(spec, "TMT10", backend="spec"),
+]
+fig = spx.compose_figure(parts, ncols=2, backend="matplotlib")
+spx.save_figure(fig, "figure3.pdf")
+```
+
+Lays out several `FigureSpec`s (from `backend="spec"`) as one multi-panel figure, with bold panel
+letters (`labels="abc"`, `"ABC"`, a list of strings, or `None`). The panels share one style and one
+width, so fonts and line weights match across the figure. `size=` defaults to the double-column
+width, or a 16:9 slide (254 × 143 mm) with `style="talk"`. Axes adapt to small panels: fewer ticks,
+abbreviated axis titles ("Rel. int. (%)"), a smaller sequence header and rotated category labels.
+A panel still too short for the style's text raises a `UserWarning` when the figure is laid out. Rendered figures (plotly or matplotlib) are rejected with
+`SpxtacularError`: build the parts with `backend="spec"`.
+
+`spx.render(spec, "plotly")` (or `spec.render("matplotlib")`) draws a single spec.
+
+---
+
 ## Theme
 
 Colour lives in `spxtacular.theme`, and is assigned by the *job* it does rather than by taste:
@@ -514,11 +685,20 @@ shows — the table is the place values are reported exactly.
 ```python
 from spxtacular import save_figure
 
-save_figure(fig, "spectrum.html")        # always works
-save_figure(fig, "figure.png", scale=2)  # needs: pip install kaleido
+save_figure(fig, "spectrum.html")            # plotly: always works
+save_figure(fig, "figure.pdf")               # matplotlib: vector, fonts embedded
+save_figure(fig, "figure.png", dpi=300)      # raster at 300 dpi (default: the style's dpi)
+save_figure(spec, "figure.svg")              # a FigureSpec: drawn with matplotlib if installed
 ```
 
-The file extension picks the writer. `.html` (or no suffix) needs nothing extra. Static formats —
-`.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, and `.webp` go through Plotly's static export and raise
-`ImportError` naming `kaleido` if it is not installed. An unrecognised suffix raises `ValueError`.
-`scale=2` renders at twice the device resolution, which is what you want for a paper figure.
+The file extension picks the writer, and the figure type picks the backend:
+
+- **matplotlib figure:** `.pdf`, `.svg`, `.eps`, `.png`, `.jpg`, `.tif`, `.webp`. PDF and SVG are
+  vector with TrueType fonts; rasters use `dpi` (default: the style's `dpi`, 600 for `"paper"`).
+- **plotly figure:** `.html` (or no suffix) needs nothing extra. `.png`, `.svg`, `.pdf`, `.jpg`,
+  `.webp` go through kaleido and raise `ImportError` naming `spxtacular[plotly-export]` if it is
+  missing. `scale=` sets the device pixel ratio and overrides `dpi`.
+- **`FigureSpec`:** drawn with matplotlib when it is installed, else plotly; `.html` always uses
+  plotly.
+
+An unsupported suffix raises `SpxtacularError`. Returns the path written.

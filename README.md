@@ -68,7 +68,11 @@ pip install spxtacular[mzml]        # mzmlpy — MzmlReader
 pip install spxtacular[thermo]     # fisher-py — ThermoReader (also needs a .NET runtime)
 pip install spxtacular[readers]     # all three readers
 
-# Everything (numba + readers + spectrl + interoperability adapters)
+# Optional: publication figures (matplotlib backend) and static export of plotly figures
+pip install spxtacular[matplotlib]
+pip install spxtacular[plotly-export]
+
+# Everything (numba + readers + spectrl + interoperability adapters + figure backends)
 pip install spxtacular[all]
 ```
 
@@ -176,26 +180,37 @@ list and how to write your own.
 
 ## Visualization
 
-Every plot is drawn from one theme module — a palette checked with a colour-vision-deficiency
-validator in both light and dark modes. Intensities are shown relative to the base peak by
-default, direct labels are capped and collision-avoided (the rest stay in the hover), and
-`table_view()` renders the same data as an accessible HTML table for keyboard and screen-reader
-users.
+Every figure is described once and drawn by either backend: **plotly** for interactive work
+(the default) or **matplotlib** for print. Three styles size the text and lines for the medium
+(`"paper"`, `"screen"`, `"talk"`), and `size=` takes journal column widths. Ion labels are typeset
+(`y₇²⁺`, `b₅−H₂O`), coloured by series and placed so they never overlap. Colours come from one
+theme module, checked for colour-vision deficiency in light and dark mode.
 
 ```python
 import peptacular as pt
 import spxtacular as spx
 
-spx.theme.set_plot_theme("dark")   # global default: "light" (default) or "dark"
-
 frags = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
 
-fig = spec.annotate(frags)                                   # annotated fragment spectrum
-ladder = spx.sequence_coverage_plot(spec, "PEPTIDE", frags)  # backbone coverage ladder
-html = spx.table_view(spx.build_annot_plot_table(spec, frags))
+fig = spec.annotate(frags)                                   # interactive plotly figure
+spx.save_figure(fig, "spectrum.html")
 
-spx.save_figure(fig, "spectrum.html")   # .png/.svg/.pdf also work — those need kaleido
+# A journal figure: one column wide, 7 pt Arial, vector PDF with embedded fonts
+fig = spx.annotate_spectrum(spec, frags, peptide="PEPTIDE", mass_error_panel=True,
+                            backend="matplotlib", style="paper", size="single")
+spx.save_figure(fig, "figure2.pdf")
+
+# Several panels, lettered a-d, at full page width
+parts = [spx.annotate_spectrum(spec, frags, backend="spec"),
+         spx.mirror_plot(query, library, fragments=frags, similarity="cosine", backend="spec"),
+         spx.sequence_coverage_plot(spec, "PEPTIDE", frags, backend="spec"),
+         spx.reporter_ion_plot(spec, "TMT10", backend="spec")]
+spx.save_figure(spx.compose_figure(parts, ncols=2), "figure3.pdf")
+
+html = spx.table_view(spx.build_annot_plot_table(spec, frags))  # accessible table
 ```
+
+`docs/gallery/build.py` renders every figure type in both backends.
 
 ## matchms and spectrum_utils
 

@@ -13,6 +13,7 @@ from .enums import (
     PeakSelectionLike,
 )
 from .errors import SpxtacularError
+from .figspec import FigureSpec, compose_figure, render
 from .interop import from_matchms, from_spectrum_utils, to_matchms, to_spectrum_utils
 from .ionization import (
     AMMONIATED,
@@ -80,6 +81,7 @@ from .spectrl_bridge import (
     to_spectrl_token,
     to_spectrl_url,
 )
+from .style import FigureStyle, get_style
 from .thermo import ThermoReader, ThermoScanLookup
 from .usi import fetch_usi, spectrum_from_proxi_response
 from .utils import da_to_ppm, ppm_to_da
@@ -92,11 +94,18 @@ from .visualization import (
     plot_spectrum,
     plot_xic,
     profile_centroid_plot,
+    reporter_ion_plot,
     save_figure,
     sequence_coverage_plot,
 )
 
 __all__ = [
+    "compose_figure",
+    "render",
+    "FigureSpec",
+    "FigureStyle",
+    "get_style",
+    "reporter_ion_plot",
     "entropy_similarity",
     "modified_cosine",
     "cosine",

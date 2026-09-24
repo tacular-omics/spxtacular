@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from .matching import FragmentInput, MatchedFragment
     from .reporter import ImpurityTable, ReporterIons
+    from .style import FigureStyle, SizeLike
 
 import numpy as np
 from numpy.typing import NDArray
@@ -1248,9 +1249,12 @@ class Spectrum:
         title: str | None = None,
         color: "Literal['charge', 'im'] | None" = "charge",
         show_scores: bool = True,
+        backend: "Literal['plotly', 'matplotlib', 'spec']" = "plotly",
+        style: "str | FigureStyle | None" = None,
+        size: "SizeLike" = None,
         **layout_kwargs,
-    ) -> "go.Figure":
-        """Plot spectrum as a stick plot (requires plotly).
+    ) -> Any:
+        """Plot the spectrum; see :func:`~spxtacular.plot_spectrum`.
 
         Parameters
         ----------
@@ -1261,8 +1265,10 @@ class Spectrum:
             See :func:`~spxtacular.plot_spectrum` for details.
         show_scores:
             Annotate peaks with isotope profile scores when score data is present.
+        backend, style, size:
+            Drawing engine, figure style and physical size; see :func:`~spxtacular.plot_spectrum`.
         **layout_kwargs:
-            Forwarded to ``fig.update_layout``.
+            Plotly only: forwarded to ``fig.update_layout``.
         """
         from .visualization import plot_spectrum
 
@@ -1271,6 +1277,9 @@ class Spectrum:
             title=title,
             color=color,
             show_scores=show_scores,
+            backend=backend,
+            style=style,
+            size=size,
             **layout_kwargs,
         )
 
@@ -1284,12 +1293,11 @@ class Spectrum:
 
         The returned :class:`pandas.DataFrame` contains every data field
         (``mz``, ``intensity``, ``charge``, ``score``, ``im``) plus visual
-        properties (``color``, ``linewidth``, ``opacity``, ``series``,
-        ``label``, ``label_size``, ``label_font``, ``label_color``,
-        ``label_yshift``, ``label_xanchor``, ``hover``).
+        properties (``color``, ``linewidth``, ``opacity``, ``dash``, ``series``,
+        ``label``, ``label_size``, ``label_color``, ``label_angle``, ``hover``).
 
         Modify the DataFrame freely, then pass it to
-        :func:`spxtacular.plot_from_table` to produce a plotly Figure.
+        :func:`spxtacular.plot_from_table` to draw it with any backend.
 
         Parameters
         ----------
@@ -1359,8 +1367,11 @@ class Spectrum:
         title: str | None = None,
         peak_selection: PeakSelectionLike = PeakSelection.CLOSEST,
         include_sequence: bool = False,
+        backend: "Literal['plotly', 'matplotlib', 'spec']" = "plotly",
+        style: "str | FigureStyle | None" = None,
+        size: "SizeLike" = None,
         **layout_kwargs,
-    ) -> "go.Figure":
+    ) -> Any:
         """Plot this spectrum with matched fragment ion annotations.
 
         Matched peaks are coloured by ion series (b=blue, y=red, …) and
@@ -1381,12 +1392,14 @@ class Spectrum:
             or ``"all"``.
         include_sequence:
             Embed the residue sequence in each label (e.g. ``b3{PEP}``).
+        backend, style, size:
+            Drawing engine, figure style and physical size; see :func:`~spxtacular.annotate_spectrum`.
         **layout_kwargs:
-            Forwarded to ``fig.update_layout``.
+            Plotly only: forwarded to ``fig.update_layout``.
 
         Returns
         -------
-        plotly ``Figure``.
+        A plotly or matplotlib figure, or a figure spec, per ``backend``.
         """
         from .visualization import annotate_spectrum
 
@@ -1398,6 +1411,9 @@ class Spectrum:
             title=title,
             peak_selection=peak_selection,
             include_sequence=include_sequence,
+            backend=backend,
+            style=style,
+            size=size,
             **layout_kwargs,
         )
 

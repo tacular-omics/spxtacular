@@ -845,8 +845,12 @@ RT, precursors, isolation window, …) in addition to the peak arrays.
 
 ## Visualization
 
-`plotly` is a required dependency of `spxtacular`, so these are available out of the box — nothing
-extra to install. All of them return a `plotly.graph_objects.Figure`.
+Every plot function takes `backend="plotly"` (default, returns a `plotly.graph_objects.Figure`),
+`"matplotlib"` (returns a `matplotlib.figure.Figure`; `pip install 'spxtacular[matplotlib]'`) or
+`"spec"` (returns a `FigureSpec`), plus `style="paper" | "screen" | "talk" | FigureStyle` and
+`size="single" | "onehalf" | "double" | mm | (width_mm, height_mm)`. `style=None` means `"screen"`
+for plotly and `"paper"` otherwise. An unknown backend or style raises `SpxtacularError`.
+`**layout_kwargs` is plotly only.
 
 Full documentation: [Visualization](visualization.md)
 
@@ -859,9 +863,9 @@ repeated in each parameter table.
 |---|---|
 | **Relative intensity by default** | Table-driven figures (`plot_spectrum`, `annotate_spectrum`, `plot_from_table`) scale the y-axis so the base peak is 100% and title the axis `Relative intensity (%)`. Pass `intensity_scale="absolute"` for raw counts. Tooltips always report the **true** intensity, whatever the scaling. |
 | **Optional intensity transform** | `intensity_transform="sqrt"` or `"log"` compresses a range spanning orders of magnitude; the axis title is prefixed accordingly (`√ relative intensity (%)`, `log₁₀ …`). |
-| **Labels are vertical, capped and collision-avoided** | Labels are rotated to read bottom-to-top (`label_angle`, default `-90`), the spectrum-viewer convention — a rotated label occupies about one line-height rather than its full text width, so several times as many peaks can be labelled. `max_labels` (default `60`) keeps only the strongest, and any label falling within 0.9% of the m/z span of a stronger one is dropped. `max_labels=None` removes the count cap but *not* the collision pass. Dropped values stay in the hover text, in the plot table, and in `table_view()`. |
+| **Labels are typeset, capped and never overlap** | Ion labels are rich text (`y₇²⁺`, `b₅−H₂O`) read horizontally (`label_angle`, default `0`). The layout places them in two dimensions, strongest peak first: a label that would collide moves up, with a leader line back to its peak, and one with no free space is dropped. `max_labels` (default `60`) caps the count; `max_labels=None` removes the cap but *not* the collision pass. Dropped values stay in the hover text, in the plot table, and in `table_view()`. |
 | **Hovering does not require precision** | Table-driven figures carry a transparent hit layer of 22px markers on the peak tips — the sticks themselves are `hoverinfo="skip"` — so being *near* a peak is enough rather than landing on a 1.6px hairline. Every figure additionally gets the m/z crosshair from the theme template (`showspikes`, `spikemode="across"`, snapped to the cursor), with `hoverdistance=24`. |
-| **Autosize** | Figures fill their container (`autosize=True`, from the template) rather than a fixed pixel box, so they lay out correctly in notebooks and docs pages. |
+| **Autosize** | `"screen"` plotly figures fill their container rather than a fixed pixel box; `"paper"` and `"talk"` figures have the fixed size from `size=`. |
 | **Theme** | Every function takes `theme_mode="light" \| "dark"`; `None` (default) uses the module default from `theme.set_plot_theme()`. See [Theme](#theme). |
 
 ### Chromatograms and XICs
@@ -966,11 +970,15 @@ plot_spectrum(
     show_precursor: bool = True,
     render: Literal["sticks", "profile"] | None = None,
     max_points: int | None = 4000,
+    absolute_axis: bool = False,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 )
 ```
 
-Everything after `title` is keyword-only.
+Everything after `spectrum` is keyword-only.
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -983,6 +991,7 @@ Everything after `title` is keyword-only.
 | `show_precursor` | `True` | On an `MsnSpectrum` carrying precursors, draw the precursor m/z hairline and the isolation window as recessive chrome behind the peaks |
 | `render` | `None` | Choose from `spectrum_type`, or explicitly force `"sticks"` or `"profile"` |
 | `max_points` | `4000` | Profile-sample cap after min/max decimation. `None` draws every sample |
+| `absolute_axis` | `False` | Absolute intensities with a shared `×10ⁿ` exponent in the axis title |
 
 `color="im"` takes a separate rendering path that bins ion mobility into 20 steps of the sequential
 scale; `intensity_scale`, `intensity_transform`, and `show_precursor` apply there as on the other
@@ -1010,6 +1019,12 @@ annotate_spectrum(
     intensity_transform: Literal["sqrt", "log"] | None = None,
     texture: bool = False,
     show_precursor: bool = True,
+    peptide: str | ProFormaAnnotation | None = None,
+    mass_error_panel: bool = False,
+    absolute_axis: bool = False,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 )
 ```
@@ -1024,9 +1039,11 @@ annotate_spectrum(
 | `intensity_scale` / `intensity_transform` | `"relative"` / `None` | y-axis scaling, as above |
 | `texture` | `False` | Also encode ion series as a dash pattern (the non-colour channel) — for print, forced-colours modes, and readers who cannot separate two hues. Off by default because at stick density dashes add noise |
 | `show_precursor` | `True` | Draw precursor m/z + isolation window when present |
+| `peptide` | `None` | Draw the sequence above the spectrum with a tick for each observed b/y cleavage |
+| `mass_error_panel` | `False` | Add a mass-error strip below, sharing the m/z axis |
 
-Matched peaks are coloured by ion series and labelled with their mzPAF identifier; unmatched peaks
-are drawn in recessive grey, thinner (`1.0` vs `1.6`) and dimmer (opacity `0.55`).
+Matched peaks are coloured by ion series and labelled with a typeset form of their mzPAF
+identifier; unmatched peaks are drawn in grey, thinner and dimmer.
 
 ### `mirror_plot`
 
@@ -1038,15 +1055,35 @@ from spxtacular import mirror_plot
 mirror_plot(
     raw: Spectrum,
     deconvoluted: Spectrum,
+    *,
+    fragments: FragmentInput | None = None,
+    lower_fragments: FragmentInput | None = None,
+    mirror_labels: Literal["auto", "both", "top"] = "auto",
+    names: tuple[str, str] | None = None,
+    similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None = None,
     title: str | None = None,
     normalize: bool = True,
     show_charges: bool = True,
     show_scores: bool = True,
+    tolerance: float = 0.02,
+    tolerance_unit: Literal["da", "ppm"] = "da",
+    peak_selection: Literal["closest", "largest", "all"] = "closest",
     max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 )
 ```
+
+With `fragments=`, both halves are matched and coloured by ion series (a query/library
+comparison). `lower_fragments=` annotates the lower half with other fragments (another peptide,
+a modified form). `mirror_labels="auto"` (default) labels an ion shared by both halves once, on the
+upper half, and repeats only the labels that differ; `"both"` labels both halves in full, `"top"`
+the upper half only. `names=` labels the two halves. `similarity=` prints a score in the corner: a
+method name computes it (`"modified_cosine"` needs a precursor m/z on both spectra, else
+`SpxtacularError`), a number is printed as given.
 
 The second parameter is named `deconvoluted`. `show_charges` colours the deconvoluted (upper) half
 by charge state; `show_scores` annotates its peaks with their isotope profile score, capped by
@@ -1093,6 +1130,7 @@ facet_plot(
     spectrum: Spectrum,
     fragments=None,
     mirror_spectrum: Spectrum | None = None,
+    mirror_labels: Literal["auto", "both", "top"] = "auto",
     title: str | None = None,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
@@ -1170,42 +1208,86 @@ print(fig.layout.title.text)
 # Sequence coverage — 17/17 backbone bonds covered (100%)
 ```
 
+### `reporter_ion_plot`
+
+```python
+reporter_ion_plot(
+    spectrum: Spectrum,
+    plex: str | IsobaricTagInfo | ReporterIons = "TMT10",
+    *,
+    tolerance: float = 20.0,
+    tolerance_unit: Literal["da", "ppm"] = "ppm",
+    impurities: ImpurityTable | pd.DataFrame | NDArray | None = None,
+    show_spectrum: bool = True,
+    normalize: bool = True,
+    title: str | None = None,
+    theme_mode: Literal["light", "dark"] | None = None,
+    backend="plotly", style=None, size=None,
+    **layout_kwargs,
+)
+```
+
+Bars per channel from [`extract_reporter_ions`](#isobaric-reporter-ions) (as % of the strongest
+channel unless `normalize=False`), with the raw reporter region above (`show_spectrum`) and the
+picked peaks highlighted. Missing channels are marked *n.d.*. A `ReporterIons` is plotted as is.
+
+### `compose_figure`
+
+```python
+compose_figure(
+    figures: Sequence[FigureSpec],
+    *,
+    ncols: int | None = None,
+    labels: Sequence[str] | Literal["abc", "ABC"] | None = "abc",
+    size: SizeLike = None,
+    style: str | FigureStyle | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "matplotlib",
+    theme_mode: Literal["light", "dark"] | None = None,
+)
+```
+
+Lays out several `FigureSpec`s (from `backend="spec"`) as one lettered multi-panel figure at one
+width and style. `size=None` is the double-column width, or a 16:9 slide (254 × 143 mm) for
+`style="talk"`. A panel too short for the style's text raises a `UserWarning` at layout. Anything
+that is not a `FigureSpec` raises `SpxtacularError`.
+
+### `FigureSpec`, `render`, `FigureStyle`, `get_style`
+
+- `FigureSpec`: the backend-neutral description every plot builds (`cells`, `style`, `width_mm`,
+  `height_mm`, `theme_mode`). `spec.render(backend)` or `render(spec, backend)` draws it.
+- `get_style(name)` returns the `"paper"`, `"screen"` or `"talk"` `FigureStyle`; unknown names raise
+  `SpxtacularError`. `FigureStyle` is a frozen dataclass (fonts, sizes in pt, line widths, tick
+  spacing, `dpi`, ...); `style.with_(font_size=6)` returns a changed copy.
+
 ### `save_figure`
 
 ```python
-from spxtacular import save_figure
-```
-
-```python
-save_figure(fig: go.Figure, path: str | Path, scale: float = 2.0, **kwargs) -> Path
+save_figure(fig, path: str | Path, *, scale: float | None = None, dpi: float | None = None, **kwargs) -> Path
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
-| `fig` | | Figure to write |
+| `fig` | | A plotly figure, a matplotlib figure or a `FigureSpec` (drawn with matplotlib when installed, else plotly; `.html` always plotly) |
 | `path` | | Destination; the **suffix picks the writer** |
-| `scale` | `2.0` | Device pixel ratio for raster formats — `2.0` stays sharp on a high-density display or in print |
-| `**kwargs` | | Forwarded to `fig.write_html` / `fig.write_image` |
+| `scale` | `None` | Plotly rasters: device pixel ratio. Overrides `dpi` |
+| `dpi` | `None` | Raster resolution; defaults to the style's `dpi` (600 for `"paper"`) |
+| `**kwargs` | | Forwarded to `write_html` / `write_image` / `savefig` |
 
-| Suffix | Backend | Extra install |
+| Figure | Suffixes | Extra install |
 |---|---|---|
-| `.html`, or no suffix (`.html` is appended) | `fig.write_html` | none — always works |
-| `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp` | `fig.write_image` | `pip install kaleido` |
-| anything else | — | raises `ValueError` |
+| plotly | `.html` or none (`.html` is appended) | none |
+| plotly | `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp` | `pip install 'spxtacular[plotly-export]'` (kaleido); missing raises `ImportError` |
+| matplotlib | `.pdf`, `.svg`, `.eps`, `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.webp` | none; PDF/SVG embed fonts as TrueType |
+| any | anything else | raises `SpxtacularError` |
 
-A missing static-export backend is reported as an `ImportError` naming `kaleido`, rather than as a
-bare exception from inside plotly. Returns the path actually written (useful when the suffix was
-appended).
+Returns the path actually written.
 
 ```python
 import numpy as np
 import spxtacular as spx
 
 spectrum = spx.Spectrum(mz=np.array([100.0, 200.0]), intensity=np.array([10.0, 40.0]))
-fig = spx.plot_spectrum(spectrum)
-
-path = spx.save_figure(fig, "spectrum")     # -> Path('spectrum.html')
-print(path)
+path = spx.save_figure(spx.plot_spectrum(spectrum), "spectrum")     # -> Path('spectrum.html')
 ```
 
 ---
@@ -1487,7 +1569,7 @@ Both builders return the same columns, in this order:
 ```text
 mz, intensity, intensity_abs, charge, score, im,
 color, linewidth, opacity, dash, series,
-label, label_size, label_font, label_color, label_yshift, label_xanchor, label_angle,
+label, label_size, label_color, label_angle,
 hover
 ```
 
@@ -1500,13 +1582,14 @@ hover
 | `score` | `float64` (`NaN` when absent) | no | `iso_score` |
 | `im` | `float64` (`NaN` when absent) | no | Ion mobility |
 | `color` | `str` | yes | Hex colour, from `theme` |
-| `linewidth` | `float` | yes, from the first row of each group | `1.6` matched / `1.0` unmatched |
-| `opacity` | `float` | yes, from the first row of each group | `1.0` matched / `0.55` unmatched |
+| `linewidth` | `float` | yes, from the first row of each group | Relative stick weight, matched heavier than unmatched; the style scales it |
+| `opacity` | `float` | yes, from the first row of each group | Matched peaks opaque, unmatched dimmer |
 | `dash` | `str` | yes, from the first row of each group (only when not `"solid"`) | Texture channel — set per ion series when `texture=True` |
 | `series` | `str` | yes | Trace name and grouping key |
 | `label` | `str` | yes | Direct label; `""` for peaks whose label was capped or collided away |
-| `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor` | | yes | Label styling |
-| `label_angle` | `float64` | yes | Label rotation in degrees. Defaults to `-90` (vertical, reading bottom-to-top); set `0` for horizontal |
+| `label_size` | `float64` | yes | Label size in pt; `NaN` (default) uses the style's label size |
+| `label_color` | `str` | yes | Label colour |
+| `label_angle` | `float64` | yes | Label rotation in degrees. Defaults to `0` (horizontal); `-90` reads bottom-to-top |
 | `hover` | `str` | yes | Tooltip text, baked in by the builder — to change a tooltip edit `hover` itself, not the value behind it |
 
 `table.attrs["intensity_label"]` carries the y-axis title that matches the scaling applied
@@ -1595,22 +1678,26 @@ plot_from_table(
     theme_mode: Literal["light", "dark"] | None = None,
     render: Literal["sticks", "profile"] | None = None,
     max_points: int | None = 4000,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
+    absolute_axis: bool = False,
     **layout_kwargs,
-) -> go.Figure
+)
 ```
 
-Renders one `go.Scatter` trace per unique `(series, color)` group, plus the transparent hit-target
-trace, plus one annotation per row with a non-empty `label`. `render=None` uses
+Draws one stick (or profile) mark per unique `(series, color)` group, a transparent hover layer
+(plotly), and one label per row with a non-empty `label`, placed without overlap. `render=None` uses
 `table.attrs["render"]`, falling back to sticks. Profile rendering applies min/max decimation above
 `max_points`, or draws every sample when it is `None`.
 
 The required columns are validated up front — a missing one raises
-`ValueError: plot table is missing required column(s): …` immediately, rather than part-way through
+`SpxtacularError: plot table is missing required column(s): …` immediately, rather than part-way through
 rendering or only on data that happens to carry labels:
 
 ```text
 mz, intensity, series, color, linewidth, opacity, hover,
-label, label_size, label_font, label_color, label_yshift, label_xanchor
+label, label_size, label_color
 ```
 
 `intensity_abs`, `dash`, and `label_angle` are *not* required (a missing `label_angle` draws
