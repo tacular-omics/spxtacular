@@ -699,6 +699,10 @@ def _rotated_extent(w: float, h: float, rotation: float) -> tuple[float, float]:
     return w * c + h * s, w * s + h * c
 
 
+#: Gap, pt, between a peak label and the left or right edge of the plot area.
+_SPINE_CLEAR = 0.6
+
+
 def place_labels(
     labelsets: Sequence[LabelSet],
     to_pt_x,
@@ -801,7 +805,10 @@ def place_labels(
         x0, x1 = cx - tw / 2, cx + tw / 2
         y0 = base + cdy
         y1 = y0 + th
-        sel = np.flatnonzero((x0 >= 0) & (x1 <= width) & (y1 <= height) & (y0 >= 0))
+        # Keep clear of the y spines: the knockout background (0.1 em in
+        # matplotlib) plus half a spine must not reach the plot edge.
+        edge = size * 0.1 + _SPINE_CLEAR
+        sel = np.flatnonzero((x0 >= edge) & (x1 <= width - edge) & (y1 <= height) & (y0 >= 0))
         if len(sel) and n_boxes:
             py0, py1 = (height - y1[sel], height - y0[sel]) if down else (y0[sel], y1[sel])
             b = box_arr[:n_boxes]
@@ -1750,13 +1757,21 @@ def text_boxes(fig: ResolvedFigure) -> list[TextBox]:
 
 
 def text_problems(fig: ResolvedFigure, tol: float = 0.25) -> list[str]:
-    """Overlapping text boxes and boxes outside the figure, described for a test failure."""
+    """Overlapping text boxes, boxes outside the figure and peak labels on a y spine, described for a test failure."""
     boxes = text_boxes(fig)
     problems: list[str] = []
     for b in boxes:
         x0, y0, x1, y1 = b.box
         if x0 < -tol or y0 < -tol or x1 > fig.width + tol or y1 > fig.height + tol:
             problems.append(f"outside: {b.kind} {b.text!r} (panel {b.panel}) {tuple(round(v, 1) for v in b.box)}")
+    for rp in fig.panels:
+        w = rp.rect[2]
+        for lab in rp.labels:
+            x0, _, x1, _ = lab.box
+            if x0 < _SPINE_CLEAR - tol or x1 > w - _SPINE_CLEAR + tol:
+                problems.append(
+                    f"spine: label {lab.text.text!r} (panel {rp.index}) x {x0:.1f}-{x1:.1f} of plot width {w:.1f}"
+                )
     arr = np.array([b.box for b in boxes]) if boxes else np.zeros((0, 4))
     for i in range(len(boxes)):
         a = arr[i]
