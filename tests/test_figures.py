@@ -494,8 +494,8 @@ class TestLabelPlacement:
         start = time.perf_counter()
         resolve_figure(fs)
         elapsed = time.perf_counter() - start
-        # About 0.1 s on a desktop; the bound only catches a return to seconds per figure.
-        assert elapsed < 3.0
+        # About 0.1 s on a desktop (7.6 s before vectorising); slack left for slow CI runners.
+        assert elapsed < 1.5
 
     def test_per_row_label_columns_are_honoured(self) -> None:
         spec, frags = _psm()

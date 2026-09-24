@@ -465,35 +465,10 @@ class _Obstacles:
     boxes: NDArray[np.float64]
 
 
-def _seg_boxes_hit(x0: float, y0: float, x1: float, y1: float, boxes: NDArray[np.float64]) -> bool:
-    """Does the segment cross any box? Liang-Barsky, vectorised over boxes."""
-    if len(boxes) == 0:
-        return False
-    dx, dy = x1 - x0, y1 - y0
-    t0 = np.zeros(len(boxes))
-    t1 = np.ones(len(boxes))
-    ok = np.ones(len(boxes), dtype=bool)
-    for p, q in (
-        (-dx, x0 - boxes[:, 0]),
-        (dx, boxes[:, 2] - x0),
-        (-dy, y0 - boxes[:, 1]),
-        (dy, boxes[:, 3] - y0),
-    ):
-        if p == 0:
-            ok &= q >= 0
-            continue
-        r = q / p
-        if p < 0:
-            t0 = np.maximum(t0, r)
-        else:
-            t1 = np.minimum(t1, r)
-    return bool(np.any(ok & (t0 <= t1)))
-
-
-def _segs_hit_boxes(segs: NDArray[np.float64], boxes: NDArray[np.float64]) -> NDArray[np.bool_]:
-    """Per box (rows of ``boxes``): does any of ``segs`` cross it? Liang-Barsky over both axes."""
+def _seg_box_matrix(segs: NDArray[np.float64], boxes: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """(boxes x segs): does segment j cross box i? Liang-Barsky over both axes."""
     if len(segs) == 0 or len(boxes) == 0:
-        return np.zeros(len(boxes), dtype=bool)
+        return np.zeros((len(boxes), len(segs)), dtype=bool)
     sx0, sy0 = segs[:, 0], segs[:, 1]
     dx, dy = segs[:, 2] - sx0, segs[:, 3] - sy0
     t0 = np.zeros((len(boxes), len(segs)))
@@ -512,15 +487,20 @@ def _segs_hit_boxes(segs: NDArray[np.float64], boxes: NDArray[np.float64]) -> ND
             r = q / p[None, :]
             t0 = np.where((p < 0)[None, :], np.maximum(t0, r), t0)
             t1 = np.where((p > 0)[None, :], np.minimum(t1, r), t1)
-    return (ok & (t0 <= t1)).any(axis=1)
+    return ok & (t0 <= t1)
 
 
-def _segs_cross(p: tuple[float, float, float, float], segs: NDArray[np.float64]) -> bool:
-    """Does segment ``p`` properly cross any of ``segs`` (N x 4)?"""
-    if len(segs) == 0:
-        return False
-    ax, ay, bx, by = p
-    cx, cy, dx, dy = segs[:, 0], segs[:, 1], segs[:, 2], segs[:, 3]
+def _segs_hit_boxes(segs: NDArray[np.float64], boxes: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """Per box (rows of ``boxes``): does any of ``segs`` cross it?"""
+    return _seg_box_matrix(segs, boxes).any(axis=1)
+
+
+def _segs_cross(segs: NDArray[np.float64], others: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """Per row of ``segs`` (N x 4): does it properly cross any of ``others`` (M x 4)?"""
+    if len(segs) == 0 or len(others) == 0:
+        return np.zeros(len(segs), dtype=bool)
+    ax, ay, bx, by = (segs[:, i, None] for i in range(4))
+    cx, cy, dx, dy = (others[None, :, i] for i in range(4))
 
     def orient(px, py, qx, qy, rx, ry):
         return (qx - px) * (ry - py) - (qy - py) * (rx - px)
@@ -529,7 +509,7 @@ def _segs_cross(p: tuple[float, float, float, float], segs: NDArray[np.float64])
     o2 = orient(ax, ay, bx, by, dx, dy)
     o3 = orient(cx, cy, dx, dy, ax, ay)
     o4 = orient(cx, cy, dx, dy, bx, by)
-    return bool(np.any((o1 * o2 < 0) & (o3 * o4 < 0)))
+    return ((o1 * o2 < 0) & (o3 * o4 < 0)).any(axis=1)
 
 
 def _candidates(w: float, h: float) -> list[tuple[float, float, bool, float]]:
@@ -575,6 +555,8 @@ def place_labels(
     obstacles_down: _Obstacles | None,
     reserved: list[tuple[float, float, float, float]],
     stop_below: float = -math.inf,
+    skip: set[tuple[int, int]] | None = None,
+    dropped_keys: set[tuple[int, int]] | None = None,
 ) -> tuple[list[PlacedLabel], int, float]:
     """Greedy, priority-ordered placement. Returns labels, dropped count, placed priority.
 
@@ -584,11 +566,14 @@ def place_labels(
     cover context sticks (unmatched peaks), drawn with a knockout background.
 
     ``to_pt_x``/``to_pt_y`` map data arrays to panel pt. The run stops early,
-    returning score ``-inf``, once it cannot reach ``stop_below``.
+    returning score ``-inf``, once it cannot reach ``stop_below``. Labels in
+    ``skip`` (``(labelset index, label index)``) count as dropped without a
+    search; the keys of labels dropped here are added to ``dropped_keys``.
     """
     pad = 0.6
     # --- per-label geometry, computed once ------------------------------------
     rows: list[tuple[float, int, int, float, float, float, float, float, float, float, float, bool]] = []
+    skipped = 0
     ground = {False: math.inf, True: math.inf}
     for s_i, ls in enumerate(labelsets):
         n = len(ls.texts)
@@ -601,6 +586,9 @@ def place_labels(
         for j in range(n):
             text = ls.texts[j]
             if not text:
+                continue
+            if skip is not None and (s_i, j) in skip:
+                skipped += 1
                 continue
             size = ls.size
             if ls.sizes is not None and math.isfinite(float(ls.sizes[j])) and float(ls.sizes[j]) > 0:
@@ -626,7 +614,7 @@ def place_labels(
         obstacles_down.soft.prepare(ground[True])
 
     placed: list[PlacedLabel] = []
-    dropped = 0
+    dropped = skipped
     score = 0.0
     # Boxes and leaders in the *panel* frame (y up from the panel bottom).
     box_arr = np.zeros((len(rows) + len(reserved) + 1, 4))
@@ -708,30 +696,49 @@ def place_labels(
                 pool = np.union1d(sel[soft_hit], np.asarray(retry, dtype=np.intp))
             else:
                 pool = sel[~soft_hit]
-            for c in pool.tolist():
+            if not len(pool):
+                continue
+            # Leaders for the whole pool at once; stick checks only for survivors, in cost order.
+            px0, px1, py0_ = x0[pool], x1[pool], y0[pool]
+            lead = clead[pool].copy()
+            lx = np.minimum(np.maximum(ax_pt, px0 + 1.0), px1 - 1.0)
+            l_sy = ay + off + ls.gap * 0.35
+            l_ey = py0_ - 0.4
+            lead &= ~((l_ey - l_sy < 1.0) & (np.abs(lx - ax_pt) < 1.0))
+            bad = np.zeros(len(pool), dtype=bool)
+            seg_of: dict[int, list[float]] = {}
+            li = np.flatnonzero(lead)
+            if len(li):
+                sy0 = height - l_sy if down else l_sy
+                ey = height - l_ey[li] if down else l_ey[li]
+                segs = np.column_stack([np.full(len(li), ax_pt), np.full(len(li), sy0), lx[li], ey])
+                if n_boxes:
+                    b = box_arr[:n_boxes]
+                    near = (
+                        (b[:, 0] <= max(ax_pt, float(lx[li].max())))
+                        & (b[:, 2] >= min(ax_pt, float(lx[li].min())))
+                        & (b[:, 1] <= max(sy0, float(ey.max())))
+                        & (b[:, 3] >= min(sy0, float(ey.min())))
+                    )
+                    if near.any():
+                        bad[li] |= _seg_box_matrix(segs, b[near]).any(axis=0)
+                if n_leaders:
+                    bad[li] |= _segs_cross(segs, leaders[:n_leaders])
+                seg_of = dict(zip(li.tolist(), segs.tolist(), strict=True))
+            for k in np.flatnonzero(~bad).tolist():
+                c = int(pool[k])
                 bx0, bx1, by0, by1 = float(x0[c]), float(x1[c]), float(y0[c]), float(y1[c])
                 pby0, pby1 = (height - by1, height - by0) if down else (by0, by1)
-                leader = bool(clead[c])
                 seg = None
-                if leader:
-                    lx = min(max(ax_pt, bx0 + 1.0), bx1 - 1.0)
-                    l_start = (ax_pt, ay + off + ls.gap * 0.35)
-                    l_end = (lx, by0 - 0.4)
-                    if l_end[1] - l_start[1] < 1.0 and abs(l_end[0] - l_start[0]) < 1.0:
-                        leader = False
-                    else:
-                        p0 = (l_start[0], height - l_start[1]) if down else l_start
-                        p1 = (l_end[0], height - l_end[1]) if down else l_end
-                        if n_boxes and _seg_boxes_hit(p0[0], p0[1], p1[0], p1[1], box_arr[:n_boxes]):
-                            continue
-                        if n_leaders and _segs_cross((p0[0], p0[1], p1[0], p1[1]), leaders[:n_leaders]):
-                            continue
-                        if obst.hard.leader_hit(ax_pt, l_start, l_end):
-                            continue
-                        if not knockout and obst.soft.leader_hit(ax_pt, l_start, l_end):
-                            retry.append(c)
-                            continue
-                        seg = (p0[0], p0[1], p1[0], p1[1])
+                if lead[k]:
+                    l_start = (ax_pt, l_sy)
+                    l_end = (float(lx[k]), by0 - 0.4)
+                    if obst.hard.leader_hit(ax_pt, l_start, l_end):
+                        continue
+                    if not knockout and obst.soft.leader_hit(ax_pt, l_start, l_end):
+                        retry.append(c)
+                        continue
+                    seg = tuple(seg_of[k])
                 chosen = (float(cx[c]), by0, bx0, bx1, pby0, pby1, seg, knockout and c in soft_set)
                 break
             if chosen is not None:
@@ -739,6 +746,8 @@ def place_labels(
 
         if chosen is None:
             dropped += 1
+            if dropped_keys is not None:
+                dropped_keys.add((s_i, j))
             continue
         ccx, by0, bx0, bx1, pby0, pby1, seg, knock = chosen
         box_arr[n_boxes] = (bx0, pby0, bx1, pby1)
@@ -1150,7 +1159,11 @@ def _resolve_panel(
     reserved_base: list[tuple[float, float, float, float]] = []
 
     def run(
-        lo: float, hi: float, stop_below: float = -math.inf
+        lo: float,
+        hi: float,
+        stop_below: float = -math.inf,
+        skip: set[tuple[int, int]] | None = None,
+        dropped_keys: set[tuple[int, int]] | None = None,
     ) -> tuple[list[PlacedLabel], int, float, dict[int, tuple[float, float, str]]]:
         def fy(v):
             return (np.asarray(v, dtype=np.float64) - lo) / (hi - lo) * ph
@@ -1183,7 +1196,9 @@ def _resolve_panel(
             return [], 0, 0.0, ref_pos
         up = _stick_obstacles(panel, fx, fy, ph, flip=False)
         down = _stick_obstacles(panel, fx, fy, ph, flip=True) if has_down else None
-        placed, dropped, score = place_labels(labelsets, fx, fy, pw, ph, up, down, reserved, stop_below)
+        placed, dropped, score = place_labels(
+            labelsets, fx, fy, pw, ph, up, down, reserved, stop_below, skip=skip, dropped_keys=dropped_keys
+        )
         return placed, dropped, score, ref_pos
 
     candidates: list[tuple[float, float]] = []
@@ -1202,15 +1217,17 @@ def _resolve_panel(
     # Pick the least headroom that places (nearly) as much as the most would.
     # The tallest candidate runs first to set the bar; the others stop as soon
     # as they cannot reach 97% of it, and once the bar is the total priority no
-    # later candidate can raise it.
+    # later candidate can raise it. Less headroom leaves less room, so a label
+    # the tallest candidate had to drop is not searched for again.
     total = sum(
         float(np.nansum(np.clip(np.nan_to_num(np.asarray(ls.priority, dtype=np.float64)), 0, None))) for ls in labelsets
     )
-    first = run(*candidates[-1], stop_below=-math.inf)
+    hopeless: set[tuple[int, int]] = set()
+    first = run(*candidates[-1], stop_below=-math.inf, dropped_keys=hopeless)
     best = first[2]
     results: dict[int, tuple] = {len(candidates) - 1: (*candidates[-1], *first)}
     for i, (clo, chi) in enumerate(candidates[:-1]):
-        res = run(clo, chi, stop_below=best * 0.97 - 1e-9)
+        res = run(clo, chi, stop_below=best * 0.97 - 1e-9, skip=hopeless)
         results[i] = (clo, chi, *res)
         best = max(best, res[2])
         if res[2] >= best * 0.97 - 1e-12 and best >= total - 1e-9:
