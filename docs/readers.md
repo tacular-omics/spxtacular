@@ -38,11 +38,76 @@ Index semantics differ per backend:
 | `MzmlReader.ms1[key]` / `.ms2[key]` | Spectrum by **overall** 0-based index or native ID string. No MS-level filtering is applied on random access, so `reader.ms2[0]` is the first spectrum in the file, not the first MS2 spectrum |
 | `MzmlReader[key]` | Same as above, straight off the reader (`reader[0]`, `reader["scan=19"]`) |
 | `DReader.ms1[frame_id]` | MS1 spectrum by tdfpy `frame_id` |
-| `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); iterate instead |
+| `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); use `get_by_native_id` or iterate |
 | `ThermoReader.ms1[scan]` / `.ms2[scan]` | Spectrum by native **1-based scan number**; `KeyError` if the scan does not exist or is not of that MS level. `ThermoReader[scan]` fetches any level |
 | `MgfReader[key]` / `Ms2Reader[key]` / `MspReader[key]` | Spectrum by 0-based position in the file, or by `native_id` string (first match wins — library files repeat names across collision energies). Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
 `DReader` and `ThermoReader` lookups raise `SpxtacularError` if the reader has not been opened.
+
+## Lookup by scan number or native id
+
+Every reader, and `Reader`, has the same three methods for fetching one spectrum. They follow the
+scan-number rule: a spectrum has a `scan_number` only when that number identifies it alone, and a
+lookup that cannot name exactly one spectrum raises instead of guessing.
+
+```python
+reader.get_by_scan(scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum
+reader.get_by_native_id(native_id: str) -> MsnSpectrum
+reader.get_by_sage_scannr(scannr: str | int) -> MsnSpectrum    # DReader: also precursor_offset=1
+```
+
+```python
+import pandas as pd
+from spxtacular import Reader
+
+psms = pd.read_csv("results.sage.tsv", sep="\t")
+with Reader("run.mzML") as reader:
+    spectra = [reader.get_by_sage_scannr(s) for s in psms.scannr]
+    ms2 = reader.get_by_scan(20, ms_level=2)
+    same = reader.get_by_native_id("controllerType=0 controllerNumber=1 scan=20")
+```
+
+**Errors.** A key that is well formed but not in the file raises `KeyError`. A key that cannot
+identify one spectrum raises `SpxtacularError`:
+
+| Situation | Raises |
+|---|---|
+| No spectrum has this scan number or native id | `KeyError` |
+| The spectrum exists but is not of `ms_level` | `KeyError` |
+| `get_by_native_id` with an id of a form the reader never produces (Thermo, Bruker `.d`) | `KeyError` |
+| The file carries no scan numbers at all: MSP, MGF without `SCANS`, mzML with Bruker `frame=…`, Waters `function=…` or SCIEX `cycle=…` ids | `SpxtacularError`, pointing to `get_by_native_id` |
+| Several spectra share the scan number or native id | `SpxtacularError` |
+| Bruker DDA: the number is both an MS1 frame id and a precursor id, and `ms_level` is `None` | `SpxtacularError`; pass `ms_level` |
+| Bruker DIA / PRM: the frame holds several MS2 spectra (one per window or target) | `SpxtacularError`; use the native id |
+| Bruker `.d` not opened, or a non-integer scan number, `ms_level` or `scannr` | `SpxtacularError` |
+
+**Per format:**
+
+| Reader | `get_by_scan` key | `get_by_native_id` key | Cost |
+|---|---|---|---|
+| `MzmlReader` | The number in a `scan=`, Thermo, `index=` or `spectrum=` id (not the 0-based position: use `reader[i]`) | `spectrum/@id` | First call lists the file's ids once; then mzmlpy's random access |
+| `ThermoReader` | 1-based scan number (same as `reader[n]`) | `controllerType=0 controllerNumber=1 scan=N`, or `scan=N` | Direct |
+| `DReader` | MS1 `frame_id`, DDA `precursor_id`, DIA / PRM MS2 `frame_id` | `frame=F` (MS1), `precursor=P` (DDA), `F@wI` (DIA window), `F@tT` (PRM target) | Direct; DIA / PRM group their windows once per `open()` |
+| `MgfReader` | `SCANS` | `TITLE` | First call parses the whole file once and keeps the byte offset of each record; later calls seek to it. The index is rebuilt when the file's size or mtime changes. A gzipped file still decompresses up to the record |
+| `Ms2Reader` | `S` line | `I NativeID`, else `scan=N` | As MGF |
+| `MspReader` | always `SpxtacularError` | `Name` | As MGF |
+
+**Sage `scannr`.** Sage writes a different value per input format, and `get_by_sage_scannr`
+reads each:
+
+- mzML: the native id (`results.sage.tsv`), or only the number from `scan=N` (`.pin`).
+- MGF: the `TITLE` (`results.sage.tsv`), or the number from `scan=N` in it (`.pin`).
+- Bruker `.d`: a bare integer, timsrust's 0-based spectrum index. Upstream Sage (timsrust 0.4)
+  counts DDA precursors from 0, so `scannr` N is precursor `N + 1`: the default
+  `precursor_offset=1`. Sage builds on timsrust 0.6 or later write the precursor id itself;
+  pass `precursor_offset=0`. DIA and PRM raise `SpxtacularError`: Sage numbers them by
+  timsrust's expanded window list, which spxtacular does not reproduce.
+
+Everywhere but `.d`, the value is tried as a native id first and, if nothing matches and it is a
+bare integer, as a scan number. A `.pin` scannr from a file without scan numbers (Bruker mzML)
+therefore raises `SpxtacularError`; use `results.sage.tsv`, which keeps the full id.
+
+The `ms1` / `ms2` indexing below is unchanged and still works.
 
 `polarity`, `activation_type`, `im_type`, and `analyzer` are populated as plain strings straight from the underlying format (including raw PSI-MS accessions such as `"MS:1002481"`) — they also accept the `Polarity`, `ActivationType`, `IMType`, and `Analyzer` enums documented in [API reference — Metadata enums](api.md#metadata-enums) if you want to set or compare them with autocomplete/typo-safety.
 
@@ -80,6 +145,10 @@ class Reader:
 
     @property
     def access_strategy(self) -> str | None: ...
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum: ...
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum: ...
+    def get_by_sage_scannr(self, scannr: str | int, *, precursor_offset: int | None = None) -> MsnSpectrum: ...
 ```
 
 ```python
@@ -94,7 +163,9 @@ with Reader("/data/sample.d") as r:
 ```
 
 `centroid_config` is only meaningful for `.d` inputs. The `mzml_*` options are forwarded only to
-`MzmlReader`. `Reader` exposes `ms1`, `ms2`, `access_strategy`, `open`, and `close`.
+`MzmlReader`. `Reader` exposes `ms1`, `ms2`, `access_strategy`, `open`, `close`, and the
+[lookup methods](#lookup-by-scan-number-or-native-id); `precursor_offset` is for `.d` only and
+raises `SpxtacularError` for other formats.
 `access_strategy` is `None` for non-mzML inputs.
 
 ---
@@ -332,6 +403,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | Field | Source |
 |---|---|
 | `scan_number` | `frame_id` |
+| `native_id` | `"frame={frame_id}"` |
 | `ms_level` | Always `1` |
 | `rt` | Frame acquisition time (seconds) |
 | `injection_time` | Frame accumulation time (ms) |
@@ -349,6 +421,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | Field | Source |
 |---|---|
 | `scan_number` | `precursor_id` |
+| `native_id` | `"precursor={precursor_id}"` |
 | `ms_level` | Always `2` |
 | `rt` | Retention time (seconds) |
 | `isolation_mz_range` | Precursor isolation window |

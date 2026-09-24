@@ -496,26 +496,27 @@ def test_scan_number_comes_from_the_native_id_scan_key():
 
 
 @pytest.mark.parametrize(
-    ("id_dict", "expected"),
+    ("native_id", "expected"),
     [
-        ({"scan": 19}, 19),
-        ({"controllerType": 0, "controllerNumber": 1, "scan": 19}, 19),
-        ({"index": 5}, 5),
-        ({"spectrum": 7}, 7),
+        ("scan=19", 19),
+        ("controllerType=0 controllerNumber=1 scan=19", 19),
+        ("index=5", 5),
+        ("spectrum=7", 7),
         # the scan value repeats across frames / functions, so it is not an identifier
-        ({"frame": 1016, "scan": 1}, None),
-        ({"function": 2, "process": 0, "scan": 3}, None),
-        ({"sample": 1, "period": 1, "cycle": 4, "experiment": 2}, None),
-        ({"scan": "abc"}, None),
-        ({}, None),
+        ("frame=1016 scan=1", None),
+        ("merged=5 frame=1016 scanStart=1 scanEnd=10", None),
+        ("function=2 process=0 scan=3", None),
+        ("sample=1 period=1 cycle=4 experiment=2", None),
+        ("scan=abc", None),
+        ("", None),
     ],
 )
-def test_scan_number_only_when_the_native_id_is_unique(id_dict, expected):
+def test_scan_number_only_when_the_native_id_is_unique(native_id, expected):
     from types import SimpleNamespace
 
     from spxtacular.reader import _mzml_scan_number
 
-    assert _mzml_scan_number(SimpleNamespace(id_dict=id_dict)) == expected  # ty: ignore[invalid-argument-type]
+    assert _mzml_scan_number(SimpleNamespace(id=native_id)) == expected  # ty: ignore[invalid-argument-type]
 
 
 def test_malformed_mzml_raises_spxtacular_error(tmp_path):

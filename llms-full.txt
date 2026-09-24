@@ -441,6 +441,28 @@ with spx.Reader("run.mzML") as reader:
 - `access_strategy` — concrete mzML route (`"plain"`, `"embedded"`, `"rapidgzip"`,
   `"memory"`, `"stream"`) or `None`.
 
+Fetch one spectrum by key. Every reader (and `Reader`) has:
+```python
+reader.get_by_scan(scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum
+reader.get_by_native_id(native_id: str) -> MsnSpectrum
+reader.get_by_sage_scannr(scannr: str | int) -> MsnSpectrum  # DReader/Reader: precursor_offset=
+```
+- Missing key, or wrong `ms_level` -> `KeyError`. A key that cannot name one spectrum ->
+  `SpxtacularError`: the file has no scan numbers (MSP, MGF without SCANS, Bruker/Waters/SCIEX
+  mzML ids), several spectra share it, a Bruker DDA number that is both an MS1 frame and a
+  precursor with `ms_level=None`, or a DIA/PRM frame holding several windows.
+- Scan number: mzML `scan=`/Thermo/`index=`/`spectrum=` id number (not the 0-based position);
+  Thermo scan; MGF `SCANS`; MS2 `S`; Bruker MS1 `frame_id`, DDA `precursor_id`, DIA/PRM `frame_id`.
+- Native id: mzML `spectrum/@id`; Thermo `controllerType=0 controllerNumber=1 scan=N` or
+  `scan=N`; MGF `TITLE`; MS2 `I NativeID` else `scan=N`; MSP `Name`; Bruker `frame=F`,
+  `precursor=P`, `F@wI` (DIA), `F@tT` (PRM).
+- Sage `scannr`: tried as a native id, then as a scan number if it is a bare integer (covers
+  `results.sage.tsv` and `.pin`). Bruker `.d`: DDA only, precursor id = `scannr + 1` for
+  upstream Sage (timsrust 0.4, 0-based); pass `precursor_offset=0` for Sage builds on timsrust
+  >= 0.6. DIA/PRM raise `SpxtacularError`.
+- Peak lists build a byte-offset index on the first lookup (one full parse), then seek; the
+  index is rebuilt if the file's size or mtime changes.
+
 ### 7.2 Format-specific readers
 
 ```python
@@ -449,7 +471,8 @@ DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = No
 Bruker timsTOF `.d` via tdfpy (`[bruker]`). Detects `reader.acquisition_type`
 (`AcquisitionType.DDA|DIA|PRM|UNKNOWN`). `ms1` supports iteration and `ms1[frame_id]`;
 `ms2` iterates per precursor (DDA), per isolation window (DIA) or per transition (PRM);
-`ms2[precursor_id]` works for DDA only (DIA/PRM raise `NotImplementedError`). DIA MS2 spectra
+`ms2[precursor_id]` works for DDA only (DIA/PRM raise `NotImplementedError`). Native ids are
+`frame=F` (MS1), `precursor=P` (DDA), `F@wI` (DIA), `F@tT` (PRM). DIA MS2 spectra
 have `precursors=None`. Spectra are centroided on read and carry `im` (1/K0).
 
 ```python

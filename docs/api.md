@@ -364,7 +364,14 @@ Reader(
 | `.ms1` | `DReaderMs1Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS1 spectra. Iterate or index. Empty for `.mgf` / `.ms2` / `.msp` |
 | `.ms2` | `DReaderMs2Lookup \| MzmlSpectraLookup \| ThermoScanLookup \| PeakListLookup` | MS2 spectra — iterate or index |
 | `.access_strategy` | `str \| None` | Concrete mzML access route, or `None` for other formats |
+| `.get_by_scan(n, *, ms_level=None)` | `MsnSpectrum` | Spectrum by scan number |
+| `.get_by_native_id(id)` | `MsnSpectrum` | Spectrum by native id |
+| `.get_by_sage_scannr(scannr, *, precursor_offset=None)` | `MsnSpectrum` | Spectrum for a Sage `scannr`; `precursor_offset` is `.d` only |
 | `.open()` / `.close()` | `None` | Open / close the delegate; also driven by `with` |
+
+The three lookups exist on every format reader too. Missing keys raise `KeyError`; keys that cannot
+name one spectrum (no scan numbers in the file, duplicates, ambiguous Bruker numbers) raise
+`SpxtacularError`. The rules per format: [Readers — Lookup by scan number or native id](readers.md#lookup-by-scan-number-or-native-id).
 
 ```python
 from spxtacular import Reader
@@ -400,6 +407,7 @@ in-memory decompression; it never writes next to the input. For intentional sequ
 | `.ms1` | `MzmlSpectraLookup` | MS1 spectra — iterate, or index by overall index / native ID |
 | `.ms2` | `MzmlSpectraLookup` | MS2 spectra — iterate, or index by overall index / native ID |
 | `reader[key]` | `MsnSpectrum` | Spectrum by 0-based index (`reader[0]`) or native ID (`reader["scan=19"]`) |
+| `.get_by_scan(n, *, ms_level=None)` / `.get_by_native_id(id)` / `.get_by_sage_scannr(s)` | `MsnSpectrum` | Scan number from `scan=` / Thermo / `index=` / `spectrum=` ids; `SpxtacularError` if the file's ids carry none |
 | `.access_strategy` | `str \| None` | Concrete route selected by mzMLPy |
 | `.open()` / `.close()` | `None` | Open / close the persistent `mzmlpy` handle |
 
@@ -422,6 +430,9 @@ DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = No
 |---|---|---|
 | `.ms1` | `DReaderMs1Lookup` | All MS1 frames — iterate, or index by tdfpy `frame_id` |
 | `.ms2` | `DReaderMs2Lookup` | All MS2 spectra — iterate, or index by tdfpy `precursor_id` (DDA only; DIA/PRM raise `NotImplementedError`) |
+| `.get_by_scan(n, *, ms_level=None)` | `MsnSpectrum` | MS1 `frame_id`, DDA `precursor_id`, DIA/PRM `frame_id`; pass `ms_level` for DDA |
+| `.get_by_native_id(id)` | `MsnSpectrum` | `frame=F`, `precursor=P`, `F@wI` (DIA), `F@tT` (PRM) |
+| `.get_by_sage_scannr(s, *, precursor_offset=1)` | `MsnSpectrum` | DDA only; precursor id = `scannr + precursor_offset` (0 for Sage on timsrust >= 0.6) |
 | `.acquisition_type` | `AcquisitionType` | DDA / DIA / PRM / UNKNOWN |
 | `.open()` / `.close()` | `None` | Open / close the underlying `tdfpy` reader |
 
@@ -444,6 +455,7 @@ ThermoReader(raw_path: str | Path, prefer_vendor_centroid: bool = True)
 | `.ms1` | `ThermoScanLookup` | MS1 spectra — iterate, or index by native 1-based scan number |
 | `.ms2` | `ThermoScanLookup` | MS2 spectra — iterate, or index by native 1-based scan number |
 | `reader[scan]` | `MsnSpectrum` | Spectrum of any MS level by native scan number |
+| `.get_by_scan(n, *, ms_level=None)` / `.get_by_native_id(id)` / `.get_by_sage_scannr(s)` | `MsnSpectrum` | Native id `controllerType=0 controllerNumber=1 scan=N` or `scan=N` |
 | `.open()` / `.close()` | `None` | Open / release the RawFileReader handle |
 
 With `prefer_vendor_centroid=True` (default), profile-mode FTMS scans yield Thermo's own centroid
@@ -474,6 +486,7 @@ MspReader(path: str | Path)
 | `iter(reader)` | `Iterator[MsnSpectrum]` | Every spectrum, in file order |
 | `len(reader)` | `int` | Spectra in the file — one counting pass, then cached |
 | `reader[key]` | `MsnSpectrum` | Spectrum by 0-based position (`reader[0]`) or `native_id` (`reader["scan=19"]`); O(n) |
+| `.get_by_scan(n, *, ms_level=None)` / `.get_by_native_id(id)` / `.get_by_sage_scannr(s)` | `MsnSpectrum` | Indexed: the first call parses the file once, later calls seek. MSP has no scan numbers |
 | `.ms1` | `PeakListLookup` | Always empty — peak lists carry no survey scans |
 | `.ms2` | `PeakListLookup` | Every spectrum — iterate or index |
 | `.open()` / `.close()` | `None` | `open()` checks the file exists; `close()` is a no-op (each walk streams its own handle) |

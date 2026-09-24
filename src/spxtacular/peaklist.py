@@ -31,6 +31,7 @@ from __future__ import annotations
 import gzip
 import os
 import re
+from collections import deque
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -38,11 +39,12 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import TracebackType
-from typing import IO, Self
+from typing import IO, BinaryIO, Self
 
 import numpy as np
 from tacular.constants import PROTON_MASS
 
+from ._scan_lookup import IdIndex, build_id_index, by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
 from .errors import SpxtacularError
@@ -72,6 +74,13 @@ def _is_gzip(path: Path) -> bool:
     """True when the file starts with the gzip magic bytes."""
     with open(path, "rb") as fh:
         return fh.read(2) == _GZIP_MAGIC
+
+
+def _open_binary(path: Path) -> gzip.GzipFile | BinaryIO:
+    """Open a peak-list file as bytes, transparently decompressing gzip."""
+    if _is_gzip(path):
+        return gzip.GzipFile(path, "rb")
+    return open(path, "rb")
 
 
 def _open_text(path: Path) -> IO[str]:
@@ -206,11 +215,11 @@ class _MgfBlock:
     charge: list[int | None] = field(default_factory=list)
 
 
-def _iter_mgf(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
-    """Yield one :class:`MsnSpectrum` per ``BEGIN IONS`` block."""
+def _iter_mgf(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+    """Yield ``(line of BEGIN IONS, spectrum)`` per ``BEGIN IONS`` block."""
     block: _MgfBlock | None = None
 
-    for line_no, raw in enumerate(handle, start=1):
+    for line_no, raw in enumerate(lines, start=first_line):
         line = raw.strip()
         if not line or line[0] in _COMMENT_PREFIXES:
             continue
@@ -228,7 +237,7 @@ def _iter_mgf(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
         if upper == "END IONS":
             if block is None:
                 raise SpxtacularError(f"{path}:{line_no}: 'END IONS' without a matching 'BEGIN IONS'")
-            yield _mgf_spectrum(block, path=path)
+            yield block.begin_line, _mgf_spectrum(block, path=path)
             block = None
             continue
 
@@ -352,11 +361,11 @@ class _Ms2Block:
     intensity: list[float] = field(default_factory=list)
 
 
-def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
-    """Yield one :class:`MsnSpectrum` per ``S`` record."""
+def _iter_ms2(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+    """Yield ``(line of the S record, spectrum)`` per ``S`` record."""
     block: _Ms2Block | None = None
 
-    for line_no, raw in enumerate(handle, start=1):
+    for line_no, raw in enumerate(lines, start=first_line):
         line = raw.strip()
         if not line or line[0] in _COMMENT_PREFIXES:
             continue
@@ -371,7 +380,7 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
 
         if tag == "S":
             if block is not None:
-                yield _ms2_spectrum(block)
+                yield block.scan_line, _ms2_spectrum(block)
             if len(fields) < 4:
                 raise SpxtacularError(
                     f"{path}:{line_no}: expected 'S <first_scan> <last_scan> <precursor_mz>', got {line!r}"
@@ -421,7 +430,7 @@ def _iter_ms2(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
         block.intensity.append(_parse_float(fields[1], field_name="peak intensity", path=path, line_no=line_no))
 
     if block is not None:
-        yield _ms2_spectrum(block)
+        yield block.scan_line, _ms2_spectrum(block)
 
 
 def _ms2_spectrum(block: _Ms2Block) -> MsnSpectrum:
@@ -501,8 +510,8 @@ class _MspBlock:
     intensity: list[float] = field(default_factory=list)
 
 
-def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
-    """Yield one :class:`MsnSpectrum` per MSP record.
+def _iter_msp(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+    """Yield ``(first line of the record, spectrum)`` per MSP record.
 
     MSP records have no BEGIN/END markers: a record is header lines up to
     ``Num Peaks: N``, then exactly N peaks. Parsing is count-driven — the
@@ -511,7 +520,7 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
     """
     block: _MspBlock | None = None
 
-    for line_no, raw in enumerate(handle, start=1):
+    for line_no, raw in enumerate(lines, start=first_line):
         line = raw.strip()
         if line and line[0] in _COMMENT_PREFIXES:
             continue
@@ -542,7 +551,7 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
                 block.mz.append(_parse_float(parts[0], field_name="peak m/z", path=path, line_no=line_no))
                 block.intensity.append(_parse_float(parts[1], field_name="peak intensity", path=path, line_no=line_no))
             if len(block.mz) == block.num_peaks:
-                yield _msp_spectrum(block, path=path)
+                yield block.start_line, _msp_spectrum(block, path=path)
                 block = None
             continue
 
@@ -565,7 +574,7 @@ def _iter_msp(handle: IO[str], path: Path) -> Iterator[MsnSpectrum]:
             if block.num_peaks < 0:
                 raise SpxtacularError(f"{path}:{line_no}: negative 'Num Peaks' count {block.num_peaks}")
             if block.num_peaks == 0:
-                yield _msp_spectrum(block, path=path)
+                yield block.start_line, _msp_spectrum(block, path=path)
                 block = None
         else:
             block.headers[normalised] = (value.strip(), line_no)
@@ -725,6 +734,14 @@ class PeakListLookup:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class _Record:
+    """Where one record starts: byte offset in the (decompressed) file, and 1-based line number."""
+
+    offset: int
+    line: int
+
+
 class _PeakListReader:
     """Shared plumbing for the text peak-list readers.
 
@@ -736,6 +753,8 @@ class _PeakListReader:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self._n_spectra: int | None = None
+        self._index: IdIndex[_Record] | None = None
+        self._index_stamp: tuple[int, int] | None = None
 
     # -- interface symmetry with DReader / MzmlReader -------------------------
 
@@ -761,8 +780,12 @@ class _PeakListReader:
 
     # -- format hooks --------------------------------------------------------
 
-    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
+    def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+        """Yield ``(first line of the record, spectrum)`` for each record in ``lines``."""
         raise NotImplementedError
+
+    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
+        return (spec for _, spec in self._parse_records(handle))
 
     def _is_record_start(self, line: str) -> bool:
         raise NotImplementedError
@@ -792,6 +815,121 @@ class _PeakListReader:
         """Fetch a single spectrum by 0-based index or native ID string."""
         return PeakListLookup(self)[key]
 
+    # -- lookup by scan number / native id -----------------------------------
+
+    def _walk_records(self) -> Iterator[tuple[int | None, str | None, _Record]]:
+        """One full parse, yielding each record's scan number, native id and position."""
+        # (line number, byte offset) of lines read but not yet claimed by a record.
+        # A record is yielded after its last line is read, so this holds about one
+        # record's worth of lines.
+        pending: deque[tuple[int, int]] = deque()
+
+        def lines(handle: gzip.GzipFile | BinaryIO) -> Iterator[str]:
+            offset = 0
+            for line_no, raw in enumerate(handle, start=1):
+                pending.append((line_no, offset))
+                offset += len(raw)
+                yield raw.decode("utf-8", errors="replace")
+
+        with _open_binary(self.path) as handle:
+            for start_line, spec in self._parse_records(lines(handle)):
+                while pending[0][0] < start_line:
+                    pending.popleft()
+                _, offset = pending.popleft()
+                yield spec.scan_number, spec.native_id, _Record(offset=offset, line=start_line)
+
+    def _id_index(self) -> IdIndex[_Record]:
+        """Scan-number and native-id index, built on first use and rebuilt when the file changes."""
+        stat = self.path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        if self._index is None or self._index_stamp != stamp:
+            self._index = build_id_index(self._walk_records())
+            self._index_stamp = stamp
+        return self._index
+
+    def _read_record(self, record: _Record) -> MsnSpectrum:
+        """Parse the one record that starts at ``record``."""
+        with _open_binary(self.path) as handle:
+            handle.seek(record.offset)
+            lines = (raw.decode("utf-8", errors="replace") for raw in handle)
+            for _, spec in self._parse_records(lines, first_line=record.line):
+                return spec
+        raise SpxtacularError(f"{self.path}:{record.line}: no record here; the file changed after it was indexed")
+
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Fetch a spectrum by its ``native_id`` (MGF ``TITLE``, MS2 ``I NativeID`` or ``scan=N``, MSP ``Name``).
+
+        The first call parses the whole file once to build an index of record
+        offsets; later calls seek straight to the record. The index is rebuilt
+        if the file's size or modification time changes. Seeking in a gzipped
+        file still decompresses everything before the record.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this native id.
+        SpxtacularError
+            If several spectra share it.
+        """
+        if not isinstance(native_id, str):
+            raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
+        index = self._id_index()
+        record = index.ids.get(native_id)
+        if record is None:
+            if native_id in index.duplicate_ids:
+                raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
+            raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
+        return self._read_record(record)
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
+        """Fetch a spectrum by its scan number (MGF ``SCANS``, MS2 ``S`` line).
+
+        Indexed like :meth:`get_by_native_id`. Peak lists hold MS2 spectra only.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this scan number, or ``ms_level`` is not 2.
+        SpxtacularError
+            If the file carries no scan numbers at all (MSP always; MGF without
+            ``SCANS``: use :meth:`get_by_native_id`), or several spectra share
+            this scan number.
+        """
+        scan_number = check_scan_number(scan_number)
+        check_ms_level(ms_level)
+        index = self._id_index()
+        record = index.scans.get(scan_number)
+        if record is None:
+            if scan_number in index.duplicate_scans:
+                raise SpxtacularError(
+                    f"{self.path}: scan number {scan_number} is shared by several spectra; "
+                    "use get_by_native_id() instead"
+                )
+            if not index.scans and not index.duplicate_scans:
+                raise SpxtacularError(
+                    f"{self.path}: no spectrum in this file has a scan number; use get_by_native_id() instead"
+                )
+            raise KeyError(f"no spectrum with scan number {scan_number} in {self.path}")
+        if ms_level is not None and ms_level != 2:
+            raise KeyError(f"scan {scan_number} is MS2, not MS{ms_level}")
+        return self._read_record(record)
+
+    def get_by_sage_scannr(self, scannr: str | int) -> MsnSpectrum:
+        """Fetch the spectrum a Sage ``scannr`` refers to.
+
+        ``results.sage.tsv`` holds the MGF ``TITLE`` verbatim; Sage's ``.pin``
+        output holds only the number from ``scan=N``. The value is tried as a
+        native id first, then, if it is a bare integer, as a scan number.
+
+        Raises
+        ------
+        KeyError
+            If nothing matches.
+        SpxtacularError
+            As :meth:`get_by_native_id` and :meth:`get_by_scan`.
+        """
+        return by_sage_scannr(self, scannr)
+
     @property
     def ms1(self) -> PeakListLookup:
         """Always empty — peak lists carry no survey scans. Present so generic code works."""
@@ -817,8 +955,8 @@ class MgfReader(_PeakListReader):
     Readers documentation for the table.
     """
 
-    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
-        return _iter_mgf(handle, self.path)
+    def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+        return _iter_mgf(lines, self.path, first_line=first_line)
 
     def _is_record_start(self, line: str) -> bool:
         return line.upper() == "BEGIN IONS"
@@ -833,8 +971,8 @@ class Ms2Reader(_PeakListReader):
     damage raises ``ValueError`` naming the file and line number.
     """
 
-    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
-        return _iter_ms2(handle, self.path)
+    def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+        return _iter_ms2(lines, self.path, first_line=first_line)
 
     def _is_record_start(self, line: str) -> bool:
         return line[:1].upper() == "S" and (len(line) == 1 or line[1].isspace())
@@ -857,8 +995,8 @@ class MspReader(_PeakListReader):
     file and line number.
     """
 
-    def _parse(self, handle: IO[str]) -> Iterator[MsnSpectrum]:
-        return _iter_msp(handle, self.path)
+    def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
+        return _iter_msp(lines, self.path, first_line=first_line)
 
     def _is_record_start(self, line: str) -> bool:
         key, sep, _ = line.partition(":")
