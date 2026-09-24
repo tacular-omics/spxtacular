@@ -62,7 +62,7 @@ nav:
       - Deconvolution: deconvolution.md
       - Readers: readers.md
       - Spectral libraries (mzSpecLib): mzspeclib.md
-      - Matching & scoring: scoring.md
+      - Matching, scoring & reporter ions: scoring.md
       - Visualization: visualization.md
   - API reference:
       - API reference: api.md

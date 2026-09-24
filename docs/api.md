@@ -21,6 +21,9 @@ from spxtacular import (
     write_indexed_mzml_gzip,
     # Matching and scoring
     match_fragments, score, cosine, modified_cosine, entropy_similarity,
+    # Isobaric reporter ions (TMT, TMTpro, iTRAQ)
+    ReporterIons, extract_reporter_ions, reporter_ion_table,
+    isotope_correction_matrix, correct_isotope_impurities,
     # Isotope envelopes and average-composition models
     IsotopeModel, IsotopeModelType, IsotopeModelLike,
     ISOTOPE_MODELS,
@@ -1422,6 +1425,47 @@ entropy_similarity(
 All three return values in `[0, 1]`, accept unsorted spectra, and use one-to-one peak matching.
 `modified_cosine()` also considers the precursor-mass displacement. Full documentation:
 [Spectrum-to-spectrum similarity](scoring.md#spectrum-to-spectrum-similarity).
+
+---
+
+## Isobaric reporter ions
+
+Full documentation: [Isobaric reporter ions](scoring.md#isobaric-reporter-ions-tmt-tmtpro-itraq)
+
+```python
+extract_reporter_ions(
+    spectrum: Spectrum,
+    plex: str | IsobaricTagInfo,          # "TMT10", "TMTpro18", "iTRAQ4", ...
+    *,
+    tolerance: float = 20.0,
+    tolerance_unit: Literal["da", "ppm"] = "ppm",
+    impurities: ImpurityTable | pd.DataFrame | NDArray | None = None,
+    normalize: Literal["sum", "max"] | None = None,
+) -> ReporterIons                         # also Spectrum.reporter_ions(plex, ...)
+
+reporter_ion_table(
+    spectra: Iterable[Spectrum] | Reader,
+    plex: str | IsobaricTagInfo,
+    *,
+    tolerance: float = 20.0,
+    tolerance_unit: Literal["da", "ppm"] = "ppm",
+    impurities: ImpurityTable | pd.DataFrame | NDArray | None = None,
+    normalize: Literal["sum", "max"] | None = None,
+    ms_level: int | None = None,
+    include_errors: bool = False,
+) -> pd.DataFrame
+
+isotope_correction_matrix(plex, impurities) -> NDArray          # observed = M @ true
+correct_isotope_impurities(intensities, correction, *, plex=None) -> NDArray
+```
+
+`ReporterIons` (frozen, read-only arrays in channel order): `plex`, `channels`, `reporter_mz`,
+`intensity`, `raw_intensity`, `observed_mz`, `corrected`, `normalize`, and the properties
+`found`, `mz_error` (Da), `ppm_error`; `ions["127N"]` gives one channel; `to_dict()`.
+The most intense peak in each window is used; a missing channel is intensity 0.0 and
+`observed_mz` NaN. A bad plex, unit, tolerance (overlapping windows) or impurity table, a
+decharged spectrum, or NaN/inf intensities raise `SpxtacularError`. Numeric impurity shifts
+are 13C counts; label 15N impurities `"-15N"`. See [Scoring](scoring.md#isotope-impurity-correction).
 
 ---
 
