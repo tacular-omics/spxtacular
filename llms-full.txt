@@ -550,6 +550,9 @@ Spectral libraries in HUPO-PSI mzSpecLib 1.0 (text or JSON, optional `.gz`):
 
 ```python
 read_mzspeclib(path) -> SpectralLibrary          # .entries, .attributes, .clusters; iterable
+with MzSpecLibReader(path) as reader:            # streams, constant memory, text or JSON, .gz ok
+    reader.attributes                            # header, before any spectrum is read
+    for entry in reader: ...                     # LibraryEntry, one at a time; .clusters after a full pass
 write_mzspeclib(entries_or_library, path, *, format=None) -> Path   # JSON for *.json[.gz]
 entry = LibraryEntry.from_spectrum(spec, "PEPTIDE/2", score=0.99, peak_annotations=matches)
 entry.spectrum          # MsnSpectrum: precursor m/z + charge, rt (s), im, CE, activation, polarity

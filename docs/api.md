@@ -17,7 +17,7 @@ from spxtacular import (
     Reader, DReader, MzmlReader, ThermoReader, CentroidConfig, AcquisitionType,
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
     # Spectral libraries (mzSpecLib)
-    read_mzspeclib, write_mzspeclib, SpectralLibrary, LibraryEntry, Analyte, Interpretation, CvParam,
+    read_mzspeclib, MzSpecLibReader, write_mzspeclib, SpectralLibrary, LibraryEntry, Analyte, Interpretation, CvParam,
     write_indexed_mzml_gzip,
     # Matching and scoring
     match_fragments, score, cosine, modified_cosine, entropy_similarity,
@@ -525,12 +525,14 @@ Full documentation: [Readers — Writing](readers.md#writing)
 
 ---
 
-### `read_mzspeclib` / `write_mzspeclib`
+### `read_mzspeclib` / `MzSpecLibReader` / `write_mzspeclib`
 
 Read and write HUPO-PSI mzSpecLib 1.0 spectral libraries, text or JSON, optionally gzipped.
 
 ```python
 read_mzspeclib(path: str | Path) -> SpectralLibrary
+MzSpecLibReader(path: str | Path)   # context manager; iterate for LibraryEntry, one at a time
+    .open() / .close(); .attributes, .format ("text" | "json"), .clusters (after a full pass)
 write_mzspeclib(entries: SpectralLibrary | Iterable[LibraryEntry] | LibraryEntry, path: str | Path,
                 *, format: Literal["text", "json"] | None = None) -> Path
 LibraryEntry(spectrum: MsnSpectrum, *, key=None, name=None, analytes=(), interpretations=(),
@@ -545,6 +547,7 @@ CvParam(accession, name, value=None, value_accession=None, group=None)
 | Behaviour | Detail |
 |---|---|
 | Format | Read: detected from content and gzip magic. Write: JSON for `*.json[.gz]`, else text |
+| Streaming | `MzSpecLibReader` yields entries one at a time in constant memory (text and JSON, gzipped or not), with `attributes` available before iterating; same entries and errors as `read_mzspeclib` |
 | Spectrum fields | Precursor m/z and charge, RT, ion mobility, CE, dissociation, polarity, MS level, scan number, native id, TIC, injection time map to `MsnSpectrum`; other terms stay in `attributes` |
 | Analytes | `peptidoform` is a peptacular `ProFormaAnnotation` carrying the charge |
 | Peaks | `peak_annotations`: tuple of paftacular `PafAnnotation` per peak, or `None`. JSON writes one mzPAF string per peak, `"?"` when unannotated |

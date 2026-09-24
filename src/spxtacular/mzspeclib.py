@@ -14,18 +14,23 @@ spxtacular data model:
 * every attribute without a field keeps its CV form in an ``attributes`` tuple.
 
 Reading resolves attribute sets (``<AttributeSet ...>`` / ``*_attribute_sets``)
-into each element. Writing never emits attribute sets.
+into each element. Writing never emits attribute sets. :func:`read_mzspeclib`
+returns the whole library; :class:`MzSpecLibReader` streams it one entry at a time.
 """
 
 from __future__ import annotations
 
+import bisect
 import gzip
 import json
 import re
-from collections.abc import Iterable, Iterator, Mapping
+import weakref
+from collections.abc import Generator, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from types import TracebackType
+from typing import IO, Any, Literal, Self
 
 import numpy as np
 import paftacular as paf
@@ -44,6 +49,7 @@ __all__ = [
     "CvParam",
     "Interpretation",
     "LibraryEntry",
+    "MzSpecLibReader",
     "SpectralLibrary",
     "read_mzspeclib",
     "write_mzspeclib",
@@ -981,17 +987,30 @@ def _parse_peak_line(line: str, raw: _RawSpectrum, where: str) -> None:
     raw.peak_attributes.append(tuple(None if p.strip() == "" else _scalar(p.strip()) for p in parts[3:]))
 
 
-def _read_text(lines: Iterable[str], path: Path) -> SpectralLibrary:
-    library_attrs: list[_RawAttr] = []
-    sets: dict[str, dict[str, list[_RawAttr]]] = {kind: {} for kind in _SET_KINDS}
-    clusters: dict[int, list[_RawAttr]] = {}
-    spectra: list[_RawSpectrum] = []
+@dataclass(slots=True)
+class _RawHeader:
+    """Everything outside spectra: library attributes, attribute sets, clusters."""
 
-    target: list[_RawAttr] | None = library_attrs
+    library_attrs: list[_RawAttr] = field(default_factory=list)
+    sets: dict[str, dict[str, list[_RawAttr]]] = field(default_factory=lambda: {kind: {} for kind in _SET_KINDS})
+    clusters: dict[int, list[_RawAttr]] = field(default_factory=dict)
+
+
+def _iter_text(lines: Iterable[str], path: Path, header: _RawHeader) -> Iterator[_RawSpectrum | None]:
+    """Parse text lines, filling ``header`` as it goes.
+
+    Yields ``None`` once when the header ends (at the first ``<Spectrum>``, or at
+    the end of a file without spectra), then each spectrum as soon as the next
+    section starts, so only one spectrum is held at a time.
+    """
+    sets = header.sets
+    target: list[_RawAttr] | None = header.library_attrs
     spectrum: _RawSpectrum | None = None
     interpretation: _RawElement | None = None
     in_peaks = False
     seen_header = False
+    header_done = False
+    seen_cluster = False
 
     for line_no, raw_line in enumerate(lines, start=1):
         line = raw_line.rstrip("\r\n")
@@ -1011,22 +1030,27 @@ def _read_text(lines: Iterable[str], path: Path) -> SpectralLibrary:
         if section is not None:
             tag, kind, value = section.groups()
             in_peaks = False
+            if tag in ("AttributeSet", "Spectrum", "Cluster") and spectrum is not None:
+                yield spectrum
+                spectrum = None
             if tag == "AttributeSet":
-                if spectra or clusters:
+                if header_done or seen_cluster:
                     raise SpxtacularError(f"{where}: attribute sets must come before the first spectrum")
                 if kind is None or kind.lower() not in sets or not value:
                     raise SpxtacularError(f"{where}: malformed attribute set header {stripped!r}")
                 target = sets[kind.lower()].setdefault(value, [])
-                spectrum = None
             elif tag == "Spectrum":
-                spectrum = _RawSpectrum(key=_as_id(value, f"{where} spectrum key"), where=where)
-                spectra.append(spectrum)
+                key = _as_id(value, f"{where} spectrum key")
+                if not header_done:
+                    header_done = True
+                    yield None
+                spectrum = _RawSpectrum(key=key, where=where)
                 target = spectrum.attrs
                 interpretation = None
             elif tag == "Cluster":
                 key = _as_id(value, f"{where} cluster key")
-                target = clusters.setdefault(key, [])
-                spectrum = None
+                seen_cluster = True
+                target = header.clusters.setdefault(key, [])
             elif tag in ("Analyte", "Interpretation", "InterpretationMember", "Peaks"):
                 if spectrum is None:
                     raise SpxtacularError(f"{where}: <{tag}> outside a <Spectrum> section")
@@ -1063,28 +1087,26 @@ def _read_text(lines: Iterable[str], path: Path) -> SpectralLibrary:
 
     if not seen_header:
         raise SpxtacularError(f"{path}: empty file, not an mzSpecLib library")
-    return _build_library(library_attrs, sets, clusters, spectra, path)
+    if not header_done:
+        yield None
+    if spectrum is not None:
+        yield spectrum
 
 
-def _build_library(
-    library_attrs: list[_RawAttr],
-    sets: dict[str, dict[str, list[_RawAttr]]],
-    clusters: dict[int, list[_RawAttr]],
-    spectra: list[_RawSpectrum],
-    path: Path,
-) -> SpectralLibrary:
+def _library_attributes(library_attrs: list[_RawAttr], path: Path) -> tuple[CvParam, ...]:
+    """Check the format version and return the other library attributes."""
     versions = [a for a in library_attrs if a.accession == _FORMAT_VERSION[0]]
     if len(versions) != 1:
         raise SpxtacularError(f"{path}: expected one {_FORMAT_VERSION[1]} ({_FORMAT_VERSION[0]}), got {len(versions)}")
     version = str(versions[0].value)
     if version.split(".")[0] != "1":
         raise SpxtacularError(f"{path}: unsupported mzSpecLib format version {version!r} (1.x is supported)")
-    library_attrs = [a for a in library_attrs if a.accession != _FORMAT_VERSION[0]]
+    return _plain_attributes([a for a in library_attrs if a.accession != _FORMAT_VERSION[0]], f"{path} library")
 
-    entries = [_build_entry(raw, sets) for raw in spectra]
-    keys = [entry.key for entry in entries]
-    if len(set(keys)) != len(keys):
-        raise SpxtacularError(f"{path}: duplicate library spectrum keys")
+
+def _build_clusters(
+    clusters: dict[int, list[_RawAttr]], sets: Mapping[str, Mapping[str, list[_RawAttr]]], path: Path
+) -> dict[int, tuple[CvParam, ...]]:
     for key, attrs in clusters.items():
         # The text form may repeat the key as an attribute inside <Cluster=N>; the
         # JSON form must. Either way it is the section key, not an attribute.
@@ -1092,7 +1114,7 @@ def _build_library(
             if attr.accession == _CLUSTER_KEY[0] and _as_id(attr.value, f"{path} cluster {key}") != key:
                 raise SpxtacularError(f"{path}: {_CLUSTER_KEY[1]} {attr.value} does not match the section key {key}")
         attrs[:] = [a for a in attrs if a.accession != _CLUSTER_KEY[0]]
-    built_clusters = {
+    return {
         key: tuple(
             _resolve(attrs, sets["cluster"], f"{path} cluster {key}")
             if any(a.accession == _SET_NAME for a in attrs) or "all" in sets["cluster"]
@@ -1100,11 +1122,6 @@ def _build_library(
         )
         for key, attrs in clusters.items()
     }
-    return SpectralLibrary(
-        entries=entries,
-        attributes=_plain_attributes(library_attrs, f"{path} library"),
-        clusters=built_clusters,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1207,47 +1224,385 @@ def _json_spectrum(payload: object, index: int, path: Path) -> _RawSpectrum:
     return raw
 
 
-def _read_json(text: str, path: Path) -> SpectralLibrary:
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise SpxtacularError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(payload, Mapping):
-        raise SpxtacularError(f"{path}: an mzSpecLib JSON document must be an object")
-    if "format_version" not in payload:
+def _json_header(members: Mapping[str, Any], path: Path) -> _RawHeader:
+    """Library attributes and attribute sets from the top-level members (no spectra)."""
+    if "format_version" not in members:
         raise SpxtacularError(f"{path}: missing 'format_version'")
-    library_attrs = _json_attrs(payload.get("attributes", []), f"{path} library")
+    library_attrs = _json_attrs(members.get("attributes", []), f"{path} library")
     if not any(a.accession == _FORMAT_VERSION[0] for a in library_attrs):
-        library_attrs.insert(0, _RawAttr(*_FORMAT_VERSION, str(payload["format_version"]), None, None))
+        library_attrs.insert(0, _RawAttr(*_FORMAT_VERSION, str(members["format_version"]), None, None))
 
     sets: dict[str, dict[str, list[_RawAttr]]] = {}
     for kind in _SET_KINDS:
-        found = payload.get(f"{kind}_attribute_sets", payload.get(f"library_{kind}_attribute_sets", {})) or {}
+        found = members.get(f"{kind}_attribute_sets", members.get(f"library_{kind}_attribute_sets", {})) or {}
         if not isinstance(found, Mapping):
             raise SpxtacularError(f"{path}: {kind}_attribute_sets must be an object")
         sets[kind] = {name: _json_attrs(attrs, f"{path} {kind} set {name}") for name, attrs in found.items()}
+    return _RawHeader(library_attrs=library_attrs, sets=sets)
 
-    spectra_payload = payload.get("spectra", [])
-    if not isinstance(spectra_payload, list):
-        raise SpxtacularError(f"{path}: 'spectra' must be a list")
-    spectra = [_json_spectrum(item, i, path) for i, item in enumerate(spectra_payload)]
 
+def _json_clusters(items: Any, path: Path) -> dict[int, list[_RawAttr]]:
     clusters: dict[int, list[_RawAttr]] = {}
-    for i, item in enumerate(payload.get("clusters", []) or []):
+    for i, item in enumerate(items or []):
         where = f"{path} cluster {i}"
         attrs = _json_attrs(item.get("attributes", []) if isinstance(item, Mapping) else item, where)
         keys = [a for a in attrs if a.accession == _CLUSTER_KEY[0]]
         if len(keys) != 1:
             raise SpxtacularError(f"{where}: needs one {_CLUSTER_KEY[1]} ({_CLUSTER_KEY[0]})")
         clusters[_as_id(keys[0].value, where)] = [a for a in attrs if a.accession != _CLUSTER_KEY[0]]
-    return _build_library(library_attrs, sets, clusters, spectra, path)
+    return clusters
+
+
+# Members that, once all seen, let the header be read without scanning past "spectra".
+_JSON_HEADER_KEYS = frozenset({"format_version", "attributes"} | {f"{kind}_attribute_sets" for kind in _SET_KINDS})
+_JSON_WS = re.compile(r"[ \t\n\r]*")
+_JSON_CHUNK = 1 << 16
+
+
+class _BadJson(Exception):
+    """The document is not valid JSON; the caller re-parses it whole for the exact error."""
+
+
+class _JsonStream:
+    """Decode one JSON value at a time from a text handle, with the standard-library decoder.
+
+    Only the value being decoded is held in memory. A value cut by a chunk
+    boundary fails to decode and is retried with more text; the buffer grows by
+    doubling, so a large value still costs linear time.
+    """
+
+    def __init__(self, handle: IO[str]) -> None:
+        self.handle = handle
+        self.buffer = ""
+        self.pos = 0
+        self.eof = False
+        self.decoder = json.JSONDecoder()
+
+    def _more(self) -> bool:
+        if self.eof:
+            return False
+        if self.pos:
+            self.buffer = self.buffer[self.pos :]
+            self.pos = 0
+        chunk = self.handle.read(max(_JSON_CHUNK, len(self.buffer)))
+        if not chunk:
+            self.eof = True
+            return False
+        self.buffer += chunk
+        return True
+
+    def peek(self) -> str:
+        """Next non-whitespace character, or ``""`` at the end of the file."""
+        while True:
+            match = _JSON_WS.match(self.buffer, self.pos)
+            assert match is not None
+            self.pos = match.end()
+            if self.pos < len(self.buffer):
+                return self.buffer[self.pos]
+            if not self._more():
+                return ""
+
+    def expect(self, chars: str) -> str:
+        char = self.peek()
+        if not char or char not in chars:
+            raise _BadJson
+        self.pos += 1
+        return char
+
+    def value(self) -> Any:
+        self.peek()
+        while True:
+            try:
+                value, end = self.decoder.raw_decode(self.buffer, self.pos)
+            except json.JSONDecodeError:
+                if self._more():
+                    continue
+                raise _BadJson from None
+            # A number that ends at the buffer's end may continue in the next chunk.
+            if end >= len(self.buffer) and self._more():
+                continue
+            self.pos = end
+            return value
+
+    def array_items(self) -> Iterator[Any]:
+        self.expect("[")
+        if self.peek() == "]":
+            self.pos += 1
+            return
+        while True:
+            yield self.value()
+            if self.expect(",]") == "]":
+                return
+
+    def members(self) -> Iterator[tuple[str, Any]]:
+        """Top-level ``(key, value)`` pairs. A ``"spectra"`` array comes as an iterator of its items;
+        items the consumer does not take are decoded and dropped."""
+        self.expect("{")
+        if self.peek() == "}":
+            self.pos += 1
+        else:
+            while True:
+                key = self.value()
+                if not isinstance(key, str):
+                    raise _BadJson
+                self.expect(":")
+                if key == "spectra" and self.peek() == "[":
+                    items = self.array_items()
+                    yield key, items
+                    for _ in items:
+                        pass
+                else:
+                    yield key, self.value()
+                if self.expect(",}") == "}":
+                    break
+        if self.peek():
+            raise _BadJson
+
+
+# ---------------------------------------------------------------------------
+# Reading
+# ---------------------------------------------------------------------------
+
+
+def _open_library_text(path: Path) -> IO[str]:
+    """Open a library as UTF-8 text (a BOM is dropped), decompressing gzip found by its magic bytes."""
+    with open(path, "rb") as fh:
+        magic = fh.read(2)
+    if magic == b"\x1f\x8b":
+        return gzip.open(path, "rt", encoding="utf-8-sig")
+    return open(path, encoding="utf-8-sig")
+
+
+def _invalid_json(path: Path) -> SpxtacularError:
+    """The error ``json.loads`` gives for the whole file, so streamed and whole reads fail alike."""
+    with _open_library_text(path) as fh:
+        text = fh.read()
+    try:
+        json.loads(text)
+    except json.JSONDecodeError as exc:
+        return SpxtacularError(f"{path}: invalid JSON: {exc}")
+    return SpxtacularError(f"{path}: invalid JSON")
+
+
+class _SeenKeys:
+    """Spectrum keys seen so far, as sorted disjoint ranges: sequential keys take one range."""
+
+    __slots__ = ("ends", "starts")
+
+    def __init__(self) -> None:
+        self.starts: list[int] = []
+        self.ends: list[int] = []
+
+    def add(self, key: int) -> bool:
+        """Record ``key``; ``False`` if it was already seen."""
+        i = bisect.bisect_right(self.starts, key) - 1
+        if i >= 0 and key <= self.ends[i]:
+            return False
+        joins_left = i >= 0 and self.ends[i] == key - 1
+        joins_right = i + 1 < len(self.starts) and self.starts[i + 1] == key + 1
+        if joins_left and joins_right:
+            self.ends[i] = self.ends[i + 1]
+            del self.starts[i + 1], self.ends[i + 1]
+        elif joins_left:
+            self.ends[i] = key
+        elif joins_right:
+            self.starts[i + 1] = key
+        else:
+            self.starts.insert(i + 1, key)
+            self.ends.insert(i + 1, key)
+        return True
+
+
+@dataclass(slots=True)
+class _Header:
+    format: Literal["text", "json"]
+    attributes: tuple[CvParam, ...]
+    raw: _RawHeader
+
+
+class MzSpecLibReader:
+    """Stream an mzSpecLib library (text or JSON, optionally gzipped) one entry at a time.
+
+    The library attributes are read on :meth:`open` (or first use) without
+    reading any spectrum. Iterating yields :class:`LibraryEntry` objects in file
+    order while holding only one spectrum in memory, with the same results and
+    errors as :func:`read_mzspeclib`.
+
+    Parameters
+    ----------
+    path
+        Library file (``.mzspeclib.txt``, ``.mzspeclib.json``, optionally ``.gz``).
+        The format is detected from the content and gzip from its magic bytes.
+
+    Examples
+    --------
+    >>> with MzSpecLibReader("library.mzspeclib.txt") as reader:  # doctest: +SKIP
+    ...     print(reader.attributes)
+    ...     for entry in reader:
+    ...         print(entry.key, entry.peptidoform)
+
+    Notes
+    -----
+    Every iteration opens its own handle, so iterations are independent and the
+    reader can be iterated again. An iteration closes its handle when it ends,
+    when the iterator is dropped (``break`` out of a ``for`` loop), or on
+    :meth:`close`. A JSON file whose attribute sets follow the ``"spectra"``
+    array (as in files written with alphabetically sorted keys) is scanned once,
+    in constant memory, to read the header first.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self._header: _Header | None = None
+        self._clusters: dict[int, tuple[CvParam, ...]] | None = None
+        self._iterations: weakref.WeakSet[Generator[LibraryEntry]] = weakref.WeakSet()
+
+    # -- lifecycle -------------------------------------------------------------
+
+    def open(self) -> None:
+        """Check the file exists and read its header.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the file does not exist.
+        SpxtacularError
+            If the header is not a valid mzSpecLib 1.x header.
+        """
+        self._load_header()
+
+    def close(self) -> None:
+        """Close the handle of every unfinished iteration."""
+        for iteration in list(self._iterations):
+            iteration.close()
+
+    def __enter__(self) -> Self:
+        self.open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    # -- header ----------------------------------------------------------------
+
+    @property
+    def format(self) -> Literal["text", "json"]:
+        """``"text"`` or ``"json"``, detected from the content."""
+        return self._load_header().format
+
+    @property
+    def attributes(self) -> tuple[CvParam, ...]:
+        """Library-level attributes, without the format version."""
+        return self._load_header().attributes
+
+    @property
+    def clusters(self) -> dict[int, tuple[CvParam, ...]]:
+        """``<Cluster=N>`` attributes, keyed by cluster key.
+
+        Clusters may follow the spectra, so they are known after a complete
+        iteration; before that, reading this property runs one.
+        """
+        if self._clusters is None:
+            for _ in self:
+                pass
+        assert self._clusters is not None
+        return self._clusters
+
+    def _load_header(self) -> _Header:
+        if self._header is None:
+            with self._decoding():
+                self._header = self._read_header()
+        return self._header
+
+    @contextmanager
+    def _decoding(self) -> Iterator[None]:
+        try:
+            yield
+        except UnicodeDecodeError as exc:
+            raise SpxtacularError(f"{self.path}: not UTF-8 text: {exc}") from exc
+
+    def _read_header(self) -> _Header:
+        with _open_library_text(self.path) as fh:
+            chunk = fh.read(_JSON_CHUNK)
+            while chunk and not chunk.lstrip():
+                chunk = fh.read(_JSON_CHUNK)
+            fh.seek(0)
+            if chunk.lstrip().startswith("{"):
+                members: dict[str, Any] = {}
+                try:
+                    for key, value in _JsonStream(fh).members():
+                        if key != "spectra":
+                            members[key] = value
+                        elif members.keys() >= _JSON_HEADER_KEYS:
+                            break
+                except _BadJson:
+                    raise _invalid_json(self.path) from None
+                raw = _json_header(members, self.path)
+                return _Header("json", _library_attributes(raw.library_attrs, self.path), raw)
+            raw = _RawHeader()
+            next(_iter_text(fh, self.path, raw))
+            return _Header("text", _library_attributes(raw.library_attrs, self.path), raw)
+
+    # -- entries ---------------------------------------------------------------
+
+    def __iter__(self) -> Iterator[LibraryEntry]:
+        """Library entries in file order, one at a time."""
+        iteration = self._iter_entries()
+        self._iterations.add(iteration)
+        return iteration
+
+    def _iter_entries(self) -> Generator[LibraryEntry]:
+        header = self._load_header()
+        keys = _SeenKeys()
+        with self._decoding(), _open_library_text(self.path) as fh:
+            if header.format == "json":
+                raws = self._iter_json(fh, header.raw)
+            else:
+                raws = self._iter_text(fh)
+            for raw, sets in raws:
+                entry = _build_entry(raw, sets)
+                assert entry.key is not None
+                if not keys.add(entry.key):
+                    raise SpxtacularError(f"{self.path}: duplicate library spectrum keys")
+                yield entry
+
+    def _iter_text(self, fh: IO[str]) -> Iterator[tuple[_RawSpectrum, Mapping[str, Mapping[str, list[_RawAttr]]]]]:
+        raw_header = _RawHeader()
+        for raw in _iter_text(fh, self.path, raw_header):
+            if raw is not None:
+                yield raw, raw_header.sets
+        self._clusters = _build_clusters(raw_header.clusters, raw_header.sets, self.path)
+
+    def _iter_json(
+        self, fh: IO[str], raw_header: _RawHeader
+    ) -> Iterator[tuple[_RawSpectrum, Mapping[str, Mapping[str, list[_RawAttr]]]]]:
+        members: dict[str, Any] = {}
+        try:
+            for key, value in _JsonStream(fh).members():
+                if key != "spectra":
+                    members[key] = value
+                    continue
+                if not isinstance(value, Iterator):
+                    raise SpxtacularError(f"{self.path}: 'spectra' must be a list")
+                for index, item in enumerate(value):
+                    yield _json_spectrum(item, index, self.path), raw_header.sets
+        except _BadJson:
+            raise _invalid_json(self.path) from None
+        clusters = _json_clusters(members.get("clusters", []), self.path)
+        self._clusters = _build_clusters(clusters, raw_header.sets, self.path)
 
 
 def read_mzspeclib(path: str | Path) -> SpectralLibrary:
-    """Read an mzSpecLib library in text or JSON form.
+    """Read a whole mzSpecLib library in text or JSON form.
 
     The format is detected from the content (a JSON document starts with ``{``),
-    and gzip by its magic bytes.
+    and gzip by its magic bytes. To read one entry at a time without holding
+    the library in memory, use :class:`MzSpecLibReader`.
 
     Parameters
     ----------
@@ -1265,18 +1620,9 @@ def read_mzspeclib(path: str | Path) -> SpectralLibrary:
         If the file is not a valid mzSpecLib 1.x library, a peak annotation is
         not valid mzPAF, or a ProForma string does not parse.
     """
-    source = Path(path)
-    with open(source, "rb") as fh:
-        data = fh.read()
-    if data[:2] == b"\x1f\x8b":
-        data = gzip.decompress(data)
-    try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise SpxtacularError(f"{source}: not UTF-8 text: {exc}") from exc
-    if text.lstrip().startswith("{"):
-        return _read_json(text, source)
-    return _read_text(text.splitlines(), source)
+    reader = MzSpecLibReader(path)
+    entries = list(reader)
+    return SpectralLibrary(entries=entries, attributes=reader.attributes, clusters=reader.clusters)
 
 
 # ---------------------------------------------------------------------------

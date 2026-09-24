@@ -20,6 +20,39 @@ write_mzspeclib(library, "copy.mzspeclib.json")         # JSON because of the su
 `write_mzspeclib` writes JSON when the file name ends in `.json` (before any `.gz`) and text
 otherwise; pass `format="text"` or `format="json"` to choose.
 
+## Streaming large libraries
+
+`read_mzspeclib` holds the whole library in memory. `MzSpecLibReader` yields one
+`LibraryEntry` at a time instead, so memory stays flat however many spectra the file holds.
+It gives the same entries and raises the same errors, at the spectrum where they occur.
+To catch duplicate keys it remembers the keys seen as runs, so sequential keys (the usual
+case) cost nothing and scattered keys cost a few bytes each.
+
+```python
+from spxtacular import MzSpecLibReader
+
+with MzSpecLibReader("big.mzspeclib.txt.gz") as reader:
+    print(reader.format, reader.attributes)    # header only, no spectrum is read
+    for entry in reader:
+        if entry.score is not None and entry.score > 0.99:
+            ...
+```
+
+| | |
+|---|---|
+| `open()` / `with` | Reads the header: library attributes and attribute sets. `FileNotFoundError` if the file is missing |
+| `attributes` | Library-level attributes (without the format version), available before iterating |
+| `format` | `"text"` or `"json"`, detected from the content |
+| iteration | `LibraryEntry` objects in file order. Each iteration opens its own handle, so the reader can be iterated again |
+| `clusters` | Complete after a full iteration, because clusters may follow the spectra; reading it earlier runs one |
+| `close()` | Closes the handle of any unfinished iteration. Breaking out of a `for` loop closes it too |
+
+Both forms stream, gzipped or not. Text is parsed line by line. JSON is decoded one spectrum
+at a time with the standard-library `json` decoder, with no extra dependency. A JSON file whose
+attribute sets come after its `"spectra"` array (files written with sorted keys, like the
+upstream examples) is scanned once first to read them, still in constant memory, so it costs
+about two passes.
+
 ## The model
 
 | Class | Holds |
@@ -116,7 +149,7 @@ field it writes.
   file and line.
 - Text values carry no type: a value that looks like a number is read as one, except for
   terms whose values are text by definition (names, versions, accessions, USIs, ProForma).
-- The whole file is read into memory.
+- `read_mzspeclib` reads the whole file into memory; use `MzSpecLibReader` to stream it.
 
 ## mzPAF in MSP and MGF
 
