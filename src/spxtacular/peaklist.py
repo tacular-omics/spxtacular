@@ -957,11 +957,10 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
             if title is not None:
                 fh.write(f"TITLE={title}\n")
 
-            # A spectrum without a scan number (mzML ids that carry none, such as
-            # Bruker frame= or SCIEX cycle= ids) is numbered by its 1-based position
-            # in the file; TITLE above keeps its native id.
-            scans = msn.scan_number if msn is not None and msn.scan_number is not None else index + 1
-            fh.write(f"SCANS={scans}\n")
+            # SCANS only for a real scan number: a position could collide with another
+            # spectrum's scan number. TITLE above keeps the native id.
+            if msn is not None and msn.scan_number is not None:
+                fh.write(f"SCANS={msn.scan_number}\n")
             if msn is not None and msn.rt is not None:
                 fh.write(f"RTINSECONDS={_fmt(msn.rt)}\n")
 

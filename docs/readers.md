@@ -715,8 +715,8 @@ The reader cannot infer an MSP time unit.
 |---|---|
 | Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
 | Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
-| Missing metadata is omitted | A plain `Spectrum` writes just its peaks (and a `SCANS` position). MS2's `S` line has no optional fields, so an absent precursor m/z becomes `0.0` |
-| Missing scan number | An absent `scan_number` (a plain `Spectrum`, or mzML ids such as Bruker `frame=…` that carry no unique one) is written as the 1-based position in the input: MGF `SCANS`, MS2 `S`. The native id still goes out as MGF `TITLE` and as an MS2 `I NativeID` line |
+| Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent precursor m/z becomes `0.0` |
+| Missing scan number | An absent `scan_number` (a plain `Spectrum`, or mzML ids such as Bruker `frame=…` that carry no unique one) leaves MGF `SCANS` out, so a position never collides with a real scan number. MS2's `S` line needs one, so there it is the 1-based position in the input. The native id still goes out as MGF `TITLE` and as an MS2 `I NativeID` line |
 | MGF `TITLE` / MSP `Name` | `native_id`, falling back to `scan=<scan_number>` |
 | MS2 `Z` mass | Derived from the precursor m/z and charge (singly protonated mass). It is regenerated on write and ignored on read |
 | `rt` in MS2 | Written as minutes (`I RTime`), so it returns to within floating-point noise rather than bit-exact. MGF's `RTINSECONDS` is exact |

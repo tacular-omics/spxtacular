@@ -156,10 +156,10 @@ def test_spectra_without_scan_number_use_position_and_keep_native_id(tmp_path):
 
     mgf = write_mgf(spectra, tmp_path / "out.mgf")
     text = mgf.read_text()
-    assert "SCANS=1\n" in text and "SCANS=2\n" in text
+    assert "SCANS=" not in text
     assert f"TITLE={native_ids[0]}\n" in text
     read = list(MgfReader(mgf))
-    assert [s.scan_number for s in read] == [1, 2]
+    assert [s.scan_number for s in read] == [None, None]
     assert [s.native_id for s in read] == native_ids
 
     ms2 = write_ms2(spectra, tmp_path / "out.ms2")
@@ -167,6 +167,18 @@ def test_spectra_without_scan_number_use_position_and_keep_native_id(tmp_path):
     read = list(Ms2Reader(ms2))
     assert [s.scan_number for s in read] == [1, 2]
     assert [s.native_id for s in read] == native_ids
+
+
+def test_mgf_scans_only_for_real_scan_numbers(tmp_path):
+    """A position must not stand in for SCANS: it can collide with a real scan number."""
+    spectra = [
+        make_spectrum(scan=2),
+        make_spectrum(scan=None, native_id="merged=1015 frame=1016"),
+        Spectrum(mz=np.array([100.0]), intensity=np.array([1.0])),
+    ]
+    mgf = write_mgf(spectra, tmp_path / "mixed.mgf")
+    assert mgf.read_text().count("SCANS=") == 1
+    assert [s.scan_number for s in MgfReader(mgf)] == [2, None, None]
 
 
 def test_ms2_round_trip_optional_info_values(tmp_path):
@@ -220,8 +232,7 @@ def test_plain_spectrum_writes_without_metadata(tmp_path):
     mgf = write_mgf([spec], tmp_path / "plain.mgf")
     restored = next(iter(MgfReader(mgf)))
     assert restored.precursors is None
-    # SCANS falls back to the 1-based position, as in MS2 files.
-    assert restored.scan_number == 1
+    assert restored.scan_number is None
     np.testing.assert_array_equal(restored.mz, spec.mz)
 
     ms2 = write_ms2([spec], tmp_path / "plain.ms2")

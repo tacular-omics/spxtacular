@@ -18,15 +18,15 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `decon.deconvolve_spectrum(is_ppm=)` -> `tolerance_type=`; `has_peak`/`get_peak`/`get_peaks(im_tol=)` -> `im_tolerance=`; `get_peak(collision=)` -> `peak_selection=`.
 - Removed the deprecated `show_charges=` of `Spectrum.plot`, `Spectrum.plot_table` and `plot_spectrum`; use `color=`.
 - Invalid input raises `SpxtacularError`, a `ValueError` subclass, so existing `except ValueError` still works. So do enum coercion, bad JSON payloads (was `TypeError`), corrupt `.npz` files and malformed mzML (was mzmlpy's `MzmlParseError`). Reader lookups before `open()` raise it instead of `RuntimeError`.
-- `im_type` and `polarity` are validated on construction; `activation_type` and `analyzer` turn member names (any case) and PSI-MS accessions into enum members and keep other vendor strings. Enum coercion is case-insensitive.
+- `im_type` and `polarity` are validated on construction; `activation_type` and `analyzer` turn member names (any case) and PSI-MS accessions (`"MS:1000484"` -> `Analyzer.ORBITRAP`) into enum members and keep other vendor strings. Enum coercion is case-insensitive.
 - `normalize` on a normalized spectrum rescales it; `denoise`, `centroid`, `deconvolute` and `decharge` on a spectrum already in that state return it unchanged without a warning.
 - Spectrum JSON is schema version 2 (`precursor_mz`, `im_type`, `isolation_ook0_range`; `schemas/spectrum-v2.schema.json`). Version-1 files still load.
 - `MzmlReader(extract_dir=)`, `Reader(mzml_extract_dir=)` and `gzip_mode="extract"` are removed with mzmlpy 0.10's disk extraction.
-- mzML `scan_number` comes from the native id when it identifies the spectrum on its own (`scan=`, Thermo, `index=`, `spectrum=`), else `None`, instead of the 0-based spectrum index. `write_mgf` and `write_ms2` number such spectra by position and keep the native id (MGF `TITLE`, MS2 `I NativeID`).
+- mzML `scan_number` comes from the native id when it identifies the spectrum on its own (`scan=`, Thermo, `index=`, `spectrum=`), else `None`, instead of the 0-based spectrum index. `write_ms2` numbers such spectra by position and keeps the native id as `I NativeID`; `write_mgf` still writes `SCANS` only for a set scan number, with the native id as `TITLE`.
 - mzML ion mobility type comes from the declared unit: Vs/cm² is `ook0`, milliseconds `drift_time_ms`, seconds `drift_time_ms` scaled by 1000, no unit the generic `im`.
 - tdfpy 5 changes some Bruker peaks: MS1 spectra can differ by one or two peaks (about 40 ppm of summed intensity) and some DDA MS2 peaks that 0.8 merged come out separately.
 - `AcquisitionType` is tdfpy's enum. `da_to_ppm`/`ppm_to_da` are tacular's (relative to `abs(mz)`).
-- `JSON_SCHEMA_VERSION` is now `serialization.SPECTRUM_SCHEMA_VERSION`; `PeakListLookup` and `ThermoScanLookup` are imported from the package root, not `spxtacular.reader`.
+- `core.JSON_SCHEMA_VERSION` is gone; the spectrum schema version is `serialization.SPECTRUM_SCHEMA_VERSION` (2); `PeakListLookup` and `ThermoScanLookup` are imported from the package root, not `spxtacular.reader`.
 - `MatchedFragment` is frozen, slotted and keyword-only, with an `annotation` property that returns the match as a paftacular `PafAnnotation`.
 - Fragment labels come straight from paftacular 2's mzPAF writer, including negative charges.
 

@@ -135,6 +135,15 @@ def test_every_analyzer_member_has_accession() -> None:
     assert set(_ANALYZER_ACCESSIONS) == set(Analyzer)
 
 
+def test_analyzer_accessions_map_to_members() -> None:
+    for member, accession in _ANALYZER_ACCESSIONS.items():
+        assert Analyzer.from_accession(accession) is member
+        assert _spec(analyzer=accession).analyzer is member
+    assert _spec(analyzer="MS:1000484").analyzer is Analyzer.ORBITRAP
+    # an accession without a member stays as given
+    assert Analyzer.from_accession("MS:9999999") == "MS:9999999"
+
+
 def test_every_im_type_member_resolves() -> None:
     for member in IMType:
         assert member in _IM_TYPE_ACCESSIONS, f"{member!r} missing from _IM_TYPE_ACCESSIONS"

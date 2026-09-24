@@ -2352,6 +2352,8 @@ def _open_enum[E: _SpxEnum](value: object, enum_cls: type[E], field: str) -> E |
         pass
     if enum_cls is ActivationType:
         return ActivationType.from_accession(value)
+    if enum_cls is Analyzer:
+        return Analyzer.from_accession(value)
     return value
 
 

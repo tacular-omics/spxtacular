@@ -120,8 +120,8 @@ class Analyzer(_SpxEnum):
     Members map to the PSI-MS "mass analyzer type" (MS:1000443) branch via
     :data:`spxtacular.spectrl_bridge._ANALYZER_ACCESSIONS`. Open vocabulary:
     :class:`~spxtacular.core.MsnSpectrum.analyzer` is typed ``Analyzer | str``.
-    A member name in any case (``"TOF"``) becomes the member; other vendor
-    shorthands (``"FTMS"``) are kept as they are.
+    A member name in any case (``"TOF"``) or a PSI-MS accession (``"MS:1000484"``)
+    becomes the member; other vendor shorthands (``"FTMS"``) are kept as they are.
     """
 
     ORBITRAP = "orbitrap"
@@ -133,6 +133,16 @@ class Analyzer(_SpxEnum):
     QUADRUPOLE_ION_TRAP = "quadrupole_ion_trap"
     MAGNETIC_SECTOR = "magnetic_sector"
     ELECTROSTATIC_ENERGY_ANALYZER = "electrostatic_energy_analyzer"
+
+    @classmethod
+    def from_accession(cls, accession: str) -> Analyzer | str:
+        """Map a PSI-MS mass-analyzer accession (``"MS:1000484"``) to its member.
+
+        Unrecognised accessions are returned unchanged — the field is an open vocabulary.
+        """
+        from .spectrl_bridge import _ANALYZER_NAMES
+
+        return _ANALYZER_NAMES.get(str(accession), str(accession))
 
 
 ToleranceLike = ToleranceType | Literal["da", "ppm"]

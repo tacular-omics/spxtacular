@@ -138,11 +138,10 @@ def test_mgf_write_read_round_trip(batch: list[MsnSpectrum]) -> None:
         with MgfReader(path) as reader:
             restored = list(reader)
     assert len(restored) == len(batch)
-    for position, (got, want) in enumerate(zip(restored, batch, strict=True), start=1):
+    for got, want in zip(restored, batch, strict=True):
         np.testing.assert_array_equal(got.mz, want.mz)
         np.testing.assert_array_equal(got.intensity, want.intensity)
-        # a missing scan number is written as the 1-based position
-        assert got.scan_number == (want.scan_number if want.scan_number is not None else position)
+        assert got.scan_number == want.scan_number
         assert got.rt == want.rt
         if want.precursors:
             assert got.precursors is not None

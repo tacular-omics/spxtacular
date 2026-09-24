@@ -146,7 +146,7 @@ it is not a deprecated alias.
 
 | 0.8 | 0.9 |
 |---|---|
-| `spxtacular.core.JSON_SCHEMA_VERSION`, `spxtacular.serialization.JSON_SCHEMA_VERSION` (`1`) | `spxtacular.serialization.SPECTRUM_SCHEMA_VERSION` (now `2`) |
+| `spxtacular.core.JSON_SCHEMA_VERSION` (`1`) | `spxtacular.serialization.SPECTRUM_SCHEMA_VERSION` (now `2`) for spectra. `spxtacular.serialization.JSON_SCHEMA_VERSION` still exists and stays `1`: it is the chromatogram schema version |
 | `spxtacular.reader.PeakListLookup`, `spxtacular.reader.ThermoScanLookup` | import from the package root: `from spxtacular import PeakListLookup, ThermoScanLookup` |
 
 ## Readers
@@ -158,7 +158,7 @@ it is not a deprecated alias.
 | `gzip_mode="extract"` | removed; use `"auto"` (default), `"indexed"` or `"stream"` |
 | `access_strategy == "extracted"` | no longer returned; `"memory"` or `"stream"` are new values |
 | mzML `scan_number` = 0-based spectrum index | the number in the native id when it identifies the spectrum on its own: `scan=19` or Thermo `controllerType=0 controllerNumber=1 scan=19` -> `19`, `index=5` / `spectrum=5` -> `5`. Otherwise `None` (Bruker `frame=… scan=…`, Waters `function=… scan=…`, SCIEX `cycle=…`), because the `scan` value repeats or is missing |
-| `write_mgf` wrote no `SCANS` without a scan number | `SCANS` is the 1-based position in the input, and `TITLE` keeps the native id. `write_ms2` also writes the native id as `I NativeID` when it is not `scan=<n>`, and `Ms2Reader` reads it back |
+| `write_ms2` wrote only `S <scan>` | also writes the native id as `I NativeID` when it is not `scan=<n>` (for example a Bruker mzML id with no scan number, whose `S` line uses the 1-based position), and `Ms2Reader` reads it back. `write_mgf` is unchanged: `SCANS` only for a set `scan_number`, `TITLE` is the native id |
 | malformed mzML raised mzmlpy's `MzmlParseError` | raises `SpxtacularError`, with the mzmlpy error as `__cause__` (a missing spectrum is still `KeyError`) |
 | `AcquisitionType.UNKNOWN == "UNKNOWN"` (values `"DDA"`, ...) | `AcquisitionType` is tdfpy's enum; compare members, not strings |
 | lookup before `open()` raises `RuntimeError` | raises `SpxtacularError` |
@@ -190,7 +190,7 @@ Code that wrapped these calls in `pytest.warns` or `warnings.catch_warnings` can
 | `da_to_ppm(delta, mz)` divides by `mz` | divides by `abs(mz)`, so a negative reference keeps the error's sign |
 | enum coercion (`ToleranceType("foo")`) raises plain `ValueError` | raises `SpxtacularError`, listing the accepted values. Coercion is case-insensitive (`"PPM"`, `"Positive"`) |
 | `im_type`, `polarity` accepted any value | coerced to `IMType` / `Polarity` on construction (`Precursor`, `MsnSpectrum`, JSON); anything else raises `SpxtacularError` |
-| `activation_type`, `analyzer` kept any value as given | a member name in any case or a PSI-MS accession becomes the member (`"MS:1002481"` -> `ActivationType.HCD`, `"TOF"` -> `Analyzer.TOF`); other non-blank strings are kept; non-strings and blanks raise |
+| `activation_type`, `analyzer` kept any value as given | a member name in any case or a PSI-MS accession becomes the member (`"MS:1002481"` -> `ActivationType.HCD`, `"TOF"` or `"MS:1000484"` -> `Analyzer.TOF` / `Analyzer.ORBITRAP`); other non-blank strings are kept; non-strings and blanks raise |
 | a bad JSON payload (wrong types) raised `TypeError` | raises `SpxtacularError` |
 | a corrupt or non-spectrum `.npz` raised numpy/zipfile/JSON errors | raises `SpxtacularError`, chained to the original |
 

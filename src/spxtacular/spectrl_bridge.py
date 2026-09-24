@@ -170,6 +170,7 @@ _ANALYZER_ACCESSIONS: dict[str, str] = {
     Analyzer.MAGNETIC_SECTOR: "MS:1000080",
     Analyzer.ELECTROSTATIC_ENERGY_ANALYZER: "MS:1000254",
 }
+_ANALYZER_NAMES: dict[str, Analyzer] = {v: Analyzer(k) for k, v in _ANALYZER_ACCESSIONS.items()}
 
 # Ion-mobility array accessions recognized by spectrl's generated CV registry.
 # Keyed by :class:`spxtacular.enums.IMType` members where one exists; the extra
