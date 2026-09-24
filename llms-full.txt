@@ -50,7 +50,7 @@ pip install "spxtacular[all]"           # everything above
 2. **Parallel arrays.** A spectrum holds `mz`, `intensity` and optional `charge`, `im`
    (ion mobility), `iso_score` arrays. They are always the same length and in the same order.
 3. **m/z is not assumed sorted.** timsTOF frames come ordered by mobility scan. Call
-   `.sort("mz")` if you need sorted m/z.
+   `.sort(by="mz")` if you need sorted m/z.
 4. **Charge values mean something:**
    - `charge > 0`: charge assigned by deconvolution (or read from the file).
    - `charge == -1`: singleton, no isotope cluster found (unassigned).
@@ -63,6 +63,9 @@ pip install "spxtacular[all]"           # everything above
    deconvolution defaults to `50 ppm`; XIC extraction defaults to `20 ppm`.
 7. **Enum-like arguments** accept the enum member or its string value. Invalid values raise
    `ValueError`; nothing silently falls back.
+8. **Keyword-only options.** Every parameter with a default is keyword-only:
+   `spec.normalize(method="tic")`, not `spec.normalize("tic")`. The one-line signatures in
+   this guide leave out the `*`.
 
 ---------------------------------------------------------------------------------------------
 
@@ -215,7 +218,7 @@ Serialization and sharing:
 - `save(path)` / `Spectrum.load(path) -> Self` — `.npz` persistence.
 - `to_spectrl_token(*, lossless=False, max_len=None) -> str` /
   `Spectrum.from_spectrl_token(token) -> Spectrum | MsnSpectrum` — needs `[spectrl]`.
-- `to_spectrl_url(base=None, *, mode="fragment", param="d", lossless=False, max_len=None) -> str` /
+- `to_spectrl_url(*, base=None, mode="fragment", param="d", lossless=False, max_len=None) -> str` /
   `Spectrum.from_spectrl_url(url) -> Spectrum | MsnSpectrum` — needs `[spectrl]`.
 - `Spectrum.from_usi(usi, backend="aggregator", timeout=30) -> Spectrum | MsnSpectrum` —
   fetch a public spectrum by Universal Spectrum Identifier (network).
@@ -713,7 +716,7 @@ spectrl tokens (`[spectrl]`, spectrl 3.x):
 ```python
 to_spectrl_token(spec, *, lossless=False, max_len=None) -> str        # "spectrl.v3...."
 from_spectrl_token(token) -> Spectrum | MsnSpectrum
-to_spectrl_url(spec, base=None, *, mode="fragment", param="d", lossless=False, max_len=None) -> str
+to_spectrl_url(spec, *, base=None, mode="fragment", param="d", lossless=False, max_len=None) -> str
 from_spectrl_url(url) -> Spectrum | MsnSpectrum
 to_inline_spectrum(spec) -> spectrl.InlineSpectrum
 ```
@@ -779,7 +782,7 @@ best = max(library, key=lambda ref: spx.cosine(query, ref, tolerance=10, toleran
 ### 11.5 Share a spectrum as a link
 
 ```python
-url = spec.to_spectrl_url("https://example.org/viewer/")   # https://example.org/viewer/#spectrl.v3....
+url = spec.to_spectrl_url(base="https://example.org/viewer/")   # https://example.org/viewer/#spectrl.v3....
 same = spx.Spectrum.from_spectrl_url(url)
 ```
 
