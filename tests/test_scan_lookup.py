@@ -105,6 +105,23 @@ def test_peak_list_index_follows_file_changes(mgf_path: Path) -> None:
     assert reader.get_by_scan(42).native_id == "run.20.20.3"
 
 
+def test_peak_list_index_checks_the_record_it_seeks_to(mgf_path: Path) -> None:
+    """A rewrite that keeps size and mtime leaves a stale index; the key check after the seek catches it."""
+    reader = MgfReader(mgf_path)
+    assert reader.get_by_scan(20).native_id == "run.20.20.3"
+    stat = mgf_path.stat()
+    swapped = MGF.replace("SCANS=19", "SCANS=XX").replace("SCANS=21", "SCANS=19").replace("SCANS=XX", "SCANS=21")
+    swapped = (
+        swapped.replace("run.19.19.2", "run.XX").replace("run.21.21.2", "run.19.19.2").replace("run.XX", "run.21.21.2")
+    )
+    write_text(mgf_path, swapped)
+    os.utime(mgf_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert mgf_path.stat().st_size == stat.st_size
+    assert reader.get_by_scan(21).native_id == "run.21.21.2"
+    assert reader.get_by_scan(21).mz.tolist() == [100.0]
+    assert reader.get_by_native_id("run.19.19.2").mz.tolist() == [300.0]
+
+
 def test_peak_list_lookup_in_gzip_and_crlf(tmp_path: Path) -> None:
     path = tmp_path / "run.mgf.gz"
     with gzip.open(path, "wt", encoding="utf-8", newline="\r\n") as handle:
@@ -187,6 +204,20 @@ def test_sage_scannr_as_mgf_title(mgf_path: Path) -> None:
     assert reader.get_by_sage_scannr("21").native_id == "run.21.21.2"  # .pin: bare scan number
     with pytest.raises(KeyError):
         reader.get_by_sage_scannr("not-a-title")
+
+
+def test_sage_scannr_ambiguous_between_title_and_scan(tmp_path: Path) -> None:
+    """A bare integer that is one spectrum's TITLE and another's SCANS raises instead of guessing."""
+    text = MGF.replace("TITLE=run.19.19.2", "TITLE=20")
+    reader = MgfReader(write_text(tmp_path / "amb.mgf", text))
+    with pytest.raises(SpxtacularError, match="ambiguous"):
+        reader.get_by_sage_scannr("20")
+    assert reader.get_by_sage_scannr("21").native_id == "run.21.21.2"
+    same = MgfReader(write_text(tmp_path / "same.mgf", MGF.replace("TITLE=run.20.20.3", "TITLE=20")))
+    assert same.get_by_sage_scannr(20).mz.tolist() == [200.0, 201.0]
+    # A title that is a bare number in a file without SCANS still resolves.
+    noscans = "\n".join(line for line in text.splitlines() if "SCANS" not in line)
+    assert MgfReader(write_text(tmp_path / "noscans.mgf", noscans)).get_by_sage_scannr(20).mz.tolist() == [100.0]
 
 
 @pytest.mark.parametrize("bad", [1.5, None, True])

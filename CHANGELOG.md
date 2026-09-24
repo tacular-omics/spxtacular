@@ -35,7 +35,9 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 
 - `SpxtacularError`, the `SpectrumLookup` protocol and the reader lookup types (`DReaderMs1Lookup`, `DReaderMs2Lookup`, `MzmlSpectraLookup`, `ThermoScanLookup`, `PeakListLookup`) are exported from the package root.
 - `DReader` MS1 spectra carry `total_ion_current`; precursors from `.d` and mzML files carry `im_type`.
-- Every reader and `Reader` fetch one spectrum with `get_by_scan(n, ms_level=)`, `get_by_native_id(id)` and `get_by_sage_scannr(scannr)`. A missing key raises `KeyError`; a key that names no single spectrum (no scan numbers in the file, duplicates, an ambiguous Bruker number) raises `SpxtacularError`. Peak-list lookups index the file once, then seek.
+- Every reader and `Reader` fetch one spectrum with `get_by_scan(n, ms_level=)`, `get_by_native_id(id)` and `get_by_sage_scannr(scannr)`. A missing key raises `KeyError`; a key that names no single spectrum (no scan numbers in the file, duplicates, an ambiguous Bruker number, a Sage `scannr` that is one spectrum's native id and another's scan number) raises `SpxtacularError`. Peak-list lookups index the file once, then seek.
+- `read_mzspeclib` and `write_mzspeclib` read and write HUPO-PSI mzSpecLib 1.0 spectral libraries, text and JSON. Entries are `LibraryEntry` objects: an `MsnSpectrum`, analytes with peptacular ProForma peptidoforms, scores, mzPAF peak annotations as paftacular objects, and the remaining CV attributes. See `docs/mzspeclib.md`.
+- `write_msp` and `write_mgf` take `annotations=` to write mzPAF peak annotations (strings, `PafAnnotation`s or `match_fragments` output) as a quoted peak column. Default output is unchanged, and `MgfReader` now skips a quoted annotation column.
 - `get_by_sage_scannr` reads Sage's `scannr` for mzML, MGF, Thermo and Bruker DDA `.d` (precursor id = scannr + 1 for upstream Sage; `precursor_offset=0` for Sage on timsrust 0.6 or later).
 
 ### Performance

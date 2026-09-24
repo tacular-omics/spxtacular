@@ -162,6 +162,7 @@ it is not a deprecated alias.
 | malformed mzML raised mzmlpy's `MzmlParseError` | raises `SpxtacularError`, with the mzmlpy error as `__cause__` (a missing spectrum is still `KeyError`) |
 | `AcquisitionType.UNKNOWN == "UNKNOWN"` (values `"DDA"`, ...) | `AcquisitionType` is tdfpy's enum; compare members, not strings |
 | lookup before `open()` raises `RuntimeError` | raises `SpxtacularError` |
+| `DReader` spectra had `native_id=None` | MS1 `native_id="frame=F"`, DDA MS2 `native_id="precursor=P"` (DIA `F@wI`, PRM `F@tT` as before). `write_mgf` of Bruker spectra now writes a `TITLE` line, and `get_by_native_id` accepts these ids |
 | `CentroidConfig` applied to DDA MS2 | DDA MS2 spectra use tdfpy's per-precursor merged peaks; `CentroidConfig` affects MS1, DIA and PRM |
 
 New in 0.9: `DReader` MS1 spectra carry `total_ion_current`, and the reader lookup types

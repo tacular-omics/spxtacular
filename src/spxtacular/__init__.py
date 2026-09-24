@@ -44,6 +44,15 @@ from .isotopes import (
 )
 from .matching import MatchedFragment, match_fragments
 from .mzml import write_indexed_mzml_gzip
+from .mzspeclib import (
+    Analyte,
+    CvParam,
+    Interpretation,
+    LibraryEntry,
+    SpectralLibrary,
+    read_mzspeclib,
+    write_mzspeclib,
+)
 from .peaklist import MgfReader, Ms2Reader, MspReader, PeakListLookup, write_mgf, write_ms2, write_msp
 from .plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from .reader import (
@@ -125,6 +134,13 @@ __all__ = [
     "write_mgf",
     "write_ms2",
     "write_msp",
+    "read_mzspeclib",
+    "write_mzspeclib",
+    "SpectralLibrary",
+    "LibraryEntry",
+    "Analyte",
+    "Interpretation",
+    "CvParam",
     "write_indexed_mzml_gzip",
     "Reader",
     "SpectrumLookup",

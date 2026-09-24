@@ -32,18 +32,19 @@ import gzip
 import os
 import re
 from collections import deque
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import TracebackType
-from typing import IO, BinaryIO, Self
+from typing import IO, Any, BinaryIO, Self
 
 import numpy as np
 from tacular.constants import PROTON_MASS
 
+from ._peak_annotations import peak_list_annotation_texts, per_spectrum
 from ._scan_lookup import IdIndex, build_id_index, by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
@@ -246,11 +247,18 @@ def _iter_mgf(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
             # text between blocks. Deliberately ignored rather than rejected.
             continue
 
-        if "=" in line:
+        # A quoted tail is a peak annotation (``100.0 25.0 "b2/0.1"``), written by
+        # write_mgf(annotations=...) and other tools. It is skipped, not parsed. It
+        # can hold "=" (a SMILES in ``s{CC(=O)O}``), so only the text before the
+        # quote decides header vs peak; a header keeps its whole value (a quoted
+        # TITLE stays intact).
+        quote = line.find('"')
+        head = line if quote < 0 else line[:quote]
+        if "=" in head:
             key, _, value = line.partition("=")
             block.headers[key.strip().upper()] = (value.strip(), line_no)
             continue
-
+        line = head.rstrip()
         parts = _PEAK_SPLIT_RE.split(line)
         if len(parts) < 2:
             raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
@@ -856,6 +864,19 @@ class _PeakListReader:
                 return spec
         raise SpxtacularError(f"{self.path}:{record.line}: no record here; the file changed after it was indexed")
 
+    def _read_checked(self, record: _Record, matches: Callable[[MsnSpectrum], bool]) -> MsnSpectrum | None:
+        """Parse ``record`` and return it if it is still the spectrum the index says it is.
+
+        The index is stamped with the file's size and mtime; an edit that keeps
+        both (same-size rewrite within the mtime granularity) would otherwise
+        return the wrong spectrum. ``None`` means stale: the caller rebuilds.
+        """
+        try:
+            spec = self._read_record(record)
+        except SpxtacularError:
+            return None
+        return spec if matches(spec) else None
+
     def get_by_native_id(self, native_id: str) -> MsnSpectrum:
         """Fetch a spectrum by its ``native_id`` (MGF ``TITLE``, MS2 ``I NativeID`` or ``scan=N``, MSP ``Name``).
 
@@ -873,13 +894,18 @@ class _PeakListReader:
         """
         if not isinstance(native_id, str):
             raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
-        index = self._id_index()
-        record = index.ids.get(native_id)
-        if record is None:
-            if native_id in index.duplicate_ids:
-                raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
-            raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
-        return self._read_record(record)
+        for _ in range(2):
+            index = self._id_index()
+            record = index.ids.get(native_id)
+            if record is None:
+                if native_id in index.duplicate_ids:
+                    raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
+                raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
+            spec = self._read_checked(record, lambda s: s.native_id == native_id)
+            if spec is not None:
+                return spec
+            self._index = None
+        raise SpxtacularError(f"{self.path}: native id {native_id!r} moved while it was being read")
 
     def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
         """Fetch a spectrum by its scan number (MGF ``SCANS``, MS2 ``S`` line).
@@ -897,36 +923,42 @@ class _PeakListReader:
         """
         scan_number = check_scan_number(scan_number)
         check_ms_level(ms_level)
-        index = self._id_index()
-        record = index.scans.get(scan_number)
-        if record is None:
-            if scan_number in index.duplicate_scans:
-                raise SpxtacularError(
-                    f"{self.path}: scan number {scan_number} is shared by several spectra; "
-                    "use get_by_native_id() instead"
-                )
-            if not index.scans and not index.duplicate_scans:
-                raise SpxtacularError(
-                    f"{self.path}: no spectrum in this file has a scan number; use get_by_native_id() instead"
-                )
-            raise KeyError(f"no spectrum with scan number {scan_number} in {self.path}")
-        if ms_level is not None and ms_level != 2:
-            raise KeyError(f"scan {scan_number} is MS2, not MS{ms_level}")
-        return self._read_record(record)
+        for _ in range(2):
+            index = self._id_index()
+            record = index.scans.get(scan_number)
+            if record is None:
+                if scan_number in index.duplicate_scans:
+                    raise SpxtacularError(
+                        f"{self.path}: scan number {scan_number} is shared by several spectra; "
+                        "use get_by_native_id() instead"
+                    )
+                if not index.scans and not index.duplicate_scans:
+                    raise SpxtacularError(
+                        f"{self.path}: no spectrum in this file has a scan number; use get_by_native_id() instead"
+                    )
+                raise KeyError(f"no spectrum with scan number {scan_number} in {self.path}")
+            if ms_level is not None and ms_level != 2:
+                raise KeyError(f"scan {scan_number} is MS2, not MS{ms_level}")
+            spec = self._read_checked(record, lambda s: s.scan_number == scan_number)
+            if spec is not None:
+                return spec
+            self._index = None
+        raise SpxtacularError(f"{self.path}: scan {scan_number} moved while it was being read")
 
     def get_by_sage_scannr(self, scannr: str | int) -> MsnSpectrum:
         """Fetch the spectrum a Sage ``scannr`` refers to.
 
         ``results.sage.tsv`` holds the MGF ``TITLE`` verbatim; Sage's ``.pin``
         output holds only the number from ``scan=N``. The value is tried as a
-        native id first, then, if it is a bare integer, as a scan number.
+        native id and, if it is a bare integer, as a scan number too.
 
         Raises
         ------
         KeyError
             If nothing matches.
         SpxtacularError
-            As :meth:`get_by_native_id` and :meth:`get_by_scan`.
+            If a bare integer is one spectrum's native id and another's scan
+            number, or as :meth:`get_by_native_id` and :meth:`get_by_scan`.
         """
         return by_sage_scannr(self, scannr)
 
@@ -947,7 +979,7 @@ class MgfReader(_PeakListReader):
     Parsing is deliberately lenient: unknown ``KEY=VALUE`` headers, comment lines
     (``#;!/``), blank lines, and text outside ``BEGIN IONS``/``END IONS`` are all
     skipped. Structural damage — a stray ``END IONS``, a nested ``BEGIN IONS``, an
-    unterminated block, an unparsable number — raises ``ValueError`` naming the
+    unterminated block, an unparsable number — raises ``SpxtacularError`` naming the
     file and line number.
 
     ``PEPMASS``, ``CHARGE``, ``TITLE``, ``SCANS``, ``RTINSECONDS`` and the
@@ -968,7 +1000,7 @@ class Ms2Reader(_PeakListReader):
     ``H`` header lines and ``D`` analysis lines are skipped; ``S`` opens a scan,
     ``Z`` gives a candidate precursor charge (repeatable — the first is used),
     ``I`` carries info values, and everything else is an ion line. Structural
-    damage raises ``ValueError`` naming the file and line number.
+    damage raises ``SpxtacularError`` naming the file and line number.
     """
 
     def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
@@ -991,7 +1023,7 @@ class MspReader(_PeakListReader):
 
     Records are count-driven — ``Num Peaks: N`` ends the header and exactly
     ``N`` peaks must follow, so a count mismatch, a record with no ``Num
-    Peaks`` line, or an unparsable number raises ``ValueError`` naming the
+    Peaks`` line, or an unparsable number raises ``SpxtacularError`` naming the
     file and line number.
     """
 
@@ -1055,7 +1087,38 @@ def _written_charge(spec: Spectrum) -> int | None:
     )
 
 
-def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+class _AnnotationFeed:
+    """Hands out the ``annotations=`` entry of each spectrum, in step with the spectra."""
+
+    def __init__(self, annotations: Iterable[Any] | None, fmt: str) -> None:
+        self._fmt = fmt
+        self._iter = None if annotations is None else iter(per_spectrum(annotations))
+
+    def texts(self, spec: Spectrum, index: int) -> list[str | None] | None:
+        if self._iter is None:
+            return None
+        try:
+            entry = next(self._iter)
+        except StopIteration:
+            raise SpxtacularError(f"{self._fmt}: annotations has fewer entries than there are spectra") from None
+        if entry is None:
+            return None
+        return peak_list_annotation_texts(entry, len(spec.mz), where=f"{self._fmt} spectrum {index}")
+
+    def finish(self) -> None:
+        if self._iter is not None and next(self._iter, _END) is not _END:
+            raise SpxtacularError(f"{self._fmt}: annotations has more entries than there are spectra")
+
+
+_END = object()
+
+
+def write_mgf(
+    spectra: Iterable[Spectrum] | Spectrum,
+    path: str | Path,
+    *,
+    annotations: Iterable[Any] | None = None,
+) -> Path:
     """Write spectra to a Mascot Generic Format file.
 
     Parameters
@@ -1066,6 +1129,13 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
         present; a plain ``Spectrum`` writes a block of peaks and nothing else.
     path:
         Output path. A ``.gz`` suffix gzips the output.
+    annotations:
+        Optional mzPAF peak annotations, one entry per spectrum (``None`` for a
+        spectrum without any). Each entry is either one item per peak (``None``,
+        a string, a ``PafAnnotation`` or a sequence of those) or a list of
+        :class:`~spxtacular.matching.MatchedFragment`. An annotated peak gets a
+        quoted last column, ``mz intensity "b2/0.1,y3^2"``. Strings are written
+        as given, not validated. Off by default: the output is unchanged.
 
     Returns
     -------
@@ -1074,18 +1144,21 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
     Raises
     ------
-    ValueError
-        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
+    SpxtacularError
+        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
+        or ``annotations`` does not line up with the spectra and their peaks.
 
     Notes
     -----
     ``mz`` and ``intensity`` are written at repr precision, so reading the file
-    back reproduces them exactly.
+    back reproduces them exactly. :class:`MgfReader` skips peak annotations.
     """
     out = Path(path)
+    feed = _AnnotationFeed(annotations, "MGF")
     with _open_text_write(out) as fh:
         for index, spec in enumerate(_as_spectra(spectra)):
             _check_writable(spec, index, "MGF")
+            texts = feed.texts(spec, index)
             msn = _meta(spec)
             fh.write("BEGIN IONS\n")
 
@@ -1120,9 +1193,12 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
                 if peak_charges is not None:
                     z = int(peak_charges[i])
                     line += f" {abs(z)}{'-' if z < 0 else '+'}"
+                if texts is not None and texts[i] is not None:
+                    line += f' "{texts[i]}"'
                 fh.write(line + "\n")
 
             fh.write("END IONS\n\n")
+        feed.finish()
     return out
 
 
@@ -1143,7 +1219,7 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
     Raises
     ------
-    ValueError
+    SpxtacularError
         If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
 
     Notes
@@ -1191,7 +1267,12 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     return out
 
 
-def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+def write_msp(
+    spectra: Iterable[Spectrum] | Spectrum,
+    path: str | Path,
+    *,
+    annotations: Iterable[Any] | None = None,
+) -> Path:
     """Write spectra to an MSP spectral-library file.
 
     Parameters
@@ -1202,6 +1283,11 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
         present; a plain ``Spectrum`` writes ``Num Peaks`` and the peaks alone.
     path:
         Output path. A ``.gz`` suffix gzips the output.
+    annotations:
+        Optional mzPAF peak annotations, one entry per spectrum (``None`` for a
+        spectrum without any), in the same forms as :func:`write_mgf`. An
+        annotated peak is written NIST-style, ``mz intensity "b2/0.1"``. Off by
+        default: the output is unchanged.
 
     Returns
     -------
@@ -1210,8 +1296,9 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
     Raises
     ------
-    ValueError
-        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
+    SpxtacularError
+        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
+        or ``annotations`` does not line up with the spectra and their peaks.
 
     Notes
     -----
@@ -1223,9 +1310,11 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     convention, so no conversion is applied in either direction.
     """
     out = Path(path)
+    feed = _AnnotationFeed(annotations, "MSP")
     with _open_text_write(out) as fh:
         for index, spec in enumerate(_as_spectra(spectra)):
             _check_writable(spec, index, "MSP")
+            texts = feed.texts(spec, index)
             msn = _meta(spec)
 
             name = msn.native_id if msn is not None else None
@@ -1248,8 +1337,12 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             fh.write(f"Num Peaks: {len(spec.mz)}\n")
             for i in range(len(spec.mz)):
-                fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
+                if texts is not None and texts[i] is not None:
+                    fh.write(f'{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])} "{texts[i]}"\n')
+                else:
+                    fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
             fh.write("\n")
+        feed.finish()
     return out
 
 
