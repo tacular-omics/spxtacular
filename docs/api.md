@@ -16,6 +16,8 @@ from spxtacular import (
     # Readers and peak-list writers
     Reader, DReader, MzmlReader, ThermoReader, CentroidConfig, AcquisitionType,
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
+    # Spectral libraries (mzSpecLib)
+    read_mzspeclib, write_mzspeclib, SpectralLibrary, LibraryEntry, Analyte, Interpretation, CvParam,
     write_indexed_mzml_gzip,
     # Matching and scoring
     match_fragments, score, cosine, modified_cosine, entropy_similarity,
@@ -503,9 +505,9 @@ Full documentation: [Readers — MGF / MS2 / MSP](readers.md#mgf-ms2-msp)
 Write spectra to a peak-list file, returning the path. A `.gz` suffix gzips the output.
 
 ```python
-write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
 write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
-write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
 ```
 
 | Behaviour | Detail |
@@ -514,8 +516,38 @@ write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
 | `SpectrumType.PROFILE` | Raises `ValueError`; peak lists are centroid data |
 | Polarity | MGF/MS2: carried by the sign of the written charge (`CHARGE=2-`, `Z -2`). MSP: explicit `Ion_mode: P`/`N` line |
 | Missing metadata | Omitted, except MS2's mandatory `S` fields (scan number → 1-based position, precursor m/z → `0.0`) |
+| `annotations=` (MGF, MSP) | Optional mzPAF, one entry per spectrum: one item per peak (`None`, string, `PafAnnotation`, or a list) or a list of `MatchedFragment`. Adds a quoted last column, `mz intensity "b2/0.1ppm,y3^2"` |
 
 Full documentation: [Readers — Writing](readers.md#writing)
+
+---
+
+### `read_mzspeclib` / `write_mzspeclib`
+
+Read and write HUPO-PSI mzSpecLib 1.0 spectral libraries, text or JSON, optionally gzipped.
+
+```python
+read_mzspeclib(path: str | Path) -> SpectralLibrary
+write_mzspeclib(entries: SpectralLibrary | Iterable[LibraryEntry] | LibraryEntry, path: str | Path,
+                *, format: Literal["text", "json"] | None = None) -> Path
+LibraryEntry(spectrum: MsnSpectrum, *, key=None, name=None, analytes=(), interpretations=(),
+             peak_annotations=None, peak_attributes=None, attributes=())
+LibraryEntry.from_spectrum(spectrum, peptidoform=None, *, charge=None, score=None, key=None, name=None,
+                           peak_annotations=None, attributes=()) -> LibraryEntry
+Analyte(*, id=1, peptidoform: ProFormaAnnotation | str | None = None, charge=None, attributes=())
+Interpretation(*, id=1, members=(), score=None, attributes=(), member_attributes={})
+CvParam(accession, name, value=None, value_accession=None, group=None)
+```
+
+| Behaviour | Detail |
+|---|---|
+| Format | Read: detected from content and gzip magic. Write: JSON for `*.json[.gz]`, else text |
+| Spectrum fields | Precursor m/z and charge, RT, ion mobility, CE, dissociation, polarity, MS level, scan number, TIC, injection time map to `MsnSpectrum`; other terms stay in `attributes` |
+| Analytes | `peptidoform` is a peptacular `ProFormaAnnotation` carrying the charge |
+| Peaks | `peak_annotations`: tuple of paftacular `PafAnnotation` per peak, or `None` |
+| Invalid input | `SpxtacularError` (bad structure, version other than 1.x, bad mzPAF or ProForma) |
+
+Full documentation: [Spectral libraries](mzspeclib.md)
 
 ---
 

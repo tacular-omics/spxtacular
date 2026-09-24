@@ -39,11 +39,12 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import TracebackType
-from typing import IO, BinaryIO, Self
+from typing import IO, Any, BinaryIO, Self
 
 import numpy as np
 from tacular.constants import PROTON_MASS
 
+from ._peak_annotations import peak_list_annotation_texts, per_spectrum
 from ._scan_lookup import IdIndex, build_id_index, by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .enums import Polarity
@@ -251,6 +252,11 @@ def _iter_mgf(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
             block.headers[key.strip().upper()] = (value.strip(), line_no)
             continue
 
+        # A quoted tail is a peak annotation (``100.0 25.0 "b2/0.1"``), written by
+        # write_mgf(annotations=...) and other tools. It is skipped, not parsed.
+        quote = line.find('"')
+        if quote >= 0:
+            line = line[:quote].rstrip()
         parts = _PEAK_SPLIT_RE.split(line)
         if len(parts) < 2:
             raise SpxtacularError(f"{path}:{line_no}: expected 'mz intensity' on an ion line, got {line!r}")
@@ -1055,7 +1061,38 @@ def _written_charge(spec: Spectrum) -> int | None:
     )
 
 
-def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+class _AnnotationFeed:
+    """Hands out the ``annotations=`` entry of each spectrum, in step with the spectra."""
+
+    def __init__(self, annotations: Iterable[Any] | None, fmt: str) -> None:
+        self._fmt = fmt
+        self._iter = None if annotations is None else iter(per_spectrum(annotations))
+
+    def texts(self, spec: Spectrum, index: int) -> list[str | None] | None:
+        if self._iter is None:
+            return None
+        try:
+            entry = next(self._iter)
+        except StopIteration:
+            raise SpxtacularError(f"{self._fmt}: annotations has fewer entries than there are spectra") from None
+        if entry is None:
+            return None
+        return peak_list_annotation_texts(entry, len(spec.mz), where=f"{self._fmt} spectrum {index}")
+
+    def finish(self) -> None:
+        if self._iter is not None and next(self._iter, _END) is not _END:
+            raise SpxtacularError(f"{self._fmt}: annotations has more entries than there are spectra")
+
+
+_END = object()
+
+
+def write_mgf(
+    spectra: Iterable[Spectrum] | Spectrum,
+    path: str | Path,
+    *,
+    annotations: Iterable[Any] | None = None,
+) -> Path:
     """Write spectra to a Mascot Generic Format file.
 
     Parameters
@@ -1066,6 +1103,13 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
         present; a plain ``Spectrum`` writes a block of peaks and nothing else.
     path:
         Output path. A ``.gz`` suffix gzips the output.
+    annotations:
+        Optional mzPAF peak annotations, one entry per spectrum (``None`` for a
+        spectrum without any). Each entry is either one item per peak (``None``,
+        a string, a ``PafAnnotation`` or a sequence of those) or a list of
+        :class:`~spxtacular.matching.MatchedFragment`. An annotated peak gets a
+        quoted last column, ``mz intensity "b2/0.1,y3^2"``. Strings are written
+        as given, not validated. Off by default: the output is unchanged.
 
     Returns
     -------
@@ -1075,17 +1119,20 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     Raises
     ------
     ValueError
-        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
+        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
+        or ``annotations`` does not line up with the spectra and their peaks.
 
     Notes
     -----
     ``mz`` and ``intensity`` are written at repr precision, so reading the file
-    back reproduces them exactly.
+    back reproduces them exactly. :class:`MgfReader` skips peak annotations.
     """
     out = Path(path)
+    feed = _AnnotationFeed(annotations, "MGF")
     with _open_text_write(out) as fh:
         for index, spec in enumerate(_as_spectra(spectra)):
             _check_writable(spec, index, "MGF")
+            texts = feed.texts(spec, index)
             msn = _meta(spec)
             fh.write("BEGIN IONS\n")
 
@@ -1120,9 +1167,12 @@ def write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
                 if peak_charges is not None:
                     z = int(peak_charges[i])
                     line += f" {abs(z)}{'-' if z < 0 else '+'}"
+                if texts is not None and texts[i] is not None:
+                    line += f' "{texts[i]}"'
                 fh.write(line + "\n")
 
             fh.write("END IONS\n\n")
+        feed.finish()
     return out
 
 
@@ -1191,7 +1241,12 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     return out
 
 
-def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+def write_msp(
+    spectra: Iterable[Spectrum] | Spectrum,
+    path: str | Path,
+    *,
+    annotations: Iterable[Any] | None = None,
+) -> Path:
     """Write spectra to an MSP spectral-library file.
 
     Parameters
@@ -1202,6 +1257,11 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
         present; a plain ``Spectrum`` writes ``Num Peaks`` and the peaks alone.
     path:
         Output path. A ``.gz`` suffix gzips the output.
+    annotations:
+        Optional mzPAF peak annotations, one entry per spectrum (``None`` for a
+        spectrum without any), in the same forms as :func:`write_mgf`. An
+        annotated peak is written NIST-style, ``mz intensity "b2/0.1"``. Off by
+        default: the output is unchanged.
 
     Returns
     -------
@@ -1211,7 +1271,8 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     Raises
     ------
     ValueError
-        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data.
+        If any spectrum is ``SpectrumType.PROFILE`` — peak lists are centroid data,
+        or ``annotations`` does not line up with the spectra and their peaks.
 
     Notes
     -----
@@ -1223,9 +1284,11 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     convention, so no conversion is applied in either direction.
     """
     out = Path(path)
+    feed = _AnnotationFeed(annotations, "MSP")
     with _open_text_write(out) as fh:
         for index, spec in enumerate(_as_spectra(spectra)):
             _check_writable(spec, index, "MSP")
+            texts = feed.texts(spec, index)
             msn = _meta(spec)
 
             name = msn.native_id if msn is not None else None
@@ -1248,8 +1311,12 @@ def write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             fh.write(f"Num Peaks: {len(spec.mz)}\n")
             for i in range(len(spec.mz)):
-                fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
+                if texts is not None and texts[i] is not None:
+                    fh.write(f'{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])} "{texts[i]}"\n')
+                else:
+                    fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
             fh.write("\n")
+        feed.finish()
     return out
 
 
