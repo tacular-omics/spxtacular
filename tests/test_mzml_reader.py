@@ -464,3 +464,25 @@ def test_a_file_without_deconvolution_processing_is_unaffected():
     """The stock fixture has no charge arrays; nothing may be promoted."""
     with MzmlReader(str(EXAMPLE_MZML)) as r:
         assert all(s.spectrum_type != SpectrumType.DECONVOLUTED for s in r.ms1)
+
+
+def test_precursor_without_peak_intensity_is_kept(tmp_path):
+    # MS:1000042 "peak intensity" is optional on a selectedIon. Dropping the whole
+    # precursor when it is absent lost the precursor m/z, charge and activation.
+    source = EXAMPLE_MZML.read_text(encoding="ISO-8859-1")
+    body = source[source.index("<mzML ") : source.index("</mzML>") + len("</mzML>")]
+    line = '<cvParam cvRef="MS" accession="MS:1000042" name="peak intensity" value="120053"/>'
+    assert body.count(line) == 1
+    path = tmp_path / "no_precursor_intensity.mzML"
+    path.write_text(body.replace(line, ""), encoding="utf-8")
+
+    with MzmlReader(path) as reader:
+        spectrum = next(iter(reader.ms2))
+
+    assert spectrum.precursors is not None
+    precursor = spectrum.precursors[0]
+    assert precursor.mz == pytest.approx(445.34)
+    assert precursor.charge == 2
+    # An absent intensity reads as 0.0, the same convention as the MGF reader.
+    assert precursor.intensity == 0.0
+    assert spectrum.collision_energy == pytest.approx(35.0)

@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from .matching import FragmentInput, MatchedFragment
 
 import numpy as np
-import peptacular as pt
 from numpy.typing import NDArray
 
+from .decon.greedy import NEUTRON_MASS
 from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
     DEFAULT_FRAGMENT_TOLERANCE,
@@ -408,29 +408,29 @@ class Spectrum:
 
     @property
     def _argsort_mz(self) -> NDArray[np.int64]:
-        return np.argsort(self.mz)
+        return np.argsort(self.mz, kind="stable")
 
     @property
     def _argsort_intensity(self) -> NDArray[np.int64]:
-        return np.argsort(self.intensity)
+        return np.argsort(self.intensity, kind="stable")
 
     @property
     def _argsort_charge(self) -> NDArray[np.int64]:
         if self.charge is None:
             raise ValueError("Spectrum has no charge information")
-        return np.argsort(self.charge)
+        return np.argsort(self.charge, kind="stable")
 
     @property
     def _argsort_im(self) -> NDArray[np.int64]:
         if self.im is None:
             raise ValueError("Spectrum has no ion mobility information")
-        return np.argsort(self.im)
+        return np.argsort(self.im, kind="stable")
 
     @property
     def _argsort_score(self) -> NDArray[np.int64]:
         if self.iso_score is None:
             raise ValueError("Spectrum has no score information")
-        return np.argsort(self.iso_score)
+        return np.argsort(self.iso_score, kind="stable")
 
     # -------------------------------------------------------------------------
     # Peak Finding
@@ -1036,7 +1036,11 @@ class Spectrum:
         reverse: bool = False,
         inplace: bool = False,
     ) -> Self:
-        """Return a spectrum with peaks sorted by the given attribute."""
+        """Return a spectrum with peaks sorted by the given attribute.
+
+        The sort is stable in both directions: tied peaks keep their input order,
+        so sorting an already sorted spectrum returns it unchanged.
+        """
         if by == "mz":
             order = self._argsort_mz
         elif by == "intensity":
@@ -1051,7 +1055,12 @@ class Spectrum:
             raise ValueError(f"Unknown sort key: {by!r}")
 
         if reverse:
-            order = order[::-1]
+            # ``order[::-1]`` would flip every tie. Stably sort the reversed keys
+            # and map the indices back instead, which keeps ties in input order.
+            # The ascending lookup above has already rejected a missing array.
+            keys = {"mz": self.mz, "intensity": self.intensity, "charge": self.charge, "im": self.im}
+            key = cast(NDArray[Any], keys.get(by, self.iso_score))
+            order = (len(key) - 1 - np.argsort(key[::-1], kind="stable"))[::-1]
 
         return self._apply_index(order, inplace=inplace)
 
@@ -2044,7 +2053,7 @@ class Spectrum:
             If the spectrum is profile mode, or if ``precursor_mz`` is ``None``
             and no precursor information is available.
         """
-        NEUTRON: float = pt.C13_NEUTRON_MASS
+        NEUTRON: float = NEUTRON_MASS
         resolved_isotope_model = resolve_isotope_model(isotope_model)
         resolved_ionization = self._resolve_ionization_model(ionization_model)
 

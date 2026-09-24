@@ -63,7 +63,7 @@ Built-in models cover peptides, glycans, lipids, DNA, and RNA. Callers can suppl
 Dalton, fixed composition, and isotope abundances. The exact custom model definition is stored in
 deconvolution provenance.
 
-The current deconvolution algorithm uses `peptacular.C13_NEUTRON_MASS / charge` for nominal isotope
+The current deconvolution algorithm uses the 13C-12C mass difference (1.00335483507 Da) / charge for nominal isotope
 spacing. This is separate from the analyte-specific abundance model.
 
 ## Future scope

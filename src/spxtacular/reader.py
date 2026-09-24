@@ -794,13 +794,9 @@ class MzmlReader:
                     stacklevel=3,
                 )
                 continue
-            intensity = ion.peak_intensity
-            if intensity is None:
-                warnings.warn(
-                    f"Spectrum {spec} precursor missing intensity. Precursor: {precursor}",
-                    stacklevel=3,
-                )
-                continue
+            # "peak intensity" (MS:1000042) is optional on a selectedIon. Keep the
+            # precursor and read an absent value as 0.0, as the MGF reader does.
+            intensity = ion.peak_intensity if ion.peak_intensity is not None else 0.0
             precursors.append(
                 Precursor(mz=mz, intensity=intensity, charge=ion.charge_state, im=ion.ir_im, is_monoisotopic=None)
             )

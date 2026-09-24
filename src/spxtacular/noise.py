@@ -25,7 +25,12 @@ def _estimate_noise_histogram(intensity_array: np.ndarray) -> float:
     if len(low) < 2:
         low = intensity_array
 
-    hist, bin_edges = np.histogram(low, bins=100)
+    try:
+        hist, bin_edges = np.histogram(low, bins=100)
+    except ValueError:
+        # The values span too few representable floats for 100 bins, so they are
+        # equal to within round-off and have no measurable spread.
+        return float(np.max(low))
     noise_bin_idx = int(np.argmax(hist))
     noise_mode = (bin_edges[noise_bin_idx] + bin_edges[noise_bin_idx + 1]) / 2
 
@@ -104,7 +109,8 @@ def estimate_noise_level(
     is different: it returns the raw 5th percentile of the intensities, which
     is a level rather than a threshold and is therefore substantially lower.
 
-    An empty intensity array returns ``0.0`` for every method.
+    NaN and infinite intensities are ignored. An array with no finite values
+    returns ``0.0`` for every method.
 
     A ``bool`` is rejected with ``ValueError`` rather than taken for the numeric
     threshold ``bool``'s ``int`` ancestry would otherwise make it.
@@ -121,6 +127,11 @@ def estimate_noise_level(
     if isinstance(method, (int, float)):
         return float(method)
 
+    # A NaN intensity carries no noise information, and one of them made every
+    # estimator return NaN (or, for the histogram, raise), which then filtered
+    # out every peak. Estimate from the finite values only.
+    intensity_array = np.asarray(intensity_array, dtype=np.float64)
+    intensity_array = intensity_array[np.isfinite(intensity_array)]
     if len(intensity_array) == 0:
         # Every estimator below reduces over the array; on an empty one they
         # variously return NaN with RuntimeWarnings or raise IndexError.

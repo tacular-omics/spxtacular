@@ -25,7 +25,10 @@ except ImportError:
 
     _HAS_NUMBA = False
 
-NEUTRON_MASS: float = pt.C13_NEUTRON_MASS
+# Isotope peak spacing: m(13C) - m(12C) from AME2020 (Wang et al., Chinese Phys. C
+# 45, 030003), with m(12C) = 12 exactly. peptacular's C13_NEUTRON_MASS is rounded to
+# 1.003350, which puts a mass decharged from an A+n apex off by n * 4.8e-6 Da.
+NEUTRON_MASS: float = 13.00335483507 - 12.0
 PROTON_MASS: float = pt.PROTON_MASS
 
 

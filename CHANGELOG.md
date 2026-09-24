@@ -10,6 +10,11 @@ User-visible changes only; implementation details belong in commits and pull req
 - `mass_error_plot` and `facet_plot` treat `unit` case-insensitively (`"PPM"` plotted Da errors under a ppm label) and raise `ValueError` for an unknown unit.
 - Centroiding keeps a profile peak sampled at only three points instead of dropping it.
 - The missing-backend error from `write_indexed_mzml_gzip` names mzMLPy 0.9, the version actually required.
+- `MzmlReader` keeps a precursor whose selected ion has no peak intensity (MS:1000042 is optional) and reads its intensity as 0.0, as the MGF reader does. It was dropped with a warning, losing its m/z and charge.
+- Deconvolution and `remove_precursor_peak` space isotope peaks by the 13C-12C mass difference, 1.00335483507 Da. peptacular's rounded 1.003350 put neutral masses decharged from an A+n apex off by n * 4.8e-6 Da, so deconvolved masses of larger molecules shift by a few ppb.
+- `Spectrum.sort` is stable in both directions, so tied peaks keep their input order and sorting a sorted spectrum returns it unchanged. `reverse=True` flipped tied peaks.
+- `denoise` and `estimate_noise_level` ignore NaN and infinite intensities. One NaN peak made the `"histogram"` method raise and the other methods return a NaN threshold that removed every peak.
+- `denoise("histogram")` no longer raises when the intensities span too narrow a range to cut into 100 bins.
 
 ### Changed
 

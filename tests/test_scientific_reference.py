@@ -32,7 +32,7 @@ def test_deconvolution_against_frozen_binomial_reference(case: dict) -> None:
     assigned = decon.charge > 0
     np.testing.assert_array_equal(decon.charge[assigned], case["expected_charges"])
     assert np.count_nonzero(decon.charge == -1) == case["expected_singletons"]
-    np.testing.assert_allclose(decon.decharge().mz, case["expected_masses"], rtol=0, atol=1e-4)
+    np.testing.assert_allclose(decon.decharge().mz, case["expected_masses"], rtol=0, atol=1e-6)
     assert decon.intensity.sum() == pytest.approx(spectrum.intensity.sum(), rel=1e-12)
 
 
