@@ -7,6 +7,7 @@ peaklist.py).
 
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -18,6 +19,14 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, Self, runt
 
 import numpy as np
 
+from ._scan_lookup import (
+    IdIndex,
+    build_id_index,
+    by_sage_scannr,
+    check_ms_level,
+    check_scan_number,
+    native_id_scan_number,
+)
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, IMType, Polarity
 from .errors import SpxtacularError
@@ -233,13 +242,13 @@ class DReaderMs2Lookup:
             case AcquisitionType.DIA:
                 raise NotImplementedError(
                     "DIA MS2 lookup by ID is not supported: DIA windows map to multiple frames. "
-                    "Iterate reader.ms2 instead."
+                    "Use reader.get_by_native_id('<frame>@w<window_index>') or iterate reader.ms2."
                 )
             case AcquisitionType.PRM:
                 raise NotImplementedError(
                     "PRM MS2 lookup by ID is not supported: PRM transitions are keyed by "
-                    "(frame_id, target_id). Iterate reader.ms2 instead, or access via the "
-                    "underlying tdfpy reader.targets / reader.transitions lookups."
+                    "(frame_id, target_id). Use reader.get_by_native_id('<frame>@t<target_id>') "
+                    "or iterate reader.ms2."
                 )
             case _:
                 raise SpxtacularError(f"Unsupported acquisition type: {self._dr.acquisition_type}")
@@ -259,6 +268,11 @@ def _tdf_polarity(value: str | None) -> Polarity | None:
             return Polarity.NEGATIVE
         case _:
             return None
+
+
+_DREADER_FRAME_ID_RE = re.compile(r"frame=(\d+)")
+_DREADER_PRECURSOR_ID_RE = re.compile(r"precursor=(\d+)")
+_DREADER_FRAME_ITEM_ID_RE = re.compile(r"(\d+)@([wt])(\d+)")
 
 
 class DReader:
@@ -281,9 +295,11 @@ class DReader:
         self._centroid_config: CentroidConfig = centroid_config or CentroidConfig()
         self.acquisition_type: AcquisitionType = _detect_acquisition_type(analysis_dir)
         self._reader = None
+        self._by_frame: dict[int, list[Any]] | None = None
 
     def open(self) -> None:
         """Open the underlying tdfpy reader. Call :meth:`close` when done, or use as a context manager."""
+        self._by_frame = None
         if self._reader is not None:
             self.close()
         match self.acquisition_type:
@@ -302,6 +318,7 @@ class DReader:
 
     def close(self) -> None:
         """Close the underlying tdfpy reader."""
+        self._by_frame = None
         if self._reader is not None:
             self._reader.__exit__(None, None, None)
             self._reader = None
@@ -351,6 +368,7 @@ class DReader:
             spectrum_type=SpectrumType.CENTROID,
             scan_number=frame.frame_id,
             ms_level=1,
+            native_id=f"frame={frame.frame_id}",
             rt=frame.rt,
             injection_time=frame.accumulation_time,
             total_ion_current=frame.total_ion_current,
@@ -379,6 +397,7 @@ class DReader:
             spectrum_type=SpectrumType.CENTROID,
             scan_number=precursor.precursor_id,
             ms_level=2,
+            native_id=f"precursor={precursor.precursor_id}",
             rt=precursor.rt,
             polarity=_tdf_polarity(precursor.polarity),
             analyzer=Analyzer.TOF,
@@ -461,6 +480,187 @@ class DReader:
         because PRM transitions are keyed by ``(frame_id, target_id)``.
         """
         return DReaderMs2Lookup(self)
+
+    # ------------------------------------------------------------------
+    # Lookup by scan number / native id
+    # ------------------------------------------------------------------
+
+    def _open_reader(self) -> Any:
+        if self._reader is None:
+            raise SpxtacularError("DReader must be opened before use (call open() or use as a context manager)")
+        return self._reader
+
+    def _is_dda(self) -> bool:
+        # UNKNOWN is opened with the DDA backend (see open()).
+        return self.acquisition_type in (AcquisitionType.DDA, AcquisitionType.UNKNOWN)
+
+    def _ms2_by_frame(self) -> dict[int, list[Any]]:
+        """DIA windows or PRM transitions grouped by frame id, built on first use and cached."""
+        if self._by_frame is None:
+            reader = self._open_reader()
+            items = reader.windows if self.acquisition_type == AcquisitionType.DIA else reader.transitions
+            grouped: dict[int, list[Any]] = {}
+            for item in items:
+                grouped.setdefault(item.frame_id, []).append(item)
+            self._by_frame = grouped
+        return self._by_frame
+
+    def _ms1_spectrum(self, frame_id: int) -> MsnSpectrum:
+        reader = self._open_reader()
+        frame = reader.ms1[frame_id]  # KeyError if not an MS1 frame
+        return self._parse_ms1_frame(frame, reader.metadata.mz_acq_range, reader.metadata.ook0_acq_range)
+
+    def _dda_spectrum(self, precursor_id: int) -> MsnSpectrum:
+        precursor = self._open_reader().precursors[precursor_id]  # KeyError if not found
+        return self._parse_dda_precursor(precursor, precursor.merged_peaks())
+
+    def _frame_item_spectrum(self, item: Any) -> MsnSpectrum:
+        if self.acquisition_type == AcquisitionType.DIA:
+            return self._parse_dia_window(item)
+        return self._parse_prm_transition(item)
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
+        """Fetch a spectrum by its scan number (see ``MsnSpectrum.scan_number``).
+
+        The scan number is the MS1 ``frame_id``, the DDA ``precursor_id``, or the
+        DIA / PRM MS2 ``frame_id``. MS1 frame ids and DDA precursor ids are
+        separate number spaces that overlap, so pass ``ms_level`` for DDA data.
+
+        Parameters
+        ----------
+        scan_number:
+            Frame id (MS1, DIA, PRM) or precursor id (DDA MS2).
+        ms_level:
+            ``1`` or ``2`` to choose the number space; ``None`` accepts either
+            when only one of them has the number.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum of the requested level has this number.
+        SpxtacularError
+            If ``ms_level`` is ``None`` and both an MS1 frame and a DDA precursor
+            have this number, if a DIA or PRM frame holds several spectra (one
+            per window or target; use :meth:`get_by_native_id`), or if the
+            reader is not open.
+        """
+        scan_number = check_scan_number(scan_number)
+        check_ms_level(ms_level)
+        reader = self._open_reader()
+        is_ms1 = ms_level in (None, 1) and scan_number in reader.ms1
+        items: list[Any] = []
+        is_ms2 = False
+        if ms_level in (None, 2):
+            if self._is_dda():
+                is_ms2 = scan_number in reader.precursors
+            else:
+                items = self._ms2_by_frame().get(scan_number, [])
+                is_ms2 = bool(items)
+        if is_ms1 and is_ms2:
+            raise SpxtacularError(
+                f"{self.analysis_dir}: {scan_number} is both an MS1 frame id and a precursor id; "
+                "pass ms_level=1 or ms_level=2"
+            )
+        if is_ms1:
+            return self._ms1_spectrum(scan_number)
+        if is_ms2:
+            if self._is_dda():
+                return self._dda_spectrum(scan_number)
+            if len(items) > 1:
+                native_ids = [self._frame_item_native_id(item) for item in items]
+                raise SpxtacularError(
+                    f"{self.analysis_dir}: frame {scan_number} holds {len(items)} MS2 spectra "
+                    f"({', '.join(native_ids[:4])}{', …' if len(items) > 4 else ''}); use get_by_native_id()"
+                )
+            return self._frame_item_spectrum(items[0])
+        level = f"MS{ms_level} " if ms_level is not None else ""
+        raise KeyError(f"no {level}spectrum with scan number {scan_number} in {self.analysis_dir}")
+
+    def _frame_item_native_id(self, item: Any) -> str:
+        if self.acquisition_type == AcquisitionType.DIA:
+            return f"{item.frame_id}@w{item.window_index}"
+        return f"{item.frame_id}@t{item.target.target_id}"
+
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Fetch a spectrum by the ``native_id`` this reader gives it.
+
+        ============================  ===============================
+        ``native_id``                 spectrum
+        ============================  ===============================
+        ``"frame=F"``                 MS1 frame ``F``
+        ``"precursor=P"``             DDA precursor ``P``
+        ``"F@wI"``                    DIA window row ``I`` of frame ``F``
+        ``"F@tT"``                    PRM target ``T`` in frame ``F``
+        ============================  ===============================
+
+        Raises
+        ------
+        KeyError
+            If the id is not one of these forms or names no spectrum in the run.
+        SpxtacularError
+            If the reader is not open.
+        """
+        if not isinstance(native_id, str):
+            raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
+        self._open_reader()
+        if match := _DREADER_FRAME_ID_RE.fullmatch(native_id):
+            return self._ms1_spectrum(int(match.group(1)))
+        if match := _DREADER_PRECURSOR_ID_RE.fullmatch(native_id):
+            if not self._is_dda():
+                raise KeyError(f"{native_id!r}: precursor ids exist only in DDA runs, not {self.acquisition_type}")
+            return self._dda_spectrum(int(match.group(1)))
+        if match := _DREADER_FRAME_ITEM_ID_RE.fullmatch(native_id):
+            frame_id, kind, key = int(match.group(1)), match.group(2), int(match.group(3))
+            wanted = AcquisitionType.DIA if kind == "w" else AcquisitionType.PRM
+            if self.acquisition_type != wanted:
+                raise KeyError(f"{native_id!r} is a {wanted} id; this run is {self.acquisition_type}")
+            for item in self._ms2_by_frame().get(frame_id, []):
+                item_key = item.window_index if kind == "w" else item.target.target_id
+                if item_key == key:
+                    return self._frame_item_spectrum(item)
+            raise KeyError(f"no spectrum with native id {native_id!r} in {self.analysis_dir}")
+        raise KeyError(
+            f"{native_id!r} is not a DReader native id (expected 'frame=F', 'precursor=P', 'F@wI' or 'F@tT')"
+        )
+
+    def get_by_sage_scannr(self, scannr: str | int, *, precursor_offset: int = 1) -> MsnSpectrum:
+        """Fetch the DDA MS2 spectrum a Sage ``scannr`` refers to.
+
+        For a Bruker ``.d`` run Sage writes timsrust's spectrum index as a bare
+        integer. Upstream Sage (timsrust 0.4) numbers spectra from 0 in
+        precursor order, so ``scannr`` N is precursor ``N + 1``: the default.
+        Sage builds on timsrust 0.6 or later write the precursor id itself;
+        pass ``precursor_offset=0`` for those.
+
+        Parameters
+        ----------
+        scannr:
+            The ``scannr`` column value, as an int or a string of digits.
+        precursor_offset:
+            Added to ``scannr`` to get the Bruker precursor id.
+
+        Raises
+        ------
+        KeyError
+            If the run has no such precursor.
+        SpxtacularError
+            If ``scannr`` is not an integer, or the run is DIA or PRM (Sage
+            numbers those by timsrust's expanded window list, which spxtacular
+            does not reproduce).
+        """
+        if not self._is_dda():
+            raise SpxtacularError(
+                f"Sage scannr lookup supports DDA runs only; this run is {self.acquisition_type}. "
+                "Sage numbers DIA/PRM spectra by timsrust's expanded window list, which spxtacular does not reproduce."
+            )
+        if isinstance(scannr, bool) or not isinstance(scannr, (str, int)):
+            raise SpxtacularError(f"scannr must be a str or int, got {type(scannr).__name__} {scannr!r}")
+        text = str(scannr).strip()
+        if not text.isdigit():
+            raise SpxtacularError(f"Sage scannr for a Bruker .d run is a bare integer, got {scannr!r}")
+        if isinstance(precursor_offset, bool) or not isinstance(precursor_offset, int):
+            raise SpxtacularError(f"precursor_offset must be an int, got {precursor_offset!r}")
+        return self._dda_spectrum(int(text) + precursor_offset)
 
 
 # ---------------------------------------------------------------------------
@@ -619,41 +819,29 @@ def _mzml_im_array(darr: Any, accession: object) -> tuple[np.ndarray, IMType]:
     return data, im_type
 
 
-#: Native-id keys that may sit next to ``scan=`` without making it ambiguous
-#: (Thermo: ``controllerType=0 controllerNumber=1 scan=19``).
-_MZML_THERMO_ID_KEYS = frozenset({"controllertype", "controllernumber"})
-
-
 def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
     """The instrument scan number from the native id, or ``None`` when it is not unique.
 
-    Only ids whose number identifies the spectrum on its own count:
-
-    - ``scan=19`` and Thermo ``controllerType=0 controllerNumber=1 scan=19`` -> 19
-    - ``index=5`` (multiple peak list) and ``spectrum=5`` -> 5, verbatim
-
-    Every other id leaves it ``None`` rather than falling back to the 0-based list index:
-    in Bruker ``frame=… scan=…`` and Waters ``function=… process=… scan=…`` the ``scan``
-    value repeats across frames or functions, and SCIEX ``sample=… period=… cycle=…
-    experiment=…`` has no single number. ``native_id`` always keeps the full id.
+    See :func:`spxtacular._scan_lookup.native_id_scan_number` for which ids count.
+    Nothing falls back to the 0-based list index; ``native_id`` always keeps the full id.
     """
-    try:
-        id_dict = spec.id_dict
-    except (ValueError, TypeError):
+    native_id = spec.id
+    if not isinstance(native_id, str):
         return None
-    keys = {str(key).lower(): value for key, value in id_dict.items()}
-    if "scan" in keys and set(keys) - {"scan"} <= _MZML_THERMO_ID_KEYS:
-        value = keys["scan"]
-    elif set(keys) == {"index"}:
-        value = keys["index"]
-    elif set(keys) == {"spectrum"}:
-        value = keys["spectrum"]
-    else:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    return native_id_scan_number(native_id)
+
+
+def _mzml_spectrum_ids(handle: Any) -> list[str]:
+    """Every spectrum id of an open mzmlpy handle, in file order.
+
+    Uses mzmlpy's id index when it exposes one (no spectrum is decoded), else
+    walks the spectra.
+    """
+    file_object = getattr(handle.spectra, "_file_object", None)
+    ids = getattr(file_object, "spectrum_ids", None) if file_object is not None else None
+    if ids is None:
+        ids = [spec.id for spec in handle.spectra]
+    return list(ids)
 
 
 class MzmlReader:
@@ -693,6 +881,7 @@ class MzmlReader:
         self.in_memory = in_memory
         self._mzml_handle = None
         self._last_access_strategy: str | None = None
+        self._index: IdIndex[str] | None = None
 
     def _new_handle(self) -> Any:
         """Create an mzmlpy handle with this reader's public I/O options."""
@@ -904,8 +1093,108 @@ class MzmlReader:
         """
         return MzmlSpectraLookup(self)[key]
 
+    # ------------------------------------------------------------------
+    # Lookup by scan number / native id
+    # ------------------------------------------------------------------
+
+    def _id_index(self) -> IdIndex[str]:
+        """Scan-number index of the file's native ids, built on first use and cached."""
+        if self._index is None:
+            with _mzml_errors(self.mzml_path):
+                handle = self._mzml_handle
+                if handle is not None:
+                    ids = _mzml_spectrum_ids(handle)
+                else:
+                    with self._new_handle() as r:
+                        ids = _mzml_spectrum_ids(r)
+            self._index = build_id_index((native_id_scan_number(i), i, i) for i in ids)
+        return self._index
+
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Fetch a spectrum by its full native id (the mzML ``spectrum/@id``).
+
+        Parameters
+        ----------
+        native_id:
+            The exact id, e.g. ``"controllerType=0 controllerNumber=1 scan=19"``.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this id.
+        SpxtacularError
+            If several spectra share it (invalid mzML).
+        """
+        if not isinstance(native_id, str):
+            raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
+        if native_id in self._id_index().duplicate_ids:
+            raise SpxtacularError(f"{self.mzml_path}: native id {native_id!r} is used by more than one spectrum")
+        return MzmlSpectraLookup(self)[native_id]
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
+        """Fetch a spectrum by its scan number (see ``MsnSpectrum.scan_number``).
+
+        The scan number comes from the native id: ``scan=N`` (and Thermo
+        ``controllerType=0 controllerNumber=1 scan=N``), ``index=N`` or
+        ``spectrum=N``. It is not the 0-based position in the file; use
+        ``reader[i]`` for that.
+
+        Parameters
+        ----------
+        scan_number:
+            The scan number.
+        ms_level:
+            If given, the spectrum must be of this MS level.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this scan number, or it is not of ``ms_level``.
+        SpxtacularError
+            If the file's ids carry no scan numbers at all (Bruker ``frame=…``,
+            Waters ``function=…``, SCIEX ``cycle=…``: use :meth:`get_by_native_id`),
+            or several spectra share this scan number.
+        """
+        scan_number = check_scan_number(scan_number)
+        check_ms_level(ms_level)
+        index = self._id_index()
+        native_id = index.scans.get(scan_number)
+        if native_id is None:
+            if scan_number in index.duplicate_scans:
+                raise SpxtacularError(
+                    f"{self.mzml_path}: scan number {scan_number} is shared by several spectra; "
+                    "use get_by_native_id() instead"
+                )
+            if not index.scans and not index.duplicate_scans:
+                raise SpxtacularError(
+                    f"{self.mzml_path}: the native ids in this file carry no scan numbers "
+                    "(e.g. Bruker 'frame=…', Waters 'function=…', SCIEX 'cycle=…'); use get_by_native_id() instead"
+                )
+            raise KeyError(f"no spectrum with scan number {scan_number} in {self.mzml_path}")
+        spectrum = MzmlSpectraLookup(self)[native_id]
+        if ms_level is not None and spectrum.ms_level != ms_level:
+            raise KeyError(f"scan {scan_number} is MS{spectrum.ms_level}, not MS{ms_level}")
+        return spectrum
+
+    def get_by_sage_scannr(self, scannr: str | int) -> MsnSpectrum:
+        """Fetch the spectrum a Sage ``scannr`` refers to.
+
+        ``results.sage.tsv`` holds the mzML native id verbatim; Sage's ``.pin``
+        output holds only the number from ``scan=N``. The value is tried as a
+        native id first, then, if it is a bare integer, as a scan number.
+
+        Raises
+        ------
+        KeyError
+            If nothing matches.
+        SpxtacularError
+            As :meth:`get_by_native_id` and :meth:`get_by_scan`.
+        """
+        return by_sage_scannr(self, scannr)
+
     def open(self) -> None:
         """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
+        self._index = None
         if self._mzml_handle is not None:
             self.close()
         with _mzml_errors(self.mzml_path):
@@ -1039,6 +1328,58 @@ class Reader:
     def access_strategy(self) -> str | None:
         """Concrete mzML access strategy, or ``None`` for non-mzML readers."""
         return self._reader.access_strategy if isinstance(self._reader, MzmlReader) else None
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
+        """Fetch a spectrum by scan number; see the format reader's ``get_by_scan`` for the rules.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this scan number (at ``ms_level``, if given).
+        SpxtacularError
+            If the number does not identify one spectrum: the file carries no
+            scan numbers (MSP, Bruker/Waters/SCIEX mzML), several spectra share
+            it, or (Bruker) it is ambiguous without ``ms_level``.
+        """
+        return self._reader.get_by_scan(scan_number, ms_level=ms_level)
+
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Fetch a spectrum by its ``native_id``; see the format reader's ``get_by_native_id``.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum has this native id.
+        SpxtacularError
+            If several spectra share it.
+        """
+        return self._reader.get_by_native_id(native_id)
+
+    def get_by_sage_scannr(self, scannr: str | int, *, precursor_offset: int | None = None) -> MsnSpectrum:
+        """Fetch the spectrum a Sage ``scannr`` refers to.
+
+        Parameters
+        ----------
+        scannr:
+            The ``scannr`` column of ``results.sage.tsv`` or a ``.pin`` file.
+        precursor_offset:
+            Bruker ``.d`` only; see :meth:`DReader.get_by_sage_scannr` (default 1).
+
+        Raises
+        ------
+        KeyError
+            If nothing matches.
+        SpxtacularError
+            If ``precursor_offset`` is given for a format other than Bruker ``.d``,
+            or as the format reader's method.
+        """
+        if isinstance(self._reader, DReader):
+            if precursor_offset is None:
+                return self._reader.get_by_sage_scannr(scannr)
+            return self._reader.get_by_sage_scannr(scannr, precursor_offset=precursor_offset)
+        if precursor_offset is not None:
+            raise SpxtacularError("precursor_offset applies to Bruker .d runs only")
+        return self._reader.get_by_sage_scannr(scannr)
 
     def open(self) -> None:
         """Open the underlying reader."""

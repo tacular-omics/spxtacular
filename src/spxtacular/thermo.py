@@ -11,6 +11,7 @@ spxtacular`` never pays for (or crashes on) the runtime.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
@@ -18,9 +19,13 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from ._scan_lookup import by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, SpectrumType
 from .enums import ActivationType, Analyzer, AnalyzerLike, Polarity
 from .errors import SpxtacularError
+
+#: The native ids ThermoReader.get_by_native_id accepts: the full Thermo id, or bare ``scan=N``.
+_THERMO_NATIVE_ID_RE = re.compile(r"(?:controllerType=0\s+controllerNumber=1\s+)?scan=(\d+)")
 
 # ---------------------------------------------------------------------------
 # Lazy fisher-py loading
@@ -412,3 +417,54 @@ class ThermoReader:
     def __getitem__(self, scan_number: int) -> MsnSpectrum:
         """Fetch a single spectrum of any MS level by native (1-based) scan number."""
         return ThermoScanLookup(self)[scan_number]
+
+    # ------------------------------------------------------------------
+    # Lookup by scan number / native id
+    # ------------------------------------------------------------------
+
+    def get_by_scan(self, scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum:
+        """Fetch a spectrum by its native 1-based scan number.
+
+        Every Thermo scan has a unique scan number, so this is ``reader[n]``
+        with an optional MS-level check.
+
+        Raises
+        ------
+        KeyError
+            If the scan is not in the file, or is not of ``ms_level``.
+        """
+        scan_number = check_scan_number(scan_number)
+        check_ms_level(ms_level)
+        return ThermoScanLookup(self, ms_level=ms_level)[scan_number]
+
+    def get_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Fetch a spectrum by its native id.
+
+        Accepts the id this reader writes, ``"controllerType=0 controllerNumber=1 scan=N"``
+        (as msconvert does), and the short ``"scan=N"``.
+
+        Raises
+        ------
+        KeyError
+            If the id has another form or its scan is not in the file.
+        """
+        if not isinstance(native_id, str):
+            raise SpxtacularError(f"native_id must be a str, got {type(native_id).__name__} {native_id!r}")
+        match = _THERMO_NATIVE_ID_RE.fullmatch(native_id.strip())
+        if match is None:
+            raise KeyError(f"{native_id!r} is not a Thermo native id ('controllerType=0 controllerNumber=1 scan=N')")
+        return ThermoScanLookup(self)[int(match.group(1))]
+
+    def get_by_sage_scannr(self, scannr: str | int) -> MsnSpectrum:
+        """Fetch the spectrum a Sage ``scannr`` refers to.
+
+        Sage reads ``.raw`` through an mzML conversion, so ``scannr`` is the
+        Thermo native id (``results.sage.tsv``) or its bare scan number (``.pin``).
+        Both work.
+
+        Raises
+        ------
+        KeyError
+            If nothing matches.
+        """
+        return by_sage_scannr(self, scannr)

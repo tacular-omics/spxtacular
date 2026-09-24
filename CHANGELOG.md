@@ -29,11 +29,14 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `core.JSON_SCHEMA_VERSION` is gone; the spectrum schema version is `serialization.SPECTRUM_SCHEMA_VERSION` (2); `PeakListLookup` and `ThermoScanLookup` are imported from the package root, not `spxtacular.reader`.
 - `MatchedFragment` is frozen, slotted and keyword-only, with an `annotation` property that returns the match as a paftacular `PafAnnotation`.
 - Fragment labels come straight from paftacular 2's mzPAF writer, including negative charges.
+- `DReader` MS1 spectra have `native_id` `"frame=F"` and DDA MS2 spectra `"precursor=P"` (was `None`), so `write_mgf` writes those as `TITLE`.
 
 ### Added
 
 - `SpxtacularError`, the `SpectrumLookup` protocol and the reader lookup types (`DReaderMs1Lookup`, `DReaderMs2Lookup`, `MzmlSpectraLookup`, `ThermoScanLookup`, `PeakListLookup`) are exported from the package root.
 - `DReader` MS1 spectra carry `total_ion_current`; precursors from `.d` and mzML files carry `im_type`.
+- Every reader and `Reader` fetch one spectrum with `get_by_scan(n, ms_level=)`, `get_by_native_id(id)` and `get_by_sage_scannr(scannr)`. A missing key raises `KeyError`; a key that names no single spectrum (no scan numbers in the file, duplicates, an ambiguous Bruker number) raises `SpxtacularError`. Peak-list lookups index the file once, then seek.
+- `get_by_sage_scannr` reads Sage's `scannr` for mzML, MGF, Thermo and Bruker DDA `.d` (precursor id = scannr + 1 for upstream Sage; `precursor_offset=0` for Sage on timsrust 0.6 or later).
 
 ### Performance
 
