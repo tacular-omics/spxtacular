@@ -2,8 +2,8 @@
 
 > Python 3.12+ mass-spectrum processing library: filtering, denoising, centroiding, isotope
 > deconvolution, charge assignment, fragment matching, PSM scoring, spectrum similarity,
-> chromatograms, raw-file readers and accessible plotly figures, all behind one chainable
-> `Spectrum` object.
+> chromatograms, raw-file readers and publication-ready figures (plotly or matplotlib),
+> all behind one chainable `Spectrum` object.
 
 This file is self-contained. It documents spxtacular 0.7.x as on the `main` branch. Every
 public name listed here is exported from the top-level package (`import spxtacular as spx`).
@@ -29,6 +29,8 @@ pip install "spxtacular[spectrl]"       # compact URL-safe spectrum tokens
 pip install "spxtacular[matchms]"       # matchms adapter
 pip install "spxtacular[spectrum-utils]"  # spectrum_utils adapter
 pip install "spxtacular[interop]"       # matchms + spectrum_utils
+pip install "spxtacular[matplotlib]"    # backend="matplotlib": print figures (vector PDF/SVG)
+pip install "spxtacular[plotly-export]" # kaleido: PNG/SVG/PDF export of plotly figures
 pip install "spxtacular[all]"           # everything above
 ```
 
@@ -617,47 +619,60 @@ with spx.Reader("run.d") as r:
 
 ## 9. Visualization
 
-All figure functions return a `plotly.graph_objects.Figure` and accept `**layout_kwargs`
-passed to `fig.update_layout`. `theme_mode` is `"light"`, `"dark"` or `None` (global default).
+Every figure function takes `backend="plotly"` (default; returns `plotly.graph_objects.Figure`),
+`"matplotlib"` (returns `matplotlib.figure.Figure`; needs `spxtacular[matplotlib]`) or `"spec"`
+(returns a backend-neutral `FigureSpec`), plus `style="paper"|"screen"|"talk"|FigureStyle`
+(`None`: `"screen"` for plotly, `"paper"` otherwise) and `size="single"|"onehalf"|"double"|mm|(w_mm, h_mm)`
+(85/114/175 mm). `**layout_kwargs` is plotly-only (raises with matplotlib). `theme_mode` is
+`"light"`, `"dark"` or `None` (global default). Unknown backend or style raises `SpxtacularError`.
+
+For a paper figure: `backend="matplotlib", style="paper", size="single"`, then
+`save_figure(fig, "fig.pdf")`: vector PDF with TrueType fonts, 7 pt text at 100% size.
 
 ```python
-plot_spectrum(spectrum, title=None, *, color: "charge"|"im"|None = "charge", show_scores=True,
+plot_spectrum(spectrum, *, title=None, color: "charge"|"im"|None = "charge", show_scores=True,
               max_labels=60, theme_mode=None,
               intensity_scale: "absolute"|"relative" = "relative",
               intensity_transform: "sqrt"|"log"|None = None, show_precursor=True,
-              render: "sticks"|"profile"|None = None, max_points=4000, **layout_kwargs)
+              render: "sticks"|"profile"|None = None, max_points=4000, absolute_axis=False,
+              backend="plotly", style=None, size=None, **layout_kwargs)
 ```
 Sticks for centroid data, a continuous trace for profile data (min/max decimated above
-`max_points`).
+`max_points`). `absolute_axis=True` shows absolute intensity with a x10^n exponent in the title.
 
 ```python
-annotate_spectrum(spectrum, fragments, tolerance=0.02, tolerance_type="da", title=None,
+annotate_spectrum(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", title=None,
                   peak_selection="closest", include_sequence=False, max_labels=60,
                   theme_mode=None, intensity_scale="relative", intensity_transform=None,
-                  texture=False, show_precursor=True, **layout_kwargs)
+                  texture=False, show_precursor=True, peptide=None, mass_error_panel=False,
+                  absolute_axis=False, backend="plotly", style=None, size=None, **layout_kwargs)
 ```
-Spectrum with matched fragment labels coloured by ion series (`texture=True` adds dash
-patterns for greyscale/colour-blind reading).
+Spectrum with matched fragment labels (typeset: y7 subscript, 2+ superscript) coloured by ion
+series. `peptide=` draws the sequence with b/y cleavage ticks above; `mass_error_panel=True` adds
+an error strip below. `texture=True` adds dash patterns.
 
-- `mirror_plot(raw, deconvoluted, title=None, normalize=True, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, **layout_kwargs)` — raw below, deconvoluted above.
-- `mass_error_plot(spectrum, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit="ppm", title=None, max_labels=60, theme_mode=None, **layout_kwargs)` — mass error bubbles vs m/z.
-- `facet_plot(spectrum, fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, unit="ppm", max_labels=60, theme_mode=None, **layout_kwargs)` — spectrum + mass errors + optional mirror panels.
-- `sequence_coverage_plot(spectrum, peptide: str, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", title=None, theme_mode=None, **layout_kwargs)` — backbone-bond coverage ladder. `peptide` is a **stripped sequence**, not ProForma.
-- `profile_centroid_plot(profile, centroids=None, title=None, theme_mode=None, max_points=4000, **layout_kwargs)` — profile trace with centroids on top, to check `centroid()`.
-- `plot_chromatogram(chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum], title=None, theme_mode=None, show_apex=True, fill=None, **layout_kwargs)` — one or more chromatograms; an iterable of spectra is turned into a TIC.
-- `plot_xic(spectra, targets, tolerance=20.0, tolerance_type="ppm", im_window=None, aggregate="sum", title=None, theme_mode=None, **layout_kwargs)` — `extract_xic` + `plot_chromatogram`.
-- `save_figure(fig, path, scale=2.0, **kwargs) -> Path` — writer chosen from the extension (`.html` needs nothing; `.png`/`.svg`/`.pdf` need kaleido).
+- `mirror_plot(raw, deconvoluted, *, fragments=None, names=None, similarity: "cosine"|"modified_cosine"|"entropy"|float|None = None, title=None, normalize=True, show_charges=True, show_scores=True, tolerance=0.02, tolerance_type="da", peak_selection="closest", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — second spectrum below. With `fragments=` both halves are annotated (query vs library); `similarity=` prints a score (`"modified_cosine"` needs precursor m/z on both).
+- `mass_error_plot(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", unit="ppm", title=None, max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — mass error vs m/z, axis symmetric around zero.
+- `facet_plot(spectrum, *, fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, unit="ppm", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — spectrum + mass errors + optional mirror panels.
+- `sequence_coverage_plot(spectrum, peptide: str | ProFormaAnnotation, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — backbone-bond coverage ladder.
+- `profile_centroid_plot(profile, *, centroids=None, title=None, theme_mode=None, max_points=4000, backend, style, size, **layout_kwargs)` — profile trace with centroids on top, to check `centroid()`.
+- `plot_chromatogram(chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum], *, title=None, theme_mode=None, show_apex=True, fill=None, backend, style, size, **layout_kwargs)` — one or more chromatograms; an iterable of spectra is turned into a TIC.
+- `plot_xic(spectra, targets, *, tolerance=20.0, tolerance_type="ppm", im_window=None, aggregate="sum", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — `extract_xic` + `plot_chromatogram`.
+- `reporter_ion_plot(spectrum, plex: str | IsobaricTagInfo | ReporterIons = "TMT10", *, tolerance=20.0, tolerance_unit="ppm", impurities=None, show_spectrum=True, normalize=True, title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — channel bars from `extract_reporter_ions`, reporter region above; missing channels marked n.d.
+- `compose_figure(figures: Sequence[FigureSpec], *, ncols=None, labels="abc"|"ABC"|list|None, size="double", style=None, backend="matplotlib", theme_mode=None)` — lettered multi-panel figure from `backend="spec"` parts.
+- `render(spec, backend="plotly"|"matplotlib")` / `spec.render(backend)`; `get_style(name) -> FigureStyle`; `FigureStyle.with_(**changes)`.
+- `save_figure(fig, path, *, scale=None, dpi=None, **kwargs) -> Path` — suffix picks the writer. plotly: `.html` needs nothing, `.png`/`.svg`/`.pdf`/`.jpg`/`.webp` need kaleido (`spxtacular[plotly-export]`). matplotlib: `.pdf`/`.svg`/`.eps`/`.png`/`.jpg`/`.tif`/`.webp`, fonts embedded as TrueType. A `FigureSpec` is drawn with matplotlib if installed. Raster `dpi` defaults to the style's (600 for paper).
 
 Plot tables (edit data between matching and drawing):
 
-- `build_plot_table(spectrum, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None) -> pd.DataFrame`
-- `build_annot_plot_table(spectrum, fragments, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False) -> pd.DataFrame`
-- `plot_from_table(table, title=None, theme_mode=None, render=None, max_points=4000, **layout_kwargs) -> go.Figure`
+- `build_plot_table(spectrum, *, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None) -> pd.DataFrame`
+- `build_annot_plot_table(spectrum, fragments, *, tolerance=0.02, tolerance_type="da", peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False) -> pd.DataFrame`
+- `plot_from_table(table, *, title=None, theme_mode=None, render=None, max_points=4000, backend="plotly", style=None, size=None, absolute_axis=False, **layout_kwargs)`
 - `table_view(table, max_rows=None, annotated_only=False) -> str` — HTML `<table>`, the accessible companion to a figure.
 
 Table columns: `mz`, `intensity` (the displayed value), `intensity_abs` (original), `charge`,
-`score`, `im`, `color`, `linewidth`, `opacity`, `dash`, `series`, `label`, `label_size`,
-`label_font`, `label_color`, `label_yshift`, `label_xanchor`, `label_angle`, `hover`.
+`score`, `im`, `color`, `linewidth`, `opacity`, `dash`, `series`, `label`, `label_size`
+(NaN = style default), `label_color`, `label_angle` (0 horizontal), `hover`.
 
 ```python
 table = spx.build_annot_plot_table(spec, fragments, tolerance=10, tolerance_type="ppm")
@@ -675,7 +690,8 @@ html = spx.table_view(table, annotated_only=True)
 
 Ion series are categorical colours, charge is an ordinal ramp, isotope score and mobility are
 sequential. Intensity is relative by default; hover text keeps the true intensity. Labels are
-vertical, capped at `max_labels` and collision-avoided; omitted labels stay in hover/table data.
+horizontal rich text, capped at `max_labels` and placed without overlap; omitted labels stay in
+hover/table data.
 
 ---------------------------------------------------------------------------------------------
 

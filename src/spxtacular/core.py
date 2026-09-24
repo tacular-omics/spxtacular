@@ -1236,12 +1236,11 @@ class Spectrum:
 
         The returned :class:`pandas.DataFrame` contains every data field
         (``mz``, ``intensity``, ``charge``, ``score``, ``im``) plus visual
-        properties (``color``, ``linewidth``, ``opacity``, ``series``,
-        ``label``, ``label_size``, ``label_font``, ``label_color``,
-        ``label_yshift``, ``label_xanchor``, ``hover``).
+        properties (``color``, ``linewidth``, ``opacity``, ``dash``, ``series``,
+        ``label``, ``label_size``, ``label_color``, ``label_angle``, ``hover``).
 
         Modify the DataFrame freely, then pass it to
-        :func:`spxtacular.plot_from_table` to produce a plotly Figure.
+        :func:`spxtacular.plot_from_table` to draw it with any backend.
 
         Parameters
         ----------

@@ -643,13 +643,18 @@ def plot(
     title: str | None = None,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
-) -> Figure
+)
 ```
 
 All parameters are keyword-only.
 
-Returns a Plotly `Figure` (stick plot). `plotly` is a required dependency, so no extra install is needed.
+Returns a plotly `Figure` (stick plot) by default; `backend="matplotlib"` returns a matplotlib figure
+for print (`spxtacular[matplotlib]`), `backend="spec"` a `FigureSpec`. See
+[Visualization](visualization.md#publication-figures) for `style=` and `size=`.
 
 | Parameter | Description |
 |---|---|
@@ -675,8 +680,11 @@ def annotate(
     title: str | None = None,
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     include_sequence: bool = False,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
-) -> Figure
+)
 ```
 
 Convenience wrapper around `annotate_spectrum()`. Plots the spectrum with matched fragment ion labels — matched peaks are coloured by ion series, unmatched peaks rendered in grey.
@@ -740,7 +748,7 @@ def plot_table(
 ) -> pd.DataFrame
 ```
 
-Returns a `pandas.DataFrame` with one row per peak. Each row contains both the raw peak data (`mz`, `intensity`, `charge`, `score`, `im`) and all visual properties (`color`, `linewidth`, `opacity`, `series`, `label`, `label_size`, `label_font`, `label_color`, `label_yshift`, `label_xanchor`, `label_angle`, `hover`). Modify the table freely, then render it with `plot_from_table()`.
+Returns a `pandas.DataFrame` with one row per peak. Each row contains both the raw peak data (`mz`, `intensity`, `charge`, `score`, `im`) and all visual properties (`color`, `linewidth`, `opacity`, `series`, `dash`, `label`, `label_size`, `label_color`, `label_angle`, `hover`). Modify the table freely, then render it with `plot_from_table()`.
 
 ```python
 tbl = decon.plot_table()
