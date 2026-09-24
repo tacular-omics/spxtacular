@@ -9,6 +9,8 @@ publication (vector text, embedded TrueType fonts) hold. No pixel comparisons.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 
 import numpy as np
 import peptacular as pt
@@ -335,3 +337,15 @@ class TestBackends:
         spec, _ = _psm()
         with pytest.raises(SpxtacularError):
             spx.compose_figure([spx.plot_spectrum(spec)], backend="spec")
+
+
+def test_import_does_not_load_matplotlib() -> None:
+    """matplotlib is imported on first use of the matplotlib backend, not with the package."""
+    code = (
+        "import sys\n"
+        "import spxtacular as spx\n"
+        "spx.plot_spectrum(spx.Spectrum(mz=[100.0], intensity=[1.0]), backend='spec')\n"
+        "assert 'matplotlib' not in sys.modules, 'matplotlib was imported'\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr

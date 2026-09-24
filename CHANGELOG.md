@@ -33,6 +33,9 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `MatchedFragment` is frozen, slotted and keyword-only, with an `annotation` property that returns the match as a paftacular `PafAnnotation`.
 - Fragment labels come straight from paftacular 2's mzPAF writer, including negative charges.
 - `DReader` MS1 spectra have `native_id` `"frame=F"` and DDA MS2 spectra `"precursor=P"` (was `None`), so `write_mgf` writes those as `TITLE`.
+- Figures are drawn through a backend-neutral figure layer and restyled for print: horizontal typeset fragment labels (y₇²⁺ as subscript and superscript), italic *m/z*, "Mass error (ppm)" and "Intensity (×10ⁿ)" axis titles, and new fonts and sizes in plotly too. Plotting functions return `Any` (a plotly `Figure` by default).
+- Plot tables drop the `label_font`, `label_yshift` and `label_xanchor` columns; `label_angle` defaults to 0 (was -90) and `label_size` is NaN for the style default. `plot_from_table` requires fewer columns.
+- `save_figure(scale=)` defaults to `None` (the figure style's resolution, 600 dpi for `"paper"`) instead of 2.0, takes `dpi=`, writes matplotlib figures and figure specs as well as plotly, and raises `SpxtacularError` for an unsupported suffix or a missing writer.
 
 ### Added
 
@@ -44,6 +47,10 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `write_msp` and `write_mgf` take `annotations=` to write mzPAF peak annotations (strings, `PafAnnotation`s or `match_fragments` output) as a quoted peak column. Default output is unchanged, and `MgfReader` now skips a quoted annotation column.
 - Isobaric reporter-ion quantification for TMT, TMTpro and iTRAQ: `extract_reporter_ions` / `Spectrum.reporter_ions` (one spectrum, `ReporterIons`) and `reporter_ion_table` (many spectra or a reader, one DataFrame row each). Channels and m/z come from tacular; the most intense peak within `tolerance` (default 20 ppm) is used. Optional isotope impurity correction from the reagent lot sheet or a matrix (`isotope_correction_matrix`, `correct_isotope_impurities`, non-negative least squares) and `normalize="sum"|"max"`. An impurity counts on a channel within min(0.02 Da, half the plex's smallest channel spacing), as in OpenMS; numeric lot-sheet shifts are 13C, 15N impurities need `"-15N"` labels.
 - `get_by_sage_scannr` reads Sage's `scannr` for mzML, MGF, Thermo and Bruker DDA `.d` (precursor id = scannr + 1 for upstream Sage; `precursor_offset=0` for Sage on timsrust 0.6 or later).
+- Publication figures. Every plot takes `backend="plotly"|"matplotlib"|"spec"`, `style="paper"|"screen"|"talk"` (or a `FigureStyle`) and `size="single"|"onehalf"|"double"`, a width in mm, or `(width, height)` mm. `"paper"` is 7 pt text at 85 mm and 600 dpi; matplotlib writes PDF/SVG/EPS with embedded TrueType fonts. New extras: `spxtacular[matplotlib]` and `spxtacular[plotly-export]` (kaleido), both in `all`.
+- `compose_figure` lays out `backend="spec"` figures as one lettered multi-panel figure; `render`, `FigureSpec`, `FigureStyle` and `get_style` are exported.
+- `reporter_ion_plot(spectrum, plex="TMT10")`: channel bars from `extract_reporter_ions` with the reporter m/z region above, missing channels marked "n.d.". Takes any tacular plex name, an `IsobaricTagInfo` or a `ReporterIons`.
+- `annotate_spectrum(peptide=)` draws the sequence with b/y cleavage marks above the spectrum, and `mass_error_panel=True` adds an error strip below. `mirror_plot` takes `fragments=` (annotate both halves), `names=` and `similarity=` (cosine, modified cosine, entropy or a number). `absolute_axis=True` shows absolute intensity with a ×10ⁿ exponent. `sequence_coverage_plot` accepts a ProForma annotation.
 
 ### Performance
 
