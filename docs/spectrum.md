@@ -318,7 +318,7 @@ copy (or the spectrum itself with `inplace=True`).
 ```python
 spec.denoise()                       # MAD (robust, recommended for most spectra)
 spec.denoise(method="histogram")            # histogram mode estimate
-spec.denoise(5000.0)                 # fixed absolute threshold
+spec.denoise(method=5000.0)          # fixed absolute threshold
 ```
 
 #### `centroid`
@@ -470,7 +470,7 @@ by_intensity = spec.sort(by="intensity", reverse=True)   # most intense first
 #### `update`
 
 ```python
-def update(self, inplace: bool = False, **kwargs) -> Self
+def update(self, *, inplace: bool = False, **kwargs) -> Self
 ```
 
 Low-level helper to create a new `Spectrum` with arbitrary fields replaced. Prefer the named methods above for normal use.
@@ -583,7 +583,7 @@ def from_spectrl_url(cls, url: str) -> Spectrum | MsnSpectrum
 Bind a token into a shareable URL (or `data:` URI), or extract and decode one. `mode="fragment"` (default) puts the token after `#` so it never reaches the server; `mode="query"` uses `base?<param>=…`; `mode="data"` emits a `data:application/vnd.spectrl;v=…,…` URI (`base` ignored). `base` is required for `"fragment"` and `"query"`.
 
 ```python
-url = spec.to_spectrl_url("https://example.com/view")             # …#spectrl.…
+url = spec.to_spectrl_url(base="https://example.com/view")             # …#spectrl.…
 uri = spec.to_spectrl_url(mode="data")                            # data: URI
 restored = Spectrum.from_spectrl_url(url)
 ```

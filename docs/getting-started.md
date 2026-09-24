@@ -139,7 +139,7 @@ share it:
 token = spec.to_spectrl_token()
 restored = Spectrum.from_spectrl_token(token)
 
-url = spec.to_spectrl_url("https://example.com/view")  # token in the URL fragment
+url = spec.to_spectrl_url(base="https://example.com/view")  # token in the URL fragment
 restored = Spectrum.from_spectrl_url(url)
 ```
 
