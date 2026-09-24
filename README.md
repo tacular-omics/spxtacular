@@ -249,8 +249,9 @@ Full documentation with API reference, guides, and interactive plots is availabl
 ## Citing and contributing
 
 Citation metadata is available in
-[`CITATION.cff`](https://github.com/tacular-omics/spxtacular/blob/main/CITATION.cff). A
-version-specific Zenodo DOI will be added after the release is archived. See the
+[`CITATION.cff`](https://github.com/tacular-omics/spxtacular/blob/main/CITATION.cff). All
+archived releases are available from Zenodo at
+[doi:10.5281/zenodo.19342437](https://doi.org/10.5281/zenodo.19342437). See the
 [changelog](https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md) for release
 notes. Bug reports, support questions, and contributions are welcome; see
 [`CONTRIBUTING.md`](https://github.com/tacular-omics/spxtacular/blob/main/CONTRIBUTING.md) for the
