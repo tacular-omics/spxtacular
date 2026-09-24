@@ -733,8 +733,10 @@ ms2.facet_plot(fragments, mirror_spectrum=ms2.deconvolute().decharge()).show()
 ```python
 def plot_table(
     self,
-    show_charges: bool = True,
+    show_charges: bool | None = None,  # deprecated, use color
     show_scores: bool = True,
+    *,
+    color: Literal["charge"] | None = "charge",
 ) -> pd.DataFrame
 ```
 

@@ -87,10 +87,8 @@ _MSMS_TYPE_UNSUPPORTED: dict[int, str] = {
 def _detect_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     """Determine a Bruker ``.d`` folder's acquisition scheme from ``analysis.tdf``.
 
-    Equivalent to ``tdfpy.get_acquisition_type`` but owns its sqlite connection
-    so it is closed deterministically — ``sqlite3``'s context manager only ends
-    the transaction, it does not close the handle, so the tdfpy helper leaks one
-    connection per :class:`DReader`.
+    Mirrors ``tdfpy.get_acquisition_type`` but also rejects MS/MS schemes
+    spxtacular cannot read, with a message naming the scheme.
 
     Raises
     ------
@@ -907,6 +905,9 @@ class MzmlReader:
 # ---------------------------------------------------------------------------
 
 
+_READER_SUFFIXES = frozenset({".d", ".mzml", ".raw", ".mgf", ".ms2", ".msp"})
+
+
 class Reader:
     """Format-agnostic reader — detects the format from the path.
 
@@ -944,6 +945,8 @@ class Reader:
     ------
     ValueError
         If the path extension is not recognised.
+    FileNotFoundError
+        If the path does not exist.
 
     Notes
     -----
@@ -965,6 +968,8 @@ class Reader:
         if suffixes and suffixes[-1] == ".gz":
             suffixes = suffixes[:-1]
         suffix = suffixes[-1] if suffixes else ""
+        if suffix in _READER_SUFFIXES and not p.exists():
+            raise FileNotFoundError(f"No such file or directory: {str(p)!r}")
         if suffix == ".d":
             self._reader: DReader | MzmlReader | ThermoReader | MgfReader | Ms2Reader | MspReader = DReader(
                 p, centroid_config=centroid_config

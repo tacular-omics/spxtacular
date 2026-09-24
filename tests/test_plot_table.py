@@ -19,6 +19,7 @@ from peptacular.annotation.frag import Fragment
 from spxtacular import theme
 from spxtacular.core import Spectrum
 from spxtacular.plot_table import (
+    _fragment_label,
     build_annot_plot_table,
     build_plot_table,
     plot_from_table,
@@ -233,6 +234,19 @@ def test_spectrum_plot_table_method() -> None:
     pd.testing.assert_frame_equal(via_method, via_function)
 
 
+def test_spectrum_plot_table_color_none_matches_show_charges_false() -> None:
+    spec = _decon_spectrum()
+    pd.testing.assert_frame_equal(spec.plot_table(color=None), build_plot_table(spec, show_charges=False))
+
+
+@pytest.mark.parametrize("show_charges", [True, False])
+def test_spectrum_plot_table_show_charges_deprecated(show_charges: bool) -> None:
+    spec = _decon_spectrum()
+    with pytest.warns(DeprecationWarning, match="show_charges is deprecated"):
+        table = spec.plot_table(show_charges=show_charges)
+    pd.testing.assert_frame_equal(table, build_plot_table(spec, show_charges=show_charges))
+
+
 # ---------------------------------------------------------------------------
 # build_annot_plot_table — schema
 # ---------------------------------------------------------------------------
@@ -288,6 +302,42 @@ def test_annot_plot_table_negative_fragment_label_preserves_polarity() -> None:
     spec = Spectrum(mz=np.array([frag.mz]), intensity=np.array([100.0]))
     table = build_annot_plot_table(spec, [frag], tolerance=0.02)
     assert table.loc[0, "label"].endswith("^-2")
+
+
+def _paftacular_labels_side_chain_ions() -> bool:
+    """paftacular 1.4 maps d/v/w ions to mzPAF; 1.3.x raises for them."""
+    import paftacular as pft
+
+    try:
+        pft.to_mzpaf(_real_frag(300.0, ion_type="d", position=3), include_annotation=False)
+    except ValueError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not _paftacular_labels_side_chain_ions(), reason="needs paftacular >= 1.4 (d/v/w mzPAF labels)")
+@pytest.mark.parametrize(
+    ("ion_type", "expected"),
+    [
+        ("d", "d3"),
+        ("da", "da3"),
+        ("db", "db3"),
+        ("d-valine", "d3"),
+        ("da-threonine", "da3"),
+        ("db-isoleucine", "db3"),
+        ("v", "v3"),
+        ("w", "w3"),
+        ("w-valine", "w3"),
+        ("wa", "wa3"),
+        ("wb", "wb3"),
+        ("wa-threonine", "wa3"),
+        ("wb-isoleucine", "wb3"),
+    ],
+)
+@pytest.mark.parametrize("charge", [2, -2])
+def test_fragment_label_side_chain_ions(ion_type: str, expected: str, charge: int) -> None:
+    frag = _real_frag(300.0, ion_type=ion_type, position=3, charge_state=charge)
+    assert _fragment_label(frag, include_sequence=False) == f"{expected}^{charge}"
 
 
 def test_annot_plot_table_y_ion_color() -> None:

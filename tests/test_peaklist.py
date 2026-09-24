@@ -591,6 +591,12 @@ def test_reader_autodetect_is_case_insensitive(tmp_path):
         assert isinstance(reader._reader, MgfReader)
 
 
+@pytest.mark.parametrize("name", ["missing.mzML", "missing.mgf.gz", "missing.d", "missing.raw"])
+def test_reader_missing_path_raises_at_construction(tmp_path, name):
+    with pytest.raises(FileNotFoundError, match="missing"):
+        Reader(tmp_path / name)
+
+
 def test_reader_rejects_unknown_extension(tmp_path):
     with pytest.raises(ValueError, match=r"\.mgf"):
         Reader(tmp_path / "run.txt")

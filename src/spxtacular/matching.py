@@ -90,6 +90,9 @@ def match_fragments(
         If ``tolerance_type`` / ``peak_selection`` is not a recognised value, or if
         a dict key carries ``charge_state == 0`` (an m/z cannot be converted to a
         mass).
+    TypeError
+        If ``fragments`` is a string such as ``"PEPTIDE/2"``; build the fragments
+        with peptacular first.
 
     Notes
     -----
@@ -112,6 +115,14 @@ def match_fragments(
     # Normalise the string-ish inputs once: comparing raw strings further down
     # made ``"PPM"`` silently fall back to Da (a 10^6x too wide window) and any
     # ``peak_selection`` typo silently behave like ``"all"``.
+    # A str is a Sequence, so "PEPTIDE/2" would otherwise fail deep inside with
+    # "'str' object has no attribute 'mz'".
+    if isinstance(fragments, str | bytes):
+        raise TypeError(
+            f"fragments must be a sequence of peptacular Fragment objects or a fast_fragment dict, "
+            f"not {type(fragments).__name__} {fragments!r}. Build them first, e.g. "
+            'peptacular.fragment("PEPTIDE", ion_types=("b", "y")).'
+        )
     tol_type = ToleranceType(str(tolerance_type).lower())
     selection = PeakSelection(str(peak_selection).lower())
 
