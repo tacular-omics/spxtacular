@@ -19,7 +19,9 @@ What gets decided here, once, for both backends:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+import warnings
+from dataclasses import dataclass, field, replace
+from itertools import pairwise
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -29,6 +31,7 @@ from . import theme
 from ._text import RichText, text_width
 from .figspec import (
     Axis,
+    AxSegments,
     AxText,
     Band,
     Bars,
@@ -69,6 +72,11 @@ class ResolvedAxis:
     visible: bool = True
     #: Plotly may choose its own ticks (interactive zooming) for this axis.
     auto_ticks: bool = False
+    #: Axis title font size, pt; ``None`` means the style's ``axis_title_size``.
+    #: Smaller when the full-size title would not fit along the axis.
+    title_size: float | None = None
+    #: Tick label rotation in degrees (90 reads bottom to top), for crowded category labels.
+    tick_angle: float = 0.0
 
 
 @dataclass
@@ -177,24 +185,100 @@ def nice_step(span: float, target: float) -> float:
     return 10.0 * mag
 
 
-def tick_values(lo: float, hi: float, length_pt: float, spacing_pt: float) -> tuple[list[float], float]:
-    """Round tick positions inside ``[lo, hi]`` about ``spacing_pt`` apart."""
+def tick_values(
+    lo: float, hi: float, length_pt: float, spacing_pt: float, min_sep_pt: float = 0.0
+) -> tuple[list[float], float]:
+    """Round tick positions inside ``[lo, hi]`` about ``spacing_pt`` apart.
+
+    A short axis gets fewer ticks, not denser ones: the step is only refined
+    towards three ticks while neighbours stay at least ``min_sep_pt`` apart.
+    """
     target = max(1.0, length_pt / max(spacing_pt, 1.0))
-    ticks: list[float] = []
-    step = 1.0
-    # A value axis with only "0" and one other label is hard to read: densify
-    # (at most a few times) until there are at least three ticks.
-    for _ in range(4):
-        step = nice_step(hi - lo, target)
-        ticks = []
+    span = hi - lo
+
+    def build(step: float) -> list[float]:
+        out = []
         v = math.ceil(lo / step - 1e-9) * step
         while v <= hi + step * 1e-9:
-            ticks.append(round(v, 12) + 0.0)
+            out.append(round(v, 12) + 0.0)
             v += step
+        return out
+
+    step = nice_step(span, target)
+    ticks = build(step)
+    # A value axis with only "0" and one other label is hard to read: densify
+    # (at most a few times) until there are at least three ticks, as long as
+    # the labels still have room.
+    for _ in range(3):
         if len(ticks) >= 3:
             break
         target *= 1.6
+        finer = nice_step(span, target)
+        if span > 0 and finer / span * length_pt < min_sep_pt:
+            break
+        step, ticks = finer, build(finer)
     return ticks, step
+
+
+_TICK_GAP_EM = 0.25  #: minimum clear space between neighbouring tick labels, in font sizes
+
+
+def fit_tick_labels(
+    values: Sequence[float],
+    texts: Sequence[str],
+    lo: float,
+    hi: float,
+    length_pt: float,
+    font_size: float,
+    *,
+    vertical: bool,
+    rotate: bool = False,
+) -> tuple[list[float], list[str], float]:
+    """Thin (or, for category labels, rotate) tick labels so neighbours do not overlap.
+
+    Returns the kept values, their texts and the label angle (0 or 90). A y
+    axis compares label heights, an x axis label widths; ``rotate`` lets an x
+    axis stand its labels on end first when that is enough. Thinning keeps a
+    regular stride and both end ticks when it can; an axis too short for two
+    labels keeps the last one.
+    """
+    vals = [float(v) for v in values]
+    txts = [str(t) for t in texts]
+    if len(vals) < 2 or hi <= lo:
+        return vals, txts, 0.0
+    line = font_size * 1.18
+    gap = font_size * _TICK_GAP_EM
+    inside = [i for i, v in enumerate(vals) if lo - 1e-9 * abs(hi - lo) <= v <= hi + 1e-9 * abs(hi - lo)]
+    pos = {i: (vals[i] - lo) / (hi - lo) * length_pt for i in inside}
+
+    def extent(i: int, angle: float) -> float:
+        if vertical or angle:
+            return line
+        return text_width(txts[i], font_size)
+
+    def fits(keep: list[int], angle: float) -> bool:
+        return all(abs(pos[b] - pos[a]) >= (extent(a, angle) + extent(b, angle)) / 2 + gap for a, b in pairwise(keep))
+
+    angles = [0.0, 90.0] if rotate and not vertical else [0.0]
+    for angle in angles:
+        if fits(inside, angle):
+            return vals, txts, angle
+    angle = angles[-1]
+    n = len(inside)
+    best: list[int] | None = None
+    for k in range(2, n):
+        # Prefer strides that keep both ends; fall back to any stride.
+        starts = [0] if (n - 1) % k == 0 else [0, (n - 1) % k]
+        for start in starts:
+            keep = inside[start::k]
+            if len(keep) >= 2 and fits(keep, angle):
+                best = keep
+                break
+        if best is not None:
+            break
+    if best is None:
+        best = [inside[0], inside[-1]] if n >= 2 and fits([inside[0], inside[-1]], angle) else inside[-1:]
+    return [vals[i] for i in best], [txts[i] for i in best], angle
 
 
 def format_tick(value: float, step: float) -> str:
@@ -306,7 +390,7 @@ def _y_base_range(panel: Panel) -> tuple[float, float]:
 
 
 def _resolve_ticks(
-    ax: Axis, lo: float, hi: float, length_pt: float, spacing: float
+    ax: Axis, lo: float, hi: float, length_pt: float, spacing: float, min_sep: float = 0.0
 ) -> tuple[list[float], list[str], RichText | None, bool]:
     """Tick values, texts, and the (possibly exponent-extended) title."""
     title = ax.label
@@ -318,7 +402,7 @@ def _resolve_ticks(
     thi = hi if ax.tick_max is None else min(hi, ax.tick_max)
     # Ticks are spaced over the whole axis so the density does not change when
     # the upper limit is capped for headroom.
-    values, step = tick_values(tlo, thi, length_pt * (thi - tlo) / max(hi - lo, 1e-300), spacing)
+    values, step = tick_values(tlo, thi, length_pt * (thi - tlo) / max(hi - lo, 1e-300), spacing, min_sep)
     shown = [abs(v) for v in values] if ax.abs_ticklabels else values
     exponent = 0
     if ax.scale_exponent and values:
@@ -333,6 +417,76 @@ def _resolve_ticks(
     else:
         texts = [format_tick(v, step) for v in shown]
     return values, texts, title, not ax.abs_ticklabels and not exponent
+
+
+def _is_category(ax: Axis) -> bool:
+    """Explicit tick text that is not just numbers (channel names, sample names)."""
+    if ax.ticktext is None:
+        return False
+    for t in ax.ticktext:
+        try:
+            float(str(t).replace("\u2212", "-"))
+        except ValueError:
+            return True
+    return False
+
+
+def _axis_ticks(
+    ax: Axis, lo: float, hi: float, length_pt: float, style: FigureStyle, *, vertical: bool
+) -> tuple[list[float], list[str], RichText | None, bool, float]:
+    """:func:`_resolve_ticks` plus :func:`fit_tick_labels`: ticks whose labels fit the axis.
+
+    Returns values, texts, title, whether plotly may pick its own ticks, and the label angle.
+    """
+    fs = style.font_size
+    spacing = style.y_tick_spacing if vertical else style.x_tick_spacing
+    min_sep = fs * (1.18 + _TICK_GAP_EM) if vertical else 0.0
+    values, texts, title, auto = _resolve_ticks(ax, lo, hi, length_pt, spacing, min_sep)
+    kept, ktexts, angle = fit_tick_labels(
+        values, texts, lo, hi, length_pt, fs, vertical=vertical, rotate=not vertical and _is_category(ax)
+    )
+    if len(kept) != len(values):
+        auto = False
+    return kept, ktexts, title, auto, angle
+
+
+#: Word abbreviations tried, in order, when an axis title is longer than its axis.
+_TITLE_ABBREVIATIONS: tuple[tuple[str, str], ...] = (
+    ("Relative intensity", "Rel. int."),
+    ("Relative abundance", "Rel. abund."),
+    ("Relative", "Rel."),
+    ("Intensity", "Int."),
+    ("intensity", "int."),
+    ("Mass error", "Error"),
+    ("Retention time", "RT"),
+    ("Ion mobility", "IM"),
+)
+_MIN_TITLE_SCALE = 0.75
+
+
+def _abbreviate(title: RichText) -> RichText:
+    runs = []
+    for text, role in title.runs:
+        if role == "n":
+            for long, short in _TITLE_ABBREVIATIONS:
+                text = text.replace(long, short)
+        runs.append((text, role))
+    return RichText(tuple(runs))
+
+
+def fit_axis_title(title: RichText | None, length_pt: float, size: float) -> tuple[RichText | None, float | None]:
+    """An axis title that fits along ``length_pt``: as given, abbreviated, then set smaller.
+
+    Returns the title and its font size (``None`` for the style's size). The
+    size never drops below 75 % of the style's.
+    """
+    if title is None or title.width(size) <= length_pt:
+        return title, None
+    short = _abbreviate(title)
+    if short.width(size) <= length_pt:
+        return short, None
+    scaled = max(size * _MIN_TITLE_SCALE, size * length_pt / max(short.width(size), 1e-9))
+    return short, scaled
 
 
 # ---------------------------------------------------------------------------
@@ -933,7 +1087,28 @@ def resolve_figure(spec: FigureSpec) -> ResolvedFigure:
             panel_index += len(rc.panels)
             cells.append(rc)
         top -= row_h[r]
+    if spec.check_panel_size:
+        _warn_small_panels(cells, style)
     return ResolvedFigure(spec=spec, width=width, height=height, cells=cells, ink=ink_for(style, mode))
+
+
+#: A panel shorter than this many font sizes cannot show two y tick labels.
+_MIN_PANEL_EM = 2.6
+
+
+def _warn_small_panels(cells: list[ResolvedCell], style: FigureStyle) -> None:
+    small = []
+    for rc in cells:
+        for rp in rc.panels:
+            if rp.y.visible and rp.panel.fixed_height is None and rp.rect[3] < style.font_size * _MIN_PANEL_EM:
+                small.append(f"{rc.cell.letter or rp.index} ({rp.rect[3]:.0f} pt)")
+    if small:
+        warnings.warn(
+            f"compose_figure: panels {', '.join(small)} are too short for {style.name!r} text "
+            f"({style.font_size:g} pt); pass a larger size, fewer parts per column, or a smaller style",
+            UserWarning,
+            stacklevel=4,
+        )
 
 
 def _top_band(
@@ -982,6 +1157,109 @@ def fitted_height(cell: Cell, style: FigureStyle, width: float) -> float:
     return top_used + body + _PAD
 
 
+def _fit_marks_to_width(panel: Panel, width: float) -> Panel:
+    """Shrink a panel's ``fit_width`` text group (a sequence header) to fit ``width`` pt.
+
+    Letters, spacing and tick marks scale together about the group's centre;
+    a header above the axes (``yf == 1``) keeps its bottom edge and the
+    panel's ``header_height`` shrinks with it. Returns the panel itself when
+    the group already fits.
+    """
+    group = [m for m in panel.marks if isinstance(m, AxText | AxSegments) and m.fit_width]
+    if not group:
+        return panel
+    x_lo, x_hi = math.inf, -math.inf
+    dy_by_yf: dict[float, list[float]] = {}
+    for m in group:
+        if isinstance(m, AxText):
+            w = m.text.width(m.size) * (1.06 if m.bold else 1.0)
+            x = m.xf * width + m.dx
+            x0 = x - (w if m.ha == "right" else w / 2 if m.ha == "center" else 0)
+            x_lo, x_hi = min(x_lo, x0), max(x_hi, x0 + w)
+            dy_by_yf.setdefault(m.yf, []).append(m.dy)
+        else:
+            for xf, yf, sx0, sy0, sx1, sy1 in m.segments:
+                x_lo = min(x_lo, xf * width + sx0, xf * width + sx1)
+                x_hi = max(x_hi, xf * width + sx0, xf * width + sx1)
+                dy_by_yf.setdefault(yf, []).extend((sy0, sy1))
+    avail = width - 2.0
+    span = x_hi - x_lo
+    if span <= avail or span <= 0:
+        return panel
+    k = avail / span
+    cx = (x_lo + x_hi) / 2
+    header = panel.header_height > 0
+    # Header rows scale towards the axes' top edge; other rows towards their own middle.
+    cy = {yf: 0.0 if (header and yf >= 1.0) else (min(v) + max(v)) / 2 for yf, v in dy_by_yf.items()}
+
+    def sx(xf: float, d: float) -> float:
+        return cx + (xf * width + d - cx) * k - xf * width
+
+    def sy(yf: float, d: float) -> float:
+        return cy[yf] + (d - cy[yf]) * k
+
+    marks: list = []
+    for m in panel.marks:
+        if isinstance(m, AxText) and m.fit_width:
+            marks.append(replace(m, size=m.size * k, dx=sx(m.xf, m.dx), dy=sy(m.yf, m.dy)))
+        elif isinstance(m, AxSegments) and m.fit_width:
+            segs = [(xf, yf, sx(xf, a), sy(yf, b), sx(xf, c), sy(yf, d)) for xf, yf, a, b, c, d in m.segments]
+            marks.append(replace(m, segments=segs))
+        else:
+            marks.append(m)
+    return replace(panel, marks=marks, header_height=panel.header_height * k if header else panel.header_height)
+
+
+def _ytick_extent(rp: ResolvedPanel, fs: float) -> tuple[float, float, float]:
+    """Widest y tick label, and how far the top and bottom labels reach past the panel, pt."""
+    ya = rp.y
+    ph = rp.rect[3]
+    half = fs * 1.18 / 2
+    w, above, below = 0.0, -math.inf, -math.inf
+    if not (ya.visible and ya.show_ticklabels):
+        return 0.0, -math.inf, -math.inf
+    for v, t in zip(ya.ticks, ya.ticktext, strict=False):
+        if not t or not ya.lo <= v <= ya.hi:
+            continue
+        pos = (v - ya.lo) / (ya.hi - ya.lo) * ph
+        w = max(w, text_width(t, fs))
+        above = max(above, pos + half - ph)
+        below = max(below, half - pos)
+    return w, above, below
+
+
+def _prune_stack_ticks(upper: ResolvedPanel, lower: ResolvedPanel, fs: float) -> None:
+    """Blank edge tick labels of two stacked panels that would run into each other.
+
+    The lower panel's top label goes first, then the upper panel's bottom one.
+    """
+    half = fs * 1.18 / 2
+    gap = fs * _TICK_GAP_EM
+
+    def edge(rp: ResolvedPanel, top: bool) -> tuple[int, float] | None:
+        ya = rp.y
+        best: tuple[int, float] | None = None
+        for i, (v, t) in enumerate(zip(ya.ticks, ya.ticktext, strict=False)):
+            if not t or not ya.lo <= v <= ya.hi:
+                continue
+            y = rp.rect[1] + (v - ya.lo) / (ya.hi - ya.lo) * rp.rect[3]
+            if best is None or (y > best[1] if top else y < best[1]):
+                best = (i, y)
+        return best
+
+    if not (upper.y.visible and lower.y.visible):
+        return
+    for victim in (lower, upper, lower, upper):
+        lo_edge, up_edge = edge(lower, top=True), edge(upper, top=False)
+        if lo_edge is None or up_edge is None or up_edge[1] - half - gap >= lo_edge[1] + half:
+            return
+        i = lo_edge[0] if victim is lower else up_edge[0]
+        texts = list(victim.y.ticktext)
+        texts[i] = ""
+        victim.y.ticktext = texts
+        victim.y.auto_ticks = False
+
+
 def _resolve_cell(
     cell: Cell,
     rect: tuple[float, float, float, float],
@@ -999,23 +1277,23 @@ def _resolve_cell(
 
     # --- top furniture -----------------------------------------------------
     top_used, items, row1, letter_w, legend_own_row = _top_band(cell, style, cw, mode)
+    band_gap = fs * 0.3 if top_used > _PAD else _PAD
     title = cell.title
     letter = cell.letter
 
-    panels = cell.panels
-    header_top = panels[0].header_height if panels else 0.0
+    spec_panels = cell.panels
 
     # --- provisional ranges and tick widths ---------------------------------
-    y_ranges = [_y_base_range(p) for p in panels]
-    x_ranges = [_x_range(p) for p in panels]
+    y_ranges = [_y_base_range(p) for p in spec_panels]
+    x_ranges = [_x_range(p) for p in spec_panels]
     # Link shared x ranges to the first panel of the stack.
-    for i, p in enumerate(panels):
+    for i, p in enumerate(spec_panels):
         if p.share_x and i > 0:
             lo = min(x_ranges[i - 1][0], x_ranges[i][0]) if p.x.lo is None else x_ranges[i][0]
             hi = max(x_ranges[i - 1][1], x_ranges[i][1]) if p.x.hi is None else x_ranges[i][1]
             x_ranges[i] = (lo, hi)
             for j in range(i):
-                if panels[j + 1].share_x or j == i - 1:
+                if spec_panels[j + 1].share_x or j == i - 1:
                     x_ranges[j] = (lo, hi)
 
     def ytick_width(p: Panel, rng: tuple[float, float], length: float) -> tuple[float, RichText | None]:
@@ -1024,13 +1302,14 @@ def _resolve_cell(
             hi = hi * 1.3 if hi > 0 else hi
             if p.y.abs_ticklabels:
                 lo = lo * 1.3 if lo < 0 else lo
-        _, texts, ttl, _ = _resolve_ticks(p.y, lo, hi, length, style.y_tick_spacing)
+        _, texts, ttl, _, _ = _axis_ticks(p.y, lo, hi, length, style, vertical=True)
         w = max((text_width(t, fs) for t in texts), default=0.0)
         return w, ttl
 
-    est_h = max(20.0, (ch - top_used - header_top - 40.0) / max(len(panels), 1))
+    header0 = spec_panels[0].header_height if spec_panels else 0.0
+    est_h = max(20.0, (ch - top_used - header0 - 40.0) / max(len(spec_panels), 1))
     left_parts = []
-    for p, rng in zip(panels, y_ranges, strict=True):
+    for p, rng in zip(spec_panels, y_ranges, strict=True):
         if not p.y.visible:
             left_parts.append(_PAD)
             continue
@@ -1041,13 +1320,13 @@ def _resolve_cell(
     left = max(left_parts, default=_PAD)
 
     right = _PAD
-    last = panels[-1] if panels else None
+    last = spec_panels[-1] if spec_panels else None
     # Room for half of the last x tick label.
     if last is not None and last.x.visible:
-        _, xtexts, _, _ = _resolve_ticks(last.x, *x_ranges[-1], cw - left - _PAD, style.x_tick_spacing)
-        if xtexts:
+        _, xtexts, _, _, xangle = _axis_ticks(last.x, *x_ranges[-1], cw - left - _PAD, style, vertical=False)
+        if xtexts and not xangle:
             right = max(right, text_width(xtexts[-1], fs) / 2 + 1.0)
-    for p, rng in zip(panels, y_ranges, strict=True):
+    for p, rng in zip(spec_panels, y_ranges, strict=True):
         if p.y_secondary is not None:
             sec_title, factor = p.y_secondary
             lo, hi = rng
@@ -1066,41 +1345,80 @@ def _resolve_cell(
             w = max((text_width(t, fs) for t in texts), default=0.0)
             right = max(right, _PAD + fs * 1.0 + 8.0 + tick_pad + 2.0 + w + title_gap + cb.title.height(fs) + 6)
 
-    def bottom_space(p: Panel) -> float:
-        if not p.x.visible:
-            return 0.0
-        return tick_text_h + tick_pad + style.tick_length + (title_gap + p.x.label.height(ats) if p.x.label else 0.0)
-
-    bottom = _PAD + (bottom_space(last) if last is not None else 0.0)
-
-    # --- vertical stack -----------------------------------------------------
-    gaps = []
-    for i in range(1, len(panels)):
-        p = panels[i]
-        g = _PANEL_GAP_SHARED if p.share_x else bottom_space(panels[i - 1]) + fs * 0.8
-        gaps.append(g + p.header_height)
-    avail = ch - top_used - header_top - bottom - sum(gaps)
-    fixed = sum(p.fixed_height or 0.0 for p in panels)
-    weights = sum(p.weight for p in panels if p.fixed_height is None) or 1.0
-    flex = max(avail - fixed, 10.0)
-    heights = [p.fixed_height if p.fixed_height is not None else flex * p.weight / weights for p in panels]
-
+    extra_left = 0.0
+    extra_top = 0.0
+    resolved: list[ResolvedPanel] = []
     plot_left = cx + left
     plot_w = max(cw - left - right, 10.0)
-    y_cursor = cy + ch - top_used - header_top
-    resolved: list[ResolvedPanel] = []
-    for i, p in enumerate(panels):
-        if i > 0:
-            y_cursor -= gaps[i - 1]
-        h = heights[i]
-        prect = (plot_left, y_cursor - h, plot_w, h)
-        y_cursor -= h
-        index = first_index + i
-        shows_x_labels = not (i + 1 < len(panels) and panels[i + 1].share_x)
-        rp = _resolve_panel(p, index, prect, x_ranges[i], y_ranges[i], style, shows_x_labels)
-        if p.share_x and i > 0:
-            rp.shared_with = first_index + i - 1 if resolved[-1].shared_with is None else resolved[-1].shared_with
-        resolved.append(rp)
+    # Margins come from estimates; resolve, measure what the ticks actually
+    # need, and go round again (at most twice) if the estimate was short.
+    for _attempt in range(3):
+        cur_left = left + extra_left
+        cur_top = top_used + extra_top
+        plot_left = cx + cur_left
+        plot_w = max(cw - cur_left - right, 10.0)
+        panels = [_fit_marks_to_width(p, plot_w) for p in spec_panels]
+        header_top = panels[0].header_height if panels else 0.0
+
+        def bottom_space(i: int, panels: list[Panel] = panels, plot_w: float = plot_w) -> float:
+            p = panels[i]
+            if not p.x.visible:
+                return 0.0
+            _, texts, _, _, angle = _axis_ticks(p.x, *x_ranges[i], plot_w, style, vertical=False)
+            text_h = max((text_width(t, fs) for t in texts), default=0.0) + 1.0 if angle else tick_text_h
+            return text_h + tick_pad + style.tick_length + (title_gap + p.x.label.height(ats) if p.x.label else 0.0)
+
+        bottom = _PAD + (bottom_space(len(panels) - 1) if panels else 0.0)
+
+        # --- vertical stack -------------------------------------------------
+        gaps = []
+        for i in range(1, len(panels)):
+            p = panels[i]
+            g = _PANEL_GAP_SHARED if p.share_x else bottom_space(i - 1) + fs * 0.8
+            gaps.append(g + p.header_height)
+        avail = ch - cur_top - header_top - bottom - sum(gaps)
+        fixed = sum(p.fixed_height or 0.0 for p in panels)
+        weights = sum(p.weight for p in panels if p.fixed_height is None) or 1.0
+        flex = max(avail - fixed, 10.0)
+        heights = [p.fixed_height if p.fixed_height is not None else flex * p.weight / weights for p in panels]
+
+        y_cursor = cy + ch - cur_top - header_top
+        resolved = []
+        for i, p in enumerate(panels):
+            if i > 0:
+                y_cursor -= gaps[i - 1]
+            h = heights[i]
+            prect = (plot_left, y_cursor - h, plot_w, h)
+            y_cursor -= h
+            index = first_index + i
+            shows_x_labels = not (i + 1 < len(panels) and panels[i + 1].share_x)
+            rp = _resolve_panel(p, index, prect, x_ranges[i], y_ranges[i], style, shows_x_labels)
+            if p.share_x and i > 0:
+                rp.shared_with = first_index + i - 1 if resolved[-1].shared_with is None else resolved[-1].shared_with
+            resolved.append(rp)
+
+        # --- measure ----------------------------------------------------------
+        need_left = _PAD
+        for rp in resolved:
+            if not rp.y.visible:
+                continue
+            w, _, _ = _ytick_extent(rp, fs)
+            size = rp.y.title_size or ats
+            t_h = _axis_title_height(rp.y.title, size) + (title_gap if rp.y.title else 0.0)
+            need_left = max(need_left, _PAD + t_h + w + tick_pad + style.tick_length)
+        need_top = 0.0
+        if resolved:
+            _, above, _ = _ytick_extent(resolved[0], fs)
+            need_top = above - header_top - band_gap
+        grow_left = need_left - cur_left
+        if grow_left <= 0.5 and need_top <= 0.5:
+            break
+        extra_left += max(grow_left, 0.0)
+        extra_top += max(need_top, 0.0)
+
+    for i in range(1, len(resolved)):
+        if resolved[i].panel.share_x:
+            _prune_stack_ticks(resolved[i - 1], resolved[i], fs)
 
     # --- furniture positions ------------------------------------------------
     top_y = cy + ch - _PAD
@@ -1237,8 +1555,10 @@ def _resolve_panel(
     lo, hi, placed, dropped, _score, ref_pos = chosen
 
     # --- axes ---------------------------------------------------------------
-    xt, xtext, xtitle, xauto = _resolve_ticks(panel.x, xlo, xhi, pw, style.x_tick_spacing)
-    yt, ytext, ytitle, yauto = _resolve_ticks(panel.y, lo, hi, ph, style.y_tick_spacing)
+    xt, xtext, xtitle, xauto, xangle = _axis_ticks(panel.x, xlo, xhi, pw, style, vertical=False)
+    yt, ytext, ytitle, yauto, _ = _axis_ticks(panel.y, lo, hi, ph, style, vertical=True)
+    xtitle, xtitle_size = fit_axis_title(xtitle, pw, style.axis_title_size)
+    ytitle, ytitle_size = fit_axis_title(ytitle, ph, style.axis_title_size)
     x_axis = ResolvedAxis(
         lo=xlo,
         hi=xhi,
@@ -1250,6 +1570,8 @@ def _resolve_panel(
         zeroline=panel.x.zeroline,
         visible=panel.x.visible,
         auto_ticks=xauto and style.name == "screen",
+        title_size=xtitle_size,
+        tick_angle=xangle,
     )
     y_axis = ResolvedAxis(
         lo=lo,
@@ -1261,6 +1583,7 @@ def _resolve_panel(
         zeroline=panel.y.zeroline,
         visible=panel.y.visible,
         auto_ticks=yauto and style.name == "screen" and panel.y.tick_max is None,
+        title_size=ytitle_size,
     )
     y2 = None
     if panel.y_secondary is not None:
@@ -1300,6 +1623,158 @@ def _resolve_panel(
     )
 
 
+@dataclass
+class TextBox:
+    """One piece of text in a resolved figure, as the layout models it."""
+
+    kind: str  #: title, letter, legend, xtick, ytick, xtitle, ytitle, y2tick, y2title, label, text, refline
+    text: str
+    box: tuple[float, float, float, float]  #: x0, y0, x1, y1 in figure pt (y up)
+    panel: int | None = None  #: 1-based panel index, None for cell furniture
+
+
+def _tick_label_widths(ax: ResolvedAxis, size: float) -> list[float]:
+    return [text_width(t, size) for t, v in zip(ax.ticktext, ax.ticks, strict=False) if ax.lo <= v <= ax.hi]
+
+
+def text_boxes(fig: ResolvedFigure) -> list[TextBox]:
+    """Every text box the layout placed, in figure pt: titles, letters, legends,
+    tick labels, axis titles, peak labels, panel text and reference-line labels.
+
+    The boxes use the same metrics the layout used to make room (line-box
+    heights, estimated widths), so a test can check that nothing overlaps and
+    nothing leaves the figure without rendering pixels. Colour bars are not
+    included.
+    """
+    style = fig.style
+    fs = style.font_size
+    tick_off = style.tick_length + fs * 0.35
+    title_gap = fs * 0.4
+    tick_h = fs * 1.18
+    out: list[TextBox] = []
+    for cell in fig.cells:
+        if cell.letter_xy is not None and cell.cell.letter:
+            lx, ly = cell.letter_xy
+            w = text_width(RichText((((cell.cell.letter), "bf"),)), style.panel_letter_size)
+            out.append(TextBox("letter", cell.cell.letter, (lx, ly - style.panel_letter_size * 1.18, lx + w, ly)))
+        if cell.title_xy is not None and cell.cell.title:
+            tx, ty = cell.title_xy
+            t = cell.cell.title
+            out.append(
+                TextBox("title", t.text, (tx, ty - t.height(style.title_size), tx + t.width(style.title_size), ty))
+            )
+        if cell.legend and cell.legend_xy is not None:
+            rx, by = cell.legend_xy
+            w = _legend_width(cell.legend, fs)
+            out.append(TextBox("legend", " ".join(i.name for i in cell.legend), (rx - w, by, rx, by + tick_h)))
+        for rp in cell.panels:
+            left, bottom, pw, ph = rp.rect
+            idx = rp.index
+            xa, ya = rp.x, rp.y
+            # y tick labels and title (left side).
+            ytw = 0.0
+            if ya.visible and ya.show_ticklabels:
+                for v, t in zip(ya.ticks, ya.ticktext, strict=False):
+                    if not ya.lo <= v <= ya.hi or not t:
+                        continue
+                    y = bottom + (v - ya.lo) / (ya.hi - ya.lo) * ph
+                    w = text_width(t, fs)
+                    ytw = max(ytw, w)
+                    x1 = left - tick_off
+                    out.append(TextBox("ytick", t, (x1 - w, y - tick_h / 2, x1, y + tick_h / 2), idx))
+            if ya.visible and ya.title:
+                size = ya.title_size or style.axis_title_size
+                h, w = ya.title.width(size), ya.title.height(size)
+                x1 = left - tick_off - ytw - title_gap
+                yc = bottom + ph / 2
+                out.append(TextBox("ytitle", ya.title.text, (x1 - w, yc - h / 2, x1, yc + h / 2), idx))
+            # x tick labels and title (below).
+            xth = 0.0
+            if xa.visible and xa.show_ticklabels:
+                rot = abs(xa.tick_angle) % 180 == 90
+                for v, t in zip(xa.ticks, xa.ticktext, strict=False):
+                    if not xa.lo <= v <= xa.hi or not t:
+                        continue
+                    x = left + (v - xa.lo) / (xa.hi - xa.lo) * pw
+                    w = text_width(t, fs)
+                    bw, bh = (tick_h, w) if rot else (w, tick_h)
+                    xth = max(xth, bh)
+                    y1 = bottom - tick_off
+                    out.append(TextBox("xtick", t, (x - bw / 2, y1 - bh, x + bw / 2, y1), idx))
+            if xa.visible and xa.title:
+                size = xa.title_size or style.axis_title_size
+                w, h = xa.title.width(size), xa.title.height(size)
+                y1 = bottom - tick_off - max(xth, tick_h) - title_gap
+                xc = left + pw / 2
+                out.append(TextBox("xtitle", xa.title.text, (xc - w / 2, y1 - h, xc + w / 2, y1), idx))
+            if rp.y2 is not None:
+                y2 = rp.y2
+                w2 = 0.0
+                for v, t in zip(y2.ticks, y2.ticktext, strict=False):
+                    if not y2.lo <= v <= y2.hi or not t:
+                        continue
+                    y = bottom + (v - y2.lo) / (y2.hi - y2.lo) * ph
+                    w = text_width(t, fs)
+                    w2 = max(w2, w)
+                    x0 = left + pw + tick_off
+                    out.append(TextBox("y2tick", t, (x0, y - tick_h / 2, x0 + w, y + tick_h / 2), idx))
+                if y2.title:
+                    h, w = y2.title.width(style.axis_title_size), y2.title.height(style.axis_title_size)
+                    x0 = left + pw + tick_off + w2 + title_gap
+                    yc = bottom + ph / 2
+                    out.append(TextBox("y2title", y2.title.text, (x0, yc - h / 2, x0 + w, yc + h / 2), idx))
+            # Peak labels.
+            for lab in rp.labels:
+                x0, y0, x1, y1 = lab.box
+                out.append(TextBox("label", lab.text.text, (left + x0, bottom + y0, left + x1, bottom + y1), idx))
+            # Panel text and reference-line labels.
+            for k, m in enumerate(rp.panel.marks):
+                if isinstance(m, AxText) and m.text:
+                    w, h = m.text.width(m.size), m.text.height(m.size)
+                    if m.bold:
+                        w *= 1.06
+                    x = left + m.xf * pw + m.dx
+                    y = bottom + m.yf * ph + m.dy
+                    x0 = x - (w if m.ha == "right" else w / 2 if m.ha == "center" else 0)
+                    y0 = y - (h if m.va == "top" else h / 2 if m.va == "middle" else 0)
+                    out.append(TextBox("text", m.text.text, (x0, y0, x0 + w, y0 + h), idx))
+                elif isinstance(m, RefLine) and m.label and k in rp.refline_labels:
+                    dx, dy, ha = rp.refline_labels[k]
+                    size = style.label_size
+                    w, h = m.label.width(size), m.label.height(size)
+                    x = left + (m.value - xa.lo) / (xa.hi - xa.lo) * pw + dx
+                    x0 = x if ha == "left" else x - w
+                    y1 = bottom + ph + dy
+                    out.append(TextBox("refline", m.label.text, (x0, y1 - h, x0 + w, y1), idx))
+    return out
+
+
+def text_problems(fig: ResolvedFigure, tol: float = 0.25) -> list[str]:
+    """Overlapping text boxes and boxes outside the figure, described for a test failure."""
+    boxes = text_boxes(fig)
+    problems: list[str] = []
+    for b in boxes:
+        x0, y0, x1, y1 = b.box
+        if x0 < -tol or y0 < -tol or x1 > fig.width + tol or y1 > fig.height + tol:
+            problems.append(f"outside: {b.kind} {b.text!r} (panel {b.panel}) {tuple(round(v, 1) for v in b.box)}")
+    arr = np.array([b.box for b in boxes]) if boxes else np.zeros((0, 4))
+    for i in range(len(boxes)):
+        a = arr[i]
+        hit = (
+            (arr[i + 1 :, 0] < a[2] - tol)
+            & (arr[i + 1 :, 2] > a[0] + tol)
+            & (arr[i + 1 :, 1] < a[3] - tol)
+            & (arr[i + 1 :, 3] > a[1] + tol)
+        )
+        for j in np.flatnonzero(hit):
+            o = boxes[i + 1 + int(j)]
+            problems.append(
+                f"overlap: {boxes[i].kind} {boxes[i].text!r} (panel {boxes[i].panel}) "
+                f"x {o.kind} {o.text!r} (panel {o.panel})"
+            )
+    return problems
+
+
 def label_boxes(panel: ResolvedPanel) -> list[tuple[float, float, float, float]]:
     """Placed label boxes in panel pt coordinates (for tests)."""
     return [lab.box for lab in panel.labels]
@@ -1312,10 +1787,15 @@ __all__ = [
     "ResolvedCell",
     "ResolvedFigure",
     "ResolvedPanel",
+    "TextBox",
+    "fit_axis_title",
+    "fit_tick_labels",
     "format_tick",
     "label_boxes",
     "nice_step",
     "place_labels",
     "resolve_figure",
+    "text_boxes",
+    "text_problems",
     "tick_values",
 ]

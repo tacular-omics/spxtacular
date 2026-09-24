@@ -257,6 +257,7 @@ working; code that edits the returned plotly figure or the plot table may need c
 | no `intensity_scale` attr: axis from the data | relative axis (0-100 ticks) when the y label starts with "Relative" and no intensity exceeds 100 |
 | a missing kaleido raises `ImportError` (`pip install kaleido`) | still `ImportError`, not `SpxtacularError`; the message names `spxtacular[plotly-export]` |
 | plotly figures always autosized | labelled `"screen"` figures keep their 900 px design width so labels stay clear of each other |
+| `facet_plot(mirror_spectrum=)` labels the mirror in full | a label the top panel already shows on a matching peak is not repeated on the mirror; `mirror_labels="both"` keeps it |
 | a default title on every figure | none with `style="paper"`; pass `title=` |
 | `backend="matplotlib"` n/a | defaults to `style="paper"` |
 | plotly fonts and sizes | the `"screen"` style (11 px text, 900 px wide); pass `style="paper"` or `"talk"`, or `layout_kwargs` to override |

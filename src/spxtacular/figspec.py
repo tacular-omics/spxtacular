@@ -200,6 +200,8 @@ class AxText:
     va: Literal["bottom", "middle", "top"] = "middle"
     bold: bool = False
     name: str = "text"
+    #: Part of a group (a sequence header) that shrinks together to fit the panel width.
+    fit_width: bool = False
 
 
 @dataclass
@@ -214,6 +216,8 @@ class AxSegments:
     color: str
     width: float
     name: str = "segments"
+    #: Part of a group (a sequence header) that shrinks together to fit the panel width.
+    fit_width: bool = False
 
 
 Mark = Sticks | Line | Points | Bars | HitLayer | RefLine | Band | LabelSet | AxText | AxSegments
@@ -310,6 +314,9 @@ class FigureSpec:
     ncols: int = 1
     #: Plotly ``update_layout`` overrides, applied last.
     layout_kwargs: dict[str, Any] = field(default_factory=dict)
+    #: Warn at layout time when a panel is too small for the style's text
+    #: (set by :func:`compose_figure`, where the parts shrink to fit a grid).
+    check_panel_size: bool = False
 
     @property
     def panels(self) -> list[Panel]:
@@ -410,12 +417,16 @@ def finish(spec: FigureSpec, backend: str) -> Any:
     return render(spec, cast(Literal["plotly", "matplotlib"], key))
 
 
+#: A 16:9 slide, mm (10 x 5.625 in): the default canvas for composed talk figures.
+SLIDE_SIZE_MM: tuple[float, float] = (254.0, 142.875)
+
+
 def compose_figure(
     figures: Sequence[FigureSpec],
     *,
     ncols: int | None = None,
     labels: Sequence[str] | Literal["abc", "ABC"] | None = "abc",
-    size: SizeLike = "double",
+    size: SizeLike = None,
     style: StyleName | str | FigureStyle | None = None,
     backend: Backend = "matplotlib",
     theme_mode: theme.ThemeMode | None = None,
@@ -430,7 +441,9 @@ def compose_figure(
         spx.save_figure(fig, "figure2.pdf")
 
     The parts are re-laid out at their new size, so labels are placed again
-    for the space they actually get.
+    for the space they actually get: tick labels thin out, long axis titles
+    are abbreviated, a sequence header shrinks to its panel's width. When a
+    panel still ends up too small for the style's text, rendering warns.
 
     Parameters
     ----------
@@ -442,9 +455,11 @@ def compose_figure(
         Panel letters. ``"abc"`` (default) or ``"ABC"``, an explicit sequence,
         or ``None`` for no letters.
     size:
-        Overall size: a column name (default ``"double"``), a width in mm, or
-        ``(width_mm, height_mm)``. The height defaults to the sum of the rows'
-        preferred heights.
+        Overall size: a column name, a width in mm, or ``(width_mm, height_mm)``.
+        The height defaults to the sum of the rows' preferred heights. ``None``
+        (default) means ``"double"`` (175 mm), except in the ``"talk"`` style,
+        which gets a 16:9 slide (254 x 143 mm): talk-sized text in a
+        journal-width grid leaves no room for the data.
     style:
         Style for the composed figure. ``None`` keeps the first part's style.
     backend:
@@ -479,6 +494,8 @@ def compose_figure(
         for cell in fig.cells:
             cells.append(replace(cell, letter=letter))
 
+    if size is None:
+        size = SLIDE_SIZE_MM if fig_style.name == "talk" else "double"
     width, height = resolve_size(size, fig_style, aspect=0.5)
     if not (isinstance(size, tuple) and len(size) == 2 and size[1] is not None):
         cell_width = width / cols
@@ -495,5 +512,6 @@ def compose_figure(
         width_mm=width,
         height_mm=height,
         ncols=cols,
+        check_panel_size=True,
     )
     return finish(spec, backend)

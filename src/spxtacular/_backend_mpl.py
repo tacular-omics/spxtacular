@@ -145,10 +145,14 @@ def _axis_setup(ax: Axes, rx: ResolvedAxis, ry: ResolvedAxis, fig: ResolvedFigur
     if not ry.visible:
         ax.tick_params(axis="y", left=False, labelleft=False)
     gap = style.font_size * 0.4
+    if rx.tick_angle:
+        ax.tick_params(axis="x", labelrotation=rx.tick_angle)
     if rx.title:
-        ax.set_xlabel(rx.title.mathtext(), fontsize=style.axis_title_size, color=ink.axis_title, labelpad=gap)
+        size = rx.title_size or style.axis_title_size
+        ax.set_xlabel(rx.title.mathtext(), fontsize=size, color=ink.axis_title, labelpad=gap)
     if ry.title:
-        ax.set_ylabel(ry.title.mathtext(), fontsize=style.axis_title_size, color=ink.axis_title, labelpad=gap)
+        size = ry.title_size or style.axis_title_size
+        ax.set_ylabel(ry.title.mathtext(), fontsize=size, color=ink.axis_title, labelpad=gap)
     if ry.grid:
         ax.yaxis.grid(True, color=ink.grid, linewidth=0.5)
         ax.set_axisbelow(True)

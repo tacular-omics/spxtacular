@@ -193,6 +193,8 @@ fig = mirror_plot(
     raw,                 # Spectrum -- drawn inverted below the x-axis
     deconvoluted,        # Spectrum -- drawn upright above the x-axis
     fragments=None,      # annotate both halves with matched fragments
+    lower_fragments=None,  # annotate the lower half with these instead (another peptide or form)
+    mirror_labels="auto",  # "auto" | "both" | "top": which half labels a shared ion
     names=None,          # ("query", "library"): labels for the two halves
     similarity=None,     # "cosine" | "modified_cosine" | "entropy" | a number to print
     title=None,
@@ -222,6 +224,16 @@ raises `SpxtacularError` otherwise):
 
 ```python
 fig = mirror_plot(query, library, fragments=fragments, names=("query", "library"), similarity="cosine")
+```
+
+`mirror_labels=` decides which half labels an ion. `"auto"` (default) labels an ion once, on the
+upper half, when both halves carry the same annotation on matching peaks; the lower half keeps only
+the labels that differ, such as the shifted ions of a modified form passed as `lower_fragments=`.
+`"both"` labels every match on both halves and `"top"` labels the upper half only:
+
+```python
+phospho = pt.parse("PEPT[Phospho]IDEK/2").fragment(ion_types=("b", "y"), charges=[1, 2])
+fig = mirror_plot(library, query, fragments=fragments, lower_fragments=phospho)
 ```
 
 **Example:**
@@ -549,13 +561,16 @@ parts = [
     spx.mass_error_plot(spec, fragments, backend="spec"),
     spx.reporter_ion_plot(spec, "TMT10", backend="spec"),
 ]
-fig = spx.compose_figure(parts, ncols=2, size="double", backend="matplotlib")
+fig = spx.compose_figure(parts, ncols=2, backend="matplotlib")
 spx.save_figure(fig, "figure3.pdf")
 ```
 
 Lays out several `FigureSpec`s (from `backend="spec"`) as one multi-panel figure, with bold panel
 letters (`labels="abc"`, `"ABC"`, a list of strings, or `None`). The panels share one style and one
-width, so fonts and line weights match across the figure. Rendered figures (plotly or matplotlib) are rejected with
+width, so fonts and line weights match across the figure. `size=` defaults to the double-column
+width, or a 16:9 slide (254 × 143 mm) with `style="talk"`. Axes adapt to small panels: fewer ticks,
+abbreviated axis titles ("Rel. int. (%)"), a smaller sequence header and rotated category labels.
+A panel still too short for the style's text raises a `UserWarning` when the figure is laid out. Rendered figures (plotly or matplotlib) are rejected with
 `SpxtacularError`: build the parts with `backend="spec"`.
 
 `spx.render(spec, "plotly")` (or `spec.render("matplotlib")`) draws a single spec.

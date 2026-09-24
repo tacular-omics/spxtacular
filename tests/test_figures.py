@@ -11,17 +11,25 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import peptacular as pt
 import pytest
 
 import spxtacular as spx
-from spxtacular._layout import label_boxes, resolve_figure, tick_values
+from spxtacular._layout import (
+    fit_axis_title,
+    fit_tick_labels,
+    label_boxes,
+    resolve_figure,
+    text_problems,
+    tick_values,
+)
 from spxtacular._text import RichText, best_label
 from spxtacular.core import MsnSpectrum, Precursor, Spectrum
 from spxtacular.errors import SpxtacularError
-from spxtacular.figspec import FigureSpec
+from spxtacular.figspec import SLIDE_SIZE_MM, FigureSpec, LabelSet
 
 HAS_MPL = importlib.util.find_spec("matplotlib") is not None
 needs_mpl = pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
@@ -518,3 +526,153 @@ class TestLabelPlacement:
         fs = spx.plot_from_table(table, backend="spec")
         axis = fs.cells[0].panels[0].y
         assert axis.tick_max == 100.0
+
+
+# ---------------------------------------------------------------------------
+# Mirror labels
+# ---------------------------------------------------------------------------
+
+
+def _half_labels(fs: FigureSpec) -> dict[str, list[tuple[float, str]]]:
+    """``{"up": [(m/z, text)], "down": [...]}`` for the labels on each half of a mirror."""
+    out: dict[str, list[tuple[float, str]]] = {"up": [], "down": []}
+    for mark in fs.cells[0].panels[0].marks:
+        if isinstance(mark, LabelSet):
+            out[mark.direction] += [(float(x), t.text) for x, t in zip(mark.x, mark.texts, strict=True) if t]
+    return out
+
+
+def _modified_psm() -> tuple[MsnSpectrum, MsnSpectrum, list, list]:
+    """A query and a library of the phosphorylated form: ions carrying T4 are shifted."""
+    spec, frags = _psm()
+    mod_frags = pt.fragment("PEPT[Phospho]IDEK", ion_types=("b", "y"), charges=[1, 2])
+    mz = spec.mz.copy()
+    for plain, mod in zip(frags, mod_frags, strict=True):
+        i = int(np.argmin(np.abs(mz - plain.mz)))
+        if abs(mz[i] - plain.mz) <= 0.02:
+            mz[i] = mod.mz
+    order = np.argsort(mz)
+    library = _spectrum(mz[order], spec.intensity[order])
+    return spec, library, frags, mod_frags
+
+
+class TestMirrorLabels:
+    def test_identical_annotations_are_labelled_once(self) -> None:
+        spec, frags = _psm()
+        halves = _half_labels(spx.mirror_plot(spec, spec, fragments=frags, backend="spec"))
+        assert halves["up"]
+        assert halves["down"] == []
+
+    def test_both_repeats_every_label(self) -> None:
+        spec, frags = _psm()
+        halves = _half_labels(spx.mirror_plot(spec, spec, fragments=frags, mirror_labels="both", backend="spec"))
+        assert sorted(t for _, t in halves["down"]) == sorted(t for _, t in halves["up"])
+
+    def test_differing_annotations_are_labelled_on_both_halves(self) -> None:
+        query, library, frags, mod_frags = _modified_psm()
+        fs = spx.mirror_plot(library, query, fragments=frags, lower_fragments=mod_frags, backend="spec")
+        halves = _half_labels(fs)
+        up = {t for _, t in halves["up"]}
+        down = halves["down"]
+        assert down, "shifted ions must be labelled on the library side"
+        # Every lower label is either a new annotation or one at a different m/z.
+        up_at = {(round(x, 1), t) for x, t in halves["up"]}
+        assert all((round(x, 1), t) not in up_at for x, t in down)
+        # A shifted ion (it carries the phospho-T) is labelled on both halves, at different m/z.
+        assert up & {t for _, t in down}
+
+    def test_top_labels_the_query_only(self) -> None:
+        query, library, frags, mod_frags = _modified_psm()
+        fs = spx.mirror_plot(
+            library, query, fragments=frags, lower_fragments=mod_frags, mirror_labels="top", backend="spec"
+        )
+        halves = _half_labels(fs)
+        assert halves["up"]
+        assert halves["down"] == []
+
+    def test_facet_mirror_is_deduplicated(self) -> None:
+        spec, frags = _psm()
+        fs = spx.facet_plot(spec, fragments=frags, mirror_spectrum=spec, backend="spec")
+        mirror = fs.cells[0].panels[-1]
+        down = [t for m in mirror.marks if isinstance(m, LabelSet) for t in m.texts if t]
+        assert down == []
+
+    def test_bad_value_is_rejected(self) -> None:
+        spec, frags = _psm()
+        with pytest.raises(SpxtacularError):
+            spx.mirror_plot(spec, spec, fragments=frags, mirror_labels="bottom", backend="spec")  # ty: ignore[invalid-argument-type]
+        with pytest.raises(SpxtacularError):
+            spx.mirror_plot(spec, spec, lower_fragments=frags, backend="spec")
+
+
+# ---------------------------------------------------------------------------
+# Fitting text to small panels
+# ---------------------------------------------------------------------------
+
+
+class TestTextFit:
+    def test_short_axis_gets_fewer_ticks(self) -> None:
+        long, _ = tick_values(0.0, 100.0, length_pt=300.0, spacing_pt=40.0, min_sep_pt=20.0)
+        short, _ = tick_values(0.0, 100.0, length_pt=40.0, spacing_pt=40.0, min_sep_pt=20.0)
+        assert len(short) < len(long)
+        assert len(short) >= 2
+
+    def test_crowded_ticks_are_thinned(self) -> None:
+        values = [float(v) for v in range(0, 1001, 100)]
+        texts = [str(int(v)) for v in values]
+        vals, kept, angle = fit_tick_labels(values, texts, 0.0, 1000.0, 60.0, 10.0, vertical=False)
+        assert angle == 0.0
+        assert 1 <= len(vals) < len(values)
+        assert len(vals) == len(kept)
+
+    def test_category_labels_rotate(self) -> None:
+        values = [float(v) for v in range(10)]
+        texts = [f"{126 + i // 2}{'NC'[i % 2]}" for i in range(10)]
+        _, kept, angle = fit_tick_labels(values, texts, -0.5, 9.5, 200.0, 12.0, vertical=False, rotate=True)
+        assert angle == 90.0
+        assert len(kept) == 10
+
+    def test_long_axis_title_is_abbreviated(self) -> None:
+        title = RichText.plain("Relative intensity (%)")
+        fitted, size = fit_axis_title(title, 1000.0, 10.0)
+        assert fitted is title and size is None
+        fitted, _ = fit_axis_title(title, title.width(10.0) * 0.8, 10.0)
+        assert fitted is not None and fitted.text.startswith("Rel. int.")
+
+    def test_compose_in_talk_style_uses_a_slide(self) -> None:
+        spec, frags = _psm()
+        parts = [spx.plot_spectrum(spec, backend="spec"), spx.mass_error_plot(spec, frags, backend="spec")]
+        composed = spx.compose_figure(parts, style="talk", backend="spec")
+        assert (composed.width_mm, composed.height_mm) == pytest.approx(SLIDE_SIZE_MM)
+
+    def test_compose_warns_when_panels_are_too_small(self) -> None:
+        spec, frags = _psm()
+        parts = [spx.annotate_spectrum(spec, frags, mass_error_panel=True, backend="spec") for _ in range(6)]
+        composed = spx.compose_figure(parts, ncols=1, style="talk", size=(80.0, 60.0), backend="spec")
+        with pytest.warns(UserWarning, match="too short"):
+            resolve_figure(composed)
+
+
+# ---------------------------------------------------------------------------
+# Gallery-wide invariant: no text overlaps, all text inside the figure
+# ---------------------------------------------------------------------------
+
+
+def _gallery() -> dict:
+    path = Path(__file__).resolve().parents[1] / "docs" / "gallery" / "build.py"
+    spec = importlib.util.spec_from_file_location("_spx_gallery", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.figures()
+
+
+_GALLERY = _gallery()
+
+
+@pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+@pytest.mark.parametrize("name", list(_GALLERY))
+def test_gallery_text_fits(name: str, style: str) -> None:
+    fs = _GALLERY[name](backend="spec", style=style)
+    problems = text_problems(resolve_figure(fs))
+    assert problems == [], "\n".join(problems)

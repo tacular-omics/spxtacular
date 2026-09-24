@@ -98,10 +98,18 @@ def _axis_layout(ax: ResolvedAxis, fig: ResolvedFigure, *, is_x: bool) -> dict[s
         "visible": ax.visible,
         "title": {
             "text": ax.title.html() if ax.title else None,
-            "font": {"size": px(style.axis_title_size), "color": ink.axis_title, "family": style.font_family_css},
+            "font": {
+                "size": px(ax.title_size or style.axis_title_size),
+                "color": ink.axis_title,
+                "family": style.font_family_css,
+            },
             "standoff": px(style.font_size * 0.4),
         },
     }
+    if is_x:
+        # Always explicit: plotly would otherwise rotate crowded labels on its own,
+        # into space the layout did not reserve.
+        out["tickangle"] = -ax.tick_angle
     if ax.auto_ticks:
         out["tickmode"] = "auto"
         out["nticks"] = max(len(ax.ticks) + 1, 3)

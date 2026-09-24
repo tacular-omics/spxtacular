@@ -62,6 +62,25 @@ def _replicate() -> MsnSpectrum:
     )
 
 
+MODIFIED = "FAC[Carbamidomethyl]HS[Phospho]ASLTVR/3"
+
+
+def _modified_library() -> tuple[MsnSpectrum, list[Any]]:
+    """A library spectrum of a phosphorylated form: the query's matched peaks, moved to the modified fragments."""
+    spectrum, _, fragments = _psm()
+    modified = pt.parse(MODIFIED).fragment(ion_types=ION_TYPES, charges=[1, 2])
+    mz = spectrum.mz.copy()
+    for plain, mod in zip(fragments, modified, strict=True):
+        i = int(np.argmin(np.abs(spectrum.mz - plain.mz)))
+        if abs(spectrum.mz[i] - plain.mz) <= 0.02:
+            mz[i] = mod.mz
+    order = np.argsort(mz)
+    library = MsnSpectrum(
+        mz=mz[order], intensity=spectrum.intensity[order], ms_level=2, precursors=list(spectrum.precursors or [])
+    )
+    return library, modified
+
+
 def _profile() -> Spectrum:
     rng = np.random.default_rng(3)
     mz = np.linspace(799.0, 803.5, 1800)
@@ -120,6 +139,16 @@ def figures() -> dict[str, Callable[..., Any]]:
         "mirror": lambda **kw: spx.mirror_plot(
             replicate, spectrum, fragments=fragments, names=("query", "library"), similarity="cosine", **kw
         ),
+        # The library is a phosphorylated form: shared ions are labelled once
+        # (top), the shifted ones on both halves.
+        "mirror_modified": lambda **kw: spx.mirror_plot(
+            _modified_library()[0],
+            spectrum,
+            fragments=fragments,
+            lower_fragments=_modified_library()[1],
+            names=(peptide, MODIFIED),
+            **kw,
+        ),
         "mirror_decon": lambda **kw: spx.mirror_plot(spectrum, decon, **kw),
         "mass_error": lambda **kw: spx.mass_error_plot(spectrum, fragments, **kw),
         "coverage": lambda **kw: spx.sequence_coverage_plot(spectrum, peptide, fragments, **kw),
@@ -138,7 +167,9 @@ def figures() -> dict[str, Callable[..., Any]]:
                     style=kw.get("style"),
                 ),
                 spx.mass_error_plot(spectrum, fragments, backend="spec", style=kw.get("style")),
-                spx.reporter_ion_plot(_reporter_spectrum(), backend="spec", style=kw.get("style")),
+                # Bars only: the stacked reporter-region panel needs more height
+                # than a quarter of a slide has at talk font sizes.
+                spx.reporter_ion_plot(_reporter_spectrum(), show_spectrum=False, backend="spec", style=kw.get("style")),
             ],
             ncols=2,
             backend=kw["backend"],

@@ -1057,6 +1057,8 @@ mirror_plot(
     deconvoluted: Spectrum,
     *,
     fragments: FragmentInput | None = None,
+    lower_fragments: FragmentInput | None = None,
+    mirror_labels: Literal["auto", "both", "top"] = "auto",
     names: tuple[str, str] | None = None,
     similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None = None,
     title: str | None = None,
@@ -1076,7 +1078,10 @@ mirror_plot(
 ```
 
 With `fragments=`, both halves are matched and coloured by ion series (a query/library
-comparison). `names=` labels the two halves. `similarity=` prints a score in the corner: a
+comparison). `lower_fragments=` annotates the lower half with other fragments (another peptide,
+a modified form). `mirror_labels="auto"` (default) labels an ion shared by both halves once, on the
+upper half, and repeats only the labels that differ; `"both"` labels both halves in full, `"top"`
+the upper half only. `names=` labels the two halves. `similarity=` prints a score in the corner: a
 method name computes it (`"modified_cosine"` needs a precursor m/z on both spectra, else
 `SpxtacularError`), a number is printed as given.
 
@@ -1125,6 +1130,7 @@ facet_plot(
     spectrum: Spectrum,
     fragments=None,
     mirror_spectrum: Spectrum | None = None,
+    mirror_labels: Literal["auto", "both", "top"] = "auto",
     title: str | None = None,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
@@ -1233,7 +1239,7 @@ compose_figure(
     *,
     ncols: int | None = None,
     labels: Sequence[str] | Literal["abc", "ABC"] | None = "abc",
-    size: SizeLike = "double",
+    size: SizeLike = None,
     style: str | FigureStyle | None = None,
     backend: Literal["plotly", "matplotlib", "spec"] = "matplotlib",
     theme_mode: Literal["light", "dark"] | None = None,
@@ -1241,7 +1247,9 @@ compose_figure(
 ```
 
 Lays out several `FigureSpec`s (from `backend="spec"`) as one lettered multi-panel figure at one
-width and style. Anything that is not a `FigureSpec` raises `SpxtacularError`.
+width and style. `size=None` is the double-column width, or a 16:9 slide (254 × 143 mm) for
+`style="talk"`. A panel too short for the style's text raises a `UserWarning` at layout. Anything
+that is not a `FigureSpec` raises `SpxtacularError`.
 
 ### `FigureSpec`, `render`, `FigureStyle`, `get_style`
 

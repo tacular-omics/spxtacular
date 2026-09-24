@@ -663,11 +663,57 @@ def _similarity_value(
     )
 
 
+MirrorLabels = Literal["auto", "both", "top"]
+_MIRROR_LABELS = ("auto", "both", "top")
+
+
+def _mirror_lower_labels(
+    upper: pd.DataFrame,
+    lower: pd.DataFrame,
+    mirror_labels: str,
+    tolerance: float,
+    tolerance_unit: ToleranceUnit,
+) -> pd.DataFrame:
+    """The lower half's plot table with the labels ``mirror_labels`` leaves out blanked.
+
+    ``"auto"`` blanks a lower label when the upper half carries the same
+    annotation on a matching peak (within twice the matching tolerance: each
+    peak may sit a full tolerance from the theoretical m/z). ``"top"`` blanks
+    them all; ``"both"`` keeps them all.
+    """
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
+    if mirror_labels == "both" or not len(lower):
+        return lower
+    lower = lower.copy()
+    has_label = lower["label"].notna() & (lower["label"] != "")
+    if mirror_labels == "top":
+        lower.loc[has_label, "label"] = ""
+        return lower
+    unit = _unit_of(tolerance_unit)
+    up_rows = upper[upper["label"].notna() & (upper["label"] != "")]
+    by_label: dict[str, NDArray[np.float64]] = {
+        str(text): group["mz"].to_numpy(dtype=np.float64) for text, group in up_rows.groupby("label", sort=False)
+    }
+    blank = []
+    for idx, text, mz in zip(lower.index[has_label], lower["label"][has_label], lower["mz"][has_label], strict=True):
+        mzs = by_label.get(str(text))
+        if mzs is None:
+            continue
+        window = 2.0 * (float(mz) * tolerance * 1e-6 if unit == "ppm" else tolerance)
+        if np.any(np.abs(mzs - float(mz)) <= window):
+            blank.append(idx)
+    lower.loc[blank, "label"] = ""
+    return lower
+
+
 def mirror_plot(
     raw: Spectrum,
     deconvoluted: Spectrum,
     *,
     fragments: FragmentInput | None = None,
+    lower_fragments: FragmentInput | None = None,
+    mirror_labels: MirrorLabels = "auto",
     names: tuple[str, str] | None = None,
     similarity: Literal["cosine", "modified_cosine", "entropy"] | float | None = None,
     title: str | None = None,
@@ -705,6 +751,16 @@ def mirror_plot(
         Spectrum drawn above the axis.
     fragments:
         Annotate both halves with these fragments.
+    lower_fragments:
+        Annotate the lower half with these instead, when its annotation
+        differs: another peptide, a modified form, a chimeric spectrum.
+        Defaults to ``fragments``.
+    mirror_labels:
+        Which half labels a peak. ``"auto"`` (default) labels a peak once, on
+        the upper half, when both halves carry the same annotation on matching
+        peaks; the lower half keeps only the labels that differ or that the
+        upper half lacks. ``"both"`` labels every match on both halves;
+        ``"top"`` labels the upper half only.
     names:
         ``(upper, lower)`` names written inside each half. Defaults to
         ``("deconvoluted", "raw")`` without fragments and no names with them.
@@ -730,11 +786,16 @@ def mirror_plot(
     scale: Literal["absolute", "relative"] = "relative" if normalize else "absolute"
     marks: list[Mark] = []
 
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
+    if lower_fragments is not None and fragments is None:
+        raise SpxtacularError("lower_fragments needs fragments for the upper half")
     if fragments is not None:
+        lower = fragments if lower_fragments is None else lower_fragments
         tables = [
             build_annot_plot_table(
                 s,
-                fragments,
+                frags,
                 tolerance=tolerance,
                 tolerance_unit=tolerance_unit,
                 peak_selection=peak_selection,
@@ -742,8 +803,9 @@ def mirror_plot(
                 theme_mode=mode,
                 intensity_scale=scale,
             )
-            for s in (raw, deconvoluted)
+            for s, frags in ((raw, lower), (deconvoluted, fragments))
         ]
+        tables[0] = _mirror_lower_labels(tables[1], tables[0], mirror_labels, tolerance, tolerance_unit)
         marks += table_marks(tables[0], style=fig_style, theme_mode=mode, direction="down", legend=False)
         marks += table_marks(tables[1], style=fig_style, theme_mode=mode, direction="up", legend=True)
         label = str(tables[1].attrs["intensity_label"])
@@ -936,6 +998,7 @@ def _ladder_marks(
                 va="middle",
                 bold=is_mod,
                 name="residue",
+                fit_width=True,
             )
         )
         if is_mod:
@@ -948,10 +1011,12 @@ def _ladder_marks(
                     letter_size * 0.55,
                     mod_color,
                     dx=(i - centre) * step,
-                    dy=dy - letter_size * 0.78,
+                    # Just clear of the letter's line box.
+                    dy=dy - letter_size * 0.93,
                     ha="center",
                     va="middle",
                     name="mod_marker",
+                    fit_width=True,
                 )
             )
     h = letter_size * 0.62  # tick reach from the letter centre line
@@ -972,7 +1037,7 @@ def _ladder_marks(
                 segs.append((xf, yf, x, dy - h * 0.15, x, dy - h))
                 segs.append((xf, yf, x, dy - h, x + foot, dy - h))
     for color, segs in by_color.items():
-        marks.append(AxSegments(segs, color, tick_width, name="coverage_tick"))
+        marks.append(AxSegments(segs, color, tick_width, name="coverage_tick", fit_width=True))
     return marks
 
 
@@ -1213,6 +1278,8 @@ def sequence_coverage_plot(
     per_row = max(8, int(width_pt * 0.9 // step))
     rows = -(-n_res // per_row)
     row_height = letter * 2.8
+    summary_strip = fig_style.font_size * 1.6 if not (title or fig_style.show_title) else 0.0
+    panel_height = rows * row_height + summary_strip
 
     marks: list[Mark] = []
     for r in range(rows):
@@ -1220,7 +1287,8 @@ def sequence_coverage_plot(
         hi = min(n_res, lo + per_row)
         row_n = {b: t for b, t in n_bonds.items() if lo < b <= hi}
         row_c = {b: t for b, t in c_bonds.items() if lo < b <= hi}
-        yf = 1.0 - (r + 0.5) / rows
+        # Rows fill the panel from the top; the summary line (if any) sits below them.
+        yf = 1.0 - (r + 0.5) * row_height / panel_height
         chunk = residues[lo:hi]
         # Left-align wrapped rows so residue columns line up across rows.
         centre_shift = ((per_row - len(chunk)) / 2.0) * step if rows > 1 else 0.0
@@ -1267,7 +1335,7 @@ def sequence_coverage_plot(
         marks=marks,
         x=Axis(lo=0.0, hi=1.0, visible=False),
         y=Axis(lo=0.0, hi=1.0, visible=False),
-        fixed_height=rows * row_height + (fig_style.font_size * 1.6 if not fig_style.show_title else 0.0),
+        fixed_height=panel_height,
     )
     cell = Cell(
         panels=[panel],
@@ -1348,6 +1416,7 @@ def facet_plot(
     *,
     fragments: FragmentInput | None = None,
     mirror_spectrum: Spectrum | None = None,
+    mirror_labels: MirrorLabels = "auto",
     title: str | None = None,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
@@ -1375,6 +1444,10 @@ def facet_plot(
         Fragments for annotation and the mass-error panel.
     mirror_spectrum:
         Optional second spectrum, drawn downward in the last panel.
+    mirror_labels:
+        As for :func:`mirror_plot`: ``"auto"`` (default) labels an ion the
+        top panel already labels only once, ``"both"`` repeats it on the
+        mirror, ``"top"`` leaves the mirror unlabelled.
     title:
         Plot title.
     tolerance, tolerance_unit, peak_selection, include_sequence:
@@ -1388,6 +1461,8 @@ def facet_plot(
     """
     key, fig_style, mode = _setup(backend, style, theme_mode)
     err_unit = _error_unit(unit)
+    if mirror_labels not in _MIRROR_LABELS:
+        raise SpxtacularError(f"mirror_labels must be one of {', '.join(_MIRROR_LABELS)}; got {mirror_labels!r}")
     if fragments is not None:
         table = build_annot_plot_table(
             spectrum,
@@ -1444,6 +1519,7 @@ def facet_plot(
             )
         else:
             mirror_table = build_plot_table(mirror_spectrum, max_labels=max_labels, theme_mode=mode)
+        mirror_table = _mirror_lower_labels(table, mirror_table, mirror_labels, tolerance, tolerance_unit)
         marks = table_marks(mirror_table, style=fig_style, theme_mode=mode, direction="down", legend=False)
         y_axis, _ = intensity_axis(
             str(mirror_table.attrs.get("intensity_label", "Intensity")),
