@@ -88,6 +88,8 @@ class PlacedLabel:
     name: str
     #: Box in panel pt coordinates, for tests and debugging.
     box: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    #: The label covers context sticks; backends draw it on a background patch.
+    knockout: bool = False
 
 
 @dataclass
@@ -338,13 +340,129 @@ def _resolve_ticks(
 # ---------------------------------------------------------------------------
 
 
+def _range_max_table(v: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Sparse table: row ``k`` holds the max of ``v[i : i + 2**k]`` (``-inf`` past the end)."""
+    n = len(v)
+    levels = max(1, n.bit_length())
+    t = np.full((levels, n), -np.inf)
+    t[0] = v
+    for k in range(1, levels):
+        half, m = 1 << (k - 1), n - (1 << k) + 1
+        if m <= 0:
+            break
+        t[k, :m] = np.maximum(t[k - 1, :m], t[k - 1, half : half + m])
+    return t
+
+
+def _range_max(t: NDArray[np.float64], i0: NDArray[np.intp], i1: NDArray[np.intp]) -> NDArray[np.float64]:
+    """Max over ``[i0, i1)`` for each pair; ``-inf`` for an empty range."""
+    out = np.full(i0.shape, -np.inf)
+    ok = i1 > i0
+    if ok.any():
+        a, b = i0[ok], i1[ok]
+        k = np.floor(np.log2(b - a)).astype(np.intp)
+        out[ok] = np.maximum(t[k, a], t[k, b - np.left_shift(1, k)])
+    return out
+
+
+class _StickSet:
+    """Vertical segments (x, lo, hi) in the canonical frame, sorted by x.
+
+    :meth:`prepare` splits them at the lowest point any label or leader can
+    reach: a stick starting below it ("grounded", the usual peak) blocks a box
+    exactly when its top reaches the box, which a range-max table answers in
+    O(1) per candidate. The rest are checked one by one.
+    """
+
+    def __init__(self, x: NDArray[np.float64], lo: NDArray[np.float64], hi: NDArray[np.float64]) -> None:
+        ok = np.isfinite(x) & np.isfinite(lo) & np.isfinite(hi)
+        x, lo, hi = x[ok], lo[ok], hi[ok]
+        order = np.argsort(x, kind="stable")
+        self.x, self.lo, self.hi = x[order], lo[order], hi[order]
+        self.prepare(-np.inf)
+
+    def __len__(self) -> int:
+        return len(self.x)
+
+    def prepare(self, ground: float) -> None:
+        g = self.lo < ground
+        self.gx, self.glo, self.ghi = self.x[g], self.lo[g], self.hi[g]
+        self.gt = _range_max_table(self.ghi) if len(self.gx) else None
+        f = ~g
+        self.fx, self.flo, self.fhi = self.x[f], self.lo[f], self.hi[f]
+
+    def boxes_hit(
+        self,
+        x0: NDArray[np.float64],
+        x1: NDArray[np.float64],
+        y0: NDArray[np.float64],
+        y1: NDArray[np.float64],
+        pad: float,
+    ) -> NDArray[np.bool_]:
+        """Per box: does a stick with x in [x0 - pad, x1 + pad] overlap (y0 - 0.3, y1)?"""
+        hit = np.zeros(len(x0), dtype=bool)
+        if not len(x0):
+            return hit
+        if self.gt is not None:
+            i0 = np.searchsorted(self.gx, x0 - pad)
+            i1 = np.searchsorted(self.gx, x1 + pad, side="right")
+            hit |= _range_max(self.gt, i0, i1) > y0 - 0.3
+        if len(self.fx):
+            k0 = int(np.searchsorted(self.fx, float(x0.min()) - pad))
+            k1 = int(np.searchsorted(self.fx, float(x1.max()) + pad, side="right"))
+            if k1 > k0:
+                sx, lo, hi = self.fx[k0:k1], self.flo[k0:k1], self.fhi[k0:k1]
+                m = (
+                    (sx[None, :] >= (x0 - pad)[:, None])
+                    & (sx[None, :] <= (x1 + pad)[:, None])
+                    & (lo[None, :] < y1[:, None])
+                    & (hi[None, :] > (y0 - 0.3)[:, None])
+                )
+                hit |= m.any(axis=1)
+        return hit
+
+    def leader_hit(self, ax: float, start: tuple[float, float], end: tuple[float, float]) -> bool:
+        """Does a leader from ``start`` to ``end`` cross a stick that stands taller than it?"""
+        lo_x, hi_x = min(start[0], end[0]), max(start[0], end[0])
+        sloped = hi_x - lo_x > 1e-6
+        for sxs, los, his, table in ((self.gx, self.glo, self.ghi, self.gt), (self.fx, self.flo, self.fhi, None)):
+            if not len(sxs):
+                continue
+            k0 = int(np.searchsorted(sxs, lo_x - 0.3))
+            k1 = int(np.searchsorted(sxs, hi_x + 0.3, side="right"))
+            if k1 <= k0:
+                continue
+            if table is not None:
+                k = (k1 - k0).bit_length() - 1
+                top = max(float(table[k, k0]), float(table[k, k1 - (1 << k)]))
+                if sloped:
+                    slope = (end[1] - start[1]) / (end[0] - start[0])
+                    low = min(start[1] + slope * (x - start[0]) for x in (lo_x - 0.3, hi_x + 0.3)) - 0.3
+                else:
+                    low = start[1]
+                if top <= low:
+                    continue
+            sx = sxs[k0:k1]
+            own = np.abs(sx - ax) < 1e-6
+            if sloped:
+                ly = start[1] + (sx - start[0]) / (end[0] - start[0]) * (end[1] - start[1])
+                if np.any(~own & (his[k0:k1] > ly - 0.3) & (los[k0:k1] < ly)):
+                    return True
+            elif np.any(~own & (his[k0:k1] > start[1])):
+                return True
+        return False
+
+
 @dataclass
 class _Obstacles:
-    #: Vertical segments: x, lo, hi (sorted by x), pt, in the canonical frame.
-    sx: NDArray[np.float64]
-    slo: NDArray[np.float64]
-    shi: NDArray[np.float64]
-    boxes: list[tuple[float, float, float, float]]
+    """What labels keep clear of, in the canonical frame."""
+
+    #: Sticks and traces a label never covers.
+    hard: _StickSet
+    #: Context sticks (unmatched peaks): avoided first, covered when nothing else fits.
+    soft: _StickSet
+    #: Dots and bars, (n, 4) as (x0, y0, x1, y1).
+    boxes: NDArray[np.float64]
 
 
 def _seg_boxes_hit(x0: float, y0: float, x1: float, y1: float, boxes: NDArray[np.float64]) -> bool:
@@ -370,6 +488,31 @@ def _seg_boxes_hit(x0: float, y0: float, x1: float, y1: float, boxes: NDArray[np
         else:
             t1 = np.minimum(t1, r)
     return bool(np.any(ok & (t0 <= t1)))
+
+
+def _segs_hit_boxes(segs: NDArray[np.float64], boxes: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """Per box (rows of ``boxes``): does any of ``segs`` cross it? Liang-Barsky over both axes."""
+    if len(segs) == 0 or len(boxes) == 0:
+        return np.zeros(len(boxes), dtype=bool)
+    sx0, sy0 = segs[:, 0], segs[:, 1]
+    dx, dy = segs[:, 2] - sx0, segs[:, 3] - sy0
+    t0 = np.zeros((len(boxes), len(segs)))
+    t1 = np.ones((len(boxes), len(segs)))
+    ok = np.ones((len(boxes), len(segs)), dtype=bool)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for p, q in (
+            (-dx, sx0[None, :] - boxes[:, 0, None]),
+            (dx, boxes[:, 2, None] - sx0[None, :]),
+            (-dy, sy0[None, :] - boxes[:, 1, None]),
+            (dy, boxes[:, 3, None] - sy0[None, :]),
+        ):
+            zero = p == 0
+            if zero.any():
+                ok &= ~zero[None, :] | (q >= 0)
+            r = q / p[None, :]
+            t0 = np.where((p < 0)[None, :], np.maximum(t0, r), t0)
+            t1 = np.where((p > 0)[None, :], np.minimum(t1, r), t1)
+    return (ok & (t0 <= t1)).any(axis=1)
 
 
 def _segs_cross(p: tuple[float, float, float, float], segs: NDArray[np.float64]) -> bool:
@@ -404,6 +547,24 @@ def _candidates(w: float, h: float) -> list[tuple[float, float, bool, float]]:
     return out
 
 
+def _candidate_arrays(
+    w: float, h: float, leaders: bool
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
+    cands = [c for c in _candidates(w, h) if leaders or not c[2]]
+    return (
+        np.array([c[0] for c in cands], dtype=np.float64),
+        np.array([c[1] for c in cands], dtype=np.float64),
+        np.array([c[2] for c in cands], dtype=bool),
+    )
+
+
+def _rotated_extent(w: float, h: float, rotation: float) -> tuple[float, float]:
+    """Width and height of the axis-aligned box around a ``w`` x ``h`` box turned by ``rotation`` degrees."""
+    r = math.radians(rotation % 180)
+    c, s = abs(math.cos(r)), abs(math.sin(r))
+    return w * c + h * s, w * s + h * c
+
+
 def place_labels(
     labelsets: Sequence[LabelSet],
     to_pt_x,
@@ -413,121 +574,174 @@ def place_labels(
     obstacles_up: _Obstacles,
     obstacles_down: _Obstacles | None,
     reserved: list[tuple[float, float, float, float]],
+    stop_below: float = -math.inf,
 ) -> tuple[list[PlacedLabel], int, float]:
     """Greedy, priority-ordered placement. Returns labels, dropped count, placed priority.
 
     Works in a canonical "up" frame: for a downward label set (the lower half of
-    a mirror plot) the panel is flipped so the same search applies.
+    a mirror plot) the panel is flipped so the same search applies. Each label
+    first tries every spot that keeps clear of all marks; if none is free it may
+    cover context sticks (unmatched peaks), drawn with a knockout background.
+
+    ``to_pt_x``/``to_pt_y`` map data arrays to panel pt. The run stops early,
+    returning score ``-inf``, once it cannot reach ``stop_below``.
     """
-    items: list[tuple[float, int, int]] = []
+    pad = 0.6
+    # --- per-label geometry, computed once ------------------------------------
+    rows: list[tuple[float, int, int, float, float, float, float, float, float, float, float, bool]] = []
+    ground = {False: math.inf, True: math.inf}
     for s_i, ls in enumerate(labelsets):
-        for j in range(len(ls.texts)):
-            if not ls.texts[j]:
+        n = len(ls.texts)
+        if not n:
+            continue
+        down = ls.direction == "down"
+        xs = np.asarray(to_pt_x(np.asarray(ls.x, dtype=np.float64)), dtype=np.float64)
+        ys = np.asarray(to_pt_y(np.asarray(ls.y, dtype=np.float64)), dtype=np.float64)
+        prio = np.nan_to_num(np.asarray(ls.priority, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+        for j in range(n):
+            text = ls.texts[j]
+            if not text:
                 continue
-            items.append((float(ls.priority[j]), s_i, j))
-    items.sort(key=lambda t: -t[0])
+            size = ls.size
+            if ls.sizes is not None and math.isfinite(float(ls.sizes[j])) and float(ls.sizes[j]) > 0:
+                size = float(ls.sizes[j])
+            rotation = ls.rotation
+            if ls.rotations is not None and math.isfinite(float(ls.rotations[j])):
+                rotation = float(ls.rotations[j])
+            tw, th = _rotated_extent(text.width(size), text.height(size), rotation)
+            ax_pt, ay_panel = float(xs[j]), float(ys[j])
+            ay = height - ay_panel if down else ay_panel
+            off = float(ls.anchor_offset[j]) if ls.anchor_offset is not None else 0.0
+            if math.isfinite(ax_pt) and math.isfinite(ay):
+                ground[down] = min(ground[down], ay + off + ls.gap * 0.35 - 1e-6)
+            rows.append((float(prio[j]), s_i, j, ax_pt, ay_panel, ay, off, tw, th, size, rotation, down))
+    rows.sort(key=lambda t: -t[0])
+    remaining = [*np.cumsum([r[0] for r in rows][::-1])[::-1].tolist(), 0.0]
+
+    up_ground = ground[False] if obstacles_down is not None else min(ground[False], ground[True])
+    obstacles_up.hard.prepare(up_ground)
+    obstacles_up.soft.prepare(up_ground)
+    if obstacles_down is not None:
+        obstacles_down.hard.prepare(ground[True])
+        obstacles_down.soft.prepare(ground[True])
 
     placed: list[PlacedLabel] = []
     dropped = 0
     score = 0.0
     # Boxes and leaders in the *panel* frame (y up from the panel bottom).
-    box_arr = np.zeros((len(items) + len(reserved) + 1, 4))
+    box_arr = np.zeros((len(rows) + len(reserved) + 1, 4))
     n_boxes = 0
     for b in reserved:
         box_arr[n_boxes] = b
         n_boxes += 1
-    leaders = np.zeros((len(items) + 1, 4))
+    leaders = np.zeros((len(rows) + 1, 4))
     n_leaders = 0
-    cand_cache: dict[tuple[float, float], list[tuple[float, float, bool, float]]] = {}
+    cand_cache: dict[tuple[float, float, bool], tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]] = {}
 
-    for prio, s_i, j in items:
+    for idx, (prio, s_i, j, ax_pt, ay_panel, ay, off, tw, th, size, rotation, down) in enumerate(rows):
+        if score + remaining[idx] < stop_below:
+            return placed, dropped + len(rows) - idx, -math.inf
         ls = labelsets[s_i]
-        down = ls.direction == "down"
-        obst = obstacles_down if (down and obstacles_down is not None) else obstacles_up
-        text = ls.texts[j]
-        tw, th = text.width(ls.size), text.height(ls.size)
-        if ls.rotation % 180:
-            tw, th = th, tw
-        ax_pt = to_pt_x(float(ls.x[j]))
-        ay_panel = to_pt_y(float(ls.y[j]))
-        if not (math.isfinite(ax_pt) and math.isfinite(ay_panel)):
+        if not (math.isfinite(ax_pt) and math.isfinite(ay)):
             dropped += 1
             continue
-        ay = height - ay_panel if down else ay_panel
-        off = float(ls.anchor_offset[j]) if ls.anchor_offset is not None else 0.0
+        obst = obstacles_down if (down and obstacles_down is not None) else obstacles_up
         base = ay + off + ls.gap
-        key = (round(tw, 2), round(th, 2))
+        key = (round(tw, 2), round(th, 2), ls.leaders)
         cands = cand_cache.get(key)
         if cands is None:
-            cands = _candidates(tw, th)
+            cands = _candidate_arrays(tw, th, ls.leaders)
             cand_cache[key] = cands
-        if not ls.leaders:
-            cands = [c for c in cands if not c[2]]
+        cdx, cdy, clead = cands
 
+        # --- box stage, vectorised over candidates ----------------------------
+        cx = ax_pt + cdx
+        x0, x1 = cx - tw / 2, cx + tw / 2
+        y0 = base + cdy
+        y1 = y0 + th
+        sel = np.flatnonzero((x0 >= 0) & (x1 <= width) & (y1 <= height) & (y0 >= 0))
+        if len(sel) and n_boxes:
+            py0, py1 = (height - y1[sel], height - y0[sel]) if down else (y0[sel], y1[sel])
+            b = box_arr[:n_boxes]
+            hit = (
+                (b[None, :, 0] < (x1[sel] + pad)[:, None])
+                & (b[None, :, 2] > (x0[sel] - pad)[:, None])
+                & (b[None, :, 1] < (py1 + pad)[:, None])
+                & (b[None, :, 3] > (py0 - pad)[:, None])
+            ).any(axis=1)
+            sel = sel[~hit]
+        if len(sel) and len(obst.boxes):
+            ob = obst.boxes
+            hit = (
+                (ob[None, :, 0] < x1[sel, None])
+                & (ob[None, :, 2] > x0[sel, None])
+                & (ob[None, :, 1] < y1[sel, None])
+                & (ob[None, :, 3] > y0[sel, None])
+            ).any(axis=1)
+            sel = sel[~hit]
+        if len(sel):
+            sel = sel[~obst.hard.boxes_hit(x0[sel], x1[sel], y0[sel], y1[sel], pad)]
+        if len(sel) and n_leaders:
+            py0, py1 = (height - y1[sel], height - y0[sel]) if down else (y0[sel], y1[sel])
+            # Only leaders whose extent meets the candidates' joint extent can cross one.
+            lead = leaders[:n_leaders]
+            near = (
+                (np.minimum(lead[:, 0], lead[:, 2]) <= x1[sel].max())
+                & (np.maximum(lead[:, 0], lead[:, 2]) >= x0[sel].min())
+                & (np.minimum(lead[:, 1], lead[:, 3]) <= py1.max())
+                & (np.maximum(lead[:, 1], lead[:, 3]) >= py0.min())
+            )
+            if near.any():
+                hit = _segs_hit_boxes(lead[near], np.column_stack([x0[sel], py0, x1[sel], py1]))
+                sel = sel[~hit]
+        soft_hit = obst.soft.boxes_hit(x0[sel], x1[sel], y0[sel], y1[sel], pad) if len(sel) else np.zeros(0, bool)
+
+        # --- leader stage, cheapest candidate first -----------------------------
         chosen = None
-        for dx, dy, leader, _cost in cands:
-            cx = ax_pt + dx
-            x0, x1 = cx - tw / 2, cx + tw / 2
-            y0, y1 = base + dy, base + dy + th
-            if x0 < 0 or x1 > width or y1 > height or y0 < 0:
-                continue
-            # Frame conversion for the shared (panel-frame) box list.
-            py0, py1 = (height - y1, height - y0) if down else (y0, y1)
-            pad = 0.6
-            if n_boxes:
-                b = box_arr[:n_boxes]
-                if np.any((b[:, 0] < x1 + pad) & (b[:, 2] > x0 - pad) & (b[:, 1] < py1 + pad) & (b[:, 3] > py0 - pad)):
-                    continue
-            # Sticks under the box.
-            i0 = int(np.searchsorted(obst.sx, x0 - pad))
-            i1 = int(np.searchsorted(obst.sx, x1 + pad, side="right"))
-            if i1 > i0 and np.any((obst.slo[i0:i1] < y1) & (obst.shi[i0:i1] > y0 - 0.3)):
-                continue
-            if obst.boxes:
-                ob = np.asarray(obst.boxes)
-                if np.any((ob[:, 0] < x1) & (ob[:, 2] > x0) & (ob[:, 1] < y1) & (ob[:, 3] > y0)):
-                    continue
-            # Existing leaders through this box.
-            if n_leaders and _seg_boxes_hit_any(leaders[:n_leaders], (x0, py0, x1, py1)):
-                continue
-            seg = None
-            if leader:
-                lx = min(max(ax_pt, x0 + 1.0), x1 - 1.0)
-                l_start = (ax_pt, ay + off + ls.gap * 0.35)
-                l_end = (lx, y0 - 0.4)
-                if l_end[1] - l_start[1] < 1.0 and abs(l_end[0] - l_start[0]) < 1.0:
-                    leader = False
-                else:
-                    p0 = (l_start[0], height - l_start[1]) if down else l_start
-                    p1 = (l_end[0], height - l_end[1]) if down else l_end
-                    if n_boxes and _seg_boxes_hit(p0[0], p0[1], p1[0], p1[1], box_arr[:n_boxes]):
-                        continue
-                    if n_leaders and _segs_cross((p0[0], p0[1], p1[0], p1[1]), leaders[:n_leaders]):
-                        continue
-                    # Leader crossing a stick that stands taller than it.
-                    lo_x, hi_x = min(l_start[0], l_end[0]), max(l_start[0], l_end[0])
-                    k0 = int(np.searchsorted(obst.sx, lo_x - 0.3))
-                    k1 = int(np.searchsorted(obst.sx, hi_x + 0.3, side="right"))
-                    if k1 > k0:
-                        sx = obst.sx[k0:k1]
-                        if hi_x - lo_x > 1e-6:
-                            ly = l_start[1] + (sx - l_start[0]) / (l_end[0] - l_start[0]) * (l_end[1] - l_start[1])
-                            own = np.abs(sx - ax_pt) < 1e-6
-                            if np.any(~own & (obst.shi[k0:k1] > ly - 0.3) & (obst.slo[k0:k1] < ly)):
-                                continue
-                        else:
-                            own = np.abs(sx - ax_pt) < 1e-6
-                            if np.any(~own & (obst.shi[k0:k1] > l_start[1])):
-                                continue
-                    seg = (p0[0], p0[1], p1[0], p1[1])
-            chosen = (cx, y0, y1, x0, x1, py0, py1, leader, seg)
-            break
+        # Pass 2 retries only candidates that context sticks alone blocked.
+        retry: list[int] = []
+        soft_set = set(sel[soft_hit].tolist())
+        for knockout in (False, True):
+            if knockout:
+                if not retry and not soft_hit.any():
+                    break
+                pool = np.union1d(sel[soft_hit], np.asarray(retry, dtype=np.intp))
+            else:
+                pool = sel[~soft_hit]
+            for c in pool.tolist():
+                bx0, bx1, by0, by1 = float(x0[c]), float(x1[c]), float(y0[c]), float(y1[c])
+                pby0, pby1 = (height - by1, height - by0) if down else (by0, by1)
+                leader = bool(clead[c])
+                seg = None
+                if leader:
+                    lx = min(max(ax_pt, bx0 + 1.0), bx1 - 1.0)
+                    l_start = (ax_pt, ay + off + ls.gap * 0.35)
+                    l_end = (lx, by0 - 0.4)
+                    if l_end[1] - l_start[1] < 1.0 and abs(l_end[0] - l_start[0]) < 1.0:
+                        leader = False
+                    else:
+                        p0 = (l_start[0], height - l_start[1]) if down else l_start
+                        p1 = (l_end[0], height - l_end[1]) if down else l_end
+                        if n_boxes and _seg_boxes_hit(p0[0], p0[1], p1[0], p1[1], box_arr[:n_boxes]):
+                            continue
+                        if n_leaders and _segs_cross((p0[0], p0[1], p1[0], p1[1]), leaders[:n_leaders]):
+                            continue
+                        if obst.hard.leader_hit(ax_pt, l_start, l_end):
+                            continue
+                        if not knockout and obst.soft.leader_hit(ax_pt, l_start, l_end):
+                            retry.append(c)
+                            continue
+                        seg = (p0[0], p0[1], p1[0], p1[1])
+                chosen = (float(cx[c]), by0, bx0, bx1, pby0, pby1, seg, knockout and c in soft_set)
+                break
+            if chosen is not None:
+                break
 
         if chosen is None:
             dropped += 1
             continue
-        cx, y0, y1, x0, x1, py0, py1, leader, seg = chosen
-        box_arr[n_boxes] = (x0, py0, x1, py1)
+        ccx, by0, bx0, bx1, pby0, pby1, seg, knock = chosen
+        box_arr[n_boxes] = (bx0, pby0, bx1, pby1)
         n_boxes += 1
         rel_leader = None
         if seg is not None:
@@ -535,48 +749,41 @@ def place_labels(
             n_leaders += 1
             rel_leader = (seg[0] - ax_pt, seg[1] - ay_panel, seg[2] - ax_pt, seg[3] - ay_panel)
         if down:
-            dy_rel = (height - y0) - ay_panel  # top edge of the box, panel frame
+            dy_rel = (height - by0) - ay_panel  # top edge of the box, panel frame
             va: Literal["bottom", "top"] = "top"
         else:
-            dy_rel = y0 - ay_panel
+            dy_rel = by0 - ay_panel
             va = "bottom"
         placed.append(
             PlacedLabel(
                 x=float(ls.x[j]),
                 y=float(ls.y[j]),
-                text=text,
+                text=ls.texts[j],
                 color=ls.colors[j],
-                size=ls.size,
-                dx=cx - ax_pt,
+                size=size,
+                dx=ccx - ax_pt,
                 dy=dy_rel,
                 va=va,
-                rotation=ls.rotation,
+                rotation=rotation,
                 leader=rel_leader,
                 name=ls.name,
-                box=(x0, py0, x1, py1),
+                box=(bx0, pby0, bx1, pby1),
+                knockout=knock,
             )
         )
         score += prio
     return placed, dropped, score
 
 
-def _seg_boxes_hit_any(segs: NDArray[np.float64], box: tuple[float, float, float, float]) -> bool:
-    """Does any segment cross ``box``?"""
-    x0, y0, x1, y1 = box
-    arr = np.array([[x0, y0, x1, y1]])
-    return any(_seg_boxes_hit(float(s[0]), float(s[1]), float(s[2]), float(s[3]), arr) for s in segs)
-
-
 def _stick_obstacles(panel: Panel, to_pt_x, to_pt_y, height: float, flip: bool) -> _Obstacles:
-    xs: list[NDArray[np.float64]] = []
-    los: list[NDArray[np.float64]] = []
-    his: list[NDArray[np.float64]] = []
-    boxes: list[tuple[float, float, float, float]] = []
+    parts: dict[bool, tuple[list, list, list]] = {False: ([], [], []), True: ([], [], [])}
+    boxes: list[NDArray[np.float64]] = []
     for m in panel.marks:
-        if isinstance(m, Sticks) and m.obstacle and len(m.x):
+        if isinstance(m, Sticks) and m.obstacle != "none" and len(m.x):
             x = to_pt_x(np.asarray(m.x, dtype=np.float64))
             a = to_pt_y(np.full(len(m.x), m.base))
             b = to_pt_y(np.asarray(m.y, dtype=np.float64))
+            xs, los, his = parts[m.obstacle == "soft"]
             xs.append(x)
             los.append(np.minimum(a, b))
             his.append(np.maximum(a, b))
@@ -584,34 +791,38 @@ def _stick_obstacles(panel: Panel, to_pt_x, to_pt_y, height: float, flip: bool) 
             x = to_pt_x(np.asarray(m.x, dtype=np.float64))
             b = to_pt_y(np.asarray(m.y, dtype=np.float64))
             a = to_pt_y(np.zeros(len(m.x))) if m.fill else b - 0.5
+            xs, los, his = parts[False]
             xs.append(x)
             los.append(np.minimum(a, b))
             his.append(np.maximum(a, b))
         elif isinstance(m, Points) and len(m.x):
             x = to_pt_x(np.asarray(m.x, dtype=np.float64))
             y = to_pt_y(np.asarray(m.y, dtype=np.float64))
-            r = np.asarray(m.sizes, dtype=np.float64) / 2
-            for xi, yi, ri in zip(x, y, r, strict=True):
-                if math.isfinite(xi) and math.isfinite(yi):
-                    boxes.append((xi - ri, yi - ri, xi + ri, yi + ri))
+            r = np.nan_to_num(np.asarray(m.sizes, dtype=np.float64), nan=0.0) / 2
+            ok = np.isfinite(x) & np.isfinite(y)
+            boxes.append(np.column_stack([x - r, y - r, x + r, y + r])[ok])
         elif isinstance(m, Bars) and len(m.x):
-            for xi, hi in zip(np.asarray(m.x, dtype=np.float64), np.asarray(m.height, dtype=np.float64), strict=True):
-                a, b = to_pt_x(xi - m.width / 2), to_pt_x(xi + m.width / 2)
-                y0, y1 = to_pt_y(0.0), to_pt_y(hi)
-                boxes.append((min(a, b), min(y0, y1), max(a, b), max(y0, y1)))
-    if xs:
-        sx = np.concatenate(xs)
-        slo = np.concatenate(los)
-        shi = np.concatenate(his)
-        ok = np.isfinite(sx) & np.isfinite(slo) & np.isfinite(shi)
-        sx, slo, shi = sx[ok], slo[ok], shi[ok]
-    else:
-        sx = slo = shi = np.zeros(0)
-    if flip:
-        slo, shi = height - shi, height - slo
-        boxes = [(b[0], height - b[3], b[2], height - b[1]) for b in boxes]
-    order = np.argsort(sx, kind="stable")
-    return _Obstacles(sx[order], slo[order], shi[order], boxes)
+            xc = np.asarray(m.x, dtype=np.float64)
+            a, b = to_pt_x(xc - m.width / 2), to_pt_x(xc + m.width / 2)
+            y0 = np.broadcast_to(to_pt_y(0.0), a.shape)
+            y1 = to_pt_y(np.asarray(m.height, dtype=np.float64))
+            arr = np.column_stack([np.minimum(a, b), np.minimum(y0, y1), np.maximum(a, b), np.maximum(y0, y1)])
+            boxes.append(arr[np.isfinite(arr).all(axis=1)])
+    box_arr = np.concatenate(boxes) if boxes else np.zeros((0, 4))
+
+    def sticks(soft: bool) -> _StickSet:
+        xs, los, his = parts[soft]
+        if not xs:
+            empty = np.zeros(0)
+            return _StickSet(empty, empty, empty)
+        sx, slo, shi = np.concatenate(xs), np.concatenate(los), np.concatenate(his)
+        if flip:
+            slo, shi = height - shi, height - slo
+        return _StickSet(sx, slo, shi)
+
+    if flip and len(box_arr):
+        box_arr = np.column_stack([box_arr[:, 0], height - box_arr[:, 3], box_arr[:, 2], height - box_arr[:, 1]])
+    return _Obstacles(sticks(False), sticks(True), box_arr)
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +859,7 @@ def ink_for(style: FigureStyle, mode: theme.ThemeMode) -> Ink:
     )
 
 
-def legend_items(cell: Cell) -> list[LegendItem]:
+def legend_items(cell: Cell, mode: theme.ThemeMode | None = None) -> list[LegendItem]:
     items: list[LegendItem] = []
     seen: set[str] = set()
     for panel in cell.panels:
@@ -662,7 +873,8 @@ def legend_items(cell: Cell) -> list[LegendItem]:
             if isinstance(m, Sticks | Line):
                 items.append(LegendItem(name, m.color, "line", m.width, m.dash))
             elif isinstance(m, Points):
-                items.append(LegendItem(name, m.colors[0] if m.colors else "#000000", "marker", 0.0))
+                color = m.colors[0] if m.colors else theme.text_color("primary", mode)
+                items.append(LegendItem(name, color, "marker", 0.0))
     return items
 
 
@@ -690,7 +902,12 @@ def resolve_figure(spec: FigureSpec) -> ResolvedFigure:
     prefs = []
     for r in range(nrows):
         row = spec.cells[r * ncols : (r + 1) * ncols]
-        prefs.append(max(c.aspect * cell_w + c.extra_height_mm * PT_PER_MM for c in row))
+        prefs.append(
+            max(
+                fitted_height(c, style, cell_w) if c.fit_height else c.aspect * cell_w + c.extra_height_mm * PT_PER_MM
+                for c in row
+            )
+        )
     total = sum(prefs) or 1.0
     row_h = [height * p / total for p in prefs]
 
@@ -703,43 +920,34 @@ def resolve_figure(spec: FigureSpec) -> ResolvedFigure:
             if k >= n:
                 break
             rect = (c * cell_w, top - row_h[r], cell_w, row_h[r])
-            rc = _resolve_cell(spec.cells[k], rect, style, panel_index, first_cell=(k == 0))
+            rc = _resolve_cell(spec.cells[k], rect, style, panel_index, first_cell=(k == 0), mode=spec.theme_mode)
             panel_index += len(rc.panels)
             cells.append(rc)
         top -= row_h[r]
     return ResolvedFigure(spec=spec, width=width, height=height, cells=cells, ink=ink_for(style, mode))
 
 
-def _resolve_cell(
-    cell: Cell,
-    rect: tuple[float, float, float, float],
-    style: FigureStyle,
-    first_index: int,
-    first_cell: bool,
-) -> ResolvedCell:
-    cx, cy, cw, ch = rect
-    fs = style.font_size
-    ats = style.axis_title_size
-    tick_pad = fs * 0.35
-    tick_text_h = fs * 1.2
-    title_gap = fs * 0.4
+def _top_band(
+    cell: Cell, style: FigureStyle, cw: float, mode: theme.ThemeMode | None = None
+) -> tuple[float, list[LegendItem], float, float, bool]:
+    """Height of the title/letter/legend band above a cell's panels, pt.
 
-    # --- top furniture -----------------------------------------------------
-    items = legend_items(cell)
-    show_legend = len(items) > 1
-    if not show_legend:
+    Also returns the legend items, the first row's height, the letter's width
+    and whether the legend needs a row of its own.
+    """
+    fs = style.font_size
+    items = legend_items(cell, mode)
+    if len(items) <= 1:
         items = []
-    title = cell.title
-    letter = cell.letter
     row1 = 0.0
     letter_w = 0.0
-    if letter:
-        letter_w = text_width(letter, style.panel_letter_size) + style.panel_letter_size * 0.5
+    if cell.letter:
+        letter_w = text_width(cell.letter, style.panel_letter_size) + style.panel_letter_size * 0.5
         row1 = style.panel_letter_size * 1.2
     title_w = 0.0
-    if title:
-        row1 = max(row1, title.height(style.title_size))
-        title_w = title.width(style.title_size)
+    if cell.title:
+        row1 = max(row1, cell.title.height(style.title_size))
+        title_w = cell.title.width(style.title_size)
     leg_w = _legend_width(items, fs)
     legend_own_row = False
     if items:
@@ -750,6 +958,40 @@ def _resolve_cell(
     top_used = _PAD + row1 + (fs * 1.6 if legend_own_row else 0.0)
     if top_used > _PAD:
         top_used += fs * 0.3
+    return top_used, items, row1, letter_w, legend_own_row
+
+
+def fitted_height(cell: Cell, style: FigureStyle, width: float) -> float:
+    """Height, pt, of a cell whose panels all have a fixed height and hide their x axes.
+
+    The title and legend band plus the panels plus the outer padding: no
+    empty space below.
+    """
+    top_used, *_ = _top_band(cell, style, width)
+    panels = cell.panels
+    body = sum(p.fixed_height or 0.0 for p in panels) + sum(p.header_height for p in panels)
+    return top_used + body + _PAD
+
+
+def _resolve_cell(
+    cell: Cell,
+    rect: tuple[float, float, float, float],
+    style: FigureStyle,
+    first_index: int,
+    first_cell: bool,
+    mode: theme.ThemeMode | None = None,
+) -> ResolvedCell:
+    cx, cy, cw, ch = rect
+    fs = style.font_size
+    ats = style.axis_title_size
+    tick_pad = fs * 0.35
+    tick_text_h = fs * 1.2
+    title_gap = fs * 0.4
+
+    # --- top furniture -----------------------------------------------------
+    top_used, items, row1, letter_w, legend_own_row = _top_band(cell, style, cw, mode)
+    title = cell.title
+    letter = cell.letter
 
     panels = cell.panels
     header_top = panels[0].header_height if panels else 0.0
@@ -907,7 +1149,9 @@ def _resolve_panel(
 
     reserved_base: list[tuple[float, float, float, float]] = []
 
-    def run(lo: float, hi: float) -> tuple[list[PlacedLabel], int, float, dict[int, tuple[float, float, str]]]:
+    def run(
+        lo: float, hi: float, stop_below: float = -math.inf
+    ) -> tuple[list[PlacedLabel], int, float, dict[int, tuple[float, float, str]]]:
         def fy(v):
             return (np.asarray(v, dtype=np.float64) - lo) / (hi - lo) * ph
 
@@ -939,9 +1183,7 @@ def _resolve_panel(
             return [], 0, 0.0, ref_pos
         up = _stick_obstacles(panel, fx, fy, ph, flip=False)
         down = _stick_obstacles(panel, fx, fy, ph, flip=True) if has_down else None
-        placed, dropped, score = place_labels(
-            labelsets, lambda v: float(fx(v)), lambda v: float(fy(v)), pw, ph, up, down, reserved
-        )
+        placed, dropped, score = place_labels(labelsets, fx, fy, pw, ph, up, down, reserved, stop_below)
         return placed, dropped, score, ref_pos
 
     candidates: list[tuple[float, float]] = []
@@ -957,9 +1199,24 @@ def _resolve_panel(
                 ylo = ylo * _HEADROOM_STEPS[0]
         candidates.append((ylo, yhi))
 
-    results = [(lo, hi, *run(lo, hi)) for lo, hi in candidates]
-    best = max(r[4] for r in results)
-    chosen = next(r for r in results if r[4] >= best * 0.97 - 1e-12)
+    # Pick the least headroom that places (nearly) as much as the most would.
+    # The tallest candidate runs first to set the bar; the others stop as soon
+    # as they cannot reach 97% of it, and once the bar is the total priority no
+    # later candidate can raise it.
+    total = sum(
+        float(np.nansum(np.clip(np.nan_to_num(np.asarray(ls.priority, dtype=np.float64)), 0, None))) for ls in labelsets
+    )
+    first = run(*candidates[-1], stop_below=-math.inf)
+    best = first[2]
+    results: dict[int, tuple] = {len(candidates) - 1: (*candidates[-1], *first)}
+    for i, (clo, chi) in enumerate(candidates[:-1]):
+        res = run(clo, chi, stop_below=best * 0.97 - 1e-9)
+        results[i] = (clo, chi, *res)
+        best = max(best, res[2])
+        if res[2] >= best * 0.97 - 1e-12 and best >= total - 1e-9:
+            break
+    ordered = [results[i] for i in sorted(results)]
+    chosen = next((r for r in ordered if r[4] >= best * 0.97 - 1e-12), ordered[-1])
     lo, hi, placed, dropped, _score, ref_pos = chosen
 
     # --- axes ---------------------------------------------------------------

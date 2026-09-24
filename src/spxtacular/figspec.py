@@ -31,7 +31,7 @@ from numpy.typing import NDArray
 from . import theme
 from ._text import RichText
 from .errors import SpxtacularError
-from .style import FigureStyle, SizeLike, StyleName, resolve_size, resolve_style
+from .style import PT_PER_MM, FigureStyle, SizeLike, StyleName, resolve_size, resolve_style
 
 if TYPE_CHECKING:
     from ._layout import ResolvedFigure
@@ -61,8 +61,10 @@ class Sticks:
     customdata: Sequence[Any] | None = None
     hovertemplate: str | None = None
     base: float = 0.0
-    #: Labels keep clear of these sticks.
-    obstacle: bool = True
+    #: How labels treat these sticks: ``"hard"`` never covered, ``"soft"``
+    #: (context such as unmatched peaks) avoided but covered, on a background
+    #: patch, when nothing else fits, ``"none"`` ignored.
+    obstacle: Literal["hard", "soft", "none"] = "hard"
 
 
 @dataclass
@@ -173,6 +175,10 @@ class LabelSet:
     #: Allow leader lines. Off means a label either fits straight above or is dropped.
     leaders: bool = True
     name: str = "label"
+    #: Per-label font size, pt. NaN (or ``None`` for all) uses ``size``.
+    sizes: NDArray[np.float64] | None = None
+    #: Per-label rotation, degrees. NaN (or ``None`` for all) uses ``rotation``.
+    rotations: NDArray[np.float64] | None = None
 
 
 @dataclass
@@ -287,6 +293,9 @@ class Cell:
     #: Preferred height/width ratio of the cell, and fixed extra height in mm.
     aspect: float = 0.62
     extra_height_mm: float = 0.0
+    #: Size the figure height to the cell's fixed-height panels plus its title
+    #: and legend band (``aspect`` and ``extra_height_mm`` are then ignored).
+    fit_height: bool = False
 
 
 @dataclass
@@ -357,6 +366,15 @@ def render(spec: FigureSpec, backend: Literal["plotly", "matplotlib"] = "plotly"
     return draw_mpl(resolved)
 
 
+def _preferred_height_mm(cell: Cell, style: FigureStyle, width_mm: float) -> float:
+    """The height a cell would like at ``width_mm``."""
+    if cell.fit_height:
+        from ._layout import fitted_height
+
+        return fitted_height(cell, style, width_mm * PT_PER_MM) / PT_PER_MM
+    return cell.aspect * width_mm + cell.extra_height_mm
+
+
 def new_spec(
     cell: Cell,
     *,
@@ -368,7 +386,12 @@ def new_spec(
 ) -> FigureSpec:
     """Wrap one cell in a figure at the resolved style and size."""
     fig_style = resolve_style(style, backend)
-    width, height = resolve_size(size, fig_style, aspect=cell.aspect, extra_height_mm=cell.extra_height_mm)
+    if cell.fit_height:
+        width, _ = resolve_size(size, fig_style, aspect=0.0)
+        fitted_mm = _preferred_height_mm(cell, fig_style, width)
+        width, height = resolve_size(size, fig_style, aspect=0.0, extra_height_mm=fitted_mm)
+    else:
+        width, height = resolve_size(size, fig_style, aspect=cell.aspect, extra_height_mm=cell.extra_height_mm)
     return FigureSpec(
         cells=[cell],
         style=fig_style,
@@ -462,7 +485,7 @@ def compose_figure(
         row_heights = []
         for r in range(rows):
             row = cells[r * cols : (r + 1) * cols]
-            row_heights.append(max(c.aspect * cell_width + c.extra_height_mm for c in row))
+            row_heights.append(max(_preferred_height_mm(c, fig_style, cell_width) for c in row))
         height = sum(row_heights)
 
     spec = FigureSpec(

@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=Path(__file__).parent / "out")
     parser.add_argument("--only", nargs="*", help="figure names to render (default: all)")
     parser.add_argument("--backend", choices=["plotly", "matplotlib", "both"], default="both")
-    parser.add_argument("--style", nargs="*", default=["paper", "screen"])
+    parser.add_argument("--style", nargs="*", default=["paper", "screen", "talk"])
     parser.add_argument("--formats", nargs="*", default=["png", "svg"])
     args = parser.parse_args(argv)
 

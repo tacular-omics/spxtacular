@@ -749,6 +749,7 @@ def table_marks(
         dash = str(first["dash"]) if "dash" in group.columns and not _is_blank(first["dash"]) else "solid"
         marks.append(
             Sticks(
+                obstacle="soft" if is_context else "hard",
                 x=group["mz"].to_numpy(dtype=np.float64),
                 y=group["intensity"].to_numpy(dtype=np.float64) * sign,
                 color=color,
@@ -793,11 +794,18 @@ def table_labels(
     mzpaf = table.attrs.get("label_format") == "mzpaf"
     sign = -1.0 if direction == "down" else 1.0
     inten = rows["intensity"].to_numpy(dtype=np.float64)
-    top = float(np.nanmax(np.abs(table["intensity"].to_numpy(dtype=np.float64)))) or 1.0
+    all_inten = np.abs(table["intensity"].to_numpy(dtype=np.float64))
+    finite = all_inten[np.isfinite(all_inten)]
+    top = float(finite.max()) if len(finite) and finite.max() > 0 else 1.0
+    rel_all = np.nan_to_num(inten / top, nan=0.0, posinf=0.0, neginf=0.0)
+    secondary = theme.text_color("secondary", theme_mode)
+    stick_colors = rows["color"].tolist() if "color" in rows.columns else [None] * len(rows)
     texts: list[RichText] = []
     prio: list[float] = []
     colors: list[str] = []
-    for text, color, rel in zip(rows["label"].tolist(), rows["label_color"].tolist(), inten / top, strict=True):
+    for text, color, stick, rel in zip(
+        rows["label"].tolist(), rows["label_color"].tolist(), stick_colors, rel_all, strict=True
+    ):
         if mzpaf:
             lab = best_label(str(text))
             texts.append(lab.rich)
@@ -807,20 +815,24 @@ def table_labels(
             base = 1.0
         prio.append(base * (0.2 + max(0.0, float(rel))))
         if _is_blank(color):
-            color = theme.text_color("secondary", theme_mode)
-        colors.append(str(color) if style.label_series_color else theme.text_color("secondary", theme_mode))
+            colors.append(secondary)
+        elif style.label_series_color or _is_blank(stick) or str(color) != str(stick):
+            # A label colour that differs from its stick is an explicit edit: keep it.
+            colors.append(str(color))
+        else:
+            colors.append(secondary)
     size = style.label_size
+    sizes = None
     if "label_size" in rows.columns:
         sizes = rows["label_size"].to_numpy(dtype=np.float64)
-        finite = sizes[np.isfinite(sizes)]
-        if len(finite):
-            size = float(finite[0])
+        if not np.isfinite(sizes).any():
+            sizes = None
     rotation = 0.0
+    rotations = None
     if "label_angle" in rows.columns:
         angles = rows["label_angle"].to_numpy(dtype=np.float64)
-        finite = angles[np.isfinite(angles)]
-        if len(finite):
-            rotation = -float(finite[0])
+        if np.any(np.nan_to_num(angles) != 0):
+            rotations = -angles
     return LabelSet(
         x=rows["mz"].to_numpy(dtype=np.float64),
         y=inten * sign,
@@ -831,6 +843,8 @@ def table_labels(
         direction=direction,
         rotation=rotation,
         gap=style.label_gap,
+        sizes=sizes,
+        rotations=rotations,
     )
 
 
@@ -845,12 +859,20 @@ def table_panel(
 ) -> Panel:
     """A one-panel spectrum from a plot table."""
     marks = table_marks(table, style=style, theme_mode=theme_mode, render=render, max_points=max_points)
-    relative = table.attrs.get("intensity_scale") == "relative" and table.attrs.get("intensity_label", "").startswith(
-        "Relative"
-    )
+    label = str(table.attrs.get("intensity_label", ""))
+    scale = table.attrs.get("intensity_scale")
+    if scale is None and len(table):
+        # Hand-built or older tables carry no scale: a "Relative ..." label on
+        # intensities that stay within 0-100 is read as relative.
+        values = np.abs(table["intensity"].to_numpy(dtype=np.float64))
+        values = values[np.isfinite(values)]
+        scale = "relative" if len(values) and values.max() <= 100.0 else "absolute"
+    relative = scale == "relative" and label.startswith("Relative")
     base_peak = None
     if "intensity_abs" in table.columns and len(table):
-        base_peak = float(np.nanmax(table["intensity_abs"].to_numpy(dtype=np.float64)))
+        abs_values = table["intensity_abs"].to_numpy(dtype=np.float64)
+        if np.isfinite(abs_values).any():
+            base_peak = float(np.nanmax(abs_values))
     y_axis, secondary = intensity_axis(
         table.attrs.get("intensity_label", "Intensity"),
         relative=relative,

@@ -35,7 +35,11 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `DReader` MS1 spectra have `native_id` `"frame=F"` and DDA MS2 spectra `"precursor=P"` (was `None`), so `write_mgf` writes those as `TITLE`.
 - Figures are drawn through a backend-neutral figure layer and restyled for print: horizontal typeset fragment labels (y₇²⁺ as subscript and superscript), italic *m/z*, "Mass error (ppm)" and "Intensity (×10ⁿ)" axis titles, and new fonts and sizes in plotly too. Plotting functions return `Any` (a plotly `Figure` by default).
 - Plot tables drop the `label_font`, `label_yshift` and `label_xanchor` columns; `label_angle` defaults to 0 (was -90) and `label_size` is NaN for the style default. `plot_from_table` requires fewer columns.
-- `save_figure(scale=)` defaults to `None` (the figure style's resolution, 600 dpi for `"paper"`) instead of 2.0, takes `dpi=`, writes matplotlib figures and figure specs as well as plotly, and raises `SpxtacularError` for an unsupported suffix or a missing writer.
+- `save_figure(scale=)` defaults to `None` (the figure style's resolution, 600 dpi for `"paper"`) instead of 2.0, takes `dpi=`, writes matplotlib figures and figure specs as well as plotly, and raises `SpxtacularError` for an unsupported suffix. A missing kaleido (plotly to PNG, SVG or PDF) raises `ImportError` naming the `spxtacular[plotly-export]` extra.
+- `style="paper"` draws no default title (pass `title=` to add one). `backend="matplotlib"` defaults to `style="paper"`; plotly keeps `"screen"`.
+- Plot-table `linewidth` is relative to the default 1.6 and scaled to the style's stick width. `label_size`, `label_angle` and `label_color` are honoured per row. `label_color` stays as set; only rows that keep the series colour get the style's label colour. Unmatched peaks no longer block labels: a label may sit over a grey stick, on a background patch. A plot table without the `intensity_scale` attr is treated as relative when its y label starts with "Relative" and no intensity exceeds 100.
+- Labelled plotly figures in the `"screen"` style keep their design width instead of autosizing, so placed labels do not collide at other widths. Unlabelled ones still autosize.
+- `sequence_coverage_plot` sizes its height to the sequence rows, without the fixed blank band at the bottom. `reporter_ion_plot` labels both panels "Relative intensity (%)" with ticks at 0-100 when normalised. `facet_plot` fixes the mirror ticks at -100 and -50 only for relative intensities.
 
 ### Added
 
@@ -58,6 +62,7 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - `Spectrum.merge` runs as a single greedy kernel, numba-compiled when installed (about 50x faster without ion mobility, 2x with it, on 50,000 peaks).
 - Bruker DDA MS2 reading uses tdfpy's batched per-precursor peaks (about 8x faster).
 - Label collision checks in plot tables are O(n log n).
+- Label placement is vectorised: 500 labels on 20,000 peaks resolve in about 0.15 s.
 
 ## [0.8.0] (2026-09-23)
 

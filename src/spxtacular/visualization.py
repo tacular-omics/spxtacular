@@ -321,16 +321,16 @@ def _error_marks(
     mzs = np.asarray([m.peak_mz for m in matches], dtype=np.float64)
     errors = np.asarray([m.ppm_error if unit == "ppm" else m.da_error for m in matches], dtype=np.float64)
     inten = np.asarray([m.peak_intensity for m in matches], dtype=np.float64)
-    top = float(inten.max()) if len(inten) else 1.0
-    top = top or 1.0
-    rel = np.clip(inten / top, 0.0, 1.0)
+    finite = inten[np.isfinite(inten)]
+    top = float(finite.max()) if len(finite) and finite.max() > 0 else 1.0
+    rel = np.clip(np.nan_to_num(inten / top, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
     # Area, not diameter, tracks intensity, so a 4x stronger peak does not look 16x bigger.
     min_size = max_size * 0.28
     sizes = min_size + (max_size - min_size) * np.sqrt(rel)
     ion_types = [_ion_type(m.fragment) for m in matches]
     colors = [theme.ion_color(t, mode) for t in ion_types]
     names = [_fragment_label(m.fragment, False) for m in matches]
-    order = np.argsort(-inten)  # small dots drawn last, on top
+    order = np.argsort(-np.nan_to_num(inten, nan=-np.inf))  # small dots drawn last, on top
     marks.append(
         Points(
             x=mzs[order],
@@ -436,8 +436,6 @@ def _im_panel(
     Intensity is scaled as the plot-table path scales it; the hover always
     reports the unscaled value.
     """
-    import plotly.colors as pc
-
     mz = np.asarray(spectrum.mz, dtype=np.float64)
     intensity = np.asarray(spectrum.intensity, dtype=np.float64)
     plotted, intensity_label = _scaled_intensity(intensity, intensity_scale, intensity_transform)
@@ -460,8 +458,7 @@ def _im_panel(
     # Single-hue sequential ramp rather than Viridis: ion mobility is a
     # magnitude, and a multi-hue ramp invents banding that is not in the data.
     scale = theme.sequential_scale(mode)
-    bin_colors: list[str] = pc.sample_colorscale(scale, n_bins, colortype="rgb")
-    bin_hex = [_rgb_to_hex(c) for c in bin_colors]
+    bin_hex = theme.sequential_colors(n_bins, mode)
 
     marks: list[Mark] = []
     for b in range(n_bins):
@@ -514,14 +511,6 @@ def _im_panel(
         y_secondary=secondary,
         colorbar=Colorbar(lo=im_min, hi=im_max, scale=scale, title=RichText.plain(im_label)),
     )
-
-
-def _rgb_to_hex(color: str) -> str:
-    if color.startswith("#"):
-        return color
-    inner = color[color.index("(") + 1 : color.index(")")]
-    parts = [float(p) for p in inner.split(",")[:3]]
-    return "#" + "".join(f"{round(p):02x}" for p in parts)
 
 
 def plot_spectrum(
@@ -1280,12 +1269,10 @@ def sequence_coverage_plot(
         y=Axis(lo=0.0, hi=1.0, visible=False),
         fixed_height=rows * row_height + (fig_style.font_size * 1.6 if not fig_style.show_title else 0.0),
     )
-    height_mm = (rows * row_height) / PT_PER_MM + 14.0
     cell = Cell(
         panels=[panel],
         title=figure_title(title, f"Sequence coverage — {summary}", fig_style),
-        aspect=0.0,
-        extra_height_mm=height_mm,
+        fit_height=True,
     )
     return _build(cell, key=key, fig_style=fig_style, size=size, mode=mode, layout_kwargs=layout_kwargs)
 
@@ -1466,9 +1453,12 @@ def facet_plot(
             mirrored=True,
         )
         y_axis.hi = 0.0
-        # No tick label at 0: it would sit against the panel above.
-        y_axis.ticks = [-100.0, -50.0]
-        y_axis.ticktext = ["100", "50"]
+        # No tick label at 0: it would sit against the panel above. The fixed
+        # ticks assume the relative (0-100) scale the plot tables use by default.
+        top = mirror_table["intensity"].abs().max() if len(mirror_table) else 0.0
+        if mirror_table.attrs.get("intensity_scale") == "relative" and not (top > 100.0 + 1e-9):
+            y_axis.ticks = [-100.0, -50.0]
+            y_axis.ticktext = ["100", "50"]
         panels.append(Panel(marks=marks, x=Axis(label=mz_label()), y=y_axis, weight=0.7, share_x=True))
         extra += 0.45
     cell = Cell(
@@ -1829,11 +1819,15 @@ def reporter_ion_plot(
                 gap=fig_style.label_gap,
             )
         )
-    y_label = "Relative intensity (%)" if normalize else "Intensity"
+    rel_label = "Relative intensity (%)"
+    # Both panels of a normalised figure read on the same 0-100 scale, so give them the same ticks.
+    rel_ticks = [0.0, 25.0, 50.0, 75.0, 100.0]
+    y_label = rel_label if normalize else "Intensity"
     bar_axis = Axis(
         label=RichText.plain(y_label),
         lo=0.0,
         hi=None,
+        ticks=rel_ticks if normalize else None,
         tick_max=100.0 if normalize else None,
         headroom=True,
         scale_exponent=not normalize,
@@ -1881,7 +1875,7 @@ def reporter_ion_plot(
             Panel(
                 marks=spec_marks,
                 x=Axis(label=mz_label(), lo=lo_mz, hi=hi_mz),
-                y=Axis(label=RichText.plain("Rel. int. (%)"), lo=0.0, tick_max=100.0, pad=0.08),
+                y=Axis(label=RichText.plain(rel_label), lo=0.0, ticks=rel_ticks, tick_max=100.0, pad=0.08),
                 weight=0.8,
             ),
         )

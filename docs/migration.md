@@ -251,7 +251,14 @@ working; code that edits the returned plotly figure or the plot table may need c
 | `label_angle` default -90 (vertical labels) | 0 (horizontal); `label_size` is NaN, meaning the style default |
 | `plot_from_table` required 13 columns | requires `mz`, `intensity`, `series`, `color`, `linewidth`, `opacity`, `hover`, `label`, `label_size`, `label_color` |
 | axis titles `m/z`, `Intensity`, `Error (ppm)` | italic *m/z*, `Intensity (×10ⁿ)` with `absolute_axis=True`, `Mass error (ppm)`; the facet plot keeps `Error (ppm)` |
-| `save_figure(fig, path, scale=2.0)` | `save_figure(fig, path, *, scale=None, dpi=None)`: raster resolution defaults to the style's (192 dpi on screen, 600 for `style="paper"`); errors raise `SpxtacularError` |
+| `save_figure(fig, path, scale=2.0)` | `save_figure(fig, path, *, scale=None, dpi=None)`: raster resolution defaults to the style's (192 dpi on screen, 600 for `style="paper"`); an unsupported suffix raises `SpxtacularError` |
+| `label_size`, `label_angle`, `label_color` per row | still per row; `label_color` is kept as set, and rows that keep the series colour get the style's label colour |
+| plot-table `linewidth` in px | relative to the default 1.6, scaled to the style's stick width |
+| no `intensity_scale` attr: axis from the data | relative axis (0-100 ticks) when the y label starts with "Relative" and no intensity exceeds 100 |
+| a missing kaleido raises `ImportError` (`pip install kaleido`) | still `ImportError`, not `SpxtacularError`; the message names `spxtacular[plotly-export]` |
+| plotly figures always autosized | labelled `"screen"` figures keep their 900 px design width so labels stay clear of each other |
+| a default title on every figure | none with `style="paper"`; pass `title=` |
+| `backend="matplotlib"` n/a | defaults to `style="paper"` |
 | plotly fonts and sizes | the `"screen"` style (11 px text, 900 px wide); pass `style="paper"` or `"talk"`, or `layout_kwargs` to override |
 
 `layout_kwargs` still go to plotly's `update_layout`; with `backend="matplotlib"` they raise

@@ -349,6 +349,28 @@ def sequential_scale(theme: ThemeMode | None = None) -> list[list]:
     return _SEQUENTIAL[resolve_mode(theme)]
 
 
+def sequential_colors(n: int, theme: ThemeMode | None = None) -> list[str]:
+    """``n`` hex colours evenly spaced along :func:`sequential_scale`, low to high.
+
+    Linear interpolation in RGB between the scale's stops, the same as
+    ``plotly.colors.sample_colorscale``, without importing plotly.
+    """
+    scale = sequential_scale(theme)
+    stops = [float(pos) for pos, _ in scale]
+    rgbs = [tuple(int(str(c)[k : k + 2], 16) for k in (1, 3, 5)) for _, c in scale]
+    out: list[str] = []
+    for i in range(n):
+        t = i / (n - 1) if n > 1 else 0.0
+        j = 0
+        while j < len(stops) - 2 and t > stops[j + 1]:
+            j += 1
+        span = stops[j + 1] - stops[j]
+        f = (t - stops[j]) / span if span > 0 else 0.0
+        rgb = [a + (b - a) * f for a, b in zip(rgbs[j], rgbs[j + 1], strict=True)]
+        out.append("#" + "".join(f"{round(v):02x}" for v in rgb))
+    return out
+
+
 def charge_color(charge: int, theme: ThemeMode | None = None) -> str:
     """Colour for a charge state.
 

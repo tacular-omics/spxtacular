@@ -224,7 +224,7 @@ def _draw(fig: ResolvedFigure) -> Any:
                         linewidths=m.outline_width if m.outline else 0,
                         alpha=m.opacity,
                         zorder=3,
-                        clip_on=False,
+                        clip_on=True,  # plotly clips markers to the axes too
                     )
                 elif isinstance(m, Bars):
                     ax.bar(
@@ -298,6 +298,8 @@ def _draw(fig: ResolvedFigure) -> Any:
                     color=lab.color,
                     annotation_clip=False,
                     zorder=4,
+                    # A label that covers context sticks sits on a patch of background.
+                    bbox={"boxstyle": "square,pad=0.1", "fc": ink.surface, "ec": "none"} if lab.knockout else None,
                 )
                 if lab.leader is not None:
                     ax_x, ax_y = data_to_pt(lab.x, lab.y)

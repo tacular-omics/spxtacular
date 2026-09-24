@@ -237,7 +237,7 @@ def _panel_traces(rp: ResolvedPanel, fig: ResolvedFigure, legend_ref: str, seen:
                     y=np.asarray(m.y, dtype=np.float64),
                     mode="markers",
                     marker={"size": m.size_px, "color": "rgba(0,0,0,0)"},
-                    customdata=list(m.hover),
+                    customdata=np.asarray(m.hover, dtype=object),
                     hovertemplate="%{customdata}<extra></extra>",
                     showlegend=False,
                     name="",
@@ -407,6 +407,8 @@ def _panel_decor(rp: ResolvedPanel, fig: ResolvedFigure) -> tuple[list[dict], li
                 "borderpad": 0,
                 "font": {"size": px(lab.size), "color": lab.color, "family": family},
                 "name": lab.name,
+                # A label that covers context sticks sits on a patch of background.
+                **({"bgcolor": ink.surface} if lab.knockout else {}),
             }
         )
         if lab.leader is not None:
@@ -449,7 +451,10 @@ def draw(fig: ResolvedFigure) -> go.Figure:
         "hovermode": "closest",
         "bargap": 0,
     }
-    if style.autosize:
+    # Label offsets are fixed px worked out at the design width, so a figure with
+    # placed labels keeps that width; one without may follow its container.
+    has_labels = any(rp.labels for rp in fig.panels)
+    if style.autosize and not has_labels:
         layout["autosize"] = True
         layout["meta"] = {"spx_width": px(W), "spx_style": style.name, "spx_dpi": style.dpi}
     else:

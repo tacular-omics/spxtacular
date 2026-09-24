@@ -116,7 +116,8 @@ class FigureStyle:
     label_gap: float
     #: Horizontal ion labels (True) or rotated to read bottom-to-top.
     horizontal_labels: bool
-    #: Plotly only: let the figure fill its container (interactive use).
+    #: Plotly only: let the figure fill its container (interactive use). Figures
+    #: with placed peak labels keep their design width, since label offsets are px.
     autosize: bool = False
 
     def with_(self, **changes: object) -> FigureStyle:

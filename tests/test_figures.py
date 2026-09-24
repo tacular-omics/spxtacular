@@ -349,3 +349,172 @@ def test_import_does_not_load_matplotlib() -> None:
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Awkward input, backend parity, label placement
+# ---------------------------------------------------------------------------
+
+
+def _spectrum(mz, intensity) -> MsnSpectrum:
+    return MsnSpectrum(
+        mz=np.asarray(mz, dtype=np.float64),
+        intensity=np.asarray(intensity, dtype=np.float64),
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=464.73, intensity=1e6, charge=2, im=None, is_monoisotopic=True)],
+    )
+
+
+_EDGE_FRAGS = pt.fragment(PEPTIDE, ion_types=("b", "y"), charges=[1, 2])
+_EDGE_MZ = np.sort(np.array([f.mz for f in _EDGE_FRAGS]))
+_EDGE_CASES = {
+    "empty": ([], []),
+    "single": ([300.0], [1e4]),
+    "all_zero": (_EDGE_MZ, np.zeros(len(_EDGE_MZ))),
+    "nan_intensity": (_EDGE_MZ, np.where(np.arange(len(_EDGE_MZ)) % 3 == 0, np.nan, 1e4)),
+}
+_EDGE_PLOTS = {
+    "plot_spectrum": lambda s, **kw: spx.plot_spectrum(s, **kw),
+    "annotate": lambda s, **kw: spx.annotate_spectrum(s, _EDGE_FRAGS, peptide=PEPTIDE, mass_error_panel=True, **kw),
+    "mirror": lambda s, **kw: spx.mirror_plot(s, s, fragments=_EDGE_FRAGS, **kw),
+    "mass_error": lambda s, **kw: spx.mass_error_plot(s, _EDGE_FRAGS, **kw),
+    "facet": lambda s, **kw: spx.facet_plot(s, fragments=_EDGE_FRAGS, mirror_spectrum=s, **kw),
+    "coverage": lambda s, **kw: spx.sequence_coverage_plot(s, PEPTIDE, _EDGE_FRAGS, **kw),
+}
+
+
+class TestAwkwardInput:
+    @pytest.mark.parametrize("case", list(_EDGE_CASES))
+    @pytest.mark.parametrize("plot", list(_EDGE_PLOTS))
+    def test_draws_with_plotly(self, case, plot) -> None:
+        mz, inten = _EDGE_CASES[case]
+        fig = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="plotly")
+        fig.to_json()  # plotly validates every property here
+
+    @pytest.mark.parametrize("plot", list(_EDGE_PLOTS))
+    def test_nan_intensity_resolves_on_the_spec(self, plot) -> None:
+        mz, inten = _EDGE_CASES["nan_intensity"]
+        fs = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="spec")
+        for rp in resolve_figure(fs).panels:
+            assert np.isfinite([rp.y.lo, rp.y.hi]).all()
+            for lab in rp.labels:
+                assert np.isfinite([lab.dx, lab.dy, lab.size]).all()
+
+    @needs_mpl
+    @pytest.mark.parametrize("case", list(_EDGE_CASES))
+    def test_draws_with_matplotlib(self, case) -> None:
+        import matplotlib.pyplot as plt
+
+        mz, inten = _EDGE_CASES[case]
+        for plot in ("annotate", "mass_error"):
+            fig = _EDGE_PLOTS[plot](_spectrum(mz, inten), backend="matplotlib")
+            fig.canvas.draw()
+            plt.close(fig)
+
+
+class TestBackendParity:
+    def _spec(self, style: str) -> FigureSpec:
+        spec, frags = _psm()
+        return spx.annotate_spectrum(spec, frags, peptide=PEPTIDE, mass_error_panel=True, backend="spec", style=style)
+
+    @pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+    def test_plotly_draws_the_resolved_labels_and_ranges(self, style) -> None:
+        fs = self._spec(style)
+        resolved = resolve_figure(fs)
+        fig = fs.render("plotly")
+        placed = sorted((round(lab.x, 4), lab.text.html()) for rp in resolved.panels for lab in rp.labels)
+        drawn = sorted((round(a.x, 4), a.text) for a in fig.layout.annotations if a.name == "label")
+        assert placed == drawn
+        for rp in resolved.panels:
+            suffix = "" if rp.index == 1 else str(rp.index)
+            xr = fig.layout[f"xaxis{suffix}"].range
+            yr = fig.layout[f"yaxis{suffix}"].range
+            assert xr == pytest.approx([rp.x.lo, rp.x.hi])
+            assert yr == pytest.approx([rp.y.lo, rp.y.hi])
+
+    @needs_mpl
+    @pytest.mark.parametrize("style", ["paper", "screen", "talk"])
+    def test_matplotlib_draws_the_resolved_labels_and_ranges(self, style) -> None:
+        import matplotlib.pyplot as plt
+
+        fs = self._spec(style)
+        resolved = resolve_figure(fs)
+        fig = fs.render("matplotlib")
+        try:
+            axes = fig.axes[: len(resolved.panels)]
+            for rp, ax in zip(resolved.panels, axes, strict=True):
+                assert ax.get_xlim() == pytest.approx((rp.x.lo, rp.x.hi))
+                assert ax.get_ylim() == pytest.approx((rp.y.lo, rp.y.hi))
+                want = {lab.text.mathtext() for lab in rp.labels}
+                drawn = sorted(t.get_text() for t in ax.texts if t.get_text() in want)
+                assert drawn == sorted(lab.text.mathtext() for lab in rp.labels)
+        finally:
+            plt.close(fig)
+
+    def test_talk_style_labels_do_not_overlap(self) -> None:
+        resolved = resolve_figure(self._spec("talk"))
+        panel = resolved.panels[0]
+        assert panel.labels
+        assert not _any_overlap([lab.box for lab in panel.labels])
+
+
+class TestLabelPlacement:
+    def test_top_matched_peak_is_labelled_beside_a_taller_unmatched_peak(self) -> None:
+        # The strongest matched ion sits at the left edge, next to a taller
+        # unmatched peak: the label may cover the grey stick, not be dropped.
+        frags = pt.fragment(PEPTIDE, ion_types=("b", "y"), charges=[1, 2])
+        mzs = np.sort(np.array([f.mz for f in frags]))
+        first = float(mzs[0])
+        mz = np.concatenate([[first, first + 1.2], mzs[1:]])
+        inten = np.concatenate([[8e4, 1e5], np.linspace(1e4, 3e4, len(mzs) - 1)])
+        order = np.argsort(mz)
+        s = _spectrum(mz[order], inten[order])
+        for style in ("paper", "screen"):
+            fs = spx.annotate_spectrum(s, frags, backend="spec", style=style)
+            labelled = {round(lab.x, 3) for lab in resolve_figure(fs).panels[0].labels}
+            assert round(first, 3) in labelled, style
+
+    def test_top_matched_peak_is_labelled(self) -> None:
+        spec, frags = _psm()
+        for style in ("paper", "screen", "talk"):
+            fs = spx.annotate_spectrum(spec, frags, backend="spec", style=style)
+            resolved = resolve_figure(fs).panels[0]
+            table = spx.build_annot_plot_table(spec, frags)
+            matched = table[table["series"] != "unmatched"]
+            top = float(matched.loc[matched["intensity"].idxmax(), "mz"])
+            assert any(abs(lab.x - top) < 1e-6 for lab in resolved.labels), style
+
+    def test_many_labels_place_quickly(self) -> None:
+        import time
+
+        rng = np.random.default_rng(0)
+        mz = np.sort(rng.uniform(100.0, 4000.0, 20000))
+        inten = rng.uniform(1e2, 1e5, len(mz))
+        fs = spx.plot_spectrum(_spectrum(mz, inten), max_labels=500, backend="spec")
+        start = time.perf_counter()
+        resolve_figure(fs)
+        elapsed = time.perf_counter() - start
+        # About 0.1 s on a desktop; the bound only catches a return to seconds per figure.
+        assert elapsed < 3.0
+
+    def test_per_row_label_columns_are_honoured(self) -> None:
+        spec, frags = _psm()
+        table = spx.build_annot_plot_table(spec, frags)
+        labelled = table.index[table["label"].notna() & (table["label"] != "")]
+        big, turned, coloured = labelled[0], labelled[1], labelled[2]
+        table.loc[big, "label_size"] = 11.0
+        table.loc[turned, "label_angle"] = 90.0
+        table.loc[coloured, "label_color"] = "#123456"
+        fs = spx.plot_from_table(table, backend="spec", style="screen")
+        by_x = {round(lab.x, 6): lab for lab in resolve_figure(fs).panels[0].labels}
+        assert by_x[round(float(table.loc[big, "mz"]), 6)].size == 11.0
+        assert by_x[round(float(table.loc[turned, "mz"]), 6)].rotation == -90.0
+        assert by_x[round(float(table.loc[coloured, "mz"]), 6)].color == "#123456"
+
+    def test_table_without_scale_attr_keeps_the_relative_axis(self) -> None:
+        spec, _ = _psm()
+        table = spx.build_plot_table(spec)
+        table.attrs.pop("intensity_scale", None)
+        fs = spx.plot_from_table(table, backend="spec")
+        axis = fs.cells[0].panels[0].y
+        assert axis.tick_max == 100.0
