@@ -1643,7 +1643,7 @@ class Spectrum:
     # -------------------------------------------------------------------------
 
     def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str:
-        """Encode this spectrum as a ``spectrl.v1.…`` URL-safe token (requires
+        """Encode this spectrum as a ``spectrl.v3.…`` URL-safe token (requires
         ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.to_spectrl_token`.
@@ -1654,7 +1654,7 @@ class Spectrum:
 
     @classmethod
     def from_spectrl_token(cls, token: str) -> "Spectrum | MsnSpectrum":
-        """Decode a ``spectrl.v1.…`` token into a :class:`Spectrum` /
+        """Decode a ``spectrl.v3.…`` token into a :class:`Spectrum` /
         :class:`MsnSpectrum` (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_token`.
@@ -1684,7 +1684,7 @@ class Spectrum:
     @classmethod
     def from_spectrl_url(cls, url: str) -> "Spectrum | MsnSpectrum":
         """Decode a spectrum from a URL fragment, query string, or ``data:`` URI
-        carrying a ``spectrl.v1.…`` token (requires ``spxtacular[spectrl]``).
+        carrying a ``spectrl.v3.…`` token (requires ``spxtacular[spectrl]``).
 
         See :func:`spxtacular.spectrl_bridge.from_spectrl_url`.
         """

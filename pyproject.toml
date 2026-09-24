@@ -79,7 +79,7 @@ mzml = ["mzmlpy>=0.9.0,<0.10"]
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.0"]
 readers = ["tdfpy>=4.0.1,<5", "mzmlpy>=0.9.0,<0.10", "fisher-py>=2.0.0"]
-spectrl = ["spectrl>=1.1.0,<2"]
+spectrl = ["spectrl>=3.0,<4"]
 matchms = ["matchms>=0.33.1"]
 spectrum-utils = ["spectrum-utils>=0.5.0"]
 interop = ["matchms>=0.33.1", "spectrum-utils>=0.5.0"]
@@ -88,7 +88,7 @@ all = [
     "tdfpy>=4.0.1,<5",
     "mzmlpy>=0.9.0,<0.10",
     "fisher-py>=2.0.0",
-    "spectrl>=1.1.0,<2",
+    "spectrl>=3.0,<4",
     "matchms>=0.33.1",
     "spectrum-utils>=0.5.0",
 ]
@@ -108,7 +108,7 @@ dev = [
     "pytest-timeout>=2.4,<3",
     "pytest-xdist>=3.8,<4",
     "ruff>=0.16.8",
-    "spectrl>=1.1.0,<2",
+    "spectrl>=3.0,<4",
     "spectrum-utils>=0.5.0",
     "tdfpy>=4.0.1,<5",
     "ty>=0.0.83",

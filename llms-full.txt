@@ -622,10 +622,10 @@ from_spectrum_utils(spectrum, *, warn_on_loss=True) -> MsnSpectrum
   warns about what it drops unless `warn_on_loss=False`. Without an identifier, `native_id`
   or `scan_number` it raises `ValueError`. Needs `[spectrum-utils]`.
 
-spectrl tokens (`[spectrl]`, spectrl 1.x):
+spectrl tokens (`[spectrl]`, spectrl 3.x):
 
 ```python
-to_spectrl_token(spec, *, lossless=False, max_len=None) -> str        # "spectrl.v1...."
+to_spectrl_token(spec, *, lossless=False, max_len=None) -> str        # "spectrl.v3...."
 from_spectrl_token(token) -> Spectrum | MsnSpectrum
 to_spectrl_url(spec, base=None, *, mode="fragment", param="d", lossless=False, max_len=None) -> str
 from_spectrl_url(url) -> Spectrum | MsnSpectrum
@@ -693,7 +693,7 @@ best = max(library, key=lambda ref: spx.cosine(query, ref, tolerance=10, toleran
 ### 11.5 Share a spectrum as a link
 
 ```python
-url = spec.to_spectrl_url("https://example.org/viewer/")   # https://example.org/viewer/#spectrl.v1....
+url = spec.to_spectrl_url("https://example.org/viewer/")   # https://example.org/viewer/#spectrl.v3....
 same = spx.Spectrum.from_spectrl_url(url)
 ```
 
@@ -728,5 +728,6 @@ out = spec.deconvolute(isotope_model=custom)
 - Writers reject decharged spectra: MGF/MS2/MSP hold m/z, not neutral masses.
 - Thermo reading needs a .NET 8 runtime; `ImportError` on instantiation explains how to
   install it.
-- spectrl support targets spectrl 1.x (`spectrl<2`); spectrl 2 changed the token format.
+- spectrl support targets spectrl 3.x (`spectrl>=3.0,<4`). Tokens are `spectrl.v3`; v1/v2 tokens
+  from older spxtacular releases cannot be decoded. Decoded arrays keep their declared dtype.
 - Plot colours are the theme's; change them with `spx.theme.set_palette`, not per-trace.

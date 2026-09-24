@@ -175,8 +175,9 @@ Other traps:
 - `centroid()` with no `min_intensity` turns every local maximum into a peak; real data needs a
   floor (`"noise"` or a number).
 - Thermo tests skip unless a .NET 8 runtime is installed; CI has a job where they are required.
-- spectrl 2.0 changed the token format; the `spectrl<2` cap is deliberate (draft PR #20 moves
-  to spectrl 3 — this guide documents `main`).
+- spectrl is pinned `>=3.0,<4` (token format `spectrl.v3`); each spectrl major changes the token
+  format, so the major cap is deliberate. spectrl 3 rejects boolean parameter values, so the
+  bridge writes flags as int 0/1.
 
 ## Releasing
 

@@ -227,10 +227,10 @@ ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
 ready-to-share link — with no backend required.
 
 ```python
-token = spec.to_spectrl_token()                       # spectrl.v1.… token
+token = spec.to_spectrl_token()                       # spectrl.v3.… token
 restored = spx.Spectrum.from_spectrl_token(token)
 
-url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl.v1.… (shareable)
+url = spec.to_spectrl_url("https://example.com/view")  # …#spectrl.v3.… (shareable)
 restored = spx.Spectrum.from_spectrl_url(url)
 ```
 

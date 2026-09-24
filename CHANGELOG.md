@@ -18,6 +18,7 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Changed
 
+- Required spectrl 3 (`spectrl>=3.0,<4`). **Breaking for stored or shared tokens:** `to_spectrl_token`/`to_spectrl_url` now write `spectrl.v3.…` tokens, and `from_spectrl_token`/`from_spectrl_url` reject the `spectrl.v1` tokens earlier spxtacular releases wrote. Every spxtacular field still round-trips. The default lossy profile now picks the smallest bounded-error encoding per array (m/z within 0.1 ppm), so token bytes differ from before; `lossless=True` stays bit-exact. Decoding applies spectrl's default untrusted-input limits (1,000,000 peaks, 64 MiB of arrays). Downstream packages that read spxtacular tokens (`msbit`, `pepbit`) need spectrl 3 too.
 - Capped sibling and spectrl requirements at the next breaking version (`peptacular<5`, `paftacular<2`, `tdfpy<5`, `mzmlpy<0.10`, `spectrl<2`). spectrl 2.0 changed the token format and broke the spectrl bridge; uncapped pins let installs pick it up. Verified against peptacular 4.0.0 and paftacular 1.3.0.
 
 ## [0.7.0] (2026-09-04)
