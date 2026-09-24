@@ -6,7 +6,8 @@ repo_name: tacular-omics/spxtacular
 edit_uri: edit/main/docs/
 copyright: Copyright &copy; the spxtacular authors. MIT licence.
 
-# Regenerates the example plots embedded in the guides into docs/plots/ (gitignored).
+# Regenerates the example plots embedded in the guides into docs/plots/ (gitignored),
+# and copies the repo-root llms.txt and llms-full.txt into the built site.
 hooks:
   - hooks.py
 
