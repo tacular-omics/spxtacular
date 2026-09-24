@@ -9,11 +9,14 @@ corresponds to a real defect the previous implementation had.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from spxtacular import theme
+from spxtacular._layout import label_boxes, resolve_figure
 from spxtacular.core import Spectrum
 from spxtacular.plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
 from spxtacular.visualization import (
@@ -31,6 +34,19 @@ def _spectrum(n: int = 6) -> Spectrum:
     rng = np.random.default_rng(0)
     mz = np.sort(rng.uniform(100.0, 1000.0, n))
     return Spectrum(mz=mz, intensity=rng.uniform(1e3, 1e5, n))
+
+
+def _any_overlap(boxes: list[tuple[float, float, float, float]], tol: float = 0.01) -> bool:
+    for i, (ax0, ay0, ax1, ay1) in enumerate(boxes):
+        for bx0, by0, bx1, by1 in boxes[i + 1 :]:
+            if ax0 < bx1 - tol and bx0 < ax1 - tol and ay0 < by1 - tol and by0 < ay1 - tol:
+                return True
+    return False
+
+
+def _label_texts(fig) -> list[str]:
+    """Texts of the placed peak/ion labels (annotations named ``label``)."""
+    return [str(a.text) for a in fig.layout.annotations if a.name == "label"]
 
 
 def _stick_points(fig) -> int:
@@ -214,26 +230,21 @@ class TestLabelCapping:
         assert (table["label"] != "").sum() <= 10
 
     def test_labels_do_not_collide(self) -> None:
-        # Even under the count cap, labels must not stack on top of each other.
-        spec = self._scored(200)
-        table = build_plot_table(spec, max_labels=None)
-        labelled = table.loc[table["label"] != "", "mz"].to_numpy()
-        span = float(spec.mz.max() - spec.mz.min())
-        gaps = np.diff(np.sort(labelled))
-        # Vertical labels need only ~one line-height of room, so the required
-        # separation is much smaller than it was for horizontal text.
-        assert (gaps >= span * 0.008).all(), "labels placed closer than the minimum separation"
+        # Even under the count cap, placed label boxes must never overlap.
+        spec = plot_spectrum(self._scored(200), max_labels=None, backend="spec")
+        panel = resolve_figure(spec).panels[0]
+        boxes = label_boxes(panel)
+        assert boxes, "some labels must survive collision avoidance"
+        assert not _any_overlap(boxes), "placed labels overlap"
 
-    def test_labels_are_vertical_by_default(self) -> None:
-        """Vertical is the spectrum-viewer convention and the reason so many fit."""
+    def test_labels_are_horizontal_by_default(self) -> None:
+        """Horizontal labels read without turning the page; leaders resolve crowding."""
         table = build_plot_table(self._scored(20))
-        assert (table["label_angle"] == -90.0).all()
+        assert (table["label_angle"] == 0.0).all()
 
+        table["label_angle"] = -90.0
         fig = plot_from_table(table)
-        rotated = [a for a in fig.layout.annotations if a.textangle == -90]
-        assert rotated, "labels must be rendered rotated, not just marked as such"
-        # Rotated text grows upward from the tip, so it anchors at its bottom edge.
-        assert all(a.yanchor == "bottom" for a in rotated)
+        assert [a for a in fig.layout.annotations if a.textangle == -90], "the column must still be honoured"
 
     def test_label_angle_is_editable(self) -> None:
         table = build_plot_table(self._scored(20))
@@ -531,7 +542,7 @@ class TestSaveFigure:
             raise ImportError("no kaleido")
 
         monkeypatch.setattr(importlib, "import_module", missing)
-        with pytest.raises(ImportError, match="pip install kaleido"):
+        with pytest.raises(ImportError, match=r"spxtacular\[plotly-export\]"):
             save_figure(fig, tmp_path / "fig.png")
 
     def test_non_dependency_export_errors_are_preserved(self, tmp_path, monkeypatch) -> None:
@@ -770,7 +781,8 @@ class TestImColouring:
             im=np.array([0.9, 1.1]),
         )
         fig = plot_spectrum(spec, color="im", intensity_scale="absolute")
-        assert fig.layout.yaxis.title.text == "Intensity"
+        # Absolute axes carry their power of ten in the title, not on every tick.
+        assert fig.layout.yaxis.title.text == "Intensity (\u00d710<sup>5</sup>)"
         drawn = [v for tr in fig.data if tr.mode == "lines" for v in tr.y if v == v]
         assert max(drawn) == pytest.approx(1e5)
 
@@ -822,24 +834,23 @@ class TestMassErrorPlot:
     def test_labels_are_capped_not_one_per_bubble(self) -> None:
         spec, frags = self._many_matches()
         fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=5)
-        drawn = [t for t in fig.data[0].text if t]
+        drawn = _label_texts(fig)
         assert len(drawn) <= 5, f"expected at most 5 labels, got {len(drawn)}"
         # The bubbles themselves are all still there -- only the text is thinned.
         assert len(fig.data[0].x) > len(drawn)
 
     def test_labels_do_not_collide(self) -> None:
         spec, frags = self._many_matches()
-        fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=None)
-        labelled = np.array([x for x, t in zip(fig.data[0].x, fig.data[0].text, strict=True) if t])
-        span = float(spec.mz.max() - spec.mz.min())
-        if len(labelled) > 1:
-            assert (np.diff(np.sort(labelled)) >= span * 0.008).all()
+        spec_fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=None, backend="spec")
+        boxes = label_boxes(resolve_figure(spec_fig).panels[0])
+        assert boxes
+        assert not _any_overlap(boxes)
 
     def test_a_dropped_label_is_still_reachable_on_hover(self) -> None:
         """Capping thins the plot, it must not make a bubble's identity unreachable."""
         spec, frags = self._many_matches()
         fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", max_labels=3)
-        drawn = {t for t in fig.data[0].text if t}
+        drawn = {re.sub(r"<[^>]+>", "", t) for t in _label_texts(fig)}
         hovered = {str(row[1]) for row in fig.data[0].customdata}
         assert len(hovered) > len(drawn)
         assert drawn <= hovered
@@ -861,8 +872,8 @@ class TestMassErrorPlot:
         fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", theme_mode="dark")
         assert not fig.data
         assert fig.layout.template.layout.paper_bgcolor == theme.surface("dark")
-        assert fig.layout.xaxis.title.text == "m/z"
-        assert fig.layout.yaxis.title.text == "Error (ppm)"
+        assert fig.layout.xaxis.title.text == "<i>m/z</i>"
+        assert fig.layout.yaxis.title.text == "Mass error (ppm)"
 
     @pytest.mark.parametrize("unit", ["PPM", "Da", "DA"])
     def test_error_unit_is_case_insensitive(self, unit: str) -> None:
@@ -872,11 +883,13 @@ class TestMassErrorPlot:
         ref = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=want)
         fig = mass_error_plot(spec, frags, tolerance=0.02, tolerance_type="da", unit=unit)
         assert list(fig.data[0].y) == list(ref.data[0].y)
-        assert fig.layout.yaxis.title.text == f"Error ({want})"
+        label = "ppm" if want == "ppm" else "Da"
+        assert fig.layout.yaxis.title.text == f"Mass error ({label})"
         facet = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=unit)
         facet_ref = facet_plot(spec, fragments=frags, tolerance=0.02, tolerance_type="da", unit=want)
         assert list(facet.data[-1].y) == list(facet_ref.data[-1].y)
-        assert facet.layout.yaxis2.title.text == f"Error ({want})"
+        # The facet strip is short, so it uses the short title.
+        assert facet.layout.yaxis2.title.text == f"Error ({label})"
 
     def test_unknown_error_unit_raises(self) -> None:
         spec, frags = self._many_matches()
@@ -889,4 +902,4 @@ class TestMassErrorPlot:
         spec = Spectrum(mz=np.array([10.0, 20.0]), intensity=np.array([1.0, 2.0]))
         _, frags = self._many_matches()
         fig = mass_error_plot(spec, frags, tolerance=0.001, tolerance_type="da", unit="da")
-        assert fig.layout.yaxis.title.text == "Error (da)"
+        assert fig.layout.yaxis.title.text == "Mass error (Da)"

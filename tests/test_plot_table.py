@@ -43,10 +43,7 @@ _EXPECTED_COLUMNS = [
     "series",
     "label",
     "label_size",
-    "label_font",
     "label_color",
-    "label_yshift",
-    "label_xanchor",
     "label_angle",
     "hover",
 ]
@@ -136,7 +133,8 @@ def test_build_plot_table_defaults() -> None:
     table = build_plot_table(_spectrum())
     assert (table["linewidth"] == 1.6).all()  # matched/plain peaks; unmatched are thinner
     assert (table["opacity"] == 1.0).all()
-    assert (table["label_size"] == 11.0).all()
+    # NaN means "use the figure style's label size" (paper 7 pt, screen 11 pt).
+    assert table["label_size"].isna().all()
 
 
 # ---------------------------------------------------------------------------
