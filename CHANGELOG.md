@@ -4,11 +4,7 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
-### Fixed
-
-- `Spectrum.centroid` no longer returns huge apex intensities (up to ~1e36x the data) for peaks whose neighbours are near zero, and keeps single-sample peaks next to zero or negative samples instead of dropping them. Such peaks fall back to a parabola on the intensities; well-sampled peaks are unchanged.
-
-## [0.9.0] (unreleased)
+## [0.9.0] (2026-09-24)
 
 Breaking release. Every rename and removal, old -> new, is in the migration guide
 (`docs/migration.md`).
@@ -68,6 +64,10 @@ Breaking release. Every rename and removal, old -> new, is in the migration guid
 - Bruker DDA MS2 reading uses tdfpy's batched per-precursor peaks (about 8x faster).
 - Label collision checks in plot tables are O(n log n).
 - Label placement is vectorised: 500 labels on 20,000 peaks resolve in about 0.15 s.
+
+### Fixed
+
+- `Spectrum.centroid` no longer returns huge apex intensities (up to ~1e36x the data) for peaks whose neighbours are near zero, and keeps single-sample peaks next to zero or negative samples instead of dropping them. Such peaks fall back to a parabola on the intensities; well-sampled peaks are unchanged.
 
 ## [0.8.0] (2026-09-23)
 
