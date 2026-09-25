@@ -84,9 +84,7 @@ spxtacular provides the spectrum processing and visualization used by the public
 
 # AI usage disclosure
 
-<!-- TODO(author): confirm the AI tools and model names below. They were written for 0.7; the 0.8 and 0.9 work was also AI-assisted, and the peptacular paper ("Opus 5 and Fable 5.1 ... Sol and Astra") and tdfpy paper ("Claude, Cursor, and GitHub Copilot") list different tools. -->
-
-Anthropic Claude Code, using Opus and Fable 5, and OpenAI Codex, using Sol, assisted with code editing and manuscript review. The authors made the core design decisions and reviewed, edited, and validated all AI-assisted output. They retain responsibility for the software and manuscript.
+During the preparation of this work the authors used Anthropic Claude large language models via the Claude Code interface for software-development assistance, including code, tests, and documentation, and for manuscript drafting and editing. The authors reviewed and edited all content and take full responsibility for the software and the publication.
 
 # Author contributions
 
@@ -98,6 +96,6 @@ The authors declare no competing financial interests.
 
 # Acknowledgements
 
-This work was supported by the National Institutes of Health under grants R01 AG077046, R01 MH132570, R01 MH100175, R01 HL165168, and U01 AG088679. The funders had no role in software design, manuscript preparation, or the decision to publish. The authors also acknowledge support from The Scripps Research Institute and thank Claire Delahunty for reviewing the manuscript.
+We thank Claire Delahunty, Ph.D., for a careful reading of the manuscript. This work was supported by the U.S. National Institutes of Health (grants R01 HL165168, R01 AG077046, R01 MH100175, and R01 AG075862 to J.R.Y.) and by the Skaggs Graduate School of Chemical and Biological Sciences at The Scripps Research Institute (P.T.G.).
 
 # References
