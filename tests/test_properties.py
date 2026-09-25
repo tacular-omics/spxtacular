@@ -1,30 +1,21 @@
 """Property-based tests over generated spectra.
 
 Spectra cover sorted and unsorted m/z, empty spectra, duplicate m/z, and zero or
-NaN intensity. Set ``HYPOTHESIS_PROFILE=thorough`` for a longer run.
+NaN intensity. Set ``HYPOTHESIS_PROFILE=thorough`` (or ``exhaustive``) for a longer run;
+the profiles are in ``conftest.py``.
 """
 
-import os
 import tempfile
 import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from peptacular import IonType
 
 from spxtacular import MgfReader, MsnSpectrum, Precursor, Spectrum, score, write_mgf
-
-settings.register_profile(
-    "default",
-    max_examples=60,
-    deadline=None,
-    suppress_health_check=[HealthCheck.too_slow],
-)
-settings.register_profile("thorough", max_examples=2000, deadline=None)
-settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
 MZ = st.floats(min_value=50.0, max_value=3000.0, allow_nan=False, allow_infinity=False)
 FINITE_INTENSITY = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=1e9, allow_nan=False))
@@ -129,7 +120,6 @@ def msn_spectra(draw):
     )
 
 
-@settings(max_examples=40)
 @given(batch=st.lists(msn_spectra(), min_size=1, max_size=4))
 def test_mgf_write_read_round_trip(batch: list[MsnSpectrum]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
@@ -249,7 +239,6 @@ def test_centroid_does_not_crash(arrays) -> None:
     assert np.all(np.isfinite(out.intensity))
 
 
-@settings(max_examples=40)
 @given(spectrum=spectra(extras=False))
 def test_deconvolute_does_not_crash(spectrum: Spectrum) -> None:
     with warnings.catch_warnings():

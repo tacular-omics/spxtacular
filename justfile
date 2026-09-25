@@ -24,13 +24,17 @@ fmt-check:
 check:
     uv run --locked ty check src tests
 
-# Run tests
+# Run tests (fast default: slow tests skipped, 30 hypothesis examples)
 test:
     uv run --locked pytest tests
 
+# Run every test the way CI does: slow tests included, thorough hypothesis profile
+test-all:
+    RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough uv run --locked pytest tests
+
 # Run tests once, emitting both coverage XML and JUnit XML for Codecov
 test-cov:
-    uv run --locked pytest tests --cov=src/spxtacular --cov-report=xml --junit-xml=junit.xml
+    RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough uv run --locked pytest tests --cov=src/spxtacular --cov-report=xml --junit-xml=junit.xml
 
 # Build and serve docs
 docs:

@@ -21,6 +21,13 @@ commit they run `ruff check`, `ruff format --check` and a few file checks
 (`uvx pre-commit run --all-files` runs them on everything). Type checks and
 tests are not in the hooks; run `just check` for those.
 
+`just test` is the fast default run: it skips tests marked `@pytest.mark.slow` (subprocess
+import checks, memory checks, and the matchms/spectrum_utils interop tests, whose imports
+JIT-compile numba code) and runs 30 hypothesis examples per property test. `just test-all`
+runs everything the way CI does (`RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough`; `--run-slow`
+works too). Mark a new test `slow` only if it still takes more than about 2 s after shrinking
+its input.
+
 Before opening a pull request, run the same checks used by continuous integration:
 
 ```bash

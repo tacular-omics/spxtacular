@@ -1,9 +1,26 @@
 """Interoperability tests for matchms."""
 
+import os
+import warnings
+
 import numpy as np
 import pytest
 
-matchms = pytest.importorskip("matchms")
+# Importing matchms pulls in pynndescent, which JIT-compiles numba kernels at import
+# time (15-20 s). That cost lands at collection, so a slow marker alone would not
+# avoid it: skip the whole module unless slow tests were requested (conftest sets
+# RUN_SLOW=1 for --run-slow).
+if os.environ.get("RUN_SLOW") != "1":
+    pytest.skip(
+        "slow: importing matchms JIT-compiles pynndescent; pass --run-slow or set RUN_SLOW=1",
+        allow_module_level=True,
+    )
+pytestmark = pytest.mark.slow
+
+# psims (imported by matchms) warns when the optional hdf5plugin is missing.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
+    matchms = pytest.importorskip("matchms")
 
 from matchms import Spectrum as MatchmsSpectrum  # noqa: E402
 from matchms.filtering import normalize_intensities  # noqa: E402

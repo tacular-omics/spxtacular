@@ -31,3 +31,6 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/latest/bin/python" --no-sources --no-cache "$target" --group dev
           uv pip list --python "$RUNNER_TEMP/latest/bin/python"
       - run: '"$RUNNER_TEMP/latest/bin/python" -m pytest tests'
+        env:
+          RUN_SLOW: "1"
+          HYPOTHESIS_PROFILE: thorough

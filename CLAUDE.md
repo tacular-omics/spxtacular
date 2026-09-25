@@ -32,8 +32,9 @@ the skips are Thermo tests that need a .NET runtime).
 
 ```bash
 just --list          # all recipes
-just test            # pytest tests  (--timeout=15, filterwarnings=error)
-just test-cov        # pytest with coverage.xml + junit.xml (CI)
+just test            # pytest tests  (--timeout=15, filterwarnings=error); fast, skips `slow`
+just test-all        # what CI runs: RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough pytest tests
+just test-cov        # test-all with coverage.xml + junit.xml (CI)
 just lint            # ruff check src tests .github/scripts benchmarks
 just fmt-check       # ruff format --check (what CI runs)
 just format          # ruff isort fix + ruff format  (REWRITES files)
@@ -145,7 +146,10 @@ add them to both the import block and `__all__`.
   subclass, from `spxtacular.errors`) rather than silently picking a fallback. No placeholder TODOs; raise `NotImplementedError` with a reason.
 - **Warnings:** pytest runs with `filterwarnings = ["error"]`, so any `UserWarning` the code
   emits on a test path fails the test unless the test expects it (`pytest.warns`).
-- **Tests:** `tests/test_<area>.py`; `--timeout=15` per test. Keep tests focused.
+- **Tests:** `tests/test_<area>.py`; `--timeout=15` per test. Keep tests focused and the
+  default run fast: shrink inputs first; mark a test `@pytest.mark.slow` only if it still takes
+  more than ~2 s (skipped unless `--run-slow`/`RUN_SLOW=1`; CI sets it). Hypothesis profiles
+  (`default` 30, `thorough` 300 in CI, `exhaustive` 2000) are in `tests/conftest.py`.
 - **Changelog:** a concise `CHANGELOG.md` bullet under `[Unreleased]` only for user-visible
   changes (the file's heading is "History", but the file is `CHANGELOG.md`).
 - **ruff per-file-ignores** in `pyproject.toml` are suppressions of real findings: fix the code

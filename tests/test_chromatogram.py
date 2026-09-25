@@ -10,6 +10,7 @@ scan, so it is not globally sorted.
 
 from __future__ import annotations
 
+import itertools
 import warnings
 from pathlib import Path
 
@@ -22,6 +23,9 @@ from spxtacular.visualization import plot_chromatogram, plot_xic
 
 TARGETS = [500.0, 700.0, 900.0]
 REAL_DDA_DATA = Path(__file__).parent / "data" / "example_dda.d"
+# Decoding a timsTOF MS1 frame costs ~0.3 s; the first few frames already have the
+# descending m/z steps these tests are about, so the other ~60 add only time.
+REAL_DDA_FRAMES = 4
 
 
 def _run(n_scans: int = 12, shuffle: bool = False, with_im: bool = False) -> list[MsnSpectrum]:
@@ -59,18 +63,19 @@ class _CountingIterable:
 
 @pytest.fixture(scope="module")
 def real_dda_frames() -> list[Spectrum]:
-    """Load the large Bruker fixture once for all real-run assertions."""
+    """Load the first frames of the large Bruker fixture once for all real-run assertions."""
     pytest.importorskip("tdfpy")
     from spxtacular.reader import DReader
 
     with DReader(str(REAL_DDA_DATA)) as reader:
+        frames = itertools.islice(reader.ms1, REAL_DDA_FRAMES)
         return [
             Spectrum(
                 mz=s.mz.copy(),
                 intensity=s.intensity.copy(),
                 im=None if s.im is None else s.im.copy(),
             )
-            for s in reader.ms1
+            for s in frames
         ]
 
 
@@ -357,7 +362,7 @@ class TestChromatogramPlots:
 
 
 class TestRealRun:
-    """A real 65-frame timsTOF run.
+    """The first frames of a real 65-frame timsTOF run.
 
     Synthetic runs cannot catch the thing that actually bites here: a Bruker MS1
     frame is ordered by ion-mobility scan, so roughly half its m/z steps descend.

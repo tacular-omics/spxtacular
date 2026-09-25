@@ -7,6 +7,10 @@ import pytest
 
 pytest.importorskip("spectrum_utils")
 
+# spectrum_utils JIT-compiles its numba kernels on the first MsmsSpectrum (4-7 s),
+# and every test here builds one.
+pytestmark = pytest.mark.slow
+
 from spectrum_utils.spectrum import MsmsSpectrum  # noqa: E402
 
 from spxtacular import (  # noqa: E402  # noqa: E402
