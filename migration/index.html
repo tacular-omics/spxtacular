@@ -1,0 +1,2003 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/migration/">
+      
+      
+        <link rel="prev" href="../design/polarity-adducts-and-isotope-roadmap/">
+      
+      
+        <link rel="next" href="../citation/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Migrating to 0.9 - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migrating-from-08-to-09" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migrating to 0.9
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spectrum/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deconvolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mzspeclib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral libraries (mzSpecLib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching, scoring & reporter ions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polarity, adducts, and isotope models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to 0.9
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to 0.9
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#precursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spectrum-and-peak-constructors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum and Peak constructors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keyword-only-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keyword-only parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#renamed-and-removed-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Renamed and removed parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removed-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tolerance-units-and-polarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tolerance units and polarity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transforms-that-are-already-done" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transforms that are already done
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matchedfragment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MatchedFragment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragment-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragment labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../citation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#precursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spectrum-and-peak-constructors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectrum and Peak constructors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keyword-only-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keyword-only parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#renamed-and-removed-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Renamed and removed parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removed-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tolerance-units-and-polarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tolerance units and polarity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transforms-that-are-already-done" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transforms that are already done
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matchedfragment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MatchedFragment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragment-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragment labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="migrating-from-08-to-09">Migrating from 0.8 to 0.9<a class="headerlink" href="#migrating-from-08-to-09" title="Permanent link">&para;</a></h1>
+<p>spxtacular 0.9 is a breaking release. It moves to the new majors of its sibling packages
+(tacular 2, peptacular 5, paftacular 2, tdfpy 5, mzmlpy 0.10), renames a few fields so each
+name says exactly what it holds, and makes optional parameters keyword-only. This page lists
+every rename and removal as <strong>old -&gt; new</strong>.</p>
+<h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>peptacular&gt;=4.2,&lt;5</code></td>
+<td><code>peptacular&gt;=5,&lt;6</code></td>
+</tr>
+<tr>
+<td><code>paftacular&gt;=1.4,&lt;2</code></td>
+<td><code>paftacular&gt;=2,&lt;3</code></td>
+</tr>
+<tr>
+<td>(transitive) <code>tacular</code></td>
+<td><code>tacular&gt;=2,&lt;3</code> (direct)</td>
+</tr>
+<tr>
+<td><code>tdfpy&gt;=4.1,&lt;5</code> (<code>[bruker]</code>)</td>
+<td><code>tdfpy&gt;=5,&lt;6</code></td>
+</tr>
+<tr>
+<td><code>mzmlpy&gt;=0.9,&lt;0.10</code> (<code>[mzml]</code>)</td>
+<td><code>mzmlpy&gt;=0.10,&lt;0.11</code></td>
+</tr>
+</tbody>
+</table>
+<p>peptacular 5 changes affect code that builds fragments to pass in: <code>ion_types="by"</code> is now
+<strong>one</strong> ion type named <code>"by"</code> (an internal fragment), so write <code>ion_types=("b", "y")</code>; and
+<code>Fragment.losses</code> is now <code>Fragment.deltas</code>.</p>
+<p>tdfpy 5 changes some Bruker peak values. MS1 spectra from <code>DReader</code> can differ by one or two
+peaks, with summed intensity about 40 ppm different. Some DDA MS2 peaks that 0.8 merged into one
+now come out as separate peaks.</p>
+<h2 id="precursor">Precursor<a class="headerlink" href="#precursor" title="Permanent link">&para;</a></h2>
+<p><code>Precursor</code> is now its own frozen, slotted, keyword-only dataclass. It is no longer a <code>Peak</code>
+subclass.</p>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Precursor(mz=500.2, ...)</code></td>
+<td><code>Precursor(precursor_mz=500.2, ...)</code></td>
+</tr>
+<tr>
+<td><code>Precursor(500.2, 1e4, 2, ...)</code> (positional)</td>
+<td>keyword-only: <code>Precursor(precursor_mz=500.2, intensity=1e4, charge=2)</code></td>
+</tr>
+<tr>
+<td><code>precursor.mz</code></td>
+<td><code>precursor.precursor_mz</code></td>
+</tr>
+<tr>
+<td><code>is_monoisotopic</code> required</td>
+<td><code>is_monoisotopic=None</code> by default; <code>intensity=0.0</code> by default</td>
+</tr>
+<tr>
+<td><code>isinstance(precursor, Peak)</code> is <code>True</code></td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td>(none)</td>
+<td><code>precursor.im_type</code>: the kind of mobility stored in <code>precursor.im</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>Precursor.im</code> keeps its name because the value is whatever the source recorded: 1/K0 for
+Bruker and most mzML files, drift time for some mzML files. <code>im_type</code> (an <code>IMType</code>, or
+<code>None</code> when unknown) says which. Readers fill it in: Bruker DDA and PRM set <code>"ook0"</code>. mzML
+takes it from the declared unit, for precursor values and for ion mobility arrays alike:</p>
+<table>
+<thead>
+<tr>
+<th>mzML unit</th>
+<th><code>im_type</code></th>
+<th>values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MS:1002814 (volt-second per square centimeter)</td>
+<td><code>"ook0"</code></td>
+<td>as stored</td>
+</tr>
+<tr>
+<td>UO:0000028 (millisecond)</td>
+<td><code>"drift_time_ms"</code></td>
+<td>as stored</td>
+</tr>
+<tr>
+<td>UO:0000010 (second)</td>
+<td><code>"drift_time_ms"</code></td>
+<td>multiplied by 1000</td>
+</tr>
+<tr>
+<td>no unit</td>
+<td><code>"im"</code> (generic)</td>
+<td>as stored</td>
+</tr>
+</tbody>
+</table>
+<p>When a spectrum has several ion mobility arrays, the first whose length matches the peaks is
+used, with a warning.</p>
+<h2 id="msnspectrum">MsnSpectrum<a class="headerlink" href="#msnspectrum" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MsnSpectrum(isolation_im_range=...)</code></td>
+<td><code>MsnSpectrum(isolation_ook0_range=...)</code></td>
+</tr>
+<tr>
+<td><code>spec.isolation_im_range</code></td>
+<td><code>spec.isolation_ook0_range</code></td>
+</tr>
+</tbody>
+</table>
+<p>The isolation window is always 1/K0 (it comes from Bruker's quadrupole/TIMS isolation), so
+the name now says so.</p>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bruker <code>isolation_im_range</code> was <code>(high, low)</code>, e.g. <code>(1.3062, 1.29)</code></td>
+<td><code>isolation_ook0_range</code> is <code>(low, high)</code>: <code>(1.29, 1.3062)</code></td>
+</tr>
+</tbody>
+</table>
+<p>0.8 JSON, npz files and spectrl tokens are read back as <code>(low, high)</code>.</p>
+<h2 id="spectrum-and-peak-constructors">Spectrum and Peak constructors<a class="headerlink" href="#spectrum-and-peak-constructors" title="Permanent link">&para;</a></h2>
+<p>Everything after <code>intensity</code> is keyword-only:</p>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Spectrum(mz, intensity, charge)</code></td>
+<td><code>Spectrum(mz, intensity, charge=charge)</code></td>
+</tr>
+<tr>
+<td><code>Peak(500.0, 1e4, 2)</code></td>
+<td><code>Peak(500.0, 1e4, charge=2)</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="keyword-only-parameters">Keyword-only parameters<a class="headerlink" href="#keyword-only-parameters" title="Permanent link">&para;</a></h2>
+<p>Required parameters stay positional. Every parameter with a default is now keyword-only in the
+public functions and methods below. <code>spec.normalize("tic")</code> becomes
+<code>spec.normalize(method="tic")</code>; <code>match_fragments(spec, frags, 10, "ppm")</code> becomes
+<code>match_fragments(spec, frags, tolerance=10, tolerance_unit="ppm")</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Function or method</th>
+<th>Now keyword-only</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Spectrum.filter</code></td>
+<td>all parameters</td>
+</tr>
+<tr>
+<td><code>Spectrum.normalize</code>, <code>Spectrum.denoise</code></td>
+<td><code>method</code>, <code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.centroid</code></td>
+<td><code>min_intensity</code>, <code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.merge</code></td>
+<td><code>mz_tolerance</code>, <code>mz_tolerance_unit</code>, <code>im_tolerance</code>, <code>im_tolerance_unit</code>, <code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.sort</code>, <code>Spectrum.top_peaks</code></td>
+<td><code>by</code>, <code>reverse</code> (and <code>inplace</code> for <code>sort</code>)</td>
+</tr>
+<tr>
+<td><code>Spectrum.update</code>, <code>Spectrum.decharge</code></td>
+<td><code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.deconvolute</code></td>
+<td>all parameters</td>
+</tr>
+<tr>
+<td><code>Spectrum.remove_precursor_peak</code></td>
+<td>all parameters, including <code>precursor_mz</code> and <code>precursor_charge</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.scale_intensity</code></td>
+<td><code>method</code>, <code>degree</code>, <code>base</code>, <code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.round_mz</code></td>
+<td><code>decimals</code>, <code>combine</code>, <code>inplace</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.has_peak</code>, <code>get_peak</code>, <code>get_peaks</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code>, <code>target_charge</code>, <code>target_im</code>, <code>im_tolerance</code> (and <code>peak_selection</code> for <code>get_peak</code>)</td>
+</tr>
+<tr>
+<td><code>Spectrum.match_fragments</code>, <code>match_fragments</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code>, <code>peak_selection</code>, <code>is_monoisotopic</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.score</code>, <code>score</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code>, <code>peak_selection</code>, <code>predicted_intensities</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.annotate</code>, <code>Spectrum.annot_plot_table</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code>, <code>title</code>, <code>peak_selection</code>, <code>include_sequence</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.plot</code>, <code>Spectrum.plot_table</code></td>
+<td>all parameters</td>
+</tr>
+<tr>
+<td><code>Spectrum.mass_error_plot</code>, <code>Spectrum.facet_plot</code></td>
+<td>all optional parameters, including <code>fragments</code> and <code>mirror_spectrum</code> for <code>facet_plot</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.to_spectrl_url</code>, <code>to_spectrl_url</code></td>
+<td><code>base</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.from_usi</code>, <code>fetch_usi</code></td>
+<td><code>backend</code>, <code>timeout</code></td>
+</tr>
+<tr>
+<td><code>cosine</code>, <code>modified_cosine</code>, <code>entropy_similarity</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code> (and <code>transform</code>); the two precursor m/z of <code>modified_cosine</code> stay positional</td>
+</tr>
+<tr>
+<td><code>extract_chromatogram</code></td>
+<td><code>mode</code>, <code>mz_range</code></td>
+</tr>
+<tr>
+<td><code>extract_xic</code>, <code>plot_xic</code></td>
+<td><code>tolerance</code>, <code>tolerance_unit</code>, <code>im_window</code>, <code>aggregate</code> (and plot options)</td>
+</tr>
+<tr>
+<td><code>brain_isotopic_distribution</code></td>
+<td><code>max_isotopes</code>, <code>isotope_abundances</code></td>
+</tr>
+<tr>
+<td><code>IsotopeModel.adaptive_distribution</code></td>
+<td><code>min_relative_abundance</code>, <code>max_isotopes</code></td>
+</tr>
+<tr>
+<td><code>estimate_noise_level</code></td>
+<td><code>method</code></td>
+</tr>
+<tr>
+<td><code>build_plot_table</code>, <code>build_annot_plot_table</code>, <code>plot_from_table</code>, <code>table_view</code></td>
+<td>all optional parameters</td>
+</tr>
+<tr>
+<td><code>plot_spectrum</code>, <code>annotate_spectrum</code>, <code>mirror_plot</code>, <code>plot_chromatogram</code></td>
+<td>all optional parameters</td>
+</tr>
+<tr>
+<td><code>profile_centroid_plot</code></td>
+<td><code>centroids</code>, <code>title</code>, <code>theme_mode</code>, <code>max_points</code></td>
+</tr>
+<tr>
+<td><code>sequence_coverage_plot</code>, <code>mass_error_plot</code>, <code>facet_plot</code></td>
+<td>all optional parameters, including <code>fragments</code> for <code>facet_plot</code></td>
+</tr>
+<tr>
+<td><code>save_figure</code></td>
+<td><code>scale</code></td>
+</tr>
+<tr>
+<td><code>Reader</code>, <code>DReader</code></td>
+<td><code>centroid_config</code></td>
+</tr>
+<tr>
+<td><code>ThermoReader</code></td>
+<td><code>prefer_vendor_centroid</code></td>
+</tr>
+<tr>
+<td><code>CentroidConfig</code></td>
+<td>all fields</td>
+</tr>
+<tr>
+<td><code>MatchedFragment</code></td>
+<td>all fields (it is built by <code>match_fragments</code>, not by hand)</td>
+</tr>
+<tr>
+<td><code>spxtacular.decon.deconvolve_spectrum</code></td>
+<td>everything after <code>intensity</code></td>
+</tr>
+<tr>
+<td><code>Chromatogram</code></td>
+<td>everything after <code>intensity</code></td>
+</tr>
+<tr>
+<td><code>IsotopeModel</code></td>
+<td>everything after <code>atoms_per_da</code></td>
+</tr>
+<tr>
+<td><code>IonizationModel</code></td>
+<td><code>carrier</code></td>
+</tr>
+<tr>
+<td><code>DeconvolutionProvenance</code></td>
+<td>everything from <code>isotope_model_definition</code> on</td>
+</tr>
+</tbody>
+</table>
+<p><code>ParsedUsi</code> is a <code>NamedTuple</code>, so its fields stay positional: tuple unpacking depends on it.</p>
+<p><code>IsotopeModel.distribution(mass, max_isotopes)</code> and <code>apex_index</code> are unchanged.</p>
+<h2 id="renamed-and-removed-parameters">Renamed and removed parameters<a class="headerlink" href="#renamed-and-removed-parameters" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>has_peak</code>/<code>get_peak</code>/<code>get_peaks(im_tol=...)</code></td>
+<td><code>im_tolerance=...</code>, the name used everywhere else</td>
+</tr>
+<tr>
+<td><code>get_peak(collision="largest"\|"closest")</code></td>
+<td><code>get_peak(peak_selection="largest"\|"closest")</code>, the name <code>match_fragments</code> uses. Default is still <code>"largest"</code>; <code>"all"</code> raises (use <code>get_peaks</code>)</td>
+</tr>
+<tr>
+<td><code>Spectrum.plot(show_charges=...)</code>, <code>plot_spectrum(show_charges=...)</code></td>
+<td>removed (deprecated in 0.8); use <code>color="charge"</code> or <code>color=None</code></td>
+</tr>
+<tr>
+<td><code>Spectrum.plot_table(show_charges=...)</code></td>
+<td>removed; use <code>color="charge"</code> or <code>color=None</code></td>
+</tr>
+<tr>
+<td><code>deconvolve_spectrum(..., is_ppm=True)</code></td>
+<td><code>tolerance_unit="ppm"</code> (or <code>"da"</code>), as in <code>Spectrum.deconvolute</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>build_plot_table(show_charges=...)</code> and <code>mirror_plot(show_charges=...)</code> keep their option: there
+it is not a deprecated alias.</p>
+<h2 id="removed-names">Removed names<a class="headerlink" href="#removed-names" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spxtacular.core.JSON_SCHEMA_VERSION</code> (<code>1</code>)</td>
+<td><code>spxtacular.serialization.SPECTRUM_SCHEMA_VERSION</code> (now <code>2</code>) for spectra. <code>spxtacular.serialization.JSON_SCHEMA_VERSION</code> still exists and stays <code>1</code>: it is the chromatogram schema version</td>
+</tr>
+<tr>
+<td><code>spxtacular.reader.PeakListLookup</code>, <code>spxtacular.reader.ThermoScanLookup</code></td>
+<td>import from the package root: <code>from spxtacular import PeakListLookup, ThermoScanLookup</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="tolerance-units-and-polarity">Tolerance units and polarity<a class="headerlink" href="#tolerance-units-and-polarity" title="Permanent link">&para;</a></h2>
+<p>Units and polarity are plain lowercase strings, typed by tacular. There are no enums or
+aliases for them in spxtacular.</p>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tolerance_type=</code> (every function, method and field)</td>
+<td><code>tolerance_unit=</code></td>
+</tr>
+<tr>
+<td><code>mz_tolerance_type=</code>, <code>im_tolerance_type=</code> (<code>merge</code>, <code>deconvolute</code>, <code>CentroidConfig</code>)</td>
+<td><code>mz_tolerance_unit=</code>, <code>im_tolerance_unit=</code></td>
+</tr>
+<tr>
+<td><code>Chromatogram.tolerance_type</code></td>
+<td><code>Chromatogram.tolerance_unit</code></td>
+</tr>
+<tr>
+<td><code>DeconvolutionProvenance.tolerance_type</code>, <code>.im_tolerance_type</code></td>
+<td><code>.tolerance_unit</code>, <code>.im_tolerance_unit</code></td>
+</tr>
+<tr>
+<td><code>ToleranceType.DA</code>, <code>ToleranceType.PPM</code>, <code>"Da"</code>, <code>"PPM"</code></td>
+<td><code>"da"</code>, <code>"ppm"</code> (other spellings raise <code>SpxtacularError</code>)</td>
+</tr>
+<tr>
+<td><code>ToleranceType</code>, <code>ToleranceLike</code></td>
+<td><code>from tacular.types import ToleranceUnit</code> (<code>Literal["da", "ppm"]</code>)</td>
+</tr>
+<tr>
+<td><code>Polarity.POSITIVE</code>, <code>Polarity.NEGATIVE</code>, <code>"Positive"</code></td>
+<td><code>"positive"</code>, <code>"negative"</code></td>
+</tr>
+<tr>
+<td><code>Polarity</code>, <code>PolarityLike</code></td>
+<td><code>from tacular.types import Polarity</code> (<code>Literal["positive", "negative"]</code>)</td>
+</tr>
+<tr>
+<td><code>enums.DEFAULT_FRAGMENT_TOLERANCE_TYPE</code></td>
+<td><code>enums.DEFAULT_FRAGMENT_TOLERANCE_UNIT</code></td>
+</tr>
+</tbody>
+</table>
+<p>Chromatograms built by <code>extract_xic</code> store <code>"da"</code>/<code>"ppm"</code>, where 0.8 stored <code>"Da"</code>.</p>
+<h2 id="readers">Readers<a class="headerlink" href="#readers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MzmlReader(..., extract_dir=...)</code></td>
+<td>removed (mzmlpy 0.10 no longer extracts gzip files to disk)</td>
+</tr>
+<tr>
+<td><code>Reader(..., mzml_extract_dir=...)</code></td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>gzip_mode="extract"</code></td>
+<td>removed; use <code>"auto"</code> (default), <code>"indexed"</code> or <code>"stream"</code></td>
+</tr>
+<tr>
+<td><code>access_strategy == "extracted"</code></td>
+<td>no longer returned; <code>"memory"</code> or <code>"stream"</code> are new values</td>
+</tr>
+<tr>
+<td>mzML <code>scan_number</code> = 0-based spectrum index</td>
+<td>the number in the native id when it identifies the spectrum on its own: <code>scan=19</code> or Thermo <code>controllerType=0 controllerNumber=1 scan=19</code> -&gt; <code>19</code>, <code>index=5</code> / <code>spectrum=5</code> -&gt; <code>5</code>. Otherwise <code>None</code> (Bruker <code>frame=… scan=…</code>, Waters <code>function=… scan=…</code>, SCIEX <code>cycle=…</code>), because the <code>scan</code> value repeats or is missing</td>
+</tr>
+<tr>
+<td><code>write_ms2</code> wrote only <code>S &lt;scan&gt;</code></td>
+<td>also writes the native id as <code>I NativeID</code> when it is not <code>scan=&lt;n&gt;</code> (for example a Bruker mzML id with no scan number, whose <code>S</code> line uses the 1-based position), and <code>Ms2Reader</code> reads it back. <code>write_mgf</code> is unchanged: <code>SCANS</code> only for a set <code>scan_number</code>, <code>TITLE</code> is the native id</td>
+</tr>
+<tr>
+<td>malformed mzML raised mzmlpy's <code>MzmlParseError</code></td>
+<td>raises <code>SpxtacularError</code>, with the mzmlpy error as <code>__cause__</code> (a missing spectrum is still <code>KeyError</code>)</td>
+</tr>
+<tr>
+<td><code>AcquisitionType.UNKNOWN == "UNKNOWN"</code> (values <code>"DDA"</code>, ...)</td>
+<td><code>AcquisitionType</code> is tdfpy's enum; compare members, not strings</td>
+</tr>
+<tr>
+<td>lookup before <code>open()</code> raises <code>RuntimeError</code></td>
+<td>raises <code>SpxtacularError</code></td>
+</tr>
+<tr>
+<td><code>DReader</code> spectra had <code>native_id=None</code></td>
+<td>MS1 <code>native_id="frame=F"</code>, DDA MS2 <code>native_id="precursor=P"</code> (DIA <code>F@wI</code>, PRM <code>F@tT</code> as before). <code>write_mgf</code> of Bruker spectra now writes a <code>TITLE</code> line, and <code>get_by_native_id</code> accepts these ids</td>
+</tr>
+<tr>
+<td><code>CentroidConfig</code> applied to DDA MS2</td>
+<td>DDA MS2 spectra use tdfpy's per-precursor merged peaks; <code>CentroidConfig</code> affects MS1, DIA and PRM</td>
+</tr>
+</tbody>
+</table>
+<p>New in 0.9: <code>DReader</code> MS1 spectra carry <code>total_ion_current</code>, and the reader lookup types
+(<code>DReaderMs1Lookup</code>, <code>DReaderMs2Lookup</code>, <code>MzmlSpectraLookup</code>, <code>ThermoScanLookup</code>,
+<code>PeakListLookup</code>) and a <code>SpectrumLookup</code> protocol are exported from the package root, so
+<code>Reader.ms1</code> / <code>.ms2</code> can be type-annotated.</p>
+<h2 id="transforms-that-are-already-done">Transforms that are already done<a class="headerlink" href="#transforms-that-are-already-done" title="Permanent link">&para;</a></h2>
+<p>In 0.8, calling <code>normalize</code>, <code>denoise</code>, <code>centroid</code>, <code>deconvolute</code> or <code>decharge</code> on a
+spectrum that had already been through that step warned and returned it unchanged. In 0.9:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>0.9 behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>normalize</code></td>
+<td>always rescales with the requested method (no warning)</td>
+</tr>
+<tr>
+<td><code>denoise</code>, <code>centroid</code>, <code>deconvolute</code>, <code>decharge</code></td>
+<td>silent no-op: returns a copy, or <code>self</code> when <code>inplace=True</code></td>
+</tr>
+</tbody>
+</table>
+<p>Code that wrapped these calls in <code>pytest.warns</code> or <code>warnings.catch_warnings</code> can drop that.</p>
+<h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ValueError</code> for invalid input</td>
+<td><code>SpxtacularError</code>, a <code>ValueError</code> subclass: <code>except ValueError</code> still works</td>
+</tr>
+<tr>
+<td><code>da_to_ppm(delta, 0)</code> raises <code>ValueError</code></td>
+<td>raises tacular's <code>TacularError</code> (also a <code>ValueError</code>)</td>
+</tr>
+<tr>
+<td><code>da_to_ppm(delta, mz)</code> divides by <code>mz</code></td>
+<td>divides by <code>abs(mz)</code>, so a negative reference keeps the error's sign</td>
+</tr>
+<tr>
+<td>enum coercion (<code>ToleranceType("foo")</code>) raises plain <code>ValueError</code></td>
+<td>raises <code>SpxtacularError</code>, listing the accepted values. Tolerance units and polarity are lowercase only (<code>"PPM"</code>, <code>"Da"</code>, <code>"Positive"</code> raise); <code>IMType</code> coercion is case-insensitive</td>
+</tr>
+<tr>
+<td><code>im_type</code>, <code>polarity</code> accepted any value</td>
+<td><code>im_type</code> coerced to <code>IMType</code>, <code>polarity</code> checked to be <code>"positive"</code>/<code>"negative"</code>, on construction (<code>Precursor</code>, <code>MsnSpectrum</code>, JSON); anything else raises <code>SpxtacularError</code></td>
+</tr>
+<tr>
+<td><code>activation_type</code>, <code>analyzer</code> kept any value as given</td>
+<td>a member name in any case or a PSI-MS accession becomes the member (<code>"MS:1002481"</code> -&gt; <code>ActivationType.HCD</code>, <code>"TOF"</code> or <code>"MS:1000484"</code> -&gt; <code>Analyzer.TOF</code> / <code>Analyzer.ORBITRAP</code>); other non-blank strings are kept; non-strings and blanks raise</td>
+</tr>
+<tr>
+<td>a bad JSON payload (wrong types) raised <code>TypeError</code></td>
+<td>raises <code>SpxtacularError</code></td>
+</tr>
+<tr>
+<td>a corrupt or non-spectrum <code>.npz</code> raised numpy/zipfile/JSON errors</td>
+<td>raises <code>SpxtacularError</code>, chained to the original</td>
+</tr>
+</tbody>
+</table>
+<h2 id="matchedfragment">MatchedFragment<a class="headerlink" href="#matchedfragment" title="Permanent link">&para;</a></h2>
+<p><code>MatchedFragment</code> is frozen, slotted and keyword-only. Its fields are unchanged. The new
+<code>annotation</code> property returns the match as a paftacular <code>PafAnnotation</code> (with the mass error
+in ppm), built on first access and cached.</p>
+<h2 id="json">JSON<a class="headerlink" href="#json" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>spectrum <code>schema_version</code> 1</td>
+<td>2 (0.9 still reads version 1)</td>
+</tr>
+<tr>
+<td>precursor key <code>mz</code></td>
+<td><code>precursor_mz</code>; new <code>im_type</code> key</td>
+</tr>
+<tr>
+<td>metadata key <code>isolation_im_range</code></td>
+<td><code>isolation_ook0_range</code></td>
+</tr>
+<tr>
+<td><code>spxtacular/schemas/spectrum-v1.schema.json</code></td>
+<td><code>spxtacular/schemas/spectrum-v2.schema.json</code></td>
+</tr>
+</tbody>
+</table>
+<p>Deconvolution provenance (<code>spectrum.deconvolution</code>) is <code>schema_version</code> 3 with keys <code>tolerance_unit</code> and <code>im_tolerance_unit</code> (was 2 with <code>tolerance_type</code>, <code>im_tolerance_type</code>). Chromatogram JSON is schema version 2 with key <code>tolerance_unit</code>, and <code>spxtacular/schemas/chromatogram-v1.schema.json</code> is now <code>chromatogram-v2.schema.json</code>. 0.9 still reads the old provenance and chromatogram files, lowercasing <code>"Da"</code>. spectrl tokens and URLs keep their wire keys, so
+tokens written by 0.8 decode in 0.9.</p>
+<h2 id="fragment-labels">Fragment labels<a class="headerlink" href="#fragment-labels" title="Permanent link">&para;</a></h2>
+<p>Plot labels come straight from paftacular 2's mzPAF writer, including negative charges
+(<code>y3^-2</code>). The <code>include_sequence</code> option controls whether the peptide sequence is part of the
+label.</p>
+<h2 id="figures">Figures<a class="headerlink" href="#figures" title="Permanent link">&para;</a></h2>
+<p>Plots are drawn through a figure layer with a plotly and a matplotlib backend, and restyled
+for print. Code that only calls the plot functions and shows or saves the result keeps
+working; code that edits the returned plotly figure or the plot table may need changes.</p>
+<table>
+<thead>
+<tr>
+<th>0.8</th>
+<th>0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>plot functions return <code>go.Figure</code></td>
+<td>return <code>Any</code>: a plotly <code>Figure</code> by default, a matplotlib <code>Figure</code> with <code>backend="matplotlib"</code>, a <code>FigureSpec</code> with <code>backend="spec"</code></td>
+</tr>
+<tr>
+<td>plot-table columns <code>label_font</code>, <code>label_yshift</code>, <code>label_xanchor</code></td>
+<td>removed; the figure style sets fonts and label placement</td>
+</tr>
+<tr>
+<td><code>label_angle</code> default -90 (vertical labels)</td>
+<td>0 (horizontal); <code>label_size</code> is NaN, meaning the style default</td>
+</tr>
+<tr>
+<td><code>plot_from_table</code> required 13 columns</td>
+<td>requires <code>mz</code>, <code>intensity</code>, <code>series</code>, <code>color</code>, <code>linewidth</code>, <code>opacity</code>, <code>hover</code>, <code>label</code>, <code>label_size</code>, <code>label_color</code></td>
+</tr>
+<tr>
+<td>axis titles <code>m/z</code>, <code>Intensity</code>, <code>Error (ppm)</code></td>
+<td>italic <em>m/z</em>, <code>Intensity (×10ⁿ)</code> with <code>absolute_axis=True</code>, <code>Mass error (ppm)</code>; the facet plot keeps <code>Error (ppm)</code></td>
+</tr>
+<tr>
+<td><code>save_figure(fig, path, scale=2.0)</code></td>
+<td><code>save_figure(fig, path, *, scale=None, dpi=None)</code>: raster resolution defaults to the style's (192 dpi on screen, 600 for <code>style="paper"</code>); an unsupported suffix raises <code>SpxtacularError</code></td>
+</tr>
+<tr>
+<td><code>label_size</code>, <code>label_angle</code>, <code>label_color</code> per row</td>
+<td>still per row; <code>label_color</code> is kept as set, and rows that keep the series colour get the style's label colour</td>
+</tr>
+<tr>
+<td>plot-table <code>linewidth</code> in px</td>
+<td>relative to the default 1.6, scaled to the style's stick width</td>
+</tr>
+<tr>
+<td>no <code>intensity_scale</code> attr: axis from the data</td>
+<td>relative axis (0-100 ticks) when the y label starts with "Relative" and no intensity exceeds 100</td>
+</tr>
+<tr>
+<td>a missing kaleido raises <code>ImportError</code> (<code>pip install kaleido</code>)</td>
+<td>still <code>ImportError</code>, not <code>SpxtacularError</code>; the message names <code>spxtacular[plotly-export]</code></td>
+</tr>
+<tr>
+<td>plotly figures always autosized</td>
+<td>labelled <code>"screen"</code> figures keep their 900 px design width so labels stay clear of each other</td>
+</tr>
+<tr>
+<td><code>facet_plot(mirror_spectrum=)</code> labels the mirror in full</td>
+<td>a label the top panel already shows on a matching peak is not repeated on the mirror; <code>mirror_labels="both"</code> keeps it</td>
+</tr>
+<tr>
+<td>a default title on every figure</td>
+<td>none with <code>style="paper"</code>; pass <code>title=</code></td>
+</tr>
+<tr>
+<td><code>backend="matplotlib"</code> n/a</td>
+<td>defaults to <code>style="paper"</code></td>
+</tr>
+<tr>
+<td>plotly fonts and sizes</td>
+<td>the <code>"screen"</code> style (11 px text, 900 px wide); pass <code>style="paper"</code> or <code>"talk"</code>, or <code>layout_kwargs</code> to override</td>
+</tr>
+</tbody>
+</table>
+<p><code>layout_kwargs</code> still go to plotly's <code>update_layout</code>; with <code>backend="matplotlib"</code> they raise
+<code>SpxtacularError</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Polarity, adducts, and isotope models">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Polarity, adducts, and isotope models
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../citation/" class="md-footer__link md-footer__link--next" aria-label="Next: Citation">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Citation
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; the spxtacular authors. MIT licence.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,32 @@
+# spxtacular
+
+> Python 3.12+ mass-spectrum processing library: filtering, denoising, centroiding, isotope deconvolution, charge assignment, fragment matching, PSM scoring, spectrum similarity, TMT/iTRAQ reporter-ion quantification, chromatograms, raw-file readers (Bruker .d, mzML, Thermo .raw, MGF/MS2/MSP) and publication-ready figures (plotly or matplotlib, journal sizes and styles), all behind one chainable `Spectrum` object.
+
+Methods on `Spectrum` / `MsnSpectrum` return a new object unless `inplace=True`, and the peak arrays (`mz`, `intensity`, `charge`, `im`, `iso_score`) always stay parallel. `charge > 0` is assigned, `-1` is an unassigned singleton, `0` is a neutral mass after `decharge()`. Call `deconvolute()` before `decharge()`. `Reader(path)` auto-detects the file format; readers for Bruker, mzML, Thermo and the interop/sharing bridges need optional extras (`pip install spxtacular[all]`).
+
+spxtacular is part of tacular-omics: fragments come from `peptacular`, and the Bruker and mzML readers are built on `tdfpy` and `mzmlpy`.
+
+## Docs
+
+- [llms-full.txt](https://raw.githubusercontent.com/tacular-omics/spxtacular/main/llms-full.txt): self-contained usage guide with every public function and class, signatures, examples and gotchas
+- [Documentation home](https://tacular-omics.github.io/spxtacular/): overview and quick start
+- [Spectrum and MsnSpectrum](https://tacular-omics.github.io/spxtacular/spectrum/): data model and every transform
+- [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/): algorithm, parameters, isotope and ionization models
+- [Readers](https://tacular-omics.github.io/spxtacular/readers/): Bruker, mzML, Thermo, MGF/MS2/MSP, USI
+- [Spectral libraries](https://tacular-omics.github.io/spxtacular/mzspeclib/): read, stream (`MzSpecLibReader`) and write mzSpecLib text and JSON
+- [Matching and scoring](https://tacular-omics.github.io/spxtacular/scoring/): fragment matching, hyperscore, spectral angle, TMT/TMTpro/iTRAQ reporter ions with isotope impurity correction
+- [Visualization](https://tacular-omics.github.io/spxtacular/visualization/): figures, backends (plotly/matplotlib), paper/screen/talk styles, plot tables, theme
+- [README](https://github.com/tacular-omics/spxtacular/blob/main/README.md): install and quick start
+
+## API
+
+- [API reference](https://tacular-omics.github.io/spxtacular/api/): every public class and function
+- [Source: `__init__.py`](https://github.com/tacular-omics/spxtacular/blob/main/src/spxtacular/__init__.py): the exported names
+- [PyPI](https://pypi.org/project/spxtacular/): releases and extras
+
+## Optional
+
+- [CHANGELOG](https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md): user-visible changes (0.7.0 changed hyperscore; old scores are not comparable)
+- [Design record: polarity, adducts and isotope models](https://tacular-omics.github.io/spxtacular/design/polarity-adducts-and-isotope-roadmap/)
+- [CLAUDE.md](https://github.com/tacular-omics/spxtacular/blob/main/CLAUDE.md): guide for agents developing spxtacular itself
+- [peptacular](https://github.com/tacular-omics/peptacular): peptide parsing and fragment generation used as scoring input
