@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 import spxtacular.thermo as thermo_module
-from spxtacular import MsnSpectrum, Reader, SpectrumType, ThermoReader
+from spxtacular import MsnSpectrum, Reader, SpectrumType, SpxtacularError, ThermoReader
 from spxtacular.enums import ActivationType, Analyzer
 
 RAW_PATH = Path(__file__).parent / "data" / "Angiotensin_325-CID.raw"
@@ -218,7 +218,7 @@ def test_raw_directory_rejected_as_waters(tmp_path):
 @needs_fisher
 def test_lookup_before_open_raises():
     reader = ThermoReader(RAW_PATH)
-    with pytest.raises(RuntimeError, match="open"):
+    with pytest.raises(SpxtacularError, match="open"):
         next(iter(reader.ms2))
 
 
