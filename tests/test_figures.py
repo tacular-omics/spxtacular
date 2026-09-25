@@ -347,6 +347,7 @@ class TestBackends:
             spx.compose_figure([spx.plot_spectrum(spec)], backend="spec")
 
 
+@pytest.mark.slow  # subprocess interpreter start + package import, ~2 s
 def test_import_does_not_load_matplotlib() -> None:
     """matplotlib is imported on first use of the matplotlib backend, not with the package."""
     code = (

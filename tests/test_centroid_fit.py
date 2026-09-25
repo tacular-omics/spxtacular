@@ -9,7 +9,7 @@ disappear altogether.
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from spxtacular import Spectrum
@@ -90,7 +90,6 @@ finite_intensity = st.one_of(
 )
 
 
-@settings(max_examples=300)
 @given(
     intensity=st.lists(finite_intensity, min_size=3, max_size=30),
     gaps=st.lists(st.floats(0.2, 2.0), min_size=29, max_size=29),

@@ -181,6 +181,7 @@ ignore = [
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config --timeout=15"
 filterwarnings = ["error"]
+markers = ["slow: slow test (> ~2 s), skipped unless --run-slow or RUN_SLOW=1 (CI runs them)"]
 
 [tool.coverage.run]
 source = ["src/spxtacular"]

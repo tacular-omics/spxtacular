@@ -685,6 +685,7 @@ def _text_library(n_spectra: int) -> str:
     return header + "".join(spectrum.format(key=key) for key in range(1, n_spectra + 1))
 
 
+@pytest.mark.slow  # streams 1100 spectra under tracemalloc, ~2 s each
 @pytest.mark.parametrize("suffix", ["txt", "json"])
 def test_streaming_memory_is_flat(tmp_path: Path, suffix: str) -> None:
     """Peak memory while streaming does not grow with the number of spectra (informal)."""

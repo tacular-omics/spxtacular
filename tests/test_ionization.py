@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import peptacular as pt
 import pytest
@@ -23,6 +25,18 @@ from spxtacular import (
     to_matchms,
     to_spectrl_token,
 )
+
+
+@pytest.fixture(scope="module")
+def matchms_imported() -> None:
+    """Import matchms up front: it is slow (numba JIT) and noisy at import time.
+
+    psims, which matchms imports, warns when the optional hdf5plugin is missing; under
+    ``filterwarnings = error`` that failed whichever test happened to import matchms first.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
+        pytest.importorskip("matchms")
 
 
 @pytest.mark.parametrize("model", [PROTONATED, DEPROTONATED, SODIATED, AMMONIATED])
@@ -220,7 +234,7 @@ def test_provenance_roundtrips_native_persistence(tmp_path) -> None:
     assert restored.deconvolution == spec.deconvolution
 
 
-def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
+def _custom_isotope_model_result() -> tuple[IsotopeModel, Spectrum]:
     model = IsotopeModel(
         name="carbon-rich",
         atoms_per_da={"C": 0.05, "O": 0.02},
@@ -230,20 +244,35 @@ def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
         mz=np.array([500.0, 500.0 + pt.C13_NEUTRON_MASS]),
         intensity=np.array([1000.0, 400.0]),
     )
-    result = raw.deconvolute(charge_range=(1, 1), isotope_model=model)
+    return model, raw.deconvolute(charge_range=(1, 1), isotope_model=model)
+
+
+def _assert_custom_model_restored(restored: Spectrum, model: IsotopeModel, result: Spectrum) -> None:
+    assert restored.deconvolution is not None
+    assert restored.deconvolution.isotope_model_definition == model
+    assert restored.deconvolution == result.deconvolution
+
+
+def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
+    model, result = _custom_isotope_model_result()
     path = tmp_path / "custom-isotope-model.npz"
 
     result.save(path)
     restored_spectra = [
         Spectrum.load(path),
-        from_matchms(to_matchms(result)),
         from_spectrl_token(to_spectrl_token(result, lossless=True)),
     ]
 
     for restored in restored_spectra:
-        assert restored.deconvolution is not None
-        assert restored.deconvolution.isotope_model_definition == model
-        assert restored.deconvolution == result.deconvolution
+        _assert_custom_model_restored(restored, model, result)
+
+
+@pytest.mark.slow  # first matchms import JIT-compiles pynndescent (15-20 s)
+@pytest.mark.timeout(90)  # the import can land in this test's fixture setup
+@pytest.mark.usefixtures("matchms_imported")
+def test_custom_isotope_model_roundtrips_through_matchms() -> None:
+    model, result = _custom_isotope_model_result()
+    _assert_custom_model_restored(from_matchms(to_matchms(result)), model, result)
 
 
 def test_schema_one_provenance_remains_readable() -> None:
@@ -270,6 +299,9 @@ def _sodiated_spectrum() -> Spectrum:
     )
 
 
+@pytest.mark.slow  # first matchms import JIT-compiles pynndescent (15-20 s)
+@pytest.mark.timeout(90)  # the import can land in this test's fixture setup
+@pytest.mark.usefixtures("matchms_imported")
 def test_provenance_roundtrips_matchms_payload() -> None:
     spec = _sodiated_spectrum()
     restored = from_matchms(to_matchms(spec))
