@@ -45,12 +45,42 @@ def _reference_convolution(composition: Mapping[str, int], max_isotopes: int) ->
         {"C": 6, "H": 12, "O": 6},
         {"C": 12, "H": 22, "N": 2, "O": 11},
         {"C": 8, "H": 18, "N": 1, "O": 6, "P": 1, "S": 1},
+        {"C": 6, "H": 4, "Cl": 1, "Br": 1},
+        {"C": 10, "H": 9, "F": 3, "I": 1},
     ],
 )
 def test_brain_matches_direct_polynomial_convolution(composition: dict[str, int]) -> None:
     observed = brain_isotopic_distribution(composition, max_isotopes=16)
     expected = _reference_convolution(composition, max_isotopes=16)
     np.testing.assert_allclose(observed, expected, rtol=1e-13, atol=1e-15)
+
+
+def test_brain_matches_convolution_with_rare_base_isotope() -> None:
+    # 74Se is 0.89 % abundant, so the recurrence divides by a small offset-0 term
+    # and rounding grows to ~1e-12 absolute.
+    composition = {"C": 10, "H": 9, "N": 1, "Se": 1}
+    observed = brain_isotopic_distribution(composition, max_isotopes=16)
+    expected = _reference_convolution(composition, max_isotopes=16)
+    np.testing.assert_allclose(observed, expected, rtol=1e-9, atol=1e-11)
+
+
+def test_natural_abundances_cover_halogens() -> None:
+    assert NATURAL_ISOTOPE_ABUNDANCES["Cl"] == ((0, 0.7576), (2, 0.2424))
+    assert NATURAL_ISOTOPE_ABUNDANCES["Br"] == ((0, 0.5069), (2, 0.4931))
+    assert NATURAL_ISOTOPE_ABUNDANCES["F"] == ((0, 1.0),)
+    assert NATURAL_ISOTOPE_ABUNDANCES["I"] == ((0, 1.0),)
+    assert "Tc" not in NATURAL_ISOTOPE_ABUNDANCES
+    for pattern in NATURAL_ISOTOPE_ABUNDANCES.values():
+        assert pattern[0][0] == 0
+        assert sum(abundance for _, abundance in pattern) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_model_with_halogen_fixed_composition() -> None:
+    model = IsotopeModel(atoms_per_da={"C": 1 / 14, "H": 1 / 7}, fixed_composition={"Cl": 2}, name="dichloro")
+    assert model.fixed_mass == pytest.approx(2 * 34.968852682)
+    distribution = model.distribution(500.0, max_isotopes=8)
+    assert distribution[2] > distribution[1]
+    assert distribution.sum() == pytest.approx(1.0)
 
 
 def test_custom_isotope_abundances() -> None:

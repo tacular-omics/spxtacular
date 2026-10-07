@@ -4,6 +4,13 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Added
+
+- `NATURAL_ISOTOPE_ABUNDANCES` and the monoisotopic masses used by `IsotopeModel`
+  and `brain_isotopic_distribution` now cover every element with a natural
+  abundance (84, including the halogens), built from Tacular's element data
+  instead of a hard-coded C, H, N, O, P, S table (#43).
+
 ## [0.9.0] (2026-09-24)
 
 Breaking release. Every rename and removal, old -> new, is in the migration guide

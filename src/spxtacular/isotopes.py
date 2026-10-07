@@ -21,31 +21,43 @@ from typing import Any, Final
 
 import numpy as np
 from numpy.typing import NDArray
+from tacular import ELEMENT_LOOKUP, Element
 
 from .enums import _SpxEnum
 from .errors import SpxtacularError
 
 MAX_ISOTOPE_PEAKS: Final[int] = 32
 
-# Monoisotopic masses and terrestrial natural abundances used by Tacular and
-# Peptacular.  An abundance tuple is (nominal neutron offset, probability).
-_MONOISOTOPIC_MASS: Final[dict[str, float]] = {
-    "C": 12.0,
-    "H": 1.00782503223,
-    "N": 14.00307400443,
-    "O": 15.99491461957,
-    "P": 30.97376199842,
-    "S": 31.9720711744,
-}
 
-NATURAL_ISOTOPE_ABUNDANCES: Final[dict[str, tuple[tuple[int, float], ...]]] = {
-    "C": ((0, 0.9893), (1, 0.0107)),
-    "H": ((0, 0.999885), (1, 0.000115)),
-    "N": ((0, 0.99636), (1, 0.00364)),
-    "O": ((0, 0.99757), (1, 0.00038), (2, 0.00205)),
-    "P": ((0, 1.0),),
-    "S": ((0, 0.9499), (1, 0.0075), (2, 0.0425), (4, 0.0001)),
-}
+def _natural_isotope_tables() -> tuple[dict[str, float], dict[str, tuple[tuple[int, float], ...]]]:
+    """Build the per-element tables from Tacular's element data.
+
+    Offset 0 is the lightest isotope with a natural abundance, which is the
+    reference the BRAIN recurrence needs.  Elements with no naturally abundant
+    isotope (Tc, Pm and the heavy radioactive elements) are left out.
+    """
+    masses: dict[str, float] = {}
+    abundances: dict[str, tuple[tuple[int, float], ...]] = {}
+    for element in Element:
+        isotopes = sorted(
+            (mass, abundance)
+            for mass, abundance in ELEMENT_LOOKUP.get_masses_and_abundances(element)
+            if abundance > 0.0
+        )
+        if not isotopes:
+            continue
+        base_mass = isotopes[0][0]
+        masses[element.value] = base_mass
+        abundances[element.value] = tuple((round(mass - base_mass), abundance) for mass, abundance in isotopes)
+    return masses, abundances
+
+
+# Lightest naturally abundant isotope mass and terrestrial natural abundances
+# for every element, from Tacular.  An abundance tuple is (nominal neutron
+# offset, probability).
+_MONOISOTOPIC_MASS: Final[dict[str, float]]
+NATURAL_ISOTOPE_ABUNDANCES: Final[dict[str, tuple[tuple[int, float], ...]]]
+_MONOISOTOPIC_MASS, NATURAL_ISOTOPE_ABUNDANCES = _natural_isotope_tables()
 
 
 class IsotopeModelType(_SpxEnum):
