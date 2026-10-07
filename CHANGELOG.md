@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.1] (2026-10-06)
+
 ### Added
 
 - `NATURAL_ISOTOPE_ABUNDANCES` and the monoisotopic masses used by `IsotopeModel`
