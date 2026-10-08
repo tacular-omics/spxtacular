@@ -38,6 +38,11 @@ User-visible changes only; implementation details belong in commits and pull req
   which mzPAF cannot express. Such fragments are labelled with the ion type and
   charge (`n`, `n^2`) instead of raising `PaftacularError`. Every other fragment
   mzPAF cannot write (an uncharged one, for example) still raises.
+- `write_mgf`, `write_ms2` and `write_msp` raise `SpxtacularError` when a
+  `native_id` (MGF `TITLE`, MS2 `I NativeID`, MSP `Name`) or an MS2
+  `activation_type` contains a line break. It used to be written raw, so the file
+  read back with the value cut short and the rest parsed as extra peaks or
+  fields, without an error.
 
 ## [0.9.1] (2026-10-06)
 

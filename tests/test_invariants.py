@@ -585,3 +585,29 @@ def test_intact_neutral_fragment_label(charge: int, label: str) -> None:
     spec = Spectrum(mz=np.array([frags[0].mz]), intensity=np.array([1e5]))
     table = build_annot_plot_table(spec, frags, tolerance=0.001, tolerance_unit="da")
     assert list(table.loc[table["series"] != "unmatched", "label"]) == [label]
+
+
+# A line break in a free-text field would end the header line: the rest of the value
+# would be read back as peaks or other fields, silently. The writers must refuse it.
+_LINE_BREAK_WRITERS = {"mgf": write_mgf, "ms2": write_ms2, "msp": write_msp}
+
+
+@pytest.mark.parametrize("fmt", list(_LINE_BREAK_WRITERS))
+@pytest.mark.parametrize("brk", ["\n", "\r", "\r\n"])
+def test_writers_refuse_line_breaks_in_native_id(fmt: str, brk: str, tmp_path: Path) -> None:
+    spec = MsnSpectrum(
+        mz=np.array([100.0, 200.0]),
+        intensity=np.array([1.0, 2.0]),
+        spectrum_type="centroid",
+        native_id=f"run 1{brk}300.0 5.0",
+    )
+    with pytest.raises(SpxtacularError, match="line break"):
+        _LINE_BREAK_WRITERS[fmt]([spec], tmp_path / f"out.{fmt}")
+
+
+def test_ms2_writer_refuses_line_breaks_in_activation_type(tmp_path: Path) -> None:
+    spec = MsnSpectrum(
+        mz=np.array([100.0]), intensity=np.array([1.0]), spectrum_type="centroid", activation_type="HCD\n300.0 5.0"
+    )
+    with pytest.raises(SpxtacularError, match="line break"):
+        write_ms2([spec], tmp_path / "out.ms2")
