@@ -36,7 +36,8 @@ User-visible changes only; implementation details belong in commits and pull req
 - `annotate_spectrum`, `build_annot_plot_table` and `mass_error_plot` no longer
   crash on fragments of ion type `n` (the intact neutral peptacular generates),
   which mzPAF cannot express. Such fragments are labelled with the ion type and
-  charge (`n`, `n^2`) instead of raising `PaftacularError`.
+  charge (`n`, `n^2`) instead of raising `PaftacularError`. Every other fragment
+  mzPAF cannot write (an uncharged one, for example) still raises.
 
 ## [0.9.1] (2026-10-06)
 

@@ -23,7 +23,8 @@ import peptacular as pt
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from tacular import FRAGMENT_ION_LOOKUP
+from paftacular import PaftacularError
+from tacular import ELEMENT_LOOKUP, FRAGMENT_ION_LOOKUP, IonType, IonTypeProperty
 from tacular.constants import ELECTRON_MASS, PROTON_MASS
 
 from spxtacular import (
@@ -227,8 +228,10 @@ def test_ms2_round_trip_invariants(spectra: list[MsnSpectrum]) -> None:
             z_text, mass_text = next(z_lines)
             assert int(z_text) == expected
             assert original.precursors is not None
-            neutral = _neutral_mass(original.precursors[0].precursor_mz, expected)
-            assert float(mass_text) == pytest.approx(neutral + PROTON_MASS, rel=1e-12)
+            # Closed form: M = mz*|z| - z*m(H+), so [M+H]+ = mz*|z| - z*m(H+) + m(H+).
+            mz = original.precursors[0].precursor_mz
+            mh = mz * abs(expected) - expected * PROTON_MASS + PROTON_MASS
+            assert float(mass_text) == pytest.approx(mh, rel=1e-12)
     assert next(z_lines, None) is None
 
 
@@ -269,7 +272,6 @@ _PROFORMA_CARRIERS = (
     "Cl:z-1",
     "Br:z-1",
     "H:z-1",  # hydride attachment, [M+H]-
-    "H:z+1^-1",  # hydride loss, [M-H]+
 )
 
 # Electron loss ([M]+.) and electron attachment ([M]-.): no element formula expresses
@@ -287,6 +289,47 @@ _GRID_MODELS: dict[str, IonizationModel] = {
     "custom:+38.96": resolve_ionization_model(38.963158),
     "custom:-34.97": resolve_ionization_model(-34.969402 + ELECTRON_MASS),
 }
+
+
+# The envelopes are noise-free and exact, so recovery is limited only by float error.
+_RECOVERY_TOLERANCE_DA = 1e-4
+
+
+def _mass(symbol: str) -> float:
+    return ELEMENT_LOOKUP.get_mass(symbol, monoisotopic=True)
+
+
+# Independent carrier masses: the signed ion-mass change per unit charge, from tacular's
+# monoisotopic element masses. A cation is the atom less one electron; an anion the atom
+# plus one electron; losing a proton removes the cation mass.
+_EXPECTED_CARRIER: dict[str, tuple[str, Callable[[], float]]] = {
+    "preset:protonated": ("positive", lambda: _mass("H") - ELECTRON_MASS),
+    "preset:deprotonated": ("negative", lambda: -(_mass("H") - ELECTRON_MASS)),
+    "preset:sodiated": ("positive", lambda: _mass("Na") - ELECTRON_MASS),
+    "preset:ammoniated": ("positive", lambda: _mass("N") + 4 * _mass("H") - ELECTRON_MASS),
+    "proforma:H:z+1": ("positive", lambda: _mass("H") - ELECTRON_MASS),
+    "proforma:H-1:z-1": ("negative", lambda: -(_mass("H") - ELECTRON_MASS)),
+    "proforma:H:z-1": ("negative", lambda: _mass("H") + ELECTRON_MASS),
+    "proforma:Na:z+1": ("positive", lambda: _mass("Na") - ELECTRON_MASS),
+    "proforma:Na:z+1^2": ("positive", lambda: _mass("Na") - ELECTRON_MASS),
+    "proforma:NH4:z+1": ("positive", lambda: _mass("N") + 4 * _mass("H") - ELECTRON_MASS),
+    "proforma:K:z+1": ("positive", lambda: _mass("K") - ELECTRON_MASS),
+    "proforma:Li:z+1": ("positive", lambda: _mass("Li") - ELECTRON_MASS),
+    "proforma:Cl:z-1": ("negative", lambda: _mass("Cl") + ELECTRON_MASS),
+    "proforma:Br:z-1": ("negative", lambda: _mass("Br") + ELECTRON_MASS),
+    "electron loss": ("positive", lambda: -ELECTRON_MASS),
+    "electron attachment": ("negative", lambda: ELECTRON_MASS),
+}
+
+
+@pytest.mark.parametrize("key", list(_EXPECTED_CARRIER))
+def test_carrier_mass_matches_element_masses(key: str) -> None:
+    polarity, expected_mass = _EXPECTED_CARRIER[key]
+    model = _GRID_MODELS[key]
+    assert model.polarity == polarity
+    # 1e-7 Da: the CODATA proton mass differs from m(H) - m(e) by the 13.6 eV binding
+    # energy of hydrogen (1.5e-8 Da); a wrong element, charge or electron sign is >= 5e-4 Da.
+    assert model.carrier_mass == pytest.approx(expected_mass(), abs=1e-7)
 
 
 def _envelope_spectrum(neutral_mass: float, charge: int, model: IonizationModel) -> MsnSpectrum:
@@ -318,7 +361,7 @@ def test_deconvolute_decharge_recovers_neutral_mass(model: IonizationModel, char
 
     neutral_spec = decon.decharge()
     found = float(neutral_spec.mz[int(np.argmax(neutral_spec.intensity))])
-    assert abs(found - neutral) / neutral * 1e6 < 5.0
+    assert found == pytest.approx(neutral, abs=_RECOVERY_TOLERANCE_DA)
     # The sign of the charge is the polarity the provenance records.
     assert neutral_spec.deconvolution is not None
     signed = signed_precursor_charge(charge, neutral_spec.deconvolution.ionization_model.polarity)
@@ -334,7 +377,7 @@ def test_default_model_follows_scan_polarity(polarity: str, charge: int) -> None
     assert decon.deconvolution is not None
     assert decon.deconvolution.ionization_model is model
     found = float(decon.decharge().mz[int(np.argmax(decon.intensity))])
-    assert abs(found - neutral) / neutral * 1e6 < 5.0
+    assert found == pytest.approx(neutral, abs=_RECOVERY_TOLERANCE_DA)
 
 
 @pytest.mark.parametrize("text", ["Na:z+1,H:z+1", "K:z+1,Na:z+1", "Na:z+1,Cl:z-1"])
@@ -433,6 +476,18 @@ def test_apex_matches_reference_at_any_mass(mass: float) -> None:
 _LADDER_PEPTIDE = "PEVTIDEKVTIR"
 _ION_INFO = {str(info.ion_type.value): info for info in FRAGMENT_ION_LOOKUP.values()}
 _ION_TYPES = list(_ION_INFO)
+_SIDE_CHAIN = IonTypeProperty.AA_SPECIFIC_FWD | IonTypeProperty.AA_SPECIFIC_BWD
+
+
+# Backbone ladder types (and their hydrogen-shifted variants), immonium and precursor ions
+# each have a series colour; only side-chain (d/v/w), internal and intact-neutral ions are
+# drawn in the neutral colour.
+_SERIES_COLOURED = {
+    t
+    for t, info in _ION_INFO.items()
+    if ((info.is_forward or info.is_backward) and not info.properties & _SIDE_CHAIN)
+    or info.ion_type in (IonType.IMMONIUM, IonType.PRECURSOR)
+}
 
 
 def _theme_colours(mode: theme.ThemeMode) -> set[str]:
@@ -452,7 +507,7 @@ def _fragments_of(ion_type: str) -> tuple[list, Spectrum]:
 
 @pytest.mark.parametrize("mode", ["light", "dark"])
 @pytest.mark.parametrize("ion_type", _ION_TYPES)
-def test_every_ion_type_gets_a_theme_colour(ion_type: str, mode: theme.ThemeMode) -> None:
+def test_every_ion_type_is_coloured_by_theme_ion_color(ion_type: str, mode: theme.ThemeMode) -> None:
     frags, spec = _fragments_of(ion_type)
     table = build_annot_plot_table(spec, frags, tolerance=0.001, tolerance_unit="da", theme_mode=mode)
     matched = table[table["series"] != "unmatched"]
@@ -460,6 +515,8 @@ def test_every_ion_type_gets_a_theme_colour(ion_type: str, mode: theme.ThemeMode
     for series, colour in zip(matched["series"], matched["color"], strict=True):
         assert colour == theme.ion_color(series, mode)
         assert colour in _theme_colours(mode)
+        if ion_type in _SERIES_COLOURED:
+            assert colour != theme.neutral_color(mode), f"{ion_type} fell back to the neutral colour"
 
     fs = annotate_spectrum(spec, frags, tolerance=0.001, tolerance_unit="da", theme_mode=mode, backend="spec")
     sticks = [m for cell in fs.cells for panel in cell.panels for m in panel.marks if type(m).__name__ == "Sticks"]
@@ -512,3 +569,19 @@ def test_non_terminal_ion_types_leave_the_ladder_empty(ion_type: str) -> None:
         if getattr(m, "name", None) == "coverage_tick"
     ]
     assert ticks == []
+
+
+def test_uncharged_fragment_still_raises_in_the_annotation_table() -> None:
+    # Only the charged intact neutral (n) gets a fallback label; mzPAF's other refusals stand.
+    frags = pt.fragment(_LADDER_PEPTIDE, ion_types=("b",), charges=[0])
+    spec = Spectrum(mz=np.unique([f.mz for f in frags]), intensity=np.ones(len(frags)))
+    with pytest.raises(PaftacularError, match="uncharged"):
+        build_annot_plot_table(spec, frags, tolerance=0.001, tolerance_unit="da")
+
+
+@pytest.mark.parametrize(("charge", "label"), [(1, "n"), (2, "n^2"), (-2, "n^-2")])
+def test_intact_neutral_fragment_label(charge: int, label: str) -> None:
+    frags = pt.fragment(_LADDER_PEPTIDE, ion_types=("n",), charges=[charge])
+    spec = Spectrum(mz=np.array([frags[0].mz]), intensity=np.array([1e5]))
+    table = build_annot_plot_table(spec, frags, tolerance=0.001, tolerance_unit="da")
+    assert list(table.loc[table["series"] != "unmatched", "label"]) == [label]
