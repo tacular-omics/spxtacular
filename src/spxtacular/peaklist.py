@@ -416,7 +416,8 @@ def _iter_ms2(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
             if len(fields) < 3:
                 continue  # a key with no value — nothing to record
             key = fields[1].upper()
-            value = " ".join(fields[2:])
+            # Keep the value verbatim: re-joining split fields would collapse runs of whitespace.
+            value = line.split(None, 2)[2]
             if key in _MS2_RTIME_KEYS:
                 # RTime is minutes in every writer that emits it; rt is seconds.
                 block.rt = _first_float(value, field_name=fields[1], path=path, line_no=line_no) * 60.0
