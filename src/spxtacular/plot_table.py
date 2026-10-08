@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from peptacular.annotation.frag import Fragment
+from tacular import IonType
 
 from . import theme
 from ._text import RichText, best_label
@@ -395,9 +396,17 @@ def _ion_priority(ion_type: str) -> int:
 
 
 def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
-    """Return the fragment's mzPAF label (no mass error; signed charge for negative ions)."""
+    """Return the fragment's mzPAF label (no mass error; signed charge for negative ions).
+
+    mzPAF has no notation for the intact neutral ion type ``n`` that peptacular generates,
+    so a charged ``n`` fragment gets the plain ion type with a ``^z`` suffix. Every other
+    fragment mzPAF cannot write (an uncharged one, say) still raises.
+    """
     import paftacular as pft
 
+    if fragment.ion_type == IonType.NEUTRAL and fragment.charge_state != 0:
+        charge = fragment.charge_state
+        return IonType.NEUTRAL.value if charge == 1 else f"{IonType.NEUTRAL.value}^{charge}"
     return pft.to_mzpaf(fragment, include_sequence=include_sequence).serialize()
 
 

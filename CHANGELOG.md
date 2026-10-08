@@ -29,6 +29,20 @@ User-visible changes only; implementation details belong in commits and pull req
   default, which put the apex of a 200 kDa protein at 31 instead of about 124.
   `max_isotopes` now defaults to `None`: 32 peaks (results below about 6 kDa are
   unchanged), extended when the mass needs more. An integer still truncates.
+- `Ms2Reader` keeps `I` line values verbatim. It rebuilt them from
+  whitespace-split fields, so a `NativeID` such as `run 1  "fraction=3"` read
+  back with its double space collapsed and no longer matched what `write_ms2`
+  wrote.
+- `annotate_spectrum`, `build_annot_plot_table` and `mass_error_plot` no longer
+  crash on fragments of ion type `n` (the intact neutral peptacular generates),
+  which mzPAF cannot express. Such fragments are labelled with the ion type and
+  charge (`n`, `n^2`) instead of raising `PaftacularError`. Every other fragment
+  mzPAF cannot write (an uncharged one, for example) still raises.
+- `write_mgf`, `write_ms2` and `write_msp` raise `SpxtacularError` when a
+  `native_id` (MGF `TITLE`, MS2 `I NativeID`, MSP `Name`) or an MS2
+  `activation_type` contains a line break. It used to be written raw, so the file
+  read back with the value cut short and the rest parsed as extra peaks or
+  fields, without an error.
 
 ## [0.9.1] (2026-10-06)
 

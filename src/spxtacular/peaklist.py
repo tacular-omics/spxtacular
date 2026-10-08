@@ -416,7 +416,8 @@ def _iter_ms2(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
             if len(fields) < 3:
                 continue  # a key with no value — nothing to record
             key = fields[1].upper()
-            value = " ".join(fields[2:])
+            # Keep the value verbatim: re-joining split fields would collapse runs of whitespace.
+            value = line.split(None, 2)[2]
             if key in _MS2_RTIME_KEYS:
                 # RTime is minutes in every writer that emits it; rt is seconds.
                 block.rt = _first_float(value, field_name=fields[1], path=path, line_no=line_no) * 60.0
@@ -1061,6 +1062,15 @@ def _check_writable(spec: Spectrum, index: int, fmt: str) -> None:
         )
 
 
+def _one_line(value: object, field: str, index: int, fmt: str) -> str:
+    """``value`` formatted as text, refusing line breaks: they would end the header line and the
+    rest of the value would be read back as peaks or other fields."""
+    text = f"{value}"
+    if "\n" in text or "\r" in text:
+        raise SpxtacularError(f"cannot write spectrum {index} to {fmt}: {field} {text!r} contains a line break")
+    return text
+
+
 def _meta(spec: Spectrum) -> MsnSpectrum | None:
     """The spectrum as an MsnSpectrum when it carries MS metadata, else ``None``."""
     return spec if isinstance(spec, MsnSpectrum) else None
@@ -1167,7 +1177,7 @@ def write_mgf(
             if title is None and msn is not None and msn.scan_number is not None:
                 title = f"scan={msn.scan_number}"
             if title is not None:
-                fh.write(f"TITLE={title}\n")
+                fh.write(f"TITLE={_one_line(title, 'native_id', index, 'MGF')}\n")
 
             # SCANS only for a real scan number: a position could collide with another
             # spectrum's scan number. TITLE above keeps the native id.
@@ -1260,7 +1270,7 @@ def write_ms2(
             precursor_mz = prec.precursor_mz if prec is not None else 0.0
             fh.write(f"S\t{scan}\t{scan}\t{_fmt(precursor_mz)}\n")
             if msn is not None and msn.native_id is not None and msn.native_id != f"scan={scan}":
-                fh.write(f"I\tNativeID\t{msn.native_id}\n")
+                fh.write(f"I\tNativeID\t{_one_line(msn.native_id, 'native_id', index, 'MS2')}\n")
 
             if msn is not None and msn.rt is not None:
                 fh.write(f"I\tRTime\t{_fmt(msn.rt / 60.0)}\n")
@@ -1269,7 +1279,7 @@ def write_ms2(
             if msn is not None and msn.total_ion_current is not None:
                 fh.write(f"I\tTIC\t{_fmt(msn.total_ion_current)}\n")
             if msn is not None and msn.activation_type is not None:
-                fh.write(f"I\tActivationType\t{msn.activation_type}\n")
+                fh.write(f"I\tActivationType\t{_one_line(msn.activation_type, 'activation_type', index, 'MS2')}\n")
             if prec is not None and prec.intensity != 0.0:
                 fh.write(f"I\tPrecursorInt\t{_fmt(prec.intensity)}\n")
 
@@ -1337,7 +1347,7 @@ def write_msp(
             if name is None and msn is not None and msn.scan_number is not None:
                 name = f"scan={msn.scan_number}"
             if name is not None:
-                fh.write(f"Name: {name}\n")
+                fh.write(f"Name: {_one_line(name, 'native_id', index, 'MSP')}\n")
 
             prec = _first_precursor(spec)
             if prec is not None:
