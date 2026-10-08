@@ -318,3 +318,87 @@ def test_provenance_roundtrips_spectrl_user_parameter() -> None:
 def test_models_reject_non_positive_integer_charge(bad_charge: float) -> None:
     with pytest.raises(ValueError, match="positive integer"):
         PROTONATED.ion_mz(1000.0, bad_charge)
+
+
+def test_preset_masses_come_from_element_masses() -> None:
+    from tacular.constants import ELECTRON_MASS
+
+    assert abs(SODIATED.carrier_mass - (22.9897692820 - ELECTRON_MASS)) < 1e-9
+    assert abs(AMMONIATED.carrier_mass - (14.00307400443 + 4 * 1.00782503223 - ELECTRON_MASS)) < 1e-9
+
+
+@pytest.mark.parametrize(
+    ("carrier", "expected"),
+    [
+        ("H:z+1", PROTONATED),
+        ("H:z+1^-1", DEPROTONATED),
+        ("H-1:z-1", DEPROTONATED),
+        ("Na:z+1", SODIATED),
+        ("Na:z+1^2", SODIATED),
+        ("NH4:z+1", AMMONIATED),
+    ],
+)
+def test_proforma_charge_carrier_matching_a_preset_returns_it(carrier: str, expected: IonizationModel) -> None:
+    assert resolve_ionization_model(carrier) is expected
+
+
+@pytest.mark.parametrize(
+    ("carrier", "polarity", "element", "label", "notation"),
+    [
+        ("K:z+1", "positive", "K", "K", "[M+K]+"),
+        ("Li:z+1", "positive", "Li", "Li", "[M+Li]+"),
+        ("Cl:z-1", "negative", "Cl", "Cl", "[M+Cl]-"),
+    ],
+)
+def test_proforma_charge_carrier_builds_model_from_element_mass(
+    carrier: str, polarity: str, element: str, label: str, notation: str
+) -> None:
+    from tacular import ELEMENT_LOOKUP
+    from tacular.constants import ELECTRON_MASS
+
+    model = resolve_ionization_model(carrier)
+    sign = 1 if polarity == "positive" else -1
+    expected = ELEMENT_LOOKUP[element].get_mass(monoisotopic=True) - sign * ELECTRON_MASS
+    assert str(model.polarity) == polarity
+    assert model.carrier == label
+    assert model.carrier_mass == pytest.approx(expected, abs=1e-9)
+    assert model.notation(1) == notation
+    assert model.neutral_mass(model.ion_mz(900.0, 2), 2) == pytest.approx(900.0)
+
+
+def test_potassium_adduct_mz_matches_peptacular() -> None:
+    model = resolve_ionization_model("K:z+1")
+    neutral = pt.mass("PEPTIDE")
+    assert model.ion_mz(neutral, 2) == pytest.approx(pt.mz("PEPTIDE/[K:z+1^2]"), abs=1e-6)
+
+
+@pytest.mark.parametrize(
+    ("carrier", "match"),
+    [
+        ("Na:z+1,H:z+1", "mixed charge carriers"),
+        ("Na:z+1,Cl:z-1", "mixed charge carriers"),
+        ("Fe:z+2", "singly charged"),
+        ("Xx:z+1", "cannot parse"),
+    ],
+)
+def test_unsupported_charge_carriers_raise(carrier: str, match: str) -> None:
+    from spxtacular.errors import SpxtacularError
+
+    with pytest.raises(SpxtacularError, match=match):
+        resolve_ionization_model(carrier)
+
+
+@pytest.mark.parametrize(
+    ("carrier", "expected_mass", "polarity"),
+    [
+        # Hydride attachment [M+H]-: H atom plus one electron.
+        ("H:z-1", 1.00782503223 + 0.000548579909065, "negative"),
+        # Hydride loss [M-H]+: minus (H atom plus one electron).
+        ("H-1:z+1", -(1.00782503223 + 0.000548579909065), "positive"),
+    ],
+)
+def test_hydride_carriers_are_not_protons(carrier: str, expected_mass: float, polarity: str) -> None:
+    model = resolve_ionization_model(carrier)
+    assert model.carrier_mass == pytest.approx(expected_mass, abs=1e-9)
+    assert str(model.polarity) == polarity
+    assert model is not PROTONATED and model is not DEPROTONATED

@@ -173,9 +173,31 @@ _ION_DASH: tuple[str, ...] = (
 )
 
 
+def ion_series(ion_type: str) -> str:
+    """Base series of a fragment ion type, lower-case: ``"z."`` and ``"z+H"`` -> ``"z"``, ``"c-H"`` -> ``"c"``.
+
+    Ion types come from tacular's ``FRAGMENT_ION_LOOKUP``; a known type's base series is
+    the leading letters of its id, so a variant shares its parent series' colour and
+    dash. Types tacular does not know are returned unchanged (lower-cased).
+    """
+    from tacular import FRAGMENT_ION_LOOKUP
+
+    key = str(ion_type).lower()
+    if key in _ION_SLOT_INDEX:
+        return key
+    info = FRAGMENT_ION_LOOKUP.query_id(key)
+    if info is None:
+        return key
+    ion_id = str(info.id).lower()
+    end = 0
+    while end < len(ion_id) and ion_id[end].isalpha():
+        end += 1
+    return ion_id[:end] or ion_id
+
+
 def ion_dash(ion_type: str) -> str:
     """Dash pattern for a fragment ion series (the texture channel)."""
-    key = str(ion_type).lower()
+    key = ion_series(ion_type)
     return _ION_DASH[_ION_SLOTS.index(key)] if key in _ION_SLOTS else "solid"
 
 
@@ -332,12 +354,14 @@ def ion_color(ion_type: str, theme: ThemeMode | None = None) -> str:
     """Colour for a fragment ion series.
 
     Follows the proteomics convention -- b blue, y red, a green, c teal,
-    x purple, z orange -- using this palette's validated steps. Unrecognised
-    series, including internal fragments with two-letter types like ``"by"``,
-    fold to the neutral colour rather than inventing a ninth hue.
+    x purple, z orange -- using this palette's validated steps. Variants take
+    their base series' colour (:func:`ion_series`: ``"z."`` and ``"z+H"`` are z,
+    ``"c-H"`` is c). Other series, including internal fragments with two-letter
+    types like ``"by"`` and side-chain ions (d, v, w), fold to the neutral colour
+    rather than inventing a ninth hue.
     """
     mode = resolve_mode(theme)
-    key = str(ion_type).lower()
+    key = ion_series(ion_type)
     slot = _ION_SLOT_INDEX.get(key)
     if slot is not None:
         return _CATEGORICAL[mode][slot]
