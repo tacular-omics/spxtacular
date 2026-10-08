@@ -494,3 +494,37 @@ def test_fold_disagreement_stops_and_leaves_blocking_peaks_for_later_passes() ->
     assert out_intensity[first_cluster] == pytest.approx(float(intensity[:2].sum()))
     assert len(out_mz) > 1
     assert float(out_intensity.sum()) == pytest.approx(float(intensity.sum()))
+
+
+def test_default_envelope_reaches_high_mass_apex() -> None:
+    adaptive_apex = int(np.argmax(PEPTIDE_ISOTOPE_MODEL.adaptive_distribution(200_000.0)))
+    assert adaptive_apex > MAX_ISOTOPE_PEAKS
+    assert PEPTIDE_ISOTOPE_MODEL.apex_index(200_000.0) == adaptive_apex
+    assert len(PEPTIDE_ISOTOPE_MODEL.distribution(200_000.0)) > adaptive_apex
+
+
+def test_explicit_max_isotopes_still_truncates() -> None:
+    assert len(PEPTIDE_ISOTOPE_MODEL.distribution(200_000.0, max_isotopes=MAX_ISOTOPE_PEAKS)) == MAX_ISOTOPE_PEAKS
+    assert PEPTIDE_ISOTOPE_MODEL.apex_index(200_000.0, max_isotopes=MAX_ISOTOPE_PEAKS) == MAX_ISOTOPE_PEAKS - 1
+    assert len(brain_isotopic_distribution({"C": 10_000}, max_isotopes=MAX_ISOTOPE_PEAKS)) == MAX_ISOTOPE_PEAKS
+
+
+@pytest.mark.parametrize("mass", [500.0, 1000.0, 2500.0, 5000.0])
+def test_default_envelope_unchanged_at_small_mass(mass: float) -> None:
+    default = PEPTIDE_ISOTOPE_MODEL.distribution(mass)
+    capped = PEPTIDE_ISOTOPE_MODEL.distribution(mass, max_isotopes=MAX_ISOTOPE_PEAKS)
+    np.testing.assert_array_equal(default, capped)
+    assert PEPTIDE_ISOTOPE_MODEL.apex_index(mass) == PEPTIDE_ISOTOPE_MODEL.apex_index(
+        mass, max_isotopes=MAX_ISOTOPE_PEAKS
+    )
+    composition = PEPTIDE_ISOTOPE_MODEL.estimate_composition(mass)
+    np.testing.assert_array_equal(
+        brain_isotopic_distribution(composition),
+        brain_isotopic_distribution(composition, max_isotopes=MAX_ISOTOPE_PEAKS),
+    )
+
+
+def test_brain_default_extends_for_large_composition() -> None:
+    composition = PEPTIDE_ISOTOPE_MODEL.estimate_composition(200_000.0)
+    distribution = brain_isotopic_distribution(composition)
+    assert int(np.argmax(distribution)) == PEPTIDE_ISOTOPE_MODEL.apex_index(200_000.0)

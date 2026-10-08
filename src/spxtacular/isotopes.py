@@ -26,6 +26,8 @@ from tacular import ELEMENT_LOOKUP, Element
 from .enums import _SpxEnum
 from .errors import SpxtacularError
 
+# Minimum envelope length when no explicit ``max_isotopes`` is given.  The
+# default grows past it for masses whose isotope envelope needs more peaks.
 MAX_ISOTOPE_PEAKS: Final[int] = 32
 
 
@@ -157,19 +159,61 @@ def _element_log_coefficients(pattern: tuple[tuple[int, float], ...], max_isotop
 def brain_isotopic_distribution(
     composition: Mapping[str, int],
     *,
-    max_isotopes: int = MAX_ISOTOPE_PEAKS,
+    max_isotopes: int | None = None,
     isotope_abundances: IsotopeAbundances | None = None,
 ) -> NDArray[np.float64]:
     """Calculate an aggregated nominal isotope distribution with BRAIN.
 
     The returned probabilities start at the all-light-isotope composition and
-    sum to one over the requested window.
+    sum to one over the requested window.  With ``max_isotopes=None`` (the
+    default) the window is :data:`MAX_ISOTOPE_PEAKS` peaks, extended for large
+    compositions until it covers the envelope's tail (the length estimate used
+    by :meth:`IsotopeModel.adaptive_distribution`).  An integer truncates the
+    window to exactly that many peaks.
     """
-    if max_isotopes < 1:
-        raise SpxtacularError(f"max_isotopes must be positive, got {max_isotopes}")
     counts = _canonical_counts(composition, integer=True)
     abundance_signature = _canonical_abundances(isotope_abundances)
-    return np.asarray(_brain_distribution_cached(counts, abundance_signature, max_isotopes), dtype=np.float64)
+    length = _default_length(counts, abundance_signature) if max_isotopes is None else _checked_length(max_isotopes)
+    return np.asarray(_brain_distribution_cached(counts, abundance_signature, length), dtype=np.float64)
+
+
+def _checked_length(max_isotopes: int) -> int:
+    if max_isotopes < 1:
+        raise SpxtacularError(f"max_isotopes must be positive, got {max_isotopes}")
+    return int(max_isotopes)
+
+
+def _envelope_moments(
+    counts: tuple[tuple[str, int | float], ...],
+    abundance_signature: tuple[tuple[str, tuple[tuple[int, float], ...]], ...],
+) -> tuple[int, int]:
+    """Estimated envelope length (mean + 8 sigma + margin) and the largest isotope offset."""
+    patterns = _patterns_for_signature(abundance_signature)
+    mean = 0.0
+    variance = 0.0
+    max_offset = 0
+    for element, count in counts:
+        try:
+            pattern = patterns[element]
+        except KeyError as exc:
+            raise SpxtacularError(
+                f"no isotope abundances are available for {element!r}; provide isotope_abundances for that element"
+            ) from exc
+        element_mean = sum(offset * abundance for offset, abundance in pattern)
+        element_second = sum(offset * offset * abundance for offset, abundance in pattern)
+        mean += count * element_mean
+        variance += count * max(0.0, element_second - element_mean * element_mean)
+        max_offset = max(max_offset, max(offset for offset, _ in pattern))
+    return max(8, ceil(mean + 8.0 * sqrt(variance) + 2 * max_offset + 4)), max_offset
+
+
+def _default_length(
+    counts: tuple[tuple[str, int | float], ...],
+    abundance_signature: tuple[tuple[str, tuple[tuple[int, float], ...]], ...],
+) -> int:
+    """Default window: :data:`MAX_ISOTOPE_PEAKS`, or longer when the envelope needs it."""
+    estimated, _ = _envelope_moments(counts, abundance_signature)
+    return max(MAX_ISOTOPE_PEAKS, estimated)
 
 
 @lru_cache(maxsize=4096)
@@ -266,13 +310,19 @@ class IsotopeModel:
             composition[element] = composition.get(element, 0) + int(count)
         return {element: count for element, count in composition.items() if count > 0}
 
-    def distribution(self, neutral_mass: float, max_isotopes: int = MAX_ISOTOPE_PEAKS) -> NDArray[np.float64]:
-        """Return the cached envelope for the nearest integer Dalton."""
+    def distribution(self, neutral_mass: float, max_isotopes: int | None = None) -> NDArray[np.float64]:
+        """Return the cached envelope for the nearest integer Dalton.
+
+        With ``max_isotopes=None`` (the default) the envelope has
+        :data:`MAX_ISOTOPE_PEAKS` peaks, or more when the mass needs them to
+        cover its tail, so high-mass envelopes are not cut off before their
+        apex.  An integer truncates to exactly that many peaks.
+        """
         mass = float(neutral_mass)
         if not np.isfinite(mass) or mass < 0.0:
             raise SpxtacularError(f"neutral_mass must be finite and non-negative, got {neutral_mass!r}")
-        if max_isotopes < 1:
-            raise SpxtacularError(f"max_isotopes must be positive, got {max_isotopes}")
+        if max_isotopes is not None:
+            _checked_length(max_isotopes)
         nominal_mass = floor(mass + 0.5)
         return np.asarray(_model_distribution_cached(self._signature, nominal_mass, max_isotopes), dtype=np.float64)
 
@@ -304,8 +354,13 @@ class IsotopeModel:
             dtype=np.float64,
         )
 
-    def apex_index(self, neutral_mass: float, max_isotopes: int = MAX_ISOTOPE_PEAKS) -> int:
-        """Index of the predicted most abundant isotope peak."""
+    def apex_index(self, neutral_mass: float, max_isotopes: int | None = None) -> int:
+        """Index of the predicted most abundant isotope peak.
+
+        The default envelope length follows :meth:`distribution`, so the apex
+        is found at any mass; an explicit ``max_isotopes`` searches only that
+        many peaks.
+        """
         return int(np.argmax(self.distribution(neutral_mass, max_isotopes=max_isotopes)))
 
     def to_dict(self) -> dict[str, Any]:
@@ -347,11 +402,12 @@ def _model_distribution_cached(
         tuple[tuple[str, tuple[tuple[int, float], ...]], ...],
     ],
     nominal_mass: int,
-    max_isotopes: int,
+    max_isotopes: int | None,
 ) -> tuple[float, ...]:
     _, _, abundances = signature
     counts = _estimated_counts(signature, nominal_mass)
-    return _brain_distribution_cached(counts, abundances, max_isotopes)
+    length = _default_length(counts, abundances) if max_isotopes is None else max_isotopes
+    return _brain_distribution_cached(counts, abundances, length)
 
 
 def _estimated_counts(
@@ -384,20 +440,7 @@ def _adaptive_model_distribution_cached(
 ) -> tuple[float, ...]:
     _, _, abundances = signature
     counts = _estimated_counts(signature, nominal_mass)
-    patterns = _patterns_for_signature(abundances)
-
-    mean = 0.0
-    variance = 0.0
-    max_offset = 0
-    for element, count in counts:
-        pattern = patterns[element]
-        element_mean = sum(offset * abundance for offset, abundance in pattern)
-        element_second = sum(offset * offset * abundance for offset, abundance in pattern)
-        mean += count * element_mean
-        variance += count * max(0.0, element_second - element_mean * element_mean)
-        max_offset = max(max_offset, max(offset for offset, _ in pattern))
-
-    estimated_length = max(8, ceil(mean + 8.0 * sqrt(variance) + 2 * max_offset + 4))
+    estimated_length, max_offset = _envelope_moments(counts, abundances)
     length = min(estimated_length, max_isotopes) if max_isotopes is not None else estimated_length
     trailing_window = max(2, max_offset + 1)
 

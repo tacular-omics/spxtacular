@@ -49,6 +49,7 @@ from ._peak_annotations import peak_list_annotation_texts, per_spectrum
 from ._scan_lookup import IdIndex, build_id_index, by_sage_scannr, check_ms_level, check_scan_number
 from .core import MsnSpectrum, Precursor, Spectrum, SpectrumType
 from .errors import SpxtacularError
+from .ionization import DEPROTONATED, PROTONATED, IonizationModel, IonizationModelLike, resolve_ionization_model
 from .utils import format_precursor_charge, signed_precursor_charge
 
 __all__ = ["MgfReader", "Ms2Reader", "MspReader", "PeakListLookup", "write_mgf", "write_ms2", "write_msp"]
@@ -1202,7 +1203,12 @@ def write_mgf(
     return out
 
 
-def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
+def write_ms2(
+    spectra: Iterable[Spectrum] | Spectrum,
+    path: str | Path,
+    *,
+    ionization_model: IonizationModelLike | None = None,
+) -> Path:
     """Write spectra to an MS2 peak-list file.
 
     Parameters
@@ -1211,6 +1217,12 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
         Spectra to write. A lone :class:`~spxtacular.core.Spectrum` is accepted.
     path:
         Output path. A ``.gz`` suffix gzips the output.
+    ionization_model:
+        Charge carrier of the precursor ions, used to turn the precursor m/z into
+        the ``Z`` line mass. Defaults per spectrum to its recorded deconvolution
+        provenance, then the sign of the written charge (``[M-H]-`` for a
+        negative charge, ``[M+H]+`` otherwise). Pass ``"sodiated"``,
+        ``"ammoniated"`` or a custom model for adduct precursors.
 
     Returns
     -------
@@ -1227,10 +1239,13 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
     ``S`` needs a scan number and a precursor m/z, which a plain ``Spectrum`` does
     not have: the 1-based position in the input stands in for the scan number and
     the precursor m/z is written as ``0.0``. The ``Z`` line's mass is the singly
-    protonated mass derived from the precursor m/z and charge; it is regenerated
-    on write and ignored on read, so nothing depends on its precision.
+    protonated ``[M+H]+`` mass: the neutral mass is recovered from the precursor
+    m/z, the charge magnitude and the ionization model, then one proton is
+    added, whatever the polarity or adduct. It is regenerated on write and
+    ignored on read, so nothing depends on its precision.
     """
     out = Path(path)
+    explicit_model = resolve_ionization_model(ionization_model) if ionization_model is not None else None
     with _open_text_write(out) as fh:
         fh.write(f"H\tCreationDate\t{datetime.now().isoformat(timespec='seconds')}\n")
         fh.write("H\tExtractor\tspxtacular\n")
@@ -1260,7 +1275,8 @@ def write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path:
 
             charge = _written_charge(spec)
             if charge is not None and prec is not None:
-                fh.write(f"Z\t{charge}\t{_fmt(_mh_mass(prec.precursor_mz, charge))}\n")
+                model = _ms2_ionization_model(spec, charge, explicit_model)
+                fh.write(f"Z\t{charge}\t{_fmt(_mh_mass(prec.precursor_mz, charge, model))}\n")
 
             for i in range(len(spec.mz)):
                 fh.write(f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}\n")
@@ -1346,12 +1362,26 @@ def write_msp(
     return out
 
 
-def _mh_mass(mz: float, charge: int) -> float:
-    """Singly protonated (M+H) mass implied by an m/z and charge — the ``Z`` line mass."""
+def _ms2_ionization_model(spec: Spectrum, charge: int, explicit: IonizationModel | None) -> IonizationModel:
+    """Charge carrier for a spectrum's ``Z`` line: explicit, then provenance, then charge sign."""
+    if explicit is not None:
+        return explicit
+    if spec.deconvolution is not None:
+        return spec.deconvolution.ionization_model
+    return DEPROTONATED if charge < 0 else PROTONATED
+
+
+def _mh_mass(mz: float, charge: int, model: IonizationModel = PROTONATED) -> float:
+    """Singly protonated ``[M+H]+`` mass implied by an m/z and charge — the ``Z`` line mass.
+
+    The neutral mass is ``|z| * mz - |z| * carrier_mass``; the sign of ``charge``
+    carries polarity only, which ``model`` already encodes.
+    """
     z = abs(charge)
     if z == 0:
         return float(mz)
-    return (float(mz) - PROTON_MASS) * z + PROTON_MASS
+    neutral = z * float(mz) - z * model.carrier_mass
+    return neutral + PROTON_MASS
 
 
 def _spxtacular_version() -> str:

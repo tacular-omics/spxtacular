@@ -6,9 +6,11 @@ import gzip
 
 import numpy as np
 import pytest
+from tacular.constants import PROTON_MASS
 from tacular.types import Polarity
 
 from spxtacular import (
+    SODIATED,
     MgfReader,
     Ms2Reader,
     MsnSpectrum,
@@ -632,3 +634,38 @@ def test_reader_missing_path_raises_at_construction(tmp_path, name):
 def test_reader_rejects_unknown_extension(tmp_path):
     with pytest.raises(ValueError, match=r"\.mgf"):
         Reader(tmp_path / "run.txt")
+
+
+# ---------------------------------------------------------------------------
+# MS2 Z line mass: always [M+H]+, whatever the polarity or adduct
+# ---------------------------------------------------------------------------
+
+_NEUTRAL = 1000.0
+
+
+def _z_line_mass(path) -> tuple[int, float]:
+    line = next(line for line in path.read_text().splitlines() if line.startswith("Z\t"))
+    _, charge, mass = line.split("\t")
+    return int(charge), float(mass)
+
+
+def test_ms2_z_line_mass_positive_protonated(tmp_path):
+    spec = make_spectrum(precursor_mz=(_NEUTRAL + 2 * PROTON_MASS) / 2, charge=2)
+    charge, mass = _z_line_mass(write_ms2([spec], tmp_path / "pos.ms2"))
+    assert charge == 2
+    assert mass == pytest.approx(_NEUTRAL + PROTON_MASS, abs=1e-9)
+
+
+@pytest.mark.parametrize(("charge", "polarity"), [(-2, None), (2, "negative")])
+def test_ms2_z_line_mass_negative_deprotonated(tmp_path, charge, polarity):
+    spec = make_spectrum(precursor_mz=(_NEUTRAL - 2 * PROTON_MASS) / 2, charge=charge, polarity=polarity)
+    written_charge, mass = _z_line_mass(write_ms2([spec], tmp_path / "neg.ms2"))
+    assert written_charge == -2
+    # 1001.007, not the 996.978 a protonated-positive assumption gives.
+    assert mass == pytest.approx(_NEUTRAL + PROTON_MASS, abs=1e-9)
+
+
+def test_ms2_z_line_mass_sodiated(tmp_path):
+    spec = make_spectrum(precursor_mz=float(SODIATED.ion_mz(_NEUTRAL, 2)), charge=2)
+    _, mass = _z_line_mass(write_ms2([spec], tmp_path / "na.ms2", ionization_model="sodiated"))
+    assert mass == pytest.approx(_NEUTRAL + PROTON_MASS, abs=1e-9)

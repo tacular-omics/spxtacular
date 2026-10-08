@@ -506,7 +506,7 @@ Write spectra to a peak-list file, returning the path. A `.gz` suffix gzips the 
 
 ```python
 write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
-write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path) -> Path
+write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, ionization_model=None) -> Path
 write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
 ```
 
@@ -515,6 +515,7 @@ write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotatio
 | Peak values | `mz` / `intensity` at repr precision — a write → read round trip is exact |
 | `SpectrumType.PROFILE` | Raises `ValueError`; peak lists are centroid data |
 | Polarity | MGF/MS2: carried by the sign of the written charge (`CHARGE=2-`, `Z -2`). MSP: explicit `Ion_mode: P`/`N` line |
+| MS2 `Z` mass | Singly protonated `[M+H]+` mass in every mode: the neutral mass from the precursor m/z, charge magnitude and `ionization_model` (default: deconvolution provenance, then `[M-H]-` for a negative charge, else `[M+H]+`), plus one proton |
 | Missing metadata | Omitted, except MS2's mandatory `S` fields (scan number → 1-based position, precursor m/z → `0.0`) |
 | `annotations=` (MGF, MSP) | Optional mzPAF, one entry per spectrum: one item per peak (`None`, string, `PafAnnotation`, or a list) or a list of `MatchedFragment`. Adds a quoted last column, `mz intensity "b2/0.1ppm,y3^2"` |
 
@@ -648,7 +649,7 @@ IsotopeModel(
 
 brain_isotopic_distribution(
     composition: Mapping[str, int],
-    max_isotopes: int = 32,
+    max_isotopes: int | None = None,  # None: 32 peaks, longer when the mass needs it
     isotope_abundances=None,
 ) -> NDArray[np.float64]
 
