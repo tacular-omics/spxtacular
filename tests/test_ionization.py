@@ -386,3 +386,19 @@ def test_unsupported_charge_carriers_raise(carrier: str, match: str) -> None:
 
     with pytest.raises(SpxtacularError, match=match):
         resolve_ionization_model(carrier)
+
+
+@pytest.mark.parametrize(
+    ("carrier", "expected_mass", "polarity"),
+    [
+        # Hydride attachment [M+H]-: H atom plus one electron.
+        ("H:z-1", 1.00782503223 + 0.000548579909065, "negative"),
+        # Hydride loss [M-H]+: minus (H atom plus one electron).
+        ("H-1:z+1", -(1.00782503223 + 0.000548579909065), "positive"),
+    ],
+)
+def test_hydride_carriers_are_not_protons(carrier: str, expected_mass: float, polarity: str) -> None:
+    model = resolve_ionization_model(carrier)
+    assert model.carrier_mass == pytest.approx(expected_mass, abs=1e-9)
+    assert str(model.polarity) == polarity
+    assert model is not PROTONATED and model is not DEPROTONATED

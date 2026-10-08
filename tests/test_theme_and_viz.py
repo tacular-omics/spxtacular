@@ -438,36 +438,43 @@ class TestIonTypeVariants:
             expected = "n" if info.is_forward else "c" if info.is_backward else None
             assert _ion_terminus(str(ion_type)) == expected, ion_type
 
-    def _ladder_ticks(self, ion_types: tuple[str, ...]):
+    @pytest.mark.parametrize(
+        ("ion", "colour_of", "above"),
+        [
+            ("c-H", "c", True),
+            ("d", "d", True),
+            ("z.", "z", False),
+            ("z+H", "z", False),
+            ("v", "v", False),
+            ("w", "w", False),
+        ],
+    )
+    def test_ion_ticks_sit_at_their_bonds(self, ion: str, colour_of: str, above: bool) -> None:
         import peptacular as pt
 
         peptide = "PEPTIDEK"
-        frags = pt.fragment(peptide, ion_types=ion_types, charges=[1])
+        n = len(peptide)
+        frags = pt.fragment(peptide, ion_types=(ion,), charges=[1])
         mz = np.sort(np.array([f.mz for f in frags]))
         spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
         fs = sequence_coverage_plot(spec, peptide, frags, tolerance=0.001, tolerance_unit="da", backend="spec")
         marks = [m for cell in fs.cells for panel in cell.panels for m in panel.marks]
-        residue_dy = {m.dy for m in marks if getattr(m, "name", None) == "residue"}
+        residues = [m for m in marks if getattr(m, "name", None) == "residue"]
         ticks = [m for m in marks if getattr(m, "name", None) == "coverage_tick"]
-        return residue_dy, ticks
-
-    @pytest.mark.parametrize(("ion", "base", "above"), [("z.", "z", False), ("z+H", "z", False), ("c-H", "c", True)])
-    def test_variant_ions_reach_the_ladder_on_the_right_side(self, ion: str, base: str, above: bool) -> None:
-        residue_dy, ticks = self._ladder_ticks((ion,))
-        assert len(residue_dy) == 1
-        dy = residue_dy.pop()
+        assert len(residues) == n
+        (dy,) = {m.dy for m in residues}
+        dxs = sorted(m.dx for m in residues)
         assert ticks, f"{ion} fragments left no ticks on the coverage ladder"
-        assert {t.color for t in ticks} == {theme.ion_color(base, "light")}
-        ends = [seg[5] for t in ticks for seg in t.segments]
-        assert all((end > dy) == above for end in ends)
+        assert {t.color for t in ticks} == {theme.ion_color(colour_of, "light")}
 
-    @pytest.mark.parametrize(("ion", "above"), [("d", True), ("w", False), ("v", False)])
-    def test_side_chain_ions_are_placed_by_direction(self, ion: str, above: bool) -> None:
-        residue_dy, ticks = self._ladder_ticks((ion,))
-        dy = residue_dy.pop()
-        ends = [seg[5] for t in ticks for seg in t.segments]
-        assert ends
-        assert all((end > dy) == above for end in ends)
+        # Bond k (after residue k, 1-based) sits midway between residues k and k + 1.
+        bond_at = {round((dxs[k - 1] + dxs[k]) / 2.0, 6): k for k in range(1, n)}
+        stems = [seg for t in ticks for seg in t.segments if seg[2] == seg[4]]
+        drawn = sorted(bond_at[round(seg[2], 6)] for seg in stems)
+        positions = {f.position for f in frags if 0 < f.position < n}
+        expected = sorted(positions if above else {n - p for p in positions})
+        assert drawn == expected
+        assert all((seg[5] > dy) == above for seg in stems)
 
 
 class TestPrecursorMarker:

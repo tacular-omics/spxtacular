@@ -145,9 +145,11 @@ def _parse_charge_carrier(text: str) -> IonizationModel:
     total_charge = sum(c for _, c, _ in carriers)
     total_mass = sum(m for _, _, m in carriers)
     formula = carriers[0][0]
-    if set(formula) == {"H"} and abs(formula["H"]) == 1:
-        # A bare proton: H - e is lighter than a proton by the 1s binding energy, and
-        # peptacular adds that term back (HYDROGEN_BINDING_MASS), so use PROTON_MASS.
+    if set(formula) == {"H"} and abs(formula["H"]) == 1 and (total_mass > 0) == (total_charge > 0):
+        # A proton gained ([M+H]+) or lost ([M-H]-): H - e is lighter than a proton by the
+        # 1s binding energy, and peptacular adds that term back (HYDROGEN_BINDING_MASS), so
+        # use PROTON_MASS. The sign of the (occurrence-scaled) mass gives the H count's sign.
+        # A hydride ([M+H]-, [M-H]+) has mismatched signs and takes the general formula below.
         carrier_mass = PROTON_MASS if total_mass > 0 else -PROTON_MASS
     else:
         carrier_mass = (total_mass - total_charge * ELECTRON_MASS) / abs(total_charge)
