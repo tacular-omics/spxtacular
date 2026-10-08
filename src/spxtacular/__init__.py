@@ -1,4 +1,4 @@
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
 from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType

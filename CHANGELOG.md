@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.2] (2026-10-08)
+
 ### Fixed
 
 - `resolve_ionization_model` (and every `ionization_model=` argument) accepts a
