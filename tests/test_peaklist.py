@@ -21,6 +21,7 @@ from spxtacular import (
     write_mgf,
     write_ms2,
 )
+from spxtacular.errors import SpxtacularError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -669,3 +670,9 @@ def test_ms2_z_line_mass_sodiated(tmp_path):
     spec = make_spectrum(precursor_mz=float(SODIATED.ion_mz(_NEUTRAL, 2)), charge=2)
     _, mass = _z_line_mass(write_ms2([spec], tmp_path / "na.ms2", ionization_model="sodiated"))
     assert mass == pytest.approx(_NEUTRAL + PROTON_MASS, abs=1e-9)
+
+
+def test_ms2_z_line_explicit_model_polarity_mismatch_raises(tmp_path):
+    spec = make_spectrum(precursor_mz=500.0, charge=-2)
+    with pytest.raises(SpxtacularError, match="polarity"):
+        write_ms2([spec], tmp_path / "neg.ms2", ionization_model="protonated")

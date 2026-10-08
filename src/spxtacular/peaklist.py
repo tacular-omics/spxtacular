@@ -1365,6 +1365,12 @@ def write_msp(
 def _ms2_ionization_model(spec: Spectrum, charge: int, explicit: IonizationModel | None) -> IonizationModel:
     """Charge carrier for a spectrum's ``Z`` line: explicit, then provenance, then charge sign."""
     if explicit is not None:
+        charge_polarity = "negative" if charge < 0 else "positive"
+        if explicit.polarity != charge_polarity:
+            raise SpxtacularError(
+                f"ionization model {explicit.name!r} has {explicit.polarity} polarity, "
+                f"but the precursor charge {charge} is {charge_polarity}"
+            )
         return explicit
     if spec.deconvolution is not None:
         return spec.deconvolution.ionization_model
