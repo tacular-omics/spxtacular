@@ -485,7 +485,8 @@ _SIDE_CHAIN = IonTypeProperty.AA_SPECIFIC_FWD | IonTypeProperty.AA_SPECIFIC_BWD
 _SERIES_COLOURED = {
     t
     for t, info in _ION_INFO.items()
-    if ((info.is_forward or info.is_backward) and not info.properties & _SIDE_CHAIN)
+    # tacular <= 2.0.0 does not flag the plain w ion as AA_SPECIFIC_BWD, so name it explicitly.
+    if ((info.is_forward or info.is_backward) and not info.properties & _SIDE_CHAIN and info.ion_type != IonType.W)
     or info.ion_type in (IonType.IMMONIUM, IonType.PRECURSOR)
 }
 
