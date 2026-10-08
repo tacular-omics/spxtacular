@@ -395,10 +395,19 @@ def _ion_priority(ion_type: str) -> int:
 
 
 def _fragment_label(fragment: Fragment, include_sequence: bool) -> str:
-    """Return the fragment's mzPAF label (no mass error; signed charge for negative ions)."""
+    """Return the fragment's mzPAF label (no mass error; signed charge for negative ions).
+
+    mzPAF has no notation for some ion types peptacular generates (the intact neutral
+    ``n``); those get the plain ion type with a ``^z`` suffix instead of raising.
+    """
     import paftacular as pft
 
-    return pft.to_mzpaf(fragment, include_sequence=include_sequence).serialize()
+    try:
+        return pft.to_mzpaf(fragment, include_sequence=include_sequence).serialize()
+    except pft.PaftacularError:
+        ion_type = getattr(fragment.ion_type, "value", fragment.ion_type)
+        charge = fragment.charge_state
+        return str(ion_type) if charge == 1 else f"{ion_type}^{charge}"
 
 
 def build_annot_plot_table(

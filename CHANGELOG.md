@@ -33,6 +33,10 @@ User-visible changes only; implementation details belong in commits and pull req
   whitespace-split fields, so a `NativeID` such as `run 1  "fraction=3"` read
   back with its double space collapsed and no longer matched what `write_ms2`
   wrote.
+- `annotate_spectrum`, `build_annot_plot_table` and `mass_error_plot` no longer
+  crash on fragments of ion type `n` (the intact neutral peptacular generates),
+  which mzPAF cannot express. Such fragments are labelled with the ion type and
+  charge (`n`, `n^2`) instead of raising `PaftacularError`.
 
 ## [0.9.1] (2026-10-06)
 
