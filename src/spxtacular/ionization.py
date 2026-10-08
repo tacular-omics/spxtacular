@@ -15,11 +15,6 @@ from .enums import IMToleranceUnit, check_im_tolerance_unit, check_polarity, che
 from .errors import SpxtacularError
 from .isotopes import IsotopeModel
 
-# Monoisotopic ion masses. Sodium is the neutral atom less one electron;
-# ammonium is 14N + 4(1H) less one electron.
-SODIUM_CATION_MASS = 22.9897692820 - ELECTRON_MASS
-AMMONIUM_CATION_MASS = 14.00307400443 + 4 * 1.00782503223 - ELECTRON_MASS
-
 
 @dataclass(frozen=True, slots=True)
 class IonizationModel:
@@ -110,6 +105,63 @@ def _validated_charge_scalar(charge: int) -> int:
     return int(charge)
 
 
+def _parse_charge_carrier(text: str) -> IonizationModel:
+    """Build a model from a ProForma 2.1 charge carrier such as ``Na:z+1`` or ``Cl:z-1``.
+
+    Parsing, element masses and charge come from peptacular's charge-carrier parser
+    (``GlobalChargeCarrier``), so any carrier it accepts works. The ion mass per unit
+    charge is the carrier formula mass less one electron per positive charge (plus
+    one per negative charge). Comma-separated carriers are accepted only when they
+    are the same carrier: a model is one repeated carrier, so mixtures raise.
+    """
+    from peptacular import GlobalChargeCarrier
+
+    carriers = []
+    for part in text.split(","):
+        part = part.strip()
+        try:
+            carrier = GlobalChargeCarrier.from_string(part)
+            charge = carrier.get_charge()
+            mass = carrier.get_mass(monoisotopic=True)
+        except Exception as exc:  # peptacular raises its own ValueError subclasses
+            raise SpxtacularError(f"cannot parse charge carrier {part!r}: {exc}") from exc
+        unit_charge = carrier.charged_formula.charge
+        if unit_charge not in (1, -1):
+            raise SpxtacularError(
+                f"charge carrier {part!r} carries charge {unit_charge} per carrier; only singly charged "
+                "carriers (z+1 or z-1) can form a repeated-carrier ionization model"
+            )
+        if charge == 0:
+            raise SpxtacularError(f"charge carrier {part!r} has zero net charge")
+        carriers.append((carrier.charged_formula.formula_dict(), charge, mass))
+
+    formulas = {tuple(sorted(f.items())) for f, _, _ in carriers}
+    signs = {c > 0 for _, c, _ in carriers}
+    if len(formulas) > 1 or len(signs) > 1:
+        raise SpxtacularError(
+            f"mixed charge carriers {text!r} are not supported: an IonizationModel is one repeated "
+            "carrier per unit charge (e.g. 'Na:z+1'), not a mixture"
+        )
+    total_charge = sum(c for _, c, _ in carriers)
+    total_mass = sum(m for _, _, m in carriers)
+    formula = carriers[0][0]
+    if set(formula) == {"H"} and abs(formula["H"]) == 1:
+        # A bare proton: H - e is lighter than a proton by the 1s binding energy, and
+        # peptacular adds that term back (HYDROGEN_BINDING_MASS), so use PROTON_MASS.
+        carrier_mass = PROTON_MASS if total_mass > 0 else -PROTON_MASS
+    else:
+        carrier_mass = (total_mass - total_charge * ELECTRON_MASS) / abs(total_charge)
+    polarity = "positive" if total_charge > 0 else "negative"
+    if all(n < 0 for n in formula.values()):  # 'H-1:z-1' is a proton loss, shown as [M-H]-
+        formula = {el: -n for el, n in formula.items()}
+    label = "".join(f"{el}{'' if n == 1 else n}" for el, n in formula.items())
+    return IonizationModel(text, polarity, carrier_mass, carrier=label)
+
+
+# Cation masses (neutral formula less one electron) from the element masses peptacular/tacular hold.
+SODIUM_CATION_MASS = _parse_charge_carrier("Na:z+1").carrier_mass
+AMMONIUM_CATION_MASS = _parse_charge_carrier("NH4:z+1").carrier_mass
+
 PROTONATED = IonizationModel("protonated", "positive", PROTON_MASS, carrier="H")
 DEPROTONATED = IonizationModel("deprotonated", "negative", -PROTON_MASS, carrier="H")
 SODIATED = IonizationModel("sodiated", "positive", SODIUM_CATION_MASS, carrier="Na")
@@ -137,22 +189,38 @@ type IonizationModelLike = IonizationModel | str | float
 
 
 def resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> IonizationModel:
-    """Resolve a model instance, preset/alias string, or custom carrier mass."""
+    """Resolve a model instance, preset/alias string, charge carrier, or custom carrier mass.
+
+    A string containing ``:z`` is read as a ProForma 2.1 charge carrier, the notation
+    peptacular parses (``K:z+1``, ``Li:z+1``, ``Cl:z-1``, ``H:z+1^-1``); one matching a
+    preset returns that preset.
+    """
     if isinstance(model, IonizationModel):
         return model
     if isinstance(model, (int, float)) and not isinstance(model, bool):
         mass = float(model)
         polarity = "positive" if mass >= 0.0 else "negative"
         return IonizationModel("custom", polarity, mass)
-    value = str(model).strip().lower().replace(" ", "")
+    text = str(model).strip().replace(" ", "")
+    value = text.lower()
     value = _ALIASES.get(value, value)
-    try:
+    if value in IONIZATION_MODELS:
         return IONIZATION_MODELS[value]
-    except KeyError as exc:
-        valid = ", ".join(IONIZATION_MODELS)
-        raise SpxtacularError(
-            f"unknown ionization model {model!r}; expected {valid}, an adduct alias, or a custom model"
-        ) from exc
+    if ":z" in value:
+        parsed = _parse_charge_carrier(text)
+        for preset in IONIZATION_MODELS.values():
+            if (
+                preset.polarity == parsed.polarity
+                and preset.carrier == parsed.carrier
+                and abs(preset.carrier_mass - parsed.carrier_mass) < 1e-9
+            ):
+                return preset
+        return parsed
+    valid = ", ".join(IONIZATION_MODELS)
+    raise SpxtacularError(
+        f"unknown ionization model {model!r}; expected {valid}, an adduct alias, a ProForma charge "
+        "carrier such as 'K:z+1' or 'Cl:z-1', or a custom model"
+    )
 
 
 @dataclass(frozen=True, slots=True)

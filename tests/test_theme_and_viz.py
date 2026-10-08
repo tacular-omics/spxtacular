@@ -414,6 +414,62 @@ class TestSequenceCoverage:
             sequence_coverage_plot(spec, "", frags)
 
 
+class TestIonTypeVariants:
+    """Ion types beyond a/b/c/x/y/z take their side and colour from tacular's IonType metadata."""
+
+    @pytest.mark.parametrize(("variant", "base"), [("z.", "z"), ("z+H", "z"), ("c-H", "c"), ("Z.", "z")])
+    def test_variant_uses_base_series_colour_and_dash(self, variant: str, base: str) -> None:
+        assert theme.ion_series(variant) == base
+        for mode in ("light", "dark"):
+            assert theme.ion_color(variant, mode) == theme.ion_color(base, mode)
+        assert theme.ion_dash(variant) == theme.ion_dash(base)
+
+    def test_internal_and_unknown_types_stay_neutral(self) -> None:
+        neutral = theme.ion_color("not-an-ion", "light")
+        assert theme.ion_color("by", "light") == neutral
+        assert theme.ion_series("not-an-ion") == "not-an-ion"
+
+    def test_every_forward_and_backward_type_has_a_ladder_side(self) -> None:
+        from tacular import FRAGMENT_ION_LOOKUP
+
+        from spxtacular.visualization import _ion_terminus
+
+        for ion_type, info in FRAGMENT_ION_LOOKUP.items():
+            expected = "n" if info.is_forward else "c" if info.is_backward else None
+            assert _ion_terminus(str(ion_type)) == expected, ion_type
+
+    def _ladder_ticks(self, ion_types: tuple[str, ...]):
+        import peptacular as pt
+
+        peptide = "PEPTIDEK"
+        frags = pt.fragment(peptide, ion_types=ion_types, charges=[1])
+        mz = np.sort(np.array([f.mz for f in frags]))
+        spec = Spectrum(mz=mz, intensity=np.linspace(1e4, 1e5, len(mz)))
+        fs = sequence_coverage_plot(spec, peptide, frags, tolerance=0.001, tolerance_unit="da", backend="spec")
+        marks = [m for cell in fs.cells for panel in cell.panels for m in panel.marks]
+        residue_dy = {m.dy for m in marks if getattr(m, "name", None) == "residue"}
+        ticks = [m for m in marks if getattr(m, "name", None) == "coverage_tick"]
+        return residue_dy, ticks
+
+    @pytest.mark.parametrize(("ion", "base", "above"), [("z.", "z", False), ("z+H", "z", False), ("c-H", "c", True)])
+    def test_variant_ions_reach_the_ladder_on_the_right_side(self, ion: str, base: str, above: bool) -> None:
+        residue_dy, ticks = self._ladder_ticks((ion,))
+        assert len(residue_dy) == 1
+        dy = residue_dy.pop()
+        assert ticks, f"{ion} fragments left no ticks on the coverage ladder"
+        assert {t.color for t in ticks} == {theme.ion_color(base, "light")}
+        ends = [seg[5] for t in ticks for seg in t.segments]
+        assert all((end > dy) == above for end in ends)
+
+    @pytest.mark.parametrize(("ion", "above"), [("d", True), ("w", False), ("v", False)])
+    def test_side_chain_ions_are_placed_by_direction(self, ion: str, above: bool) -> None:
+        residue_dy, ticks = self._ladder_ticks((ion,))
+        dy = residue_dy.pop()
+        ends = [seg[5] for t in ticks for seg in t.segments]
+        assert ends
+        assert all((end > dy) == above for end in ends)
+
+
 class TestPrecursorMarker:
     def _ms2(self):
         from spxtacular.core import MsnSpectrum, Precursor

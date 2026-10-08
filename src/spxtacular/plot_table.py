@@ -390,7 +390,7 @@ def build_plot_table(
 
 def _ion_priority(ion_type: str) -> int:
     """Sort key giving each ion series a fixed rank, unknown series last."""
-    key = str(ion_type).lower()
+    key = theme.ion_series(ion_type)
     return theme._ION_SLOTS.index(key) if key in theme._ION_SLOTS else len(theme._ION_SLOTS)
 
 

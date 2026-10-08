@@ -6,6 +6,18 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Fixed
 
+- `resolve_ionization_model` (and every `ionization_model=` argument) accepts a
+  ProForma 2.1 charge carrier, the notation peptacular parses: `"K:z+1"`,
+  `"Li:z+1"`, `"Cl:z-1"`, `"H:z+1^-1"`. Mass and charge come from peptacular's
+  parser, so any singly charged carrier it knows works; one matching a preset
+  returns the preset. Mixed carriers (`"Na:z+1,H:z+1"`) and multiply charged
+  carriers raise `SpxtacularError`. The sodium and ammonium cation masses are now
+  computed from tacular's element masses instead of local literals (unchanged).
+- `sequence_coverage_plot` places every fragment ion type tacular marks as forward
+  or backward on the ladder (c-H, z., z+H, d, v, w, ...); it used to drop all but
+  a/b/c/x/y/z. Ion colours and dash patterns give a variant its base series'
+  colour (z. and z+H are z orange, c-H is c teal) instead of neutral grey.
+
 - `write_ms2` writes the `Z` line mass as the singly protonated `[M+H]+` mass for
   negative-mode and adduct precursors too. It used to assume a protonated
   positive ion, so `M = 1000` at `z = -2` was written as 996.978 instead of

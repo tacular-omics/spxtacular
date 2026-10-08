@@ -917,8 +917,23 @@ def mirror_plot(
 # Sequence header and coverage
 # ---------------------------------------------------------------------------
 
-_N_TERM = {"a", "b", "c"}
-_C_TERM = {"x", "y", "z"}
+
+def _ion_terminus(ion_type: str) -> Literal["n", "c"] | None:
+    """Which terminus a fragment ion type keeps, from tacular's ``is_forward`` / ``is_backward``.
+
+    Forward types (a, b, c, c-H, d, ...) hold the N-terminus, backward types (x, y, z, z.,
+    z+H, v, w, ...) the C-terminus. Internal, immonium, precursor and unknown types give ``None``.
+    """
+    from tacular import FRAGMENT_ION_LOOKUP
+
+    info = FRAGMENT_ION_LOOKUP.query_id(ion_type)
+    if info is None:
+        return None
+    if info.is_forward:
+        return "n"
+    if info.is_backward:
+        return "c"
+    return None
 
 
 def _as_annotation(peptide: str | ProFormaAnnotation) -> ProFormaAnnotation:
@@ -942,17 +957,18 @@ def _bond_evidence(matches: Sequence[MatchedFragment], n_res: int) -> tuple[dict
     rank = {s: i for i, s in enumerate(slots)}
     for m in matches:
         frag = m.fragment
-        ion = _ion_type(frag).lower()
+        ion = _ion_type(frag)
         pos = getattr(frag, "position", None)
         if not isinstance(pos, int) or pos <= 0 or pos >= n_res:
             continue
-        if ion in _N_TERM:
+        side = _ion_terminus(ion)
+        if side == "n":
             bond, target = pos, n_bonds
-        elif ion in _C_TERM:
+        elif side == "c":
             bond, target = n_res - pos, c_bonds
         else:
             continue
-        if bond not in target or rank.get(ion, 99) < rank.get(target[bond], 99):
+        if bond not in target or rank.get(theme.ion_series(ion), 99) < rank.get(theme.ion_series(target[bond]), 99):
             target[bond] = ion
     return n_bonds, c_bonds
 
@@ -1241,8 +1257,9 @@ def sequence_coverage_plot(
     """Sequence coverage ladder: which backbone bonds the spectrum evidences.
 
     Residues run left to right. A tick above and to the left of a bond marks an
-    N-terminal (a/b/c) fragment ending there; a tick below and to the right a
-    C-terminal (x/y/z) fragment starting there. Ticks take the ion-series
+    N-terminal fragment (a/b/c and every other forward ion type tacular knows, such
+    as c-H or d) ending there; a tick below and to the right a C-terminal fragment
+    (x/y/z, z., z+H, v, w, ...) starting there. Ticks take the ion-series
     colour; modified residues are bold with a dot beneath. Long sequences wrap.
 
     Parameters
