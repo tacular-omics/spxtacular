@@ -4,6 +4,20 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Fixed
+
+- `write_ms2` writes the `Z` line mass as the singly protonated `[M+H]+` mass for
+  negative-mode and adduct precursors too. It used to assume a protonated
+  positive ion, so `M = 1000` at `z = -2` was written as 996.978 instead of
+  1001.007. The carrier comes from the spectrum's deconvolution provenance, else
+  the charge sign; the new `ionization_model=` overrides it (for example
+  `"sodiated"`).
+- `IsotopeModel.distribution`, `IsotopeModel.apex_index` and
+  `brain_isotopic_distribution` no longer cut every envelope at 32 peaks by
+  default, which put the apex of a 200 kDa protein at 31 instead of about 124.
+  `max_isotopes` now defaults to `None`: 32 peaks (results below about 6 kDa are
+  unchanged), extended when the mass needs more. An integer still truncates.
+
 ## [0.9.1] (2026-10-06)
 
 ### Added

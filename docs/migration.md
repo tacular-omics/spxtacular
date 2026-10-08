@@ -127,7 +127,7 @@ public functions and methods below. `spec.normalize("tic")` becomes
 
 `ParsedUsi` is a `NamedTuple`, so its fields stay positional: tuple unpacking depends on it.
 
-`IsotopeModel.distribution(mass, max_isotopes)` and `apex_index` are unchanged.
+`IsotopeModel.distribution(mass, max_isotopes)` and `apex_index` keep their signatures. Since 0.9.2 their `max_isotopes` defaults to `None`: 32 peaks, extended for high masses whose envelope needs more.
 
 ## Renamed and removed parameters
 

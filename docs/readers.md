@@ -767,7 +767,7 @@ Unterminated blocks, nested `BEGIN IONS`, short `S`/`Z` lines, and unparsable nu
 
 ```python
 write_mgf(spectra, path) -> Path
-write_ms2(spectra, path) -> Path
+write_ms2(spectra, path, *, ionization_model=None) -> Path
 write_msp(spectra, path) -> Path
 ```
 
