@@ -98,7 +98,7 @@ def _open_text(path: Path) -> IO[str]:
 
 
 @contextmanager
-def _open_text_write(path: Path) -> Generator[IO[str]]:
+def _open_text_write(path: Path) -> Generator[IO[str], None, None]:
     """Replace the destination only after all records have been written.
 
     The temporary file lives beside the destination for an atomic rename.

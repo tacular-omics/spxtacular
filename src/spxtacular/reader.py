@@ -718,7 +718,7 @@ class MzmlSpectraLookup:
 
 
 @contextmanager
-def _mzml_errors(path: object) -> Generator[None]:
+def _mzml_errors(path: object) -> Generator[None, None, None]:
     """Re-raise mzmlpy's errors about a malformed file as :class:`SpxtacularError`.
 
     The original is chained. A missing record stays a ``KeyError`` (mzmlpy's

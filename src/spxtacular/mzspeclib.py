@@ -1550,7 +1550,7 @@ class MzSpecLibReader:
         return self._header
 
     @contextmanager
-    def _decoding(self) -> Generator[None]:
+    def _decoding(self) -> Generator[None, None, None]:
         try:
             yield
         except UnicodeDecodeError as exc:
