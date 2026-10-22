@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import warnings
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -718,7 +718,7 @@ class MzmlSpectraLookup:
 
 
 @contextmanager
-def _mzml_errors(path: object) -> Iterator[None]:
+def _mzml_errors(path: object) -> Generator[None]:
     """Re-raise mzmlpy's errors about a malformed file as :class:`SpxtacularError`.
 
     The original is chained. A missing record stays a ``KeyError`` (mzmlpy's

@@ -32,7 +32,7 @@ import gzip
 import os
 import re
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -98,7 +98,7 @@ def _open_text(path: Path) -> IO[str]:
 
 
 @contextmanager
-def _open_text_write(path: Path) -> Iterator[IO[str]]:
+def _open_text_write(path: Path) -> Generator[IO[str]]:
     """Replace the destination only after all records have been written.
 
     The temporary file lives beside the destination for an atomic rename.
