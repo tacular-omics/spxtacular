@@ -14,11 +14,14 @@ from spxtacular import (
     # Readers and peak-list writers
     Reader, DReader, MzmlReader, ThermoReader, CentroidConfig, AcquisitionType,
     MgfReader, Ms2Reader, MspReader, write_mgf, write_ms2, write_msp,
+    # The .ms1 / .ms2 lookup objects each reader returns
+    SpectrumLookup, DReaderMs1Lookup, DReaderMs2Lookup, MzmlSpectraLookup,
+    ThermoScanLookup, PeakListLookup,
     # Spectral libraries (mzSpecLib)
     read_mzspeclib, MzSpecLibReader, write_mzspeclib, SpectralLibrary, LibraryEntry, Analyte, Interpretation, CvParam,
     write_indexed_mzml_gzip,
     # Matching and scoring
-    match_fragments, score, cosine, modified_cosine, entropy_similarity,
+    match_fragments, MatchedFragment, score, cosine, modified_cosine, entropy_similarity,
     # Isobaric reporter ions (TMT, TMTpro, iTRAQ)
     ReporterIons, extract_reporter_ions, reporter_ion_table,
     isotope_correction_matrix, correct_isotope_impurities,
@@ -36,8 +39,10 @@ from spxtacular import (
     Chromatogram, extract_chromatogram, extract_xic,
     # Visualization
     plot_spectrum, mirror_plot, annotate_spectrum, mass_error_plot, facet_plot,
-    sequence_coverage_plot, profile_centroid_plot,
+    sequence_coverage_plot, profile_centroid_plot, reporter_ion_plot,
     plot_chromatogram, plot_xic, save_figure,
+    # Figure specification, styles and multi-panel composition
+    FigureSpec, render, FigureStyle, get_style, compose_figure,
     # Plot tables
     build_plot_table, build_annot_plot_table, plot_from_table, table_view,
     # Theme (a submodule, not a function)
@@ -46,18 +51,26 @@ from spxtacular import (
     da_to_ppm, ppm_to_da,
     # Remote / serialised spectra
     fetch_usi, spectrum_from_proxi_response,
-    to_inline_spectrum,
+    to_inline_spectrum, get_json_schema,
     to_spectrl_token, from_spectrl_token,
     to_spectrl_url, from_spectrl_url,
     # Ecosystem interoperability
     to_matchms, from_matchms,
     to_spectrum_utils, from_spectrum_utils,
+    # Errors
+    SpxtacularError,
 )
 ```
 
-`MatchedFragment`, `estimate_noise_level`, and the reader lookup classes (including
-`PeakListLookup`) are not exported from the package root. Import them from their defining modules
-as shown in the relevant sections below.
+`estimate_noise_level` is the only name used in this reference that is not exported from the
+package root; import it from `spxtacular.noise`. Everything else, including `MatchedFragment`, the
+`SpectrumLookup` protocol and the four reader lookup classes, imports from `spxtacular`.
+
+Each entry below gives the signature as the code declares it: parameter names, types and defaults,
+and the return type. A parameter after `*` is keyword-only. `Spectrum` and `MsnSpectrum` carry too
+many methods to repeat here in full, so they are listed with their return type and a one-line
+summary; every method's full signature, its parameter table and a runnable example are in the
+[Spectrum reference](spectrum.md#spectrum).
 
 ---
 
@@ -344,6 +357,27 @@ from spxtacular import SpectrumType
 `.ms1` and `.ms2` are **lookup objects**, not generators: iterable *and* indexable, but not
 iterators. `next(reader.ms2)` raises `TypeError` — use `next(iter(reader.ms2))`.
 
+### Lookup objects
+
+Every reader builds its own lookup objects; you never construct one yourself. They all satisfy the
+`SpectrumLookup` protocol, so code that only iterates or indexes works across formats:
+
+```python
+class SpectrumLookup(Protocol):
+    def __iter__(self) -> Iterator[MsnSpectrum]: ...        # a fresh walk each time
+    def __getitem__(self, key: Any, /) -> MsnSpectrum: ...  # the key its format uses
+```
+
+```python
+DReaderMs1Lookup(dreader: DReader)
+DReaderMs2Lookup(dreader: DReader)
+MzmlSpectraLookup(reader: MzmlReader, *, ms_level: int | None = None)
+ThermoScanLookup(reader: ThermoReader, *, ms_level: int | None = None)
+PeakListLookup(reader: MgfReader | Ms2Reader | MspReader, *, ms_level: int | None = None)
+```
+
+What the index means differs per format and is given in each reader's section below.
+
 ### `Reader`
 
 Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (Thermo), `.mgf`,
@@ -529,6 +563,8 @@ Read and write HUPO-PSI mzSpecLib 1.0 spectral libraries, text or JSON, optional
 
 ```python
 read_mzspeclib(path: str | Path) -> SpectralLibrary
+SpectralLibrary(entries: list[LibraryEntry] = [], attributes: tuple[CvParam, ...] = (),
+                clusters: dict[int, tuple[CvParam, ...]] = {})
 MzSpecLibReader(path: str | Path)   # context manager; iterate for LibraryEntry, one at a time
     .open() / .close(); .attributes, .format ("text" | "json"), .clusters (after a full pass)
 write_mzspeclib(entries: SpectralLibrary | Iterable[LibraryEntry] | LibraryEntry, path: str | Path,
@@ -682,6 +718,27 @@ The presets are `PROTONATED` (`[M+H]+`), `DEPROTONATED` (`[M-H]-`), `SODIATED` (
 `AMMONIATED` (`[M+NH4]+`). `IONIZATION_MODELS` maps accepted names and aliases to these objects.
 Each model provides `ion_mz()`, `neutral_mass()`, `notation()`, `to_dict()`, and `from_dict()`.
 Charge arrays keep positive magnitudes. Polarity and carrier mass live in the model.
+
+```python
+DeconvolutionProvenance(
+    isotope_model: str,
+    ionization_model: IonizationModel,
+    charge_range: tuple[int, int],
+    tolerance: float,
+    tolerance_unit: ToleranceUnit,
+    intensity_mode: str,
+    min_intensity: float,
+    min_score: float,
+    *,
+    isotope_model_definition: IsotopeModel | None = None,
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
+)
+```
 
 `DeconvolutionProvenance` records the resolved isotope and ionization models plus every
 deconvolution parameter that affects matching. It is attached to deconvoluted spectra and is
@@ -1252,13 +1309,113 @@ width and style. `size=None` is the double-column width, or a 16:9 slide (254 ×
 `style="talk"`. A panel too short for the style's text raises a `UserWarning` at layout. Anything
 that is not a `FigureSpec` raises `SpxtacularError`.
 
-### `FigureSpec`, `render`, `FigureStyle`, `get_style`
+### `FigureSpec` / `render`
 
-- `FigureSpec`: the backend-neutral description every plot builds (`cells`, `style`, `width_mm`,
-  `height_mm`, `theme_mode`). `spec.render(backend)` or `render(spec, backend)` draws it.
-- `get_style(name)` returns the `"paper"`, `"screen"` or `"talk"` `FigureStyle`; unknown names raise
-  `SpxtacularError`. `FigureStyle` is a frozen dataclass (fonts, sizes in pt, line widths, tick
-  spacing, `dpi`, ...); `style.with_(font_size=6)` returns a changed copy.
+`FigureSpec` is the backend-neutral description every plot builds: what to draw, at what size, in
+which style. `backend="spec"` returns one instead of a drawn figure, so layout can be inspected or
+tested without a rendering engine.
+
+```python
+FigureSpec(
+    cells: list[Cell],
+    style: FigureStyle,
+    theme_mode: Literal["light", "dark"],
+    width_mm: float,
+    height_mm: float,
+    ncols: int = 1,
+    layout_kwargs: dict[str, Any] = {},        # per-cell default: {}
+    check_panel_size: bool = False,
+)
+
+FigureSpec.panels -> list[Panel]                                               # property
+FigureSpec.resolve() -> ResolvedFigure
+FigureSpec.render(backend: Literal["plotly", "matplotlib"] = "plotly") -> Any
+
+render(spec: FigureSpec, backend: Literal["plotly", "matplotlib"] = "plotly") -> Any
+```
+
+`spec.render(backend)` and `render(spec, backend)` are the same call. `resolve()` returns the
+laid-out figure in points (panel rectangles, ticks, label boxes) that both backends draw from.
+
+### `FigureStyle` / `get_style`
+
+A style holds everything about a figure's geometry and type that is not colour (colour is
+[`theme`](#theme)). The same style drives both backends, so a `"paper"` figure has 7 pt tick labels
+and 0.6 pt axis lines whichever engine drew it. All sizes are in points (1/72 inch) unless the name
+says otherwise.
+
+```python
+get_style(style: Literal["paper", "screen", "talk"] | str | FigureStyle) -> FigureStyle
+
+FigureStyle(
+    name: str,
+    width_mm: float,
+    aspect: float,
+    fonts: tuple[str, ...],
+    font_size: float,
+    axis_title_size: float,
+    title_size: float,
+    label_size: float,
+    panel_letter_size: float,
+    axis_width: float,
+    tick_length: float,
+    stick_width: float,
+    stick_width_context: float,
+    line_width: float,
+    leader_width: float,
+    grid: bool,
+    show_title: bool,
+    label_series_color: bool,
+    print_ink: bool,
+    strong_context: bool,
+    x_tick_spacing: float,
+    y_tick_spacing: float,
+    dpi: int,
+    label_gap: float,
+    horizontal_labels: bool,
+    autosize: bool = False,
+)
+
+FigureStyle.with_(**changes) -> FigureStyle          # a copy with some fields changed
+FigureStyle.font_family_css -> str                   # property: the stack as a CSS font-family
+```
+
+`get_style` accepts a preset name or a `FigureStyle` (returned unchanged); any other name raises
+`SpxtacularError`. The three presets:
+
+| Field | What it sets | `"paper"` | `"screen"` | `"talk"` |
+|---|---|---|---|---|
+| `width_mm` | Default figure width in mm | 85.0 | 238.0 | 254.0 |
+| `aspect` | Default height as a fraction of the width | 0.62 | 0.5 | 0.5625 |
+| `fonts` | Font stack, first available wins | Arial, Helvetica, … | Inter, system UI, … | Arial, Helvetica, … |
+| `font_size` | Tick labels and legend | 7.0 | 8.25 | 14.0 |
+| `axis_title_size` | Axis titles | 7.5 | 9.0 | 16.0 |
+| `title_size` | Figure title | 8.0 | 12.0 | 20.0 |
+| `label_size` | Ion labels and other direct annotations | 6.5 | 8.25 | 13.0 |
+| `panel_letter_size` | Panel letters (a, b, c) | 9.0 | 11.0 | 20.0 |
+| `axis_width` | Axis spine and tick line width | 0.6 | 0.75 | 1.25 |
+| `tick_length` | Tick length | 2.5 | 3.0 | 5.0 |
+| `stick_width` | Stick width for matched peaks | 0.8 | 1.2 | 2.0 |
+| `stick_width_context` | Stick width for context (unmatched) peaks | 0.5 | 0.75 | 1.1 |
+| `line_width` | Continuous traces (profile, chromatogram) | 0.8 | 1.05 | 2.0 |
+| `leader_width` | Leader line from a displaced label to its peak | 0.35 | 0.5 | 0.8 |
+| `grid` | Horizontal gridlines on the value axis | `False` | `True` | `False` |
+| `show_title` | Draw the default title when none is passed | `False` | `True` | `True` |
+| `label_series_color` | Colour ion labels with their series hue | `True` | `True` | `True` |
+| `print_ink` | Dark print ink instead of recessive screen greys | `True` | `False` | `True` |
+| `strong_context` | Darker neutral grey for context peaks | `True` | `False` | `True` |
+| `x_tick_spacing` | Preferred tick spacing, x axis | 48.0 | 70.0 | 90.0 |
+| `y_tick_spacing` | Preferred tick spacing, y axis | 30.0 | 40.0 | 55.0 |
+| `dpi` | Raster resolution for PNG export | 600 | 192 | 200 |
+| `label_gap` | Gap between a peak tip and its label | 1.2 | 2.0 | 2.5 |
+| `horizontal_labels` | Horizontal ion labels, else rotated | `True` | `True` | `True` |
+| `autosize` | Plotly only: let the figure fill its container | `False` | `True` | `False` |
+
+```python
+import spxtacular as spx
+
+style = spx.get_style("paper").with_(font_size=8, label_size=6.5)
+```
 
 ### `save_figure`
 
@@ -1434,6 +1591,21 @@ ppm_to_da(20.0, 500.0)   # 0.01 Da
 
 ---
 
+## Errors
+
+```python
+from spxtacular import SpxtacularError
+
+class SpxtacularError(ValueError): ...
+```
+
+Every input the library rejects raises `SpxtacularError`: an unknown enum member, a tolerance unit
+other than `"da"` or `"ppm"`, a polarity that is not lowercase `"positive"` or `"negative"`, an
+unknown style or backend, an unsupported figure suffix, a malformed mzSpecLib or mzPAF document.
+Because it subclasses `ValueError`, `except ValueError` already catches it.
+
+---
+
 ## Matching and scoring
 
 Full documentation: [Fragment matching and scoring](scoring.md)
@@ -1459,6 +1631,26 @@ When `fragments` is a `dict[tuple[IonType, int], list[float]]` (the output of
 `peptacular.ProFormaAnnotation.fast_fragment`), `is_monoisotopic` is forwarded
 to the `Fragment` constructor; otherwise it has no effect. Returns a list sorted
 by ascending `peak_index`.
+
+### `MatchedFragment`
+
+One fragment-to-peak match. Frozen, slotted and keyword-only; built by `match_fragments`, not by
+hand.
+
+```python
+MatchedFragment(
+    *,
+    fragment: Fragment,          # the matched peptacular Fragment
+    peak_index: int,             # index into spectrum.mz / spectrum.intensity
+    peak_mz: float,
+    peak_intensity: float,
+    intensity_pct: float,        # peak_intensity / total intensity * 100
+    ppm_error: float,            # signed: (peak_mz - theoretical_mz) / theoretical_mz * 1e6
+    da_error: float,             # signed: peak_mz - theoretical_mz
+)
+```
+
+Field descriptions: [Matching and scoring — `match_fragments()`](scoring.md#match_fragments).
 
 ### `score`
 
