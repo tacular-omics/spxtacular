@@ -119,7 +119,7 @@ neutral.plot(title="Neutral masses").show()
 Reading raw files works the same for every format — `Reader` picks `DReader`, `MzmlReader`, or
 `ThermoReader` from the path suffix:
 
-```python
+```python title="needs your own data file - not executed"
 with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx.Reader("run.raw")
     print(reader.access_strategy)         # embedded, rapidgzip, memory, stream, plain, or None
     for spec in reader.ms1:              # .ms1/.ms2 are iterable *and* indexable
@@ -205,6 +205,7 @@ fig = spx.annotate_spectrum(spec, frags, peptide="PEPTIDE", mass_error_panel=Tru
 spx.save_figure(fig, "figure2.pdf")
 
 # Several panels, lettered a-d, at full page width
+query, library = spec, spec.normalize()                      # any two spectra to compare
 parts = [spx.annotate_spectrum(spec, frags, backend="spec"),
          spx.mirror_plot(query, library, fragments=frags, similarity="cosine", backend="spec"),
          spx.sequence_coverage_plot(spec, "PEPTIDE", frags, backend="spec"),
@@ -223,6 +224,14 @@ The integrations are lazy optional adapters, so the base package does not import
 
 ```python
 import spxtacular as spx
+
+ms2_spec = spx.MsnSpectrum(
+    mz=spec.mz,
+    intensity=spec.intensity,
+    ms_level=2,
+    scan_number=1,                   # spectrum_utils needs an identifier
+    precursors=[spx.Precursor(precursor_mz=500.25, charge=2)],
+)
 
 # matchms pipelines, similarities, Spec2Vec, MS2DeepScore, etc.
 matchms_spec = spx.to_matchms(spec, extra_metadata={"smiles": "CCO"})
@@ -258,7 +267,7 @@ restored = spx.Spectrum.from_spectrl_url(url)
 TMT, TMTpro and iTRAQ reporter intensities, with channels and m/z from tacular and optional
 isotope impurity correction from the reagent lot sheet:
 
-```python
+```python title="signature only - not executed"
 ions = spec.reporter_ions("TMT10")          # most intense peak within 20 ppm per channel
 ions.intensity, ions.ppm_error
 

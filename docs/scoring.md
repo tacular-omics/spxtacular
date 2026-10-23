@@ -285,7 +285,7 @@ TMTpro 0/16/18 and iTRAQ 4/8. Channel names and reporter m/z come from tacular's
 `ISOBARIC_TAG_LOOKUP`, which computes each reporter m/z from its isotopic composition, so no
 reporter mass is typed into spxtacular.
 
-```python
+```python title="needs your own data file - not executed"
 import spxtacular as spx
 
 spec = next(iter(spx.Reader("run.mzML").ms2))   # your own file; see Readers > Example files

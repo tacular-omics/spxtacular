@@ -4,6 +4,19 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Fixed
+
+- Documentation: every signature shown in the API reference and the guides matches the
+  code (keyword-only markers, `backend`/`style`/`size` on the plotting functions,
+  `da_to_ppm(delta, ...)`, `Precursor` as a standalone class), and the public names the
+  reference omitted are listed.
+- Documentation: every Python example in the guides and the README runs as written,
+  against the small mzML, Bruker `.d` and mzSpecLib files the repository ships. A block
+  that is not meant to be executed says so above it (a signature listing, or one that
+  needs your own data file, network access or the Thermo .NET runtime), and
+  `pytest tests/test_docs.py` runs the rest page by page so CI catches an example that
+  stops working.
+
 ## [0.9.2] (2026-10-08)
 
 ### Fixed

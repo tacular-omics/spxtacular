@@ -9,12 +9,16 @@ both of its forms, text and JSON.
 ```python
 from spxtacular import read_mzspeclib, write_mzspeclib
 
-library = read_mzspeclib("library.mzspeclib.txt")      # or .json, optionally .gz
+library = read_mzspeclib("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")  # or .json, plain or .gz
 for entry in library:
     print(entry.key, entry.peptidoform, entry.charge, entry.spectrum.rt)
 
 write_mzspeclib(library, "copy.mzspeclib.json")         # JSON because of the suffix
 ```
+
+The examples on this page read `tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz`, a
+21-spectrum excerpt the repository ships (see [Readers - Example files](readers.md#example-files));
+substitute your own library.
 
 `read_mzspeclib` detects JSON from the content and gzip from its magic bytes.
 `write_mzspeclib` writes JSON when the file name ends in `.json` (before any `.gz`) and text
@@ -32,7 +36,7 @@ each key that is lower than one already seen costs about 70 bytes.
 ```python
 from spxtacular import MzSpecLibReader
 
-with MzSpecLibReader("big.mzspeclib.txt.gz") as reader:
+with MzSpecLibReader("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz") as reader:
     print(reader.format, reader.attributes)    # header only, no spectrum is read
     for entry in reader:
         if entry.score is not None and entry.score > 0.99:
@@ -75,11 +79,13 @@ Build a library from spectra you already have with `LibraryEntry.from_spectrum`:
 import peptacular as pt
 from spxtacular import LibraryEntry, match_fragments, write_mzspeclib
 
-frags = pt.fragment("PEPTIDE/2", ion_types=("b", "y"), charges=(1, 2))
+spectrum = library[2].spectrum          # any MsnSpectrum you have
+peptidoform = "LAQANGWGVM[Oxidation]VSHR/2"
+frags = pt.fragment(peptidoform, ion_types=("b", "y"), charges=(1, 2))
 matches = match_fragments(spectrum, frags, tolerance=10, tolerance_unit="ppm")
 entry = LibraryEntry.from_spectrum(
     spectrum,
-    "PEPTIDE/2",
+    peptidoform,
     score=0.99,
     peak_annotations=matches,           # or one mzPAF string / list per peak
 )
@@ -159,6 +165,8 @@ field it writes.
 spectrum. Annotated peaks get a quoted last column; the default output is unchanged.
 
 ```python
+from spxtacular import write_msp
+
 write_msp([spectrum], "lib.msp", annotations=[matches])
 # 175.119 100.0 "y1/0.3ppm"
 ```
