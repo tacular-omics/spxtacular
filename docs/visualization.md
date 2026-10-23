@@ -13,11 +13,60 @@ labels). One layout pass then fixes the tick positions, the label placement and 
 points, and the backend only draws what it is given. So a figure looks the same in both backends,
 and a label that clears its neighbours in plotly clears them in the PDF too.
 
+## Setup
+
+Every example on this page runs against the names defined here, so paste this block first. The
+data is real: a tryptic peptide acquired three times, taken from the tiny fetal-brain spectral
+library that ships with the repository's tests, which carries both the peaks and the peptidoform.
+Every annotation, mass error and coverage tick below is therefore a genuine match rather than a
+coincidence.
+
 ```python
+from pathlib import Path
+
+import numpy as np
+import peptacular as pt
+
 import spxtacular as spx
 
-fig = spx.annotate_spectrum(spec, fragments, peptide="PEPTIDEK")                  # plotly, on screen
-fig = spx.annotate_spectrum(spec, fragments, peptide="PEPTIDEK",
+# --- a real MS2 and its identification -----------------------------------------
+entries = list(spx.read_mzspeclib(Path("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")))
+
+peptide = "LAQANGWGVM[Oxidation]VSHR/2"      # one of the peptidoforms in the library
+sequence = pt.parse(peptide).sequence        # "LAQANGWGVMVSHR", modifications stripped
+fragments = pt.parse(peptide).fragment(ion_types=("b", "y"), charges=[1, 2])
+
+replicates = [e.spectrum for e in entries if str(e.peptidoform) == peptide]
+spec = raw = query = replicates[0]           # an MsnSpectrum: m/z, intensity, precursor
+library = replicates[1]                      # a second acquisition of the same peptide
+deconvoluted = spec.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_unit="ppm")
+
+# --- a profile spectrum: two overlapping isotope envelopes over a baseline ------
+rng = np.random.default_rng(3)
+mz = np.linspace(799.0, 803.5, 1800)
+intensity = np.zeros_like(mz)
+for charge, mono, top in ((2, 800.40, 1.0), (3, 800.95, 0.45)):
+    for k, rel in enumerate((1.0, 0.85, 0.42, 0.15)):
+        intensity += top * rel * np.exp(-0.5 * ((mz - (mono + k * 1.00336 / charge)) / 0.012) ** 2)
+intensity = intensity * 1e6 + 5e3 + np.abs(rng.normal(0, 2e3, len(mz)))
+profile = spx.Spectrum(mz=mz, intensity=intensity, spectrum_type=spx.SpectrumType.PROFILE)
+my_centroids = profile.centroid(min_intensity="noise")
+
+# --- a run, for the chromatogram and XIC examples ------------------------------
+run_path = Path("tests/data/example_dda.d")  # the 65-frame Bruker timsTOF test fixture
+```
+
+Both paths are relative to a clone of the repository. Point them at your own `.d`, `.mzML` or
+`.raw` file instead — `Reader` picks the format from the path — and substitute your own peptide and
+fragments. The figures shown on this page were rendered separately by `plot_example.py` in the
+repository root, from the spectrum in `tests/data.py` and a simulated MS2, so they differ in detail
+from what the blocks below draw.
+
+With those names in hand, every plot function draws the same figure with any of the three backends:
+
+```python
+fig = spx.annotate_spectrum(spec, fragments, peptide=peptide)                     # plotly, on screen
+fig = spx.annotate_spectrum(spec, fragments, peptide=peptide,
                             backend="matplotlib", style="paper", size="single")  # print
 spx.save_figure(fig, "figure2.pdf")
 ```
@@ -130,7 +179,7 @@ python docs/gallery/build.py --only annotated --backend matplotlib --style paper
 from spxtacular.visualization import plot_spectrum
 
 fig = plot_spectrum(
-    spectrum,
+    spec,
     title=None,                  # plot title
     color="charge",              # "charge" | "im" | None
     show_scores=True,            # annotate scored peaks with their score value
@@ -145,7 +194,7 @@ fig = plot_spectrum(
     backend="plotly",            # "plotly" | "matplotlib" | "spec"
     style=None,                  # "paper" | "screen" | "talk" | FigureStyle
     size=None,                   # "single" | "onehalf" | "double" | mm | (w, h) mm
-    **layout_kwargs,             # plotly only: passed to fig.update_layout()
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -203,7 +252,7 @@ fig = mirror_plot(
     show_scores=True,    # annotate deconvoluted peaks with iso_score
     max_labels=60,       # cap on score labels, strongest first
     theme_mode=None,     # "light" | "dark"
-    **layout_kwargs,
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -232,17 +281,16 @@ the labels that differ, such as the shifted ions of a modified form passed as `l
 `"both"` labels every match on both halves and `"top"` labels the upper half only:
 
 ```python
-phospho = pt.parse("PEPT[Phospho]IDEK/2").fragment(ion_types=("b", "y"), charges=[1, 2])
+phospho = pt.parse("LAQANGWGVM[Oxidation]VS[Phospho]HR/2").fragment(ion_types=("b", "y"), charges=[1, 2])
 fig = mirror_plot(library, query, fragments=fragments, lower_fragments=phospho)
 ```
 
 **Example:**
 
 ```python
-from spxtacular import Spectrum
 from spxtacular.visualization import mirror_plot
 
-decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
+decon = spec.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_unit="ppm")
 fig = mirror_plot(spec, decon, title="Raw vs deconvoluted")
 fig.show()
 ```
@@ -268,12 +316,10 @@ fig.show()
 ## `annotate_spectrum()`
 
 ```python
-import peptacular as pt
 from spxtacular.visualization import annotate_spectrum
 
-fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
 fig = annotate_spectrum(
-    spectrum,
+    spec,
     fragments,
     tolerance=0.02,
     tolerance_unit="da",         # or "ppm"
@@ -292,7 +338,7 @@ fig = annotate_spectrum(
     backend="plotly",
     style=None,
     size=None,
-    **layout_kwargs,
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -343,7 +389,7 @@ the plot.
 from spxtacular.visualization import mass_error_plot
 
 fig = mass_error_plot(
-    spectrum,
+    spec,
     fragments,
     tolerance=0.02,
     tolerance_unit="da",         # or "ppm"
@@ -352,7 +398,7 @@ fig = mass_error_plot(
     title=None,
     max_labels=60,
     theme_mode=None,
-    **layout_kwargs,
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -376,7 +422,7 @@ out with m/z means the calibration is drifting across the mass range.
 from spxtacular.visualization import facet_plot
 
 fig = facet_plot(
-    spectrum,
+    spec,
     fragments=None,           # adds annotated panel + mass-error panel when provided
     mirror_spectrum=None,     # adds a mirror panel below when provided
     title=None,
@@ -387,7 +433,7 @@ fig = facet_plot(
     unit="ppm",
     max_labels=60,
     theme_mode=None,
-    **layout_kwargs,
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -410,13 +456,13 @@ peak from its annotation, to its mass error, to its deconvoluted counterpart.
 from spxtacular.visualization import sequence_coverage_plot
 
 fig = sequence_coverage_plot(
-    spectrum,
-    "FDSFGDLSSASAIMGNPK",   # stripped residue sequence
+    spec,
+    sequence,               # stripped residue sequence, e.g. "LAQANGWGVMVSHR"
     fragments,
-    tolerance=5,
-    tolerance_unit="da",
+    tolerance=0.02,
+    tolerance_unit="da",    # or "ppm"
     theme_mode=None,
-    **layout_kwargs,
+    # plus **layout_kwargs: plotly only, passed to fig.update_layout()
 )
 fig.show()
 ```
@@ -443,12 +489,12 @@ Everything above works on a single spectrum. These two work on a *run* — any i
 carrying retention times, which is what `reader.ms1` yields.
 
 ```python
-with spx.Reader("run.d") as reader:
+with spx.Reader(run_path) as reader:
     spx.plot_chromatogram(reader.ms1).show()          # TIC, extracted for you
 ```
 
 ```python
-with spx.Reader("run.d") as reader:
+with spx.Reader(run_path) as reader:                  # an ion and its first two isotopes
     spx.plot_xic(reader.ms1, [599.3262, 599.8268, 600.3306], tolerance=20).show()
 ```
 
@@ -476,7 +522,8 @@ On mobility data an `im_window` is what makes a trace selective — two co-eluti
 same m/z usually separate in mobility:
 
 ```python
-spx.plot_xic(reader.ms1, [599.3262], tolerance=20, im_window=(1.01, 1.11))
+with spx.Reader(run_path) as reader:
+    spx.plot_xic(reader.ms1, [599.3262], tolerance=20, im_window=(0.84, 0.94)).show()
 ```
 
 `aggregate="sum"` (default) totals the peaks in the window, the quantification convention;
@@ -491,10 +538,12 @@ baseline throws away the peak shape and triples the coordinate count. `plot_spec
 `SpectrumType.PROFILE` and draws a connected trace instead:
 
 ```python
-spec = Spectrum(mz=mz, intensity=intensity, spectrum_type=SpectrumType.PROFILE)
-spec.plot()                      # continuous trace with a light fill
-spec.plot(render="sticks")       # force the stick rendering
+profile.plot()                   # continuous trace with a light fill
+profile.plot(render="sticks")    # force the stick rendering
 ```
+
+`profile` is built in [Setup](#setup) with `spectrum_type=SpectrumType.PROFILE`; a reader sets it
+for you from the file.
 
 ### Thinning
 
@@ -533,7 +582,7 @@ middle of the plateau.
 
 ```python
 fig = spx.reporter_ion_plot(
-    spectrum,
+    spec,
     "TMT10",                 # plex name, IsobaricTagInfo, or an extracted ReporterIons
     tolerance=20.0,
     tolerance_unit="ppm",    # or "da"
@@ -633,7 +682,10 @@ peak would otherwise flatten everything else:
 
 ```python
 theme.set_palette(
-    categorical={"light": [...8 hues...], "dark": [...8 hues...]},
+    categorical={
+        "light": ["#1f5fa9", "#c0392b", "#1d7a4c", "#0f7f8f", "#6b4fa8", "#b4600a", "#7a5248", "#5a5a5a"],
+        "dark": ["#7fb3e8", "#f08a7a", "#6fc48d", "#5fc6d4", "#b7a2e8", "#f0a85c", "#c49a8e", "#a8a8a8"],
+    },
 )
 ```
 
@@ -649,7 +701,7 @@ theme.set_palette(
 survives print, forced-colours, and readers who cannot separate two hues:
 
 ```python
-spx.annotate_spectrum(spec, fragments, tolerance=5, tolerance_unit="da", texture=True)
+spx.annotate_spectrum(spec, fragments, tolerance=20, tolerance_unit="ppm", texture=True)
 ```
 
 ---
@@ -659,7 +711,7 @@ spx.annotate_spectrum(spec, fragments, tolerance=5, tolerance_unit="da", texture
 ```python
 from spxtacular import build_annot_plot_table, table_view
 
-table = build_annot_plot_table(spec, fragments, tolerance=5, tolerance_unit="da")
+table = build_annot_plot_table(spec, fragments, tolerance=20, tolerance_unit="ppm")
 html = table_view(table, max_rows=50, annotated_only=True)
 ```
 
@@ -685,10 +737,15 @@ shows — the table is the place values are reported exactly.
 ```python
 from spxtacular import save_figure
 
+fig = spx.annotate_spectrum(spec, fragments)                        # a plotly figure
 save_figure(fig, "spectrum.html")            # plotly: always works
-save_figure(fig, "figure.pdf")               # matplotlib: vector, fonts embedded
-save_figure(fig, "figure.png", dpi=300)      # raster at 300 dpi (default: the style's dpi)
-save_figure(spec, "figure.svg")              # a FigureSpec: drawn with matplotlib if installed
+
+print_fig = spx.annotate_spectrum(spec, fragments, backend="matplotlib", style="paper")
+save_figure(print_fig, "figure.pdf")         # matplotlib: vector, fonts embedded
+save_figure(print_fig, "figure.png", dpi=300)  # raster at 300 dpi (default: the style's dpi)
+
+figspec = spx.annotate_spectrum(spec, fragments, backend="spec")
+save_figure(figspec, "figure.svg")           # a FigureSpec: drawn with matplotlib if installed
 ```
 
 The file extension picks the writer, and the figure type picks the backend:

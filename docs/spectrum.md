@@ -997,7 +997,7 @@ Represents a precursor ion selected for fragmentation. Stored in `MsnSpectrum.pr
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")
+reader = MzmlReader("run.mzML")   # your own file; see [Example files](readers.md#example-files)
 for spec in reader.ms2:
     print(f"Scan {spec.scan_number}, RT={spec.rt:.1f}s, CE={spec.collision_energy}")
     if spec.precursors:

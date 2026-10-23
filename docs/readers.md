@@ -11,6 +11,16 @@ Every reader yields `MsnSpectrum` instances populated with as much instrument me
 `fisher-py`); `MgfReader`, `Ms2Reader`, and `MspReader` are pure standard library and always
 available, as are the matching writers `write_mgf`, `write_ms2`, and `write_msp`.
 
+## Example files
+
+`run.mzML`, `run.d`, `run.raw` and `/data/sample.d` on this page are stand-ins: substitute the path
+to your own data. To run an example as written, the repository's tests ship small files that fit —
+`tests/data/example.mzML` (an mzML excerpt), `tests/data/example_dda.d`,
+`tests/data/example_dia.d` and `tests/data/example_prm.d` (65-frame Bruker timsTOF runs, one per
+acquisition mode) and `tests/data/Angiotensin_325-CID.raw` (a Thermo `.raw` file). Reading a `.d`
+needs `spxtacular[bruker]`, an mzML `spxtacular[mzml]`, and a `.raw` `spxtacular[thermo]` plus a
+.NET 8 runtime.
+
 ## Lookup objects
 
 `.ms1` and `.ms2` are **not** generators. Each property returns a small lookup object that is both
@@ -28,7 +38,10 @@ Because they are iterables and not iterators, `next(reader.ms2)` raises `TypeErr
 `next(iter(reader.ms2))` to pull the first spectrum:
 
 ```python
-first_ms2 = next(iter(reader.ms2))
+from spxtacular import Reader
+
+with Reader("run.mzML") as reader:
+    first_ms2 = next(iter(reader.ms2))
 ```
 
 Index semantics differ per backend:
@@ -754,7 +767,7 @@ Real peak lists are written by a long tail of tools, so parsing is deliberately 
 
 Structural damage is *not* tolerated, and every such error names the file and the line:
 
-```python
+```text
 ValueError: run.mgf:412: 'END IONS' without a matching 'BEGIN IONS'
 ValueError: run.mgf:87: expected 'mz intensity' on an ion line, got '843.4102'
 ValueError: run.ms2:1: '100.0 5.0' appears before any 'S' scan line
@@ -765,7 +778,7 @@ Unterminated blocks, nested `BEGIN IONS`, short `S`/`Z` lines, and unparsable nu
 
 ### Writing
 
-```python
+```text
 write_mgf(spectra, path) -> Path
 write_ms2(spectra, path, *, ionization_model=None) -> Path
 write_msp(spectra, path) -> Path
