@@ -98,10 +98,10 @@ with Reader("tests/data/example.mzML") as reader:
 ```
 
 ```text
-MsnSpectrum(scan=0, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
-MsnSpectrum(scan=2, ms_level=1, rt=None, polarity=positive, n_peaks=0)
-MsnSpectrum(scan=3, ms_level=1, rt=42.05s, polarity=positive, n_peaks=15)
-[Precursor(precursor_mz=445.3400, int=1.20e+05, z=2, mono=None)]
+MsnSpectrum(scan=19, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
+MsnSpectrum(scan=21, ms_level=1, rt=None, polarity=positive, n_peaks=0)
+MsnSpectrum(scan=None, ms_level=1, rt=42.05s, polarity=positive, n_peaks=15)
+[Precursor(precursor_mz=445.3400, int=1.20e+05, z=2)]
 ```
 
 A Bruker timsTOF `.d` directory works the same way (`Reader("run.d")` or `DReader("run.d")`, with
@@ -109,10 +109,10 @@ the `[bruker]` extra). Readers return `MsnSpectrum` objects, which add scan meta
 `rt`, `ms_level`, and `precursors` to `Spectrum`. See [Readers](readers.md) for every format and
 its options.
 
-`run.mzML` and `run.d` are stand-ins for your own files throughout this documentation. The output
-above is from `tests/data/example.mzML`, one of the small fixtures the repository ships; they are
-listed under [Readers — Example files](readers.md#example-files) and any example that opens a file
-runs as written against them.
+Names like `run.mzML`, `run.d` and `/data/sample.d` are stand-ins for your own files throughout
+this documentation. The output above is from `tests/data/example.mzML`, one of the small fixtures
+the repository ships; they are listed under [Readers — Example files](readers.md#example-files), and
+putting one of them in place of a stand-in makes the example run as written.
 
 ## Plot and annotate
 
