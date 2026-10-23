@@ -112,7 +112,7 @@ The adapters import their optional dependency only when called. Install `spxtacu
 
 ### `to_matchms` / `from_matchms`
 
-```python
+```python title="signature only - not executed"
 to_matchms(
     spectrum: Spectrum,
     *,
@@ -145,7 +145,7 @@ fields. Otherwise it returns `Spectrum`.
 
 ### `to_spectrum_utils` / `from_spectrum_utils`
 
-```python
+```python title="signature only - not executed"
 to_spectrum_utils(
     spectrum: MsnSpectrum,
     *,
@@ -182,7 +182,7 @@ Central data structure for a mass spectrum. Holds parallel numpy arrays for `mz`
 
 **Constructor:**
 
-```python
+```python title="signature only - not executed"
 Spectrum(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
@@ -337,7 +337,7 @@ and plotting takes the plain strings `"da"` or `"ppm"` (lowercase only; `"Da"` r
 
 Frozen dataclass for a single spectral peak. Returned by peak access methods.
 
-```python
+```python title="signature only - not executed"
 Peak(mz: float, intensity: float, *, charge: int | None = None, im: float | None = None, iso_score: float | None = None)
 ```
 
@@ -348,7 +348,7 @@ Peak(mz: float, intensity: float, *, charge: int | None = None, im: float | None
 Frozen, slotted, keyword-only dataclass for a selected precursor ion (no longer a `Peak`
 subclass). Exported from the package root: `from spxtacular import Precursor`.
 
-```python
+```python title="signature only - not executed"
 Precursor(
     *,
     precursor_mz: float,
@@ -406,7 +406,7 @@ class SpectrumLookup(Protocol):
     def __getitem__(self, key: Any, /) -> MsnSpectrum: ...  # the key its format uses
 ```
 
-```python
+```python title="signature only - not executed"
 DReaderMs1Lookup(dreader: DReader)
 DReaderMs2Lookup(dreader: DReader)
 MzmlSpectraLookup(reader: MzmlReader, *, ms_level: int | None = None)
@@ -423,7 +423,7 @@ Format-agnostic entry point. Detects `.d` (Bruker timsTOF), `.mzML`, `.raw` (The
 `MzmlReader` / `ThermoReader` / `MgfReader` / `Ms2Reader` / `MspReader`; any other suffix raises
 `ValueError`.
 
-```python
+```python title="signature only - not executed"
 Reader(
     path: str | Path,
     *,
@@ -464,7 +464,7 @@ Full documentation: [Readers — Reader](readers.md#reader)
 Reads `.mzML` files. A context manager is optional but recommended — it keeps one file handle open
 instead of reopening the file per operation.
 
-```python
+```python title="signature only - not executed"
 MzmlReader(
     mzml_path: str | Path,
     *,
@@ -496,7 +496,7 @@ Full documentation: [Readers — MzmlReader](readers.md#mzmlreader)
 
 Reads Bruker timsTOF `.d` directories. **Must be opened before use** — via `open()`/`close()` or, preferably, as a context manager.
 
-```python
+```python title="signature only - not executed"
 DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = None)
 ```
 
@@ -520,7 +520,7 @@ Reads Thermo `.raw` files via `fisher-py` (Thermo's RawFileReader .NET assemblie
 must be installed on the machine). **Must be opened before use** — via `open()`/`close()` or,
 preferably, as a context manager.
 
-```python
+```python title="signature only - not executed"
 ThermoReader(raw_path: str | Path, *, prefer_vendor_centroid: bool = True)
 ```
 
@@ -549,7 +549,7 @@ by magic bytes, so `.mgf.gz` / `.ms2.gz` / `.msp.gz` just work. `MspReader` hand
 NIST/SpectraST peptide-library dialect and metabolomics exports (MoNA, GNPS, MS-DIAL) with
 case-insensitive header matching.
 
-```python
+```python title="signature only - not executed"
 MgfReader(path: str | Path)
 Ms2Reader(path: str | Path)
 MspReader(path: str | Path)
@@ -576,7 +576,7 @@ Full documentation: [Readers — MGF / MS2 / MSP](readers.md#mgf-ms2-msp)
 
 Write spectra to a peak-list file, returning the path. A `.gz` suffix gzips the output.
 
-```python
+```python title="signature only - not executed"
 write_mgf(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
 write_ms2(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, ionization_model=None) -> Path
 write_msp(spectra: Iterable[Spectrum] | Spectrum, path: str | Path, *, annotations=None) -> Path
@@ -599,7 +599,7 @@ Full documentation: [Readers — Writing](readers.md#writing)
 
 Read and write HUPO-PSI mzSpecLib 1.0 spectral libraries, text or JSON, optionally gzipped.
 
-```python
+```python title="signature only - not executed"
 read_mzspeclib(path: str | Path) -> SpectralLibrary
 SpectralLibrary(entries: list[LibraryEntry] = [], attributes: tuple[CvParam, ...] = (),
                 clusters: dict[int, tuple[CvParam, ...]] = {})
@@ -634,7 +634,7 @@ Full documentation: [Spectral libraries](mzspeclib.md)
 Compress an mzML file into mzMLPy's self-indexed gzip format, which `MzmlReader` can open with
 random access. Requires the `[mzml]` extra.
 
-```python
+```python title="signature only - not executed"
 write_indexed_mzml_gzip(
     source: str | Path,
     output: str | Path,
@@ -657,7 +657,7 @@ Dataclass of parameters forwarded to `tdfpy`'s `frame.centroid()`. Only used by 
 from spxtacular import CentroidConfig
 ```
 
-```python
+```python title="signature only - not executed"
 CentroidConfig(
     *,
     mz_tolerance: float = 8.0,
@@ -714,7 +714,7 @@ conversion. All names below are exported from `spxtacular`.
 
 ### Isotope models
 
-```python
+```python title="signature only - not executed"
 IsotopeModel(
     atoms_per_da: Mapping[str, float],
     *,
@@ -741,7 +741,7 @@ omitted, `fixed_composition` is an empty mapping.
 
 ### Ionization models
 
-```python
+```python title="signature only - not executed"
 IonizationModel(
     name: str,
     polarity: Polarity,  # "positive" or "negative"
@@ -760,7 +760,7 @@ The presets are `PROTONATED` (`[M+H]+`), `DEPROTONATED` (`[M-H]-`), `SODIATED` (
 Each model provides `ion_mz()`, `neutral_mass()`, `notation()`, `to_dict()`, and `from_dict()`.
 Charge arrays keep positive magnitudes. Polarity and carrier mass live in the model.
 
-```python
+```python title="signature only - not executed"
 DeconvolutionProvenance(
     isotope_model: str,
     ionization_model: IonizationModel,
@@ -855,7 +855,7 @@ spec = from_spectrl_url(url)                                       # extract + d
 Fetch spectra from public proteomics repositories by Universal Spectrum
 Identifier via the PROXI protocol. This is the one block on the page that needs network access.
 
-```python
+```python title="needs network access - not executed"
 from spxtacular import fetch_usi, spectrum_from_proxi_response
 # or via Spectrum.from_usi(...) for the same result
 
@@ -969,7 +969,7 @@ repeated in each parameter table.
 
 ### Chromatograms and XICs
 
-```python
+```python title="signature only - not executed"
 Chromatogram(
     rt: NDArray[np.float64],
     intensity: NDArray[np.float64],
@@ -1010,7 +1010,7 @@ axis units. `total` sums samples without integration over time.
 
 The plotting wrappers are:
 
-```python
+```python title="signature only - not executed"
 plot_chromatogram(
     chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
     *,
@@ -1045,7 +1045,7 @@ Full documentation: [Visualization, chromatograms and XICs](visualization.md#chr
 
 ### `profile_centroid_plot`
 
-```python
+```python title="signature only - not executed"
 profile_centroid_plot(
     profile: Spectrum,
     *,
@@ -1069,7 +1069,7 @@ Overlays centroid sticks on the profile trace. When `centroids` is omitted, the 
 from spxtacular import plot_spectrum
 ```
 
-```python
+```python title="signature only - not executed"
 plot_spectrum(
     spectrum: Spectrum,
     *,
@@ -1117,7 +1117,7 @@ explicitly.
 from spxtacular import annotate_spectrum
 ```
 
-```python
+```python title="signature only - not executed"
 annotate_spectrum(
     spectrum: Spectrum,
     fragments,
@@ -1165,7 +1165,7 @@ identifier; unmatched peaks are drawn in grey, thinner and dimmer.
 from spxtacular import mirror_plot
 ```
 
-```python
+```python title="signature only - not executed"
 mirror_plot(
     raw: Spectrum,
     deconvoluted: Spectrum,
@@ -1213,7 +1213,7 @@ two fill their halves symmetrically. Either way the hover reports the pre-normal
 from spxtacular import mass_error_plot
 ```
 
-```python
+```python title="signature only - not executed"
 mass_error_plot(
     spectrum: Spectrum,
     fragments,
@@ -1243,7 +1243,7 @@ the y-axis is mass error, not intensity.
 from spxtacular import facet_plot
 ```
 
-```python
+```python title="signature only - not executed"
 facet_plot(
     spectrum: Spectrum,
     *,
@@ -1277,7 +1277,7 @@ from plot tables at their defaults (so relative intensity), and each panel axis 
 from spxtacular import sequence_coverage_plot
 ```
 
-```python
+```python title="signature only - not executed"
 sequence_coverage_plot(
     spectrum: Spectrum,
     peptide: str,
@@ -1336,7 +1336,7 @@ print(fig.layout.title.text)
 
 ### `reporter_ion_plot`
 
-```python
+```python title="signature only - not executed"
 reporter_ion_plot(
     spectrum: Spectrum,
     plex: str | IsobaricTagInfo | ReporterIons = "TMT10",
@@ -1359,7 +1359,7 @@ picked peaks highlighted. Missing channels are marked *n.d.*. A `ReporterIons` i
 
 ### `compose_figure`
 
-```python
+```python title="signature only - not executed"
 compose_figure(
     figures: Sequence[FigureSpec],
     *,
@@ -1383,7 +1383,7 @@ that is not a `FigureSpec` raises `SpxtacularError`.
 which style. `backend="spec"` returns one instead of a drawn figure, so layout can be inspected or
 tested without a rendering engine.
 
-```python
+```python title="signature only - not executed"
 FigureSpec(
     cells: list[Cell],
     style: FigureStyle,
@@ -1412,7 +1412,7 @@ A style holds everything about a figure's geometry and type that is not colour (
 and 0.6 pt axis lines whichever engine drew it. All sizes are in points (1/72 inch) unless the name
 says otherwise.
 
-```python
+```python title="signature only - not executed"
 get_style(style: Literal["paper", "screen", "talk"] | str | FigureStyle) -> FigureStyle
 
 FigureStyle(
@@ -1487,7 +1487,7 @@ style = spx.get_style("paper").with_(font_size=8, label_size=6.5)
 
 ### `save_figure`
 
-```python
+```python title="signature only - not executed"
 save_figure(fig, path: str | Path, *, scale: float | None = None, dpi: float | None = None, **kwargs) -> Path
 ```
 
@@ -1597,7 +1597,7 @@ theme.set_plot_theme("light")
 
 ### `set_palette`
 
-```python
+```python title="signature only - not executed"
 theme.set_palette(
     *,
     categorical: dict[ThemeMode, list[str]] | None = None,   # >= 8 hues per mode
@@ -1644,7 +1644,7 @@ theme.set_palette(
 from spxtacular import da_to_ppm, ppm_to_da
 ```
 
-```python
+```python title="signature only - not executed"
 da_to_ppm(delta: float, mz: float) -> float      # delta / mz * 1e6
 ppm_to_da(delta_ppm: float, mz: float) -> float  # delta_ppm * mz / 1e6
 ```
@@ -1684,7 +1684,7 @@ Full documentation: [Fragment matching and scoring](scoring.md)
 from spxtacular import match_fragments
 ```
 
-```python
+```python title="signature only - not executed"
 match_fragments(
     spectrum: Spectrum,
     fragments,
@@ -1706,7 +1706,7 @@ by ascending `peak_index`.
 One fragment-to-peak match. Frozen, slotted and keyword-only; built by `match_fragments`, not by
 hand.
 
-```python
+```python title="signature only - not executed"
 MatchedFragment(
     *,
     fragment: Fragment,          # the matched peptacular Fragment
@@ -1727,7 +1727,7 @@ Field descriptions: [Matching and scoring — `match_fragments()`](scoring.md#ma
 from spxtacular import score
 ```
 
-```python
+```python title="signature only - not executed"
 score(
     spectrum: Spectrum,
     fragments,
@@ -1743,7 +1743,7 @@ Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched
 
 ### Spectrum similarity
 
-```python
+```python title="signature only - not executed"
 cosine(
     query: Spectrum,
     reference: Spectrum,
@@ -1783,7 +1783,7 @@ All three return values in `[0, 1]`, accept unsorted spectra, and use one-to-one
 
 Full documentation: [Isobaric reporter ions](scoring.md#isobaric-reporter-ions-tmt-tmtpro-itraq)
 
-```python
+```python title="signature only - not executed"
 extract_reporter_ions(
     spectrum: Spectrum,
     plex: str | IsobaricTagInfo,          # "TMT10", "TMTpro18", "iTRAQ4", ...
@@ -1879,7 +1879,7 @@ Because `intensity` and `intensity_abs` are separate, tooltips are unaffected by
 from spxtacular import build_plot_table
 ```
 
-```python
+```python title="signature only - not executed"
 build_plot_table(
     spectrum: Spectrum,
     *,
@@ -1910,7 +1910,7 @@ Plain spectra have no `texture` parameter because they have no ion series to dis
 from spxtacular import build_annot_plot_table
 ```
 
-```python
+```python title="signature only - not executed"
 build_annot_plot_table(
     spectrum: Spectrum,
     fragments,
@@ -1939,7 +1939,7 @@ joined by `<br>`.
 from spxtacular import plot_from_table
 ```
 
-```python
+```python title="signature only - not executed"
 plot_from_table(
     table: pd.DataFrame,
     *,
@@ -1983,7 +1983,7 @@ The legend is shown only when the table holds more than one `series`.
 from spxtacular import table_view
 ```
 
-```python
+```python title="signature only - not executed"
 table_view(
     table: pd.DataFrame,
     *,

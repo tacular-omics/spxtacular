@@ -161,7 +161,7 @@ Everything below is the per-method reference, grouped by type: [`SpectrumType`](
 
 ## SpectrumType
 
-```python
+```python title="signature only - not executed"
 class SpectrumType(StrEnum):
     CENTROID = "centroid"
     PROFILE  = "profile"
@@ -174,7 +174,7 @@ class SpectrumType(StrEnum):
 
 ## Peak
 
-```python
+```python title="signature only - not executed"
 @dataclass(frozen=True, slots=True)
 class Peak:
     mz: float
@@ -189,7 +189,7 @@ A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso
 
 `iso_score` holds the isotopic profile score (0–1) assigned during deconvolution, or `None` for peaks that have not been through deconvolution.
 
-```python
+```python title="signature only - not executed"
 >>> peak = Peak(mz=500.1, intensity=1e5, charge=2)
 >>> repr(peak)
 'Peak(mz=500.1000, int=1.00e+05, z=2)'
@@ -207,7 +207,7 @@ A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso
 
 ## Spectrum
 
-```python
+```python title="signature only - not executed"
 @dataclass(slots=True, eq=False)
 class Spectrum:
     mz: NDArray[np.float64]
@@ -292,7 +292,7 @@ profile_spec = Spectrum(
 
 #### `peaks` property
 
-```python
+```python title="signature only - not executed"
 @property
 def peaks(self) -> list[Peak]
 ```
@@ -306,7 +306,7 @@ for peak in spec.peaks:
 
 #### `top_peaks`
 
-```python
+```python title="signature only - not executed"
 def top_peaks(
     self,
     n: int,
@@ -340,7 +340,7 @@ low_mz = spec.top_peaks(3, by="mz", reverse=False)
 
 #### `has_peak`
 
-```python
+```python title="signature only - not executed"
 def has_peak(
     self,
     target_mz: float,
@@ -365,7 +365,7 @@ deconvoluted.has_peak(736.4050, tolerance=10, tolerance_unit="ppm", target_charg
 
 #### `get_peak`
 
-```python
+```python title="signature only - not executed"
 def get_peak(
     self,
     target_mz: float,
@@ -389,7 +389,7 @@ if peak:
 
 #### `get_peaks`
 
-```python
+```python title="signature only - not executed"
 def get_peaks(
     self,
     target_mz: float,
@@ -413,7 +413,7 @@ Transformation methods that expose `inplace` default to `False`. In that mode th
 
 #### `filter`
 
-```python
+```python title="signature only - not executed"
 def filter(
     self,
     *,
@@ -457,7 +457,7 @@ filtered = spec.filter(top_n_per_window=(10, 100.0))
 
 #### `normalize`
 
-```python
+```python title="signature only - not executed"
 def normalize(
     self,
     *,
@@ -488,7 +488,7 @@ norm = spec.normalize(method="tic")       # TIC normalization
 
 #### `denoise`
 
-```python
+```python title="signature only - not executed"
 def denoise(
     self,
     *,
@@ -520,7 +520,7 @@ spec.denoise(method=5000.0)          # fixed absolute threshold
 
 #### `centroid`
 
-```python
+```python title="signature only - not executed"
 def centroid(
     self,
     *,
@@ -545,7 +545,7 @@ centroided = profile_spec.centroid()
 
 #### `merge`
 
-```python
+```python title="signature only - not executed"
 def merge(
     self,
     *,
@@ -566,7 +566,7 @@ merged = spec.merge(mz_tolerance=5, mz_tolerance_unit="ppm")
 
 #### `deconvolute`
 
-```python
+```python title="signature only - not executed"
 def deconvolute(
     self,
     *,
@@ -619,7 +619,7 @@ decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm"
 
 #### `decharge`
 
-```python
+```python title="signature only - not executed"
 def decharge(
     self,
     *,
@@ -651,7 +651,7 @@ neutral = deconvoluted.decharge()
 
 #### `sort`
 
-```python
+```python title="signature only - not executed"
 def sort(
     self,
     *,
@@ -670,7 +670,7 @@ by_intensity = spec.sort(by="intensity", reverse=True)   # most intense first
 
 #### `update`
 
-```python
+```python title="signature only - not executed"
 def update(self, *, inplace: bool = False, **kwargs) -> Self
 ```
 
@@ -686,7 +686,7 @@ renamed = spec.update(spectrum_type="centroid")
 
 #### `to_dict` / `Spectrum.from_dict`
 
-```python
+```python title="signature only - not executed"
 def to_dict(self) -> dict[str, Any]
 
 @classmethod
@@ -713,7 +713,7 @@ instead of silently discarding data.
 
 #### `to_json` / `Spectrum.from_json`
 
-```python
+```python title="signature only - not executed"
 def to_json(self, *, indent: int | None = None) -> str
 
 @classmethod
@@ -745,7 +745,7 @@ schema = get_json_schema("spectrum")
 
 #### `to_spectrl_token` / `Spectrum.from_spectrl_token`
 
-```python
+```python title="signature only - not executed"
 def to_spectrl_token(self, *, lossless: bool = False, max_len: int | None = None) -> str
 
 @classmethod
@@ -766,7 +766,7 @@ The round-trip is faithful — every spxtacular field is carried. Ion mobility r
 
 #### `to_spectrl_url` / `Spectrum.from_spectrl_url`
 
-```python
+```python title="signature only - not executed"
 def to_spectrl_url(
     self,
     *,
@@ -797,7 +797,7 @@ restored = Spectrum.from_spectrl_url(url)
 
 #### `save` / `Spectrum.load`
 
-```python
+```python title="signature only - not executed"
 def save(self, path: str | Path) -> None
 
 @classmethod
@@ -815,7 +815,7 @@ For `MsnSpectrum`, all MSn metadata (scan number, RT, precursors, isolation wind
 
 #### `Spectrum.from_usi`
 
-```python
+```python title="signature only - not executed"
 @classmethod
 def from_usi(
     cls,
@@ -841,7 +841,7 @@ fetched = Spectrum.from_usi(
 
 #### `plot`
 
-```python
+```python title="signature only - not executed"
 def plot(
     self,
     *,
@@ -876,7 +876,7 @@ See [Visualization](visualization.md) for `mirror_plot()` and `annotate_spectrum
 
 #### `annotate`
 
-```python
+```python title="signature only - not executed"
 def annotate(
     self,
     fragments,
@@ -902,7 +902,7 @@ fig.show()
 
 #### `mass_error_plot`
 
-```python
+```python title="signature only - not executed"
 def mass_error_plot(
     self,
     fragments,
@@ -924,7 +924,7 @@ ms2.mass_error_plot(fragments, tolerance=20, tolerance_unit="ppm", unit="ppm").s
 
 #### `facet_plot`
 
-```python
+```python title="signature only - not executed"
 def facet_plot(
     self,
     *,
@@ -950,7 +950,7 @@ ms2.facet_plot(
 
 #### `plot_table`
 
-```python
+```python title="signature only - not executed"
 def plot_table(
     self,
     *,
@@ -971,7 +971,7 @@ fig.show()
 
 #### `annot_plot_table`
 
-```python
+```python title="signature only - not executed"
 def annot_plot_table(
     self,
     fragments,
@@ -1002,7 +1002,7 @@ See [`plot_table`](#plot_table) above for the full column list, and
 
 #### `match_fragments`
 
-```python
+```python title="signature only - not executed"
 def match_fragments(
     self,
     fragments,
@@ -1018,7 +1018,7 @@ Match fragment ions against this spectrum's peaks. Thin wrapper around `spxtacul
 
 #### `score`
 
-```python
+```python title="signature only - not executed"
 def score(
     self,
     fragments,
@@ -1038,7 +1038,7 @@ Returns a dict with eight PSM metrics: `hyperscore`, `probability_score`, `total
 
 #### `remove_precursor_peak`
 
-```python
+```python title="signature only - not executed"
 def remove_precursor_peak(
     self,
     *,
@@ -1076,7 +1076,7 @@ cleaned = spec.remove_precursor_peak(precursor_mz=450.25, precursor_charge=2)
 
 #### `scale_intensity`
 
-```python
+```python title="signature only - not executed"
 def scale_intensity(
     self,
     *,
@@ -1091,7 +1091,7 @@ Non-linear intensity scaling (independent of `normalize()`, which divides by a r
 
 #### `round_mz`
 
-```python
+```python title="signature only - not executed"
 def round_mz(
     self,
     *,
@@ -1112,7 +1112,7 @@ so the rounded values remain identifiable as neutral masses.
 
 #### `Spectrum.combine`
 
-```python
+```python title="signature only - not executed"
 @classmethod
 def combine(cls, spectra: list[Spectrum]) -> Spectrum
 ```
@@ -1159,7 +1159,7 @@ peaks stay small, so a follow-up `filter(min_intensity=...)` — thresholded at,
 `MsnSpectrum` extends `Spectrum` with instrument-level metadata. Every file reader yields it. All
 `Spectrum` methods remain available.
 
-```python
+```python title="signature only - not executed"
 @dataclass(slots=True, kw_only=True, eq=False)
 class MsnSpectrum(Spectrum):
     # Scan identification
@@ -1201,7 +1201,7 @@ All fields are keyword-only (`kw_only=True`), including the inherited `Spectrum`
 
 ### Precursor
 
-```python
+```python title="signature only - not executed"
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Precursor:
     precursor_mz: float
