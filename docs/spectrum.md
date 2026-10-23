@@ -1,5 +1,164 @@
 # Spectrum and MsnSpectrum
 
+`Spectrum` holds the peak arrays of one mass spectrum: `mz` and `intensity`, and optionally
+`charge`, `im` (ion mobility) and `iso_score`. `MsnSpectrum` adds the scan metadata a reader knows —
+scan number, MS level, retention time, precursors. Processing methods return a new spectrum instead
+of changing the one they were called on, so a piece of work reads as a single chain.
+
+This page opens with the sequence most work follows, then gives the per-method reference.
+
+## The usual sequence
+
+Load a spectrum, inspect it, clean it up, assign charge states, match fragments, plot. Every block
+below runs as written from a clone of the
+[repository](https://github.com/tacular-omics/spxtacular) and continues the one before it. The
+input is `tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz`, a four-spectrum excerpt of a
+human fetal brain HCD spectral library that needs no optional extra. The instrument-file fixtures
+are listed under [Readers — Example files](readers.md#example-files).
+
+### 1. Load a spectrum
+
+`read_mzspeclib` yields `LibraryEntry` objects, each carrying an `MsnSpectrum`. A reader
+(`Reader`, `DReader`, `MzmlReader`, `ThermoReader`, `MgfReader`) yields the same `MsnSpectrum`
+objects from an instrument file, so every later step is identical whatever the input was.
+
+```python
+from pathlib import Path
+
+import peptacular as pt
+import spxtacular as spx
+
+library = Path("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")
+peptide = "LAQANGWGVM[Oxidation]VSHR/2"
+
+entries = [e for e in spx.read_mzspeclib(library) if e.name and peptide in e.name]
+spec = entries[0].spectrum  # one of four HCD acquisitions of this peptidoform
+print(spec)
+```
+
+```text
+MsnSpectrum(scan=None, ms_level=2, rt=1501.00s, polarity=positive, n_peaks=339)
+```
+
+### 2. Inspect it
+
+`len(spec)` is the peak count. [`peaks`](#peaks-property) and [`top_peaks`](#top_peaks) return
+read-only [`Peak`](#peak) snapshots; [`has_peak`](#has_peak), [`get_peak`](#get_peak) and
+[`get_peaks`](#get_peaks) look for one m/z. The arrays themselves (`spec.mz`, `spec.intensity`) stay
+available for numpy work.
+
+```python
+print(len(spec), "peaks,", "MS level", spec.ms_level, "at", spec.rt, "s")
+print("precursor m/z", spec.precursors[0].precursor_mz)
+for peak in spec.top_peaks(3):
+    print(peak)
+```
+
+```text
+339 peaks, MS level 2 at 1501.0 s
+precursor m/z 771.3848
+Peak(mz=737.4050, int=1.00e+04)
+Peak(mz=101.0709, int=9.48e+03)
+Peak(mz=980.5052, int=7.26e+03)
+```
+
+### 3. Clean it up
+
+[`filter`](#filter) removes peaks outside bounds (m/z, intensity, charge, ion mobility, isotope
+score) or keeps only the most intense ones. This library spectrum is already centroided and fairly
+clean, so a modest intensity floor only drops the low-intensity tail.
+
+```python
+clean = spec.filter(min_intensity=200.0)
+print(len(spec), "->", len(clean), "peaks")
+```
+
+```text
+339 -> 181 peaks
+```
+
+On raw data the two companion steps come first: [`centroid`](#centroid) turns profile data into
+peaks, and [`denoise`](#denoise) estimates a noise floor from the spectrum itself rather than
+taking a number from you. [`normalize`](#normalize) and [`scale_intensity`](#scale_intensity) adjust
+the intensity scale, and [`remove_precursor_peak`](#remove_precursor_peak) strips the surviving
+precursor and its isotopes before scoring.
+
+### 4. Assign charge states and go to neutral masses
+
+[`deconvolute`](#deconvolute) groups peaks into isotope clusters and records a charge magnitude and
+an isotopic profile score per peak. [`decharge`](#decharge) then converts each cluster's
+monoisotopic m/z to a neutral mass. The order matters: `decharge()` on a spectrum that has not been
+deconvoluted raises `SpxtacularError`.
+
+```python
+deconv = clean.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_unit="ppm")
+assigned = int((deconv.charge > 0).sum())
+print(deconv.spectrum_type, "-", assigned, "peaks in clusters,", len(deconv), "peaks total")
+
+neutral = deconv.decharge()
+print(neutral.top_peaks(1)[0])
+```
+
+```text
+deconvoluted - 24 peaks in clusters, 157 peaks total
+Peak(mz=736.3977, int=1.31e+04, z=0, score=0.903)
+```
+
+A `charge` of `-1` marks a singleton with no isotope neighbours, `0` a neutral mass after
+`decharge()`; see [Charge conventions](#charge-conventions). Fragment matching works on either
+m/z or neutral masses, so step 5 can take `clean`, `deconv` or `neutral`.
+
+### 5. Match fragments and score the match
+
+[`match_fragments`](#match_fragments) pairs peptacular fragments with peaks;
+[`score`](#score) runs the same matching and returns the PSM metrics.
+
+```python
+fragments = pt.parse(peptide).fragment(ion_types=("b", "y"), charges=[1, 2])
+matches = clean.match_fragments(fragments, tolerance=20, tolerance_unit="ppm")
+print(len(matches), "of", len(fragments), "fragments matched")
+for m in matches[:3]:
+    print(f"{m.fragment.to_mzpaf():>8s}  {m.peak_mz:9.4f}  {m.ppm_error:+5.1f} ppm  {m.intensity_pct:4.1f}%")
+
+scores = clean.score(fragments, tolerance=20, tolerance_unit="ppm")
+print(f"hyperscore {scores['hyperscore']:.2f}, spectral angle {scores['spectral_angle']:.3f}")
+```
+
+```text
+22 of 56 fragments matched
+   y1{R}   175.1187   -1.4 ppm   2.4%
+  b2{LA}   185.1282   -1.4 ppm   1.8%
+  y2{HR}   312.1775   -1.2 ppm   1.1%
+hyperscore 16.19, spectral angle 0.459
+```
+
+Every metric is defined in [Matching and scoring](scoring.md).
+
+### 6. Plot it
+
+[`plot`](#plot) draws the spectrum, [`annotate`](#annotate) draws it with the fragment labels, and
+[`mass_error_plot`](#mass_error_plot) and [`facet_plot`](#facet_plot) add the diagnostic panels.
+`spx.save_figure(fig, "annotated.html")` writes the figure; `.png`, `.svg` and `.pdf` work too.
+
+```python
+fig = spec.annotate(fragments, tolerance=20, tolerance_unit="ppm")
+print(type(fig).__name__)
+```
+
+```text
+Figure
+```
+
+[`plot_table`](#plot_table) and [`annot_plot_table`](#annot_plot_table) return the `DataFrame`
+behind a figure, so the numbers a plot shows can be read or edited directly. Every figure and
+option is in [Visualization](visualization.md).
+
+---
+
+Everything below is the per-method reference, grouped by type: [`SpectrumType`](#spectrumtype) and
+[`Peak`](#peak) first, then [`Spectrum`](#spectrum) and each of its methods, then
+[`MsnSpectrum`](#msnspectrum), [`Precursor`](#precursor) and [centroiding](#centroiding).
+
 ## SpectrumType
 
 ```python
@@ -58,6 +217,7 @@ class Spectrum:
     spectrum_type: SpectrumType | str | None = None
     denoised: str | None = None
     normalized: str | None = None
+    deconvolution: DeconvolutionProvenance | None = None
 ```
 
 The central data structure. `mz` and `intensity` must have the same length. `charge`, `im`, and `iso_score` must also match that length when provided.
@@ -74,6 +234,7 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 | `spectrum_type` | `SpectrumType \| str \| None` | Stage tag: `CENTROID`, `PROFILE`, or `DECONVOLUTED` |
 | `denoised` | `str \| None` | Name of the denoising method applied, or `None` |
 | `normalized` | `str \| None` | Name of the normalization method applied, or `None` |
+| `deconvolution` | `DeconvolutionProvenance \| None` | Isotope and ionization models plus every deconvolution parameter, recorded by `deconvolute()` |
 
 **Validation rules enforced in `__post_init__`:**
 
