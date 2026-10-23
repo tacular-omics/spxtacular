@@ -582,6 +582,8 @@ def from_spectrl_url(cls, url: str) -> Spectrum | MsnSpectrum
 
 Bind a token into a shareable URL (or `data:` URI), or extract and decode one. `mode="fragment"` (default) puts the token after `#` so it never reaches the server; `mode="query"` uses `base?<param>=…`; `mode="data"` emits a `data:application/vnd.spectrl;v=…,…` URI (`base` ignored). `base` is required for `"fragment"` and `"query"`.
 
+`base` names whatever will decode the token: the [spxtacular spectrum viewer](https://spectra.tacular.dev/) reads a `…#spectrl.v3.…` URL directly, as does any page using [spectrl](https://tacular-omics.github.io/spectrl/)'s decoder, and `from_spectrl_url` reads one back here. With the default fragment binding the spectrum travels in the part of the URL a browser keeps to itself, so sharing a link uploads nothing and leaves no copy in the host's logs.
+
 ```python
 url = spec.to_spectrl_url(base="https://example.com/view")             # …#spectrl.…
 uri = spec.to_spectrl_url(mode="data")                            # data: URI
