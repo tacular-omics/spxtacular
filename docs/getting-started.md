@@ -109,6 +109,11 @@ the `[bruker]` extra). Readers return `MsnSpectrum` objects, which add scan meta
 `rt`, `ms_level`, and `precursors` to `Spectrum`. See [Readers](readers.md) for every format and
 its options.
 
+`run.mzML` and `run.d` are stand-ins for your own files throughout this documentation. The output
+above is from `tests/data/example.mzML`, one of the small fixtures the repository ships; they are
+listed under [Readers — Example files](readers.md#example-files) and any example that opens a file
+runs as written against them.
+
 ## Plot and annotate
 
 Plots are interactive plotly figures. Pass fragments from peptacular to annotate a spectrum:

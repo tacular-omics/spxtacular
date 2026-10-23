@@ -378,7 +378,7 @@ name one spectrum (no scan numbers in the file, duplicates, ambiguous Bruker num
 ```python
 from spxtacular import Reader
 
-with Reader("run.mzML") as r:   # or Reader("/data/sample.d")
+with Reader("run.mzML") as r:   # your own file; or Reader("/data/sample.d")
     for spec in r.ms1:
         ...
 ```

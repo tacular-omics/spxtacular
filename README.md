@@ -129,6 +129,10 @@ with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx
 Gzipped mzML uses automatic disk-backed access by default. Create a self-indexed gzip artifact
 with `spx.write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")`.
 
+`run.mzML` stands in for your own file. The repository's tests ship small mzML, Bruker `.d` and
+Thermo `.raw` fixtures that any such example runs against — see
+[Readers — Example files](https://tacular-omics.github.io/spxtacular/readers/#example-files).
+
 ## Features
 
 | Feature | Description |

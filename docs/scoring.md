@@ -151,7 +151,7 @@ It is a cosine, so it is scale-invariant: 1.0 means the observed pattern matches
 import peptacular as pt
 from spxtacular import MzmlReader, score
 
-with MzmlReader("run.mzML") as reader:
+with MzmlReader("run.mzML") as reader:          # your own file; see Readers > Example files
     # reader.ms2 is an iterable lookup object, not an iterator — wrap it in iter()
     spec = next(iter(reader.ms2))
 
@@ -225,7 +225,7 @@ reporter mass is typed into spxtacular.
 ```python
 import spxtacular as spx
 
-spec = next(iter(spx.Reader("run.mzML").ms2))
+spec = next(iter(spx.Reader("run.mzML").ms2))   # your own file; see Readers > Example files
 ions = spec.reporter_ions("TMT10")          # or spx.extract_reporter_ions(spec, "TMT10")
 ions.channels        # ('126', '127N', '127C', ..., '131N')
 ions.intensity       # one value per channel, 0.0 where no peak was found
