@@ -148,6 +148,17 @@ url = spec.to_spectrl_url(base="https://example.com/view")  # token in the URL f
 restored = Spectrum.from_spectrl_url(url)
 ```
 
+`base` is the page that will read the token. The
+[spxtacular spectrum viewer](https://spectra.tacular.dev/) is one such page: open a
+`…#spectrl.v3.…` URL there and it decodes the token and draws the spectrum, with no upload and no
+account. Any page that calls [spectrl](https://tacular-omics.github.io/spectrl/)'s decoder works
+the same way, including one you host yourself, and `from_spectrl_url` reads the URL back into a
+`Spectrum` here. Because `mode="fragment"` (the default) puts the token after the `#`, and browsers
+do not send a fragment to the server, the spectrum never leaves the recipient's browser — it is not
+in the host's request logs. `mode="query"` puts it in a query parameter instead, where it *is* sent
+and logged, and `mode="data"` emits a self-contained `data:` URI with no host at all. The default
+encoding is lossy within published tolerances; pass `lossless=True` for a bit-exact round trip.
+
 With the `[interop]` extra, `spx.to_matchms()` / `spx.from_matchms()` and
 `spx.to_spectrum_utils()` / `spx.from_spectrum_utils()` convert to and from those libraries. See
 [API reference: Ecosystem interoperability](api.md#ecosystem-interoperability) for what each
