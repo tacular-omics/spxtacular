@@ -179,6 +179,7 @@ class SpectrumType(StrEnum):
 class Peak:
     mz: float
     intensity: float
+    _: KW_ONLY          # every field below is keyword-only
     charge: int | None = None
     im: float | None = None
     iso_score: float | None = None
@@ -207,10 +208,11 @@ A frozen dataclass representing a single detected peak. `charge`, `im`, and `iso
 ## Spectrum
 
 ```python
-@dataclass(slots=True)
+@dataclass(slots=True, eq=False)
 class Spectrum:
     mz: NDArray[np.float64]
     intensity: NDArray[np.float64]
+    _: KW_ONLY          # every field below is keyword-only
     charge: NDArray[np.int32] | None = None
     im: NDArray[np.float64] | None = None
     iso_score: NDArray[np.float64] | None = None
@@ -245,9 +247,16 @@ The central data structure. `mz` and `intensity` must have the same length. `cha
 
 **`is_decharged` property** — `True` when every (non-dropped) peak's `charge == 0`, i.e. the spectrum has already been through `decharge()`. Used internally by `decharge()`, `remove_precursor_peak()`, and `match_fragments()` to detect neutral-mass spectra.
 
+Every example block in the reference below runs as written after this one and continues the
+one before it, with one exception: the [`from_usi`](#spectrumfrom_usi) fetch needs network access. `spec` is
+a three-peak spectrum built by hand; `ms2`, `deconvoluted`, `fragments`, the replicates and
+`profile_spec` stand in for a real scan, its fragments, repeat acquisitions and profile data.
+
 ```python
 import numpy as np
-from spxtacular import Spectrum
+import peptacular as pt
+import spxtacular as spx
+from spxtacular import Peak, Spectrum, plot_from_table
 
 spec = Spectrum(
     mz=np.array([500.1, 800.2, 1200.5], dtype=np.float64),
@@ -255,6 +264,26 @@ spec = Spectrum(
 )
 print(spec)
 # Spectrum(n_peaks=3, type=None, denoised=None, normalized=None)
+
+# A real HCD scan, its fragments and three replicates of it, from the example library
+peptide = "LAQANGWGVM[Oxidation]VSHR/2"
+entries = [
+    e
+    for e in spx.read_mzspeclib("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")
+    if e.name and peptide in e.name
+]
+ms2 = entries[0].spectrum
+deconvoluted = ms2.deconvolute(charge_range=(1, 2), tolerance=20, tolerance_unit="ppm")
+fragments = pt.parse(peptide).fragment(ion_types=("b", "y"), charges=[1, 2])
+spec1, spec2, spec3 = (e.spectrum for e in entries[:3])
+
+# A single Gaussian peak sampled in profile mode, for the centroiding examples
+grid = np.arange(499.80, 500.40, 0.005)
+profile_spec = Spectrum(
+    mz=grid,
+    intensity=1e5 * np.exp(-((grid - 500.1) ** 2) / (2 * 0.01**2)),
+    spectrum_type="profile",
+)
 ```
 
 ---
@@ -281,6 +310,7 @@ for peak in spec.peaks:
 def top_peaks(
     self,
     n: int,
+    *,
     by: Literal["intensity", "mz", "charge", "im", "score"] = "intensity",
     reverse: bool = True,
 ) -> list[Peak]
@@ -327,7 +357,10 @@ Returns `True` if at least one peak matches all supplied criteria.
 
 ```python
 spec.has_peak(500.1, tolerance=0.02)
-spec.has_peak(500.1, tolerance=10, tolerance_unit="ppm", target_charge=2)
+
+# target_charge and target_im need the matching array, so they need a deconvoluted
+# spectrum or one read with ion mobility: `deconvoluted` comes from the setup block.
+deconvoluted.has_peak(736.4050, tolerance=10, tolerance_unit="ppm", target_charge=1)
 ```
 
 #### `get_peak`
@@ -383,6 +416,7 @@ Transformation methods that expose `inplace` default to `False`. In that mode th
 ```python
 def filter(
     self,
+    *,
     min_mz: float | None = None,
     max_mz: float | None = None,
     min_intensity: float | None = None,
@@ -426,6 +460,7 @@ filtered = spec.filter(top_n_per_window=(10, 100.0))
 ```python
 def normalize(
     self,
+    *,
     method: Literal["max", "tic", "median"] = "max",
     inplace: bool = False,
 ) -> Self
@@ -456,6 +491,7 @@ norm = spec.normalize(method="tic")       # TIC normalization
 ```python
 def denoise(
     self,
+    *,
     method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
             | float | int = "mad",
     inplace: bool = False,
@@ -487,6 +523,7 @@ spec.denoise(method=5000.0)          # fixed absolute threshold
 ```python
 def centroid(
     self,
+    *,
     min_intensity: float | Literal["noise"] | None = None,
     inplace: bool = False,
 ) -> Self
@@ -511,6 +548,7 @@ centroided = profile_spec.centroid()
 ```python
 def merge(
     self,
+    *,
     mz_tolerance: float = 0.01,
     mz_tolerance_unit: Literal["ppm", "da"] = "da",
     im_tolerance: float = 0.05,
@@ -531,6 +569,7 @@ merged = spec.merge(mz_tolerance=5, mz_tolerance_unit="ppm")
 ```python
 def deconvolute(
     self,
+    *,
     tolerance: float = 50,
     tolerance_unit: Literal["ppm", "da"] = "ppm",
     charge_range: tuple[int, int] = (1, 3),
@@ -583,8 +622,8 @@ decon = spec.deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm"
 ```python
 def decharge(
     self,
-    inplace: bool = False,
     *,
+    inplace: bool = False,
     ionization_model: IonizationModel | str | float | None = None,
 ) -> Self
 ```
@@ -604,7 +643,7 @@ the neutral m/z values unchanged. The default non-inplace path returns an indepe
 > The `iso_score` array is propagated through `decharge()` — each surviving neutral-mass peak retains the score of its charged precursor.
 
 ```python
-neutral = decon.decharge()
+neutral = deconvoluted.decharge()
 # neutral.mz now contains neutral masses sorted ascending
 # neutral.charge is all zeros
 # neutral.iso_score carries through from the deconvoluted spectrum
@@ -615,6 +654,7 @@ neutral = decon.decharge()
 ```python
 def sort(
     self,
+    *,
     by: Literal["mz", "intensity", "charge", "im", "score"] = "mz",
     reverse: bool = False,
     inplace: bool = False,
@@ -729,8 +769,8 @@ The round-trip is faithful — every spxtacular field is carried. Ion mobility r
 ```python
 def to_spectrl_url(
     self,
-    base: str | None = None,
     *,
+    base: str | None = None,
     mode: str = "fragment",   # "fragment" | "query" | "data"
     param: str = "d",
     lossless: bool = False,
@@ -780,6 +820,7 @@ For `MsnSpectrum`, all MSn metadata (scan number, RT, precursors, isolation wind
 def from_usi(
     cls,
     usi: str,
+    *,
     backend: str = "aggregator",
     timeout: float = 30,
 ) -> Spectrum | MsnSpectrum
@@ -788,7 +829,8 @@ def from_usi(
 Fetch a spectrum from a public proteomics repository via Universal Spectrum Identifier. It uses the PROXI REST API. Backends are `"aggregator"` (default), `"pride"`, `"massive"`, `"peptideatlas"`, `"jpost"`, or a full URL. It returns `MsnSpectrum` when scan-level metadata or precursor information is present.
 
 ```python
-spec = Spectrum.from_usi(
+# The one example on this page that needs network access.
+fetched = Spectrum.from_usi(
     "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"
 )
 ```
@@ -838,6 +880,7 @@ See [Visualization](visualization.md) for `mirror_plot()` and `annotate_spectrum
 def annotate(
     self,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     title: str | None = None,
@@ -863,6 +906,7 @@ fig.show()
 def mass_error_plot(
     self,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -883,6 +927,7 @@ ms2.mass_error_plot(fragments, tolerance=20, tolerance_unit="ppm", unit="ppm").s
 ```python
 def facet_plot(
     self,
+    *,
     fragments=None,
     mirror_spectrum: Spectrum | None = None,
     title: str | None = None,
@@ -897,7 +942,10 @@ def facet_plot(
 Multi-panel plot on a shared m/z axis. Panel 1 is always the (optionally annotated) spectrum. Passing `fragments` adds a mass-error panel; passing `mirror_spectrum` adds an inverted mirror panel below.
 
 ```python
-ms2.facet_plot(fragments, mirror_spectrum=ms2.deconvolute().decharge()).show()
+ms2.facet_plot(
+    fragments=fragments,
+    mirror_spectrum=deconvoluted.decharge(),
+).show()
 ```
 
 #### `plot_table`
@@ -927,6 +975,7 @@ fig.show()
 def annot_plot_table(
     self,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -957,6 +1006,7 @@ See [`plot_table`](#plot_table) above for the full column list, and
 def match_fragments(
     self,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -972,6 +1022,7 @@ Match fragment ions against this spectrum's peaks. Thin wrapper around `spxtacul
 def score(
     self,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -990,6 +1041,7 @@ Returns a dict with eight PSM metrics: `hyperscore`, `probability_score`, `total
 ```python
 def remove_precursor_peak(
     self,
+    *,
     precursor_mz: float | None = None,
     precursor_charge: int | None = None,
     tolerance: float = 0.02,
@@ -1016,7 +1068,7 @@ When called on an `MsnSpectrum` without an explicit `precursor_mz`, the method a
 
 ```python
 # Auto from MsnSpectrum.precursors
-cleaned = msn.remove_precursor_peak(tolerance=10, tolerance_unit="ppm")
+cleaned = ms2.remove_precursor_peak(tolerance=10, tolerance_unit="ppm")
 
 # Explicit
 cleaned = spec.remove_precursor_peak(precursor_mz=450.25, precursor_charge=2)
@@ -1027,6 +1079,7 @@ cleaned = spec.remove_precursor_peak(precursor_mz=450.25, precursor_charge=2)
 ```python
 def scale_intensity(
     self,
+    *,
     method: Literal["root", "log", "rank"] = "root",
     degree: int = 2,
     base: float = 2.0,
@@ -1041,6 +1094,7 @@ Non-linear intensity scaling (independent of `normalize()`, which divides by a r
 ```python
 def round_mz(
     self,
+    *,
     decimals: int = 0,
     combine: Literal["sum", "max"] = "sum",
     inplace: bool = False,
@@ -1106,7 +1160,7 @@ peaks stay small, so a follow-up `filter(min_intensity=...)` — thresholded at,
 `Spectrum` methods remain available.
 
 ```python
-@dataclass(slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True, eq=False)
 class MsnSpectrum(Spectrum):
     # Scan identification
     scan_number: int | None = None
@@ -1149,22 +1203,30 @@ All fields are keyword-only (`kw_only=True`), including the inherited `Spectrum`
 
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Precursor(Peak):
-    is_monoisotopic: bool | None
+class Precursor:
+    precursor_mz: float
+    intensity: float = 0.0
+    charge: int | None = None
+    im: float | None = None
+    im_type: IMTypeLike | None = None   # unit of `im`: "ook0", "drift_time_ms", ...
+    iso_score: float | None = None
+    is_monoisotopic: bool | None = None
 ```
 
-Represents a precursor ion selected for fragmentation. Stored in `MsnSpectrum.precursors`.
+Represents a precursor ion selected for fragmentation. Stored in `MsnSpectrum.precursors`. It is
+not a `Peak` subclass: the selected-ion m/z is `precursor_mz`, and `im_type` records which mobility
+unit `im` is in.
 
 ### Example: inspecting an MS2 spectrum
 
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")   # your own file; see [Example files](readers.md#example-files)
-for spec in reader.ms2:
-    print(f"Scan {spec.scan_number}, RT={spec.rt:.1f}s, CE={spec.collision_energy}")
-    if spec.precursors:
-        prec = spec.precursors[0]
+reader = MzmlReader("tests/data/example.mzML")   # or your own file; see [Example files](readers.md#example-files)
+for scan in reader.ms2:
+    print(f"Scan {scan.scan_number}, RT={scan.rt:.1f}s, CE={scan.collision_energy}")
+    if scan.precursors:
+        prec = scan.precursors[0]
         print(f"  Precursor: {prec.precursor_mz:.4f} m/z, z={prec.charge}")
     break
 ```

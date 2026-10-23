@@ -72,6 +72,37 @@ many methods to repeat here in full, so they are listed with their return type a
 summary; every method's full signature, its parameter table and a runnable example are in the
 [Spectrum reference](spectrum.md#spectrum).
 
+## Setup for the examples
+
+The example blocks on this page share one spectrum, read from the spectral library fixture in a
+clone of the [repository](https://github.com/tacular-omics/spxtacular):
+`tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz`, a 21-spectrum excerpt of a human fetal
+brain HCD library that needs no optional extra. Run this block first. Every later block that is an example — rather than a signature, which is
+shown without a body — runs as written after it, with one exception: the
+[USI fetch](#usi-loading) needs network access to a public repository. `run.mzML` and `run.d`
+elsewhere on this page stand in for your own instrument files; the fixtures that can replace them
+are listed under [Readers — Example files](readers.md#example-files).
+
+```python
+from pathlib import Path
+
+import numpy as np
+import peptacular as pt
+import spxtacular as spx
+from spxtacular import MsnSpectrum, Spectrum
+
+library = Path("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")
+peptide = "LAQANGWGVM[Oxidation]VSHR/2"
+
+entries = list(spx.read_mzspeclib(library))
+spectra = [entry.spectrum for entry in entries]
+
+spec = msn = next(e.spectrum for e in entries if e.name and peptide in e.name)
+mz, intensity = spec.mz, spec.intensity
+intensity_array = intensity
+tic = spx.extract_chromatogram(spectra)
+```
+
 ---
 
 ## Ecosystem interoperability
@@ -155,6 +186,7 @@ Central data structure for a mass spectrum. Holds parallel numpy arrays for `mz`
 Spectrum(
     mz: NDArray[np.float64],
     intensity: NDArray[np.float64],
+    *,
     charge: NDArray[np.int32] | None = None,
     im: NDArray[np.float64] | None = None,
     iso_score: NDArray[np.float64] | None = None,
@@ -306,7 +338,7 @@ and plotting takes the plain strings `"da"` or `"ppm"` (lowercase only; `"Da"` r
 Frozen dataclass for a single spectral peak. Returned by peak access methods.
 
 ```python
-Peak(mz: float, intensity: float, charge: int | None = None, im: float | None = None, iso_score: float | None = None)
+Peak(mz: float, intensity: float, *, charge: int | None = None, im: float | None = None, iso_score: float | None = None)
 ```
 
 ---
@@ -363,6 +395,12 @@ Every reader builds its own lookup objects; you never construct one yourself. Th
 `SpectrumLookup` protocol, so code that only iterates or indexes works across formats:
 
 ```python
+from collections.abc import Iterator
+from typing import Any, Protocol
+
+from spxtacular import MsnSpectrum
+
+
 class SpectrumLookup(Protocol):
     def __iter__(self) -> Iterator[MsnSpectrum]: ...        # a fresh walk each time
     def __getitem__(self, key: Any, /) -> MsnSpectrum: ...  # the key its format uses
@@ -412,9 +450,9 @@ name one spectrum (no scan numbers in the file, duplicates, ambiguous Bruker num
 ```python
 from spxtacular import Reader
 
-with Reader("run.mzML") as r:   # your own file; or Reader("/data/sample.d")
-    for spec in r.ms1:
-        ...
+with Reader("tests/data/example.mzML") as r:   # or your own file, or Reader("/data/sample.d")
+    for ms1_spectrum in r.ms1:
+        print(ms1_spectrum)
 ```
 
 Full documentation: [Readers — Reader](readers.md#reader)
@@ -483,7 +521,7 @@ must be installed on the machine). **Must be opened before use** — via `open()
 preferably, as a context manager.
 
 ```python
-ThermoReader(raw_path: str | Path, prefer_vendor_centroid: bool = True)
+ThermoReader(raw_path: str | Path, *, prefer_vendor_centroid: bool = True)
 ```
 
 | Property / Method | Type | Description |
@@ -617,7 +655,9 @@ Dataclass of parameters forwarded to `tdfpy`'s `frame.centroid()`. Only used by 
 
 ```python
 from spxtacular import CentroidConfig
+```
 
+```python
 CentroidConfig(
     *,
     mz_tolerance: float = 8.0,
@@ -685,6 +725,7 @@ IsotopeModel(
 
 brain_isotopic_distribution(
     composition: Mapping[str, int],
+    *,
     max_isotopes: int | None = None,  # None: 32 peaks, longer when the mass needs it
     isotope_abundances=None,
 ) -> NDArray[np.float64]
@@ -812,7 +853,7 @@ spec = from_spectrl_url(url)                                       # extract + d
 ## USI loading
 
 Fetch spectra from public proteomics repositories by Universal Spectrum
-Identifier via the PROXI protocol.
+Identifier via the PROXI protocol. This is the one block on the page that needs network access.
 
 ```python
 from spxtacular import fetch_usi, spectrum_from_proxi_response
@@ -942,6 +983,7 @@ Chromatogram(
 
 extract_chromatogram(
     spectra: Iterable[Spectrum],
+    *,
     mode: Literal["tic", "bpc"] = "tic",
     mz_range: tuple[float, float] | None = None,
 ) -> Chromatogram
@@ -949,6 +991,7 @@ extract_chromatogram(
 extract_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
+    *,
     tolerance: float = 20.0,
     tolerance_unit: Literal["ppm", "da"] = "ppm",
     im_window: tuple[float, float] | None = None,
@@ -970,22 +1013,30 @@ The plotting wrappers are:
 ```python
 plot_chromatogram(
     chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum],
+    *,
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
     show_apex: bool = True,
     fill: bool | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 ) -> go.Figure
 
 plot_xic(
     spectra: Iterable[Spectrum],
     targets: Sequence[float] | float,
+    *,
     tolerance: float = 20.0,
     tolerance_unit: Literal["ppm", "da"] = "ppm",
     im_window: tuple[float, float] | None = None,
     aggregate: Literal["sum", "max"] = "sum",
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 ) -> go.Figure
 ```
@@ -997,10 +1048,14 @@ Full documentation: [Visualization, chromatograms and XICs](visualization.md#chr
 ```python
 profile_centroid_plot(
     profile: Spectrum,
+    *,
     centroids: Spectrum | None = None,
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
     max_points: int | None = 4000,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 ) -> go.Figure
 ```
@@ -1017,8 +1072,8 @@ from spxtacular import plot_spectrum
 ```python
 plot_spectrum(
     spectrum: Spectrum,
-    title: str | None = None,
     *,
+    title: str | None = None,
     color: Literal["charge", "im"] | None = "charge",
     show_scores: bool = True,
     max_labels: int | None = 60,
@@ -1066,6 +1121,7 @@ from spxtacular import annotate_spectrum
 annotate_spectrum(
     spectrum: Spectrum,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     title: str | None = None,
@@ -1161,6 +1217,7 @@ from spxtacular import mass_error_plot
 mass_error_plot(
     spectrum: Spectrum,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -1168,6 +1225,9 @@ mass_error_plot(
     title: str | None = None,
     max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 )
 ```
@@ -1186,6 +1246,7 @@ from spxtacular import facet_plot
 ```python
 facet_plot(
     spectrum: Spectrum,
+    *,
     fragments=None,
     mirror_spectrum: Spectrum | None = None,
     mirror_labels: Literal["auto", "both", "top"] = "auto",
@@ -1197,6 +1258,9 @@ facet_plot(
     unit: str = "ppm",
     max_labels: int | None = 60,
     theme_mode: Literal["light", "dark"] | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 )
 ```
@@ -1218,11 +1282,15 @@ sequence_coverage_plot(
     spectrum: Spectrum,
     peptide: str,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
+    backend: Literal["plotly", "matplotlib", "spec"] = "plotly",
+    style: str | FigureStyle | None = None,
+    size: SizeLike = None,
     **layout_kwargs,
 ) -> go.Figure
 ```
@@ -1577,7 +1645,7 @@ from spxtacular import da_to_ppm, ppm_to_da
 ```
 
 ```python
-da_to_ppm(delta_mz: float, mz: float) -> float   # delta_mz / mz * 1e6
+da_to_ppm(delta: float, mz: float) -> float      # delta / mz * 1e6
 ppm_to_da(delta_ppm: float, mz: float) -> float  # delta_ppm * mz / 1e6
 ```
 
@@ -1620,6 +1688,7 @@ from spxtacular import match_fragments
 match_fragments(
     spectrum: Spectrum,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -1662,6 +1731,7 @@ from spxtacular import score
 score(
     spectrum: Spectrum,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -1677,6 +1747,7 @@ Returns a dict of PSM metrics: `hyperscore`, `probability_score`, `total_matched
 cosine(
     query: Spectrum,
     reference: Spectrum,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     transform: Literal["sqrt", "linear", "log"] = "sqrt",
@@ -1687,6 +1758,7 @@ modified_cosine(
     reference: Spectrum,
     query_precursor_mz: float,
     reference_precursor_mz: float,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     transform: Literal["sqrt", "linear", "log"] = "sqrt",
@@ -1695,6 +1767,7 @@ modified_cosine(
 entropy_similarity(
     query: Spectrum,
     reference: Spectrum,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
 ) -> float
@@ -1809,6 +1882,7 @@ from spxtacular import build_plot_table
 ```python
 build_plot_table(
     spectrum: Spectrum,
+    *,
     show_charges: bool = True,
     show_scores: bool = True,
     max_labels: int | None = 60,
@@ -1840,6 +1914,7 @@ from spxtacular import build_annot_plot_table
 build_annot_plot_table(
     spectrum: Spectrum,
     fragments,
+    *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
     peak_selection: Literal["closest", "largest", "all"] = "closest",
@@ -1867,6 +1942,7 @@ from spxtacular import plot_from_table
 ```python
 plot_from_table(
     table: pd.DataFrame,
+    *,
     title: str | None = None,
     theme_mode: Literal["light", "dark"] | None = None,
     render: Literal["sticks", "profile"] | None = None,
@@ -1910,6 +1986,7 @@ from spxtacular import table_view
 ```python
 table_view(
     table: pd.DataFrame,
+    *,
     max_rows: int | None = None,
     annotated_only: bool = False,
 ) -> str
