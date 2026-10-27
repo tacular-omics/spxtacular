@@ -163,9 +163,10 @@ Every figure and option is in [Visualization](visualization.md).
 
 The rest of this page walks the remaining methods in the order a script tends to need them. Every
 block below runs as written after this one and continues the one before it, with one exception:
-the [USI fetch](#moving-a-spectrum-somewhere-else) needs network access. `spec` is a three-peak
-spectrum built by hand; `ms2`, `deconvoluted`, `fragments`, the replicates and `profile_spec` stand
-in for a real scan, its fragments, repeat acquisitions and profile data.
+the [USI fetch](#moving-a-spectrum-somewhere-else), which needs network access and so is not run
+here. `spec` is a three-peak spectrum built by hand; `ms2`, `deconvoluted`, `fragments`, the
+replicates and `profile_spec` stand in for a real scan, its fragments, repeat acquisitions and
+profile data.
 
 ```python
 import numpy as np
@@ -396,8 +397,7 @@ restored = Spectrum.load("scan_001.npz")
 [`Spectrum.from_usi`](api.md#usi-loading) fetches a spectrum from a public proteomics repository by
 Universal Spectrum Identifier, over the PROXI REST API.
 
-```python
-# The one example on this page that needs network access.
+```python title="needs network access - not executed"
 fetched = Spectrum.from_usi(
     "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"
 )
