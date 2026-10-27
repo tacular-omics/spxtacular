@@ -10,7 +10,7 @@ spxtacular is part of tacular-omics: fragments come from `peptacular`, and the B
 
 - [llms-full.txt](https://raw.githubusercontent.com/tacular-omics/spxtacular/main/llms-full.txt): self-contained usage guide with every public function and class, signatures, examples and gotchas
 - [Documentation home](https://tacular-omics.github.io/spxtacular/): overview and quick start
-- [Spectrum and MsnSpectrum](https://tacular-omics.github.io/spxtacular/spectrum/): data model and every transform
+- [Spectrum and MsnSpectrum](https://tacular-omics.github.io/spxtacular/spectrum/): the processing sequence worked through on one spectrum
 - [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/): algorithm, parameters, isotope and ionization models
 - [Readers](https://tacular-omics.github.io/spxtacular/readers/): Bruker, mzML, Thermo, MGF/MS2/MSP, USI
 - [Spectral libraries](https://tacular-omics.github.io/spxtacular/mzspeclib/): read, stream (`MzSpecLibReader`) and write mzSpecLib text and JSON

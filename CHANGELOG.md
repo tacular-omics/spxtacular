@@ -4,6 +4,15 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation: the Spectrum guide is one runnable walkthrough of a single spectrum, and
+  every signature and parameter table now lives in the API reference, instead of the two
+  being interleaved. Each step of the guide links to the reference entry for the method it
+  uses.
+- Documentation: the README points to the Spectra web application, which opens a spectrum
+  from a `to_spectrl_url()` link in the browser.
+
 ### Fixed
 
 - Documentation: every signature shown in the API reference and the guides matches the

@@ -2,7 +2,7 @@
 
 Deconvolution takes a raw centroid spectrum and groups peaks into **isotope clusters**, assigning each cluster a monoisotopic m/z and a charge state. The output is still a spectrum — same `mz` and `intensity` arrays — but now with a `charge` array and `spectrum_type = DECONVOLUTED`.
 
-Converting those charged peaks to neutral masses is a separate step: see [`decharge`](spectrum.md#decharge).
+Converting those charged peaks to neutral masses is a separate step: see [`decharge`](api.md#decharge).
 
 ---
 

@@ -178,7 +178,7 @@ conversion keeps.
 
 ## Where next
 
-- [Spectrum](spectrum.md): every `Spectrum` and `MsnSpectrum` method
+- [Spectrum](spectrum.md): one spectrum from loading to figure, method by method
 - [Deconvolution](deconvolution.md): how the greedy algorithm works and how to tune it
 - [Readers](readers.md): mzML, Bruker `.d`, Thermo `.raw`, MGF, MS2, and MSP
 - [Matching & scoring](scoring.md): `match_fragments()`, PSM `score()`, and spectrum similarity
