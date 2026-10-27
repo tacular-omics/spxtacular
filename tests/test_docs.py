@@ -95,6 +95,24 @@ def headless(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def utf8_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Text files written during the test default to UTF-8, not to the platform locale.
+
+    pytest-examples writes each block to a temporary ``.py`` file with a bare
+    ``Path.write_text`` (``eval_example.py``), so under a cp1252 locale a block holding
+    ``->``, an approximation sign or a Greek letter raises ``UnicodeEncodeError`` before the
+    example runs at all. Python reads source files as UTF-8 whatever the locale, so UTF-8 is
+    what those files want; where the locale is already UTF-8 this changes nothing.
+    """
+    write_text = Path.write_text
+
+    def utf8_write_text(self: Path, data: str, encoding: str | None = None, *args: Any, **kwargs: Any) -> int:
+        return write_text(self, data, encoding or "utf-8", *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", utf8_write_text)
+
+
+@pytest.fixture
 def theme_state() -> Iterator[None]:
     """Plot-theme module state, restored after the page.
 
@@ -105,15 +123,20 @@ def theme_state() -> Iterator[None]:
     from spxtacular import theme
 
     mode = theme._DEFAULT_MODE
-    palettes = (theme._CATEGORICAL, theme._CHARGE_RAMP, theme._SEQUENTIAL)
-    saved = [dict(palette) for palette in palettes]
+    # Restored in place, not reassigned, so a reference taken before the page stays valid.
+    categorical = dict(theme._CATEGORICAL)
+    charge_ramp = dict(theme._CHARGE_RAMP)
+    sequential = dict(theme._SEQUENTIAL)
     try:
         yield
     finally:
         theme._DEFAULT_MODE = mode
-        for palette, original in zip(palettes, saved, strict=True):
-            palette.clear()
-            palette.update(original)
+        theme._CATEGORICAL.clear()
+        theme._CATEGORICAL.update(categorical)
+        theme._CHARGE_RAMP.clear()
+        theme._CHARGE_RAMP.update(charge_ramp)
+        theme._SEQUENTIAL.clear()
+        theme._SEQUENTIAL.update(sequential)
 
 
 @pytest.mark.parametrize("page", PAGES, ids=lambda path: path.name)
@@ -121,7 +144,12 @@ def theme_state() -> Iterator[None]:
 # matchms warns about its own optional hdf5plugin on import; nothing to do with the example.
 @pytest.mark.filterwarnings("ignore:hdf5plugin is missing")
 def test_page_examples(
-    page: Path, eval_example: EvalExample, docs_cwd: Path, headless: None, theme_state: None
+    page: Path,
+    eval_example: EvalExample,
+    docs_cwd: Path,
+    headless: None,
+    theme_state: None,
+    utf8_sources: None,
 ) -> None:
     """Every executable block on the page runs, in order, in one namespace."""
     for module in REQUIREMENTS.get(page.name, ()):
