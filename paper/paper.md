@@ -48,6 +48,8 @@ Several Python packages provide related capabilities. Pyteomics [@levitsky2019py
 
 spxtacular differs by storing peak-level metadata and spectrum type directly in its data model. As a separate library, spxtacular keeps this model independent of the scope of any single existing package.
 
+The matchms and spectrum_utils adapters show how spxtacular is meant to sit beside these packages. A metabolomics user who builds spectral similarity networks in matchms can read vendor data, centroid it and deconvolute it in spxtacular, then pass the spectra on with `to_matchms`; per-peak charge, isotope score and ion mobility are preserved under a dedicated metadata key, so the spectra can return for figures. A user who annotates spectra with spectrum_utils can convert in the other direction, accepting the warned loss of fields its model does not carry. Each conversion is one call on an object the user already holds, so spxtacular can be adopted for reading, deconvolution, fragment matching or plotting without replacing an existing pipeline.
+
 # Software design
 
 spxtacular grew out of spectrum-processing functions originally implemented in `peptacular` [@peptacular], a Python package for peptide-sequence analysis and fragment generation. Moving those functions into a dedicated library allows spectrum file handling, processing, visualization, and interoperability to develop independently while `peptacular` remains focused on peptide chemistry.
@@ -80,7 +82,7 @@ Bidirectional adapters connect spxtacular spectra with matchms `Spectrum` and sp
 
 # Research impact statement
 
-spxtacular provides the spectrum processing and visualization used by the public [Spectra web application](https://spectra.tacular.dev/), an interactive spectrum viewer. In ongoing unpublished work, it also supports a post-translational modification motif-ratio quantitation workflow for covalent protein painting data [@son2023cpp] in a study of transthyretin amyloidosis (ATTR). Preliminary results from that study have been presented at ASMS 2026 [@pankow2026asms]. spxtacular has also been demonstrated with `peptacular` in an ASMS 2026 poster [@garrett2026asms].
+spxtacular provides the spectrum processing and visualization used by the public [Spectra web application](https://spectra.tacular.dev/), an interactive spectrum viewer. The two connect through the URL-safe tokens described above: `to_spectrl_url` binds a spectrum into a link that the viewer decodes in the browser, so a spectrum can be sent to a colleague or cited in a manuscript without attaching a file and without the data reaching a server. In ongoing unpublished work, it also supports a post-translational modification motif-ratio quantitation workflow for covalent protein painting data [@son2023cpp] in a study of transthyretin amyloidosis (ATTR). Preliminary results from that study have been presented at ASMS 2026 [@pankow2026asms]. spxtacular has also been demonstrated with `peptacular` in an ASMS 2026 poster [@garrett2026asms].
 
 # AI usage disclosure
 

@@ -37,6 +37,11 @@ out without hand-rolling the signal processing.
   <img src="https://raw.githubusercontent.com/tacular-omics/spxtacular/main/paper/figures/graphical_abstract.png" alt="Graphical abstract showing the spxtacular mass spectrometry processing workflow" width="100%"/>
 </p>
 
+A spectrum can also be shared as a link. `to_spectrl_url()` encodes the peaks and the scan
+metadata as one URL-safe token in the URL fragment, and the
+[Spectra web application](https://spectra.tacular.dev/) decodes it in the browser — no file to
+attach, and nothing sent to a server.
+
 ## Why spxtacular?
 
 - **One chainable API** for the whole pipeline — denoise, deconvolute, decharge, match, score,
@@ -280,7 +285,7 @@ table = spx.reporter_ion_table(reader.ms2, "TMTpro18", impurities=lot, normalize
 Full documentation with API reference, guides, and interactive plots is available at
 **[tacular-omics.github.io/spxtacular](https://tacular-omics.github.io/spxtacular/)**.
 
-- [Spectrum API](https://tacular-omics.github.io/spxtacular/spectrum/)
+- [Spectrum and MsnSpectrum](https://tacular-omics.github.io/spxtacular/spectrum/)
 - [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/)
 - [Readers](https://tacular-omics.github.io/spxtacular/readers/)
 - [Matching, scoring & reporter ions](https://tacular-omics.github.io/spxtacular/scoring/)
