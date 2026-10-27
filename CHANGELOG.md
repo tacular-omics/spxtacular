@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.3] (2026-10-26)
+
 ### Changed
 
 - Documentation: the Spectrum guide is one runnable walkthrough of a single spectrum, and
