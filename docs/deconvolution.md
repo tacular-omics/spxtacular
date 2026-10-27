@@ -105,7 +105,7 @@ until every input peak has been consumed or `max_dpeaks` is reached.
 
 ## Parameters
 
-```python
+```python title="signature only - not executed"
 def deconvolute(
     self,
     tolerance: float = 50,
@@ -159,8 +159,8 @@ Select a built-in model by string or enum:
 ```python
 from spxtacular import IsotopeModelType
 
-glycan = spectrum.deconvolute(isotope_model="glycan")
-rna = spectrum.deconvolute(isotope_model=IsotopeModelType.RNA)
+glycan = spec.deconvolute(isotope_model="glycan")
+rna = spec.deconvolute(isotope_model=IsotopeModelType.RNA)
 ```
 
 Define a custom average composition as expected atoms per Dalton. A fixed composition represents
@@ -173,7 +173,7 @@ model = IsotopeModel(
     atoms_per_da={"C": 0.05, "H": 0.08, "N": 0.01, "O": 0.02},
     fixed_composition={"H": 2, "O": 1},
 )
-custom = spectrum.deconvolute(isotope_model=model)
+custom = spec.deconvolute(isotope_model=model)
 ```
 
 The general lipid preset spans several lipid classes and is necessarily approximate. Prefer an
@@ -228,8 +228,8 @@ separately in deconvolution provenance.
 ### Polarity and adducts
 
 ```python
-negative = spectrum.deconvolute(isotope_model="rna", ionization_model="[M-H]-")
-sodium = spectrum.deconvolute(isotope_model="lipid", ionization_model="[M+Na]+")
+negative = spec.deconvolute(isotope_model="rna", ionization_model="[M-H]-")
+sodium = spec.deconvolute(isotope_model="lipid", ionization_model="[M+Na]+")
 neutral = sodium.decharge()  # reuses the recorded sodium carrier
 ```
 

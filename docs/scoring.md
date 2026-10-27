@@ -3,15 +3,64 @@
 spxtacular provides two functions for peptide-spectrum match (PSM) scoring:
 `match_fragments()` for matching and `score()` for computing all metrics at once.
 
+## Setup
+
+Every example on this page runs against the names defined here, so paste this block first. The
+data is real: a tryptic peptide acquired four times, taken from the tiny fetal-brain spectral
+library that ships with the repository's tests, which carries both the peaks and the peptidoform.
+
+```python
+from pathlib import Path
+
+import numpy as np
+import peptacular as pt
+
+import spxtacular as spx
+
+# --- a real MS2 and its identification ----------------------------------------
+entries = list(spx.read_mzspeclib(Path("tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz")))
+
+peptide = "LAQANGWGVM[Oxidation]VSHR/2"       # one of the peptidoforms in the library
+fragments = pt.parse(peptide).fragment(ion_types=("b", "y"), charges=[1, 2])
+
+replicates = [e.spectrum for e in entries if str(e.peptidoform) == peptide]
+spec = spectrum = query = replicates[0]       # the spectrum scored below
+reference = replicates[1]                     # a second acquisition of the same peptide
+
+# An intensity predictor (Prosit, MS2PIP, ...) would supply these; a replicate stands in here.
+matched = {
+    m.fragment: m.peak_intensity
+    for m in spx.match_fragments(reference, fragments, tolerance=10, tolerance_unit="ppm")
+}
+predicted = [matched.get(f, 0.0) for f in fragments]
+
+# --- the same peptide with and without a phospho, for `modified_cosine` -------
+plain = pt.parse("LAQANGWGVMVSHR/1")
+phospho = pt.parse("LAQANGWGVMVS[Phospho]HR/1")
+
+
+def _theoretical(form):
+    frags = form.fragment(ion_types=("b", "y"), charges=[1])
+    mz = np.sort(np.array([f.mz for f in frags], dtype=float))
+    return spx.Spectrum(mz=mz, intensity=np.linspace(100.0, 20.0, len(mz)))
+
+
+a, b = _theoretical(plain), _theoretical(phospho)
+a_precursor_mz, b_precursor_mz = plain.mz(), phospho.mz()
+```
+
+The path is relative to a clone of the [repository](https://github.com/tacular-omics/spxtacular);
+the fixtures are listed under [Readers — Example files](readers.md#example-files). Point it at your
+own file and substitute your own peptide instead. The reporter-ion examples at the end of the page
+keep stand-in paths: the repository ships no isobaric-labelled fixture.
+
 ---
 
 ## `match_fragments()`
 
 ```python
 from spxtacular import match_fragments
-import peptacular as pt
 
-fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
 matches = match_fragments(
     spectrum,
     fragments,
@@ -148,19 +197,33 @@ It is a cosine, so it is scale-invariant: 1.0 means the observed pattern matches
 **Example:**
 
 ```python
-import peptacular as pt
-from spxtacular import MzmlReader, score
+from spxtacular import score
 
-with MzmlReader("run.mzML") as reader:
-    # reader.ms2 is an iterable lookup object, not an iterator — wrap it in iter()
-    spec = next(iter(reader.ms2))
-
-fragments = pt.fragment("ACDEFGHIK", ion_types=("b", "y"), charges=(1, 2))
-result = score(spec, fragments, tolerance=10, tolerance_unit="ppm")
+result = score(
+    spec, fragments,
+    tolerance=10, tolerance_unit="ppm",
+    predicted_intensities=predicted,
+)
 
 print(f"Hyperscore:      {result['hyperscore']:.3f}")
 print(f"Spectral angle:  {result['spectral_angle']:.3f}")
 print(f"Matched ions:    {result['matched_fraction']:.1%}")
+```
+
+```text
+Hyperscore:      19.062
+Spectral angle:  0.748
+Matched ions:    75.0%
+```
+
+To score a spectrum from a file instead, open it with a reader — `reader.ms2` is an iterable
+lookup object, not an iterator, so wrap it in `iter()`:
+
+```python
+from spxtacular import MzmlReader
+
+with MzmlReader("tests/data/example.mzML") as reader:
+    first_ms2 = next(iter(reader.ms2))
 ```
 
 
@@ -175,8 +238,8 @@ built on.
 ```python
 from spxtacular import cosine, modified_cosine, entropy_similarity
 
-cosine(query, reference, tolerance=20, tolerance_unit="ppm")   # 0-1
-entropy_similarity(query, reference, tolerance=0.02)           # 0-1
+cosine(query, reference, tolerance=20, tolerance_unit="ppm")   # 0-1; 0.762 for the two replicates
+entropy_similarity(query, reference, tolerance=0.02)           # 0-1; 0.692 for the same pair
 ```
 
 | Function | What it is |
@@ -200,8 +263,8 @@ those as mismatches:
 
 ```python
 # same peptide, one +79.966 phospho on the C-terminal half
-cosine(a, b, tolerance=0.02)                              # 0.53 - looks unrelated
-modified_cosine(a, b, 500.0, 579.966, tolerance=0.02)     # 1.00 - recovered
+cosine(a, b, tolerance=0.02)                                           # 0.59 - looks unrelated
+modified_cosine(a, b, a_precursor_mz, b_precursor_mz, tolerance=0.02)  # 1.00 - recovered
 ```
 
 It reduces exactly to `cosine` when the two precursors are equal.
@@ -222,10 +285,10 @@ TMTpro 0/16/18 and iTRAQ 4/8. Channel names and reporter m/z come from tacular's
 `ISOBARIC_TAG_LOOKUP`, which computes each reporter m/z from its isotopic composition, so no
 reporter mass is typed into spxtacular.
 
-```python
+```python title="needs your own data file - not executed"
 import spxtacular as spx
 
-spec = next(iter(spx.Reader("run.mzML").ms2))
+spec = next(iter(spx.Reader("run.mzML").ms2))   # your own file; see Readers > Example files
 ions = spec.reporter_ions("TMT10")          # or spx.extract_reporter_ions(spec, "TMT10")
 ions.channels        # ('126', '127N', '127C', ..., '131N')
 ions.intensity       # one value per channel, 0.0 where no peak was found

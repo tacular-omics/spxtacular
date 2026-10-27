@@ -98,16 +98,21 @@ with Reader("tests/data/example.mzML") as reader:
 ```
 
 ```text
-MsnSpectrum(scan=0, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
-MsnSpectrum(scan=2, ms_level=1, rt=None, polarity=positive, n_peaks=0)
-MsnSpectrum(scan=3, ms_level=1, rt=42.05s, polarity=positive, n_peaks=15)
-[Precursor(precursor_mz=445.3400, int=1.20e+05, z=2, mono=None)]
+MsnSpectrum(scan=19, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
+MsnSpectrum(scan=21, ms_level=1, rt=None, polarity=positive, n_peaks=0)
+MsnSpectrum(scan=None, ms_level=1, rt=42.05s, polarity=positive, n_peaks=15)
+[Precursor(precursor_mz=445.3400, int=1.20e+05, z=2)]
 ```
 
 A Bruker timsTOF `.d` directory works the same way (`Reader("run.d")` or `DReader("run.d")`, with
 the `[bruker]` extra). Readers return `MsnSpectrum` objects, which add scan metadata such as
 `rt`, `ms_level`, and `precursors` to `Spectrum`. See [Readers](readers.md) for every format and
 its options.
+
+Names like `run.mzML`, `run.d` and `/data/sample.d` are stand-ins for your own files throughout
+this documentation. The output above is from `tests/data/example.mzML`, one of the small fixtures
+the repository ships; they are listed under [Readers — Example files](readers.md#example-files), and
+putting one of them in place of a stand-in makes the example run as written.
 
 ## Plot and annotate
 
@@ -142,6 +147,17 @@ restored = Spectrum.from_spectrl_token(token)
 url = spec.to_spectrl_url(base="https://example.com/view")  # token in the URL fragment
 restored = Spectrum.from_spectrl_url(url)
 ```
+
+`base` is the page that will read the token. The
+[spxtacular spectrum viewer](https://spectra.tacular.dev/) is one such page: open a
+`…#spectrl.v3.…` URL there and it decodes the token and draws the spectrum, with no upload and no
+account. Any page that calls [spectrl](https://tacular-omics.github.io/spectrl/)'s decoder works
+the same way, including one you host yourself, and `from_spectrl_url` reads the URL back into a
+`Spectrum` here. Because `mode="fragment"` (the default) puts the token after the `#`, and browsers
+do not send a fragment to the server, the spectrum never leaves the recipient's browser — it is not
+in the host's request logs. `mode="query"` puts it in a query parameter instead, where it *is* sent
+and logged, and `mode="data"` emits a self-contained `data:` URI with no host at all. The default
+encoding is lossy within published tolerances; pass `lossless=True` for a bit-exact round trip.
 
 With the `[interop]` extra, `spx.to_matchms()` / `spx.from_matchms()` and
 `spx.to_spectrum_utils()` / `spx.from_spectrum_utils()` convert to and from those libraries. See

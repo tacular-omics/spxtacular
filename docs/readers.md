@@ -11,6 +11,16 @@ Every reader yields `MsnSpectrum` instances populated with as much instrument me
 `fisher-py`); `MgfReader`, `Ms2Reader`, and `MspReader` are pure standard library and always
 available, as are the matching writers `write_mgf`, `write_ms2`, and `write_msp`.
 
+## Example files
+
+`run.mzML`, `run.d`, `run.raw` and `/data/sample.d` on this page are stand-ins: substitute the path
+to your own data. To run an example as written, the repository's tests ship small files that fit —
+`tests/data/example.mzML` (an mzML excerpt), `tests/data/example_dda.d`,
+`tests/data/example_dia.d` and `tests/data/example_prm.d` (65-frame Bruker timsTOF runs, one per
+acquisition mode) and `tests/data/Angiotensin_325-CID.raw` (a Thermo `.raw` file). Reading a `.d`
+needs `spxtacular[bruker]`, an mzML `spxtacular[mzml]`, and a `.raw` `spxtacular[thermo]` plus a
+.NET 8 runtime.
+
 ## Lookup objects
 
 `.ms1` and `.ms2` are **not** generators. Each property returns a small lookup object that is both
@@ -28,7 +38,10 @@ Because they are iterables and not iterators, `next(reader.ms2)` raises `TypeErr
 `next(iter(reader.ms2))` to pull the first spectrum:
 
 ```python
-first_ms2 = next(iter(reader.ms2))
+from spxtacular import Reader
+
+with Reader("tests/data/example.mzML") as reader:
+    first_ms2 = next(iter(reader.ms2))
 ```
 
 Index semantics differ per backend:
@@ -50,13 +63,13 @@ Every reader, and `Reader`, has the same three methods for fetching one spectrum
 scan-number rule: a spectrum has a `scan_number` only when that number identifies it alone, and a
 lookup that cannot name exactly one spectrum raises instead of guessing.
 
-```python
+```python title="signature only - not executed"
 reader.get_by_scan(scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum
 reader.get_by_native_id(native_id: str) -> MsnSpectrum
 reader.get_by_sage_scannr(scannr: str | int) -> MsnSpectrum    # DReader: also precursor_offset=1
 ```
 
-```python
+```python title="needs your own data file - not executed"
 import pandas as pd
 from spxtacular import Reader
 
@@ -64,7 +77,7 @@ psms = pd.read_csv("results.sage.tsv", sep="\t")
 with Reader("run.mzML") as reader:
     spectra = [reader.get_by_sage_scannr(s) for s in psms.scannr]
     ms2 = reader.get_by_scan(20, ms_level=2)
-    same = reader.get_by_native_id("controllerType=0 controllerNumber=1 scan=20")
+    same = reader.get_by_native_id("scan=20")
 ```
 
 **Errors.** A key that is well formed but not in the file raises `KeyError`. A key that cannot
@@ -122,7 +135,7 @@ The `ms1` / `ms2` indexing below is unchanged and still works.
 matching so `.mzML.gz`, `.mgf.gz`, `.ms2.gz`, and `.msp.gz` all dispatch correctly. Anything else
 raises `ValueError`. Usage is identical regardless of the underlying format.
 
-```python
+```python title="signature only - not executed"
 class Reader:
     def __init__(
         self,
@@ -155,11 +168,11 @@ class Reader:
 ```python
 from spxtacular import Reader
 
-with Reader("run.mzML") as r:      # or Reader("/data/sample.d")
+with Reader("tests/data/example.mzML") as r:
     for spec in r.ms1:
         print(spec)
 
-with Reader("/data/sample.d") as r:
+with Reader("tests/data/example_dda.d") as r:
     ms2 = r.ms2[42]                # DDA precursor_id
 ```
 
@@ -176,7 +189,7 @@ raises `SpxtacularError` for other formats.
 Reads standard `.mzML` files using `mzmlpy`. No context manager is required, but one is strongly
 recommended — see [File handles](#file-handles) below.
 
-```python
+```python title="signature only - not executed"
 class MzmlReader:
     def __init__(
         self,
@@ -210,7 +223,9 @@ route is reported by `access_strategy`. Use `gzip_mode="stream"` when a service 
 sequentially:
 
 ```python
-with MzmlReader("large-run.mzML.gz", gzip_mode="stream", in_memory=False) as r:
+from spxtacular import MzmlReader
+
+with MzmlReader("tests/data/example.mzML.gz", gzip_mode="stream", in_memory=False) as r:
     first_ms1 = next(iter(r.ms1))
 ```
 
@@ -222,7 +237,7 @@ Create the self-indexed format through the thin mzMLPy-backed helper:
 ```python
 from spxtacular import write_indexed_mzml_gzip
 
-write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")
+write_indexed_mzml_gzip("tests/data/example.mzML", "example.indexed.mzML.gz")
 ```
 
 ### Properties
@@ -257,10 +272,10 @@ write_indexed_mzml_gzip("run.mzML", "run.indexed.mzML.gz")
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")
+reader = MzmlReader("tests/data/example.mzML")
 for spec in reader.ms1:
     print(spec)
-    # MsnSpectrum(scan=0, ms_level=1, rt=1.23s, polarity=positive, n_peaks=4521)
+    # MsnSpectrum(scan=19, ms_level=1, rt=353.43s, polarity=positive, n_peaks=15)
 ```
 
 **Filter and denoise each MS1 scan:**
@@ -268,7 +283,7 @@ for spec in reader.ms1:
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")
+reader = MzmlReader("tests/data/example.mzML")
 for spec in reader.ms1:
     processed = spec.filter(min_mz=200, max_mz=1600).denoise(method="mad")
     print(f"Scan {spec.scan_number}: {len(processed)} peaks after denoise")
@@ -279,7 +294,7 @@ for spec in reader.ms1:
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")
+reader = MzmlReader("tests/data/example.mzML")
 for spec in reader.ms2:
     if not spec.precursors:
         continue
@@ -296,18 +311,19 @@ for spec in reader.ms2:
 ```python
 from spxtacular import MzmlReader
 
-reader = MzmlReader("run.mzML")
+reader = MzmlReader("tests/data/example.mzML")
 for spec in reader.ms1:
-    neutral = (
+    decon = (
         spec
         .filter(min_mz=300, min_intensity=1000)
         .denoise(method="mad")
         .deconvolute(charge_range=(1, 5), tolerance=10, tolerance_unit="ppm")
-        .decharge()
     )
-    for peak in neutral.top_peaks(10):
+    if not (decon.charge > 0).any():   # nothing was assigned in this scan
+        continue
+    for peak in decon.decharge().top_peaks(10):
         print(f"  mass={peak.mz:.4f} Da  intensity={peak.intensity:.2e}")
-    break  # first scan only
+    break  # first scan with an assigned cluster
 ```
 
 **Fetch a single spectrum by index or native ID:**
@@ -315,7 +331,7 @@ for spec in reader.ms1:
 ```python
 from spxtacular import MzmlReader
 
-with MzmlReader("run.mzML") as reader:
+with MzmlReader("tests/data/example.mzML") as reader:
     first = reader[0]              # by overall 0-based index
     named = reader["scan=19"]      # by native ID
     first_ms2 = next(iter(reader.ms2))   # first MS2 spectrum
@@ -329,7 +345,7 @@ access reuse it (the fast path). Without one, every `.ms1` / `.ms2` / `reader[..
 and closes the file again — correct, but considerably slower. Prefer the context manager:
 
 ```python
-with MzmlReader("run.mzML") as reader:
+with MzmlReader("tests/data/example.mzML") as reader:
     for spec in reader.ms1:
         ...
 ```
@@ -342,7 +358,7 @@ Reads Bruker timsTOF `.d` directories using `tdfpy`. **Must be opened before use
 `open()` / `close()` or (preferred) as a context manager. The underlying `tdfpy` handle is opened on
 `__enter__` and closed on `__exit__`; touching `.ms1` / `.ms2` before `open()` raises `SpxtacularError`.
 
-```python
+```python title="signature only - not executed"
 class DReader:
     def __init__(
         self,
@@ -375,7 +391,7 @@ are keyword-only.
 from spxtacular import CentroidConfig, DReader
 
 cfg = CentroidConfig(mz_tolerance=8.0, min_peaks=3, noise_filter="mad")
-with DReader("/data/sample.d", centroid_config=cfg) as reader:
+with DReader("tests/data/example_dda.d", centroid_config=cfg) as reader:
     ...
 ```
 
@@ -464,7 +480,7 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 ```python
 from spxtacular import DReader
 
-with DReader("/data/sample.d") as reader:
+with DReader("tests/data/example_dda.d") as reader:
     print(f"Acquisition type: {reader.acquisition_type}")
     for spec in reader.ms1:
         print(spec)
@@ -477,10 +493,10 @@ with DReader("/data/sample.d") as reader:
 ```python
 from spxtacular import DReader
 
-with DReader("/data/sample.d") as reader:
+with DReader("tests/data/example_dda.d") as reader:
     for spec in reader.ms1:
         # Keep only peaks in a specific 1/K0 window
-        filtered = spec.filter(min_im=0.8, max_im=1.2, min_intensity=500)
+        filtered = spec.filter(min_im=0.8, max_im=1.2, min_intensity=2000)
         if len(filtered) == 0:
             continue
         neutral = (
@@ -489,6 +505,7 @@ with DReader("/data/sample.d") as reader:
             .decharge()
         )
         print(f"Frame {spec.scan_number}: {len(neutral)} neutral masses")
+        break  # first frame only
 ```
 
 **MS2 DDA — inspect precursors:**
@@ -496,7 +513,7 @@ with DReader("/data/sample.d") as reader:
 ```python
 from spxtacular import DReader
 
-with DReader("/data/sample_dda.d") as reader:
+with DReader("tests/data/example_dda.d") as reader:
     for spec in reader.ms2:
         if not spec.precursors:
             continue
@@ -515,7 +532,7 @@ with DReader("/data/sample_dda.d") as reader:
 ```python
 from spxtacular import DReader
 
-with DReader("/data/sample_dia.d") as reader:
+with DReader("tests/data/example_dia.d") as reader:
     for spec in reader.ms2:
         print(
             f"{spec.native_id}: "
@@ -545,7 +562,7 @@ sure `dotnet` is on `PATH` (or `DOTNET_ROOT` points at it). Without one, constru
 touches the runtime. A `.raw` **directory** is the Waters format, not Thermo's, and is rejected
 with a `ValueError` suggesting mzML conversion.
 
-```python
+```python title="signature only - not executed"
 class ThermoReader:
     def __init__(
         self,
@@ -600,7 +617,7 @@ unaffected by the flag and always come back as `CENTROID` without charges.
 
 ### Examples
 
-```python
+```python title="needs the Thermo .NET runtime - not executed"
 from spxtacular import ThermoReader
 
 with ThermoReader("run.raw") as reader:
@@ -615,7 +632,7 @@ with ThermoReader("run.raw") as reader:
     ms1_scan = reader.ms1[41]      # KeyError if scan 41 is not MS1
 ```
 
-```python
+```python title="needs the Thermo .NET runtime - not executed"
 # The data exactly as acquired — profile scans stay profile:
 with ThermoReader("run.raw", prefer_vendor_centroid=False) as reader:
     profile = reader.ms2[2]        # SpectrumType.PROFILE
@@ -632,7 +649,7 @@ optional extra, nothing to install, always importable. All three formats hold fr
 spectra only, so every spectrum read back is an `MsnSpectrum` with `ms_level=2` and
 `spectrum_type=SpectrumType.CENTROID`, and `reader.ms1` is a valid but always empty walk.
 
-```python
+```python title="signature only - not executed"
 class MgfReader:            # and Ms2Reader / MspReader — identical interface
     def __init__(self, path: str | Path): ...
 
@@ -653,7 +670,11 @@ class MgfReader:            # and Ms2Reader / MspReader — identical interface
 ```
 
 ```python
-from spxtacular import MgfReader, Ms2Reader, write_mgf, write_ms2
+from spxtacular import MgfReader, Ms2Reader, Reader, write_mgf, write_ms2
+
+with Reader("tests/data/example.mzML") as mzml:
+    centroided = [spec.centroid(min_intensity="noise") for spec in mzml.ms2]
+    write_mgf(centroided, "run.mgf")        # a .gz suffix compresses the output
 
 with MgfReader("run.mgf") as reader:        # run.mgf.gz works too
     print(len(reader))                      # spectra in the file
@@ -754,7 +775,7 @@ Real peak lists are written by a long tail of tools, so parsing is deliberately 
 
 Structural damage is *not* tolerated, and every such error names the file and the line:
 
-```python
+```text
 ValueError: run.mgf:412: 'END IONS' without a matching 'BEGIN IONS'
 ValueError: run.mgf:87: expected 'mz intensity' on an ion line, got '843.4102'
 ValueError: run.ms2:1: '100.0 5.0' appears before any 'S' scan line
@@ -765,7 +786,7 @@ Unterminated blocks, nested `BEGIN IONS`, short `S`/`Z` lines, and unparsable nu
 
 ### Writing
 
-```python
+```text
 write_mgf(spectra, path) -> Path
 write_ms2(spectra, path, *, ionization_model=None) -> Path
 write_msp(spectra, path) -> Path
@@ -806,7 +827,7 @@ written to MGF comes back as `CENTROID` with a per-peak charge array.
 
 ## AcquisitionType
 
-```python
+```python title="signature only - not executed"
 class AcquisitionType(StrEnum):
     DDA = "DDA"
     DIA = "DIA"
