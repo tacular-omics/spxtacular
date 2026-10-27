@@ -150,6 +150,9 @@ add them to both the import block and `__all__`.
   default run fast: shrink inputs first; mark a test `@pytest.mark.slow` only if it still takes
   more than ~2 s (skipped unless `--run-slow`/`RUN_SLOW=1`; CI sets it). Hypothesis profiles
   (`default` 30, `thorough` 300 in CI, `exhaustive` 2000) are in `tests/conftest.py`.
+- **Docs split:** a new `Spectrum` method's signature and parameter table go in `docs/api.md`,
+  its runnable example in `docs/spectrum.md`, never both; the guide links to the reference
+  entry.
 - **Changelog:** a concise `CHANGELOG.md` bullet under `[Unreleased]` only for user-visible
   changes (the file's heading is "History", but the file is `CHANGELOG.md`).
 - **ruff per-file-ignores** in `pyproject.toml` are suppressions of real findings: fix the code
