@@ -15,6 +15,7 @@ its non-interactive backend, because a test run has no browser and no display.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -93,11 +94,35 @@ def headless(monkeypatch: pytest.MonkeyPatch) -> None:
     matplotlib.use("Agg")
 
 
+@pytest.fixture
+def theme_state() -> Iterator[None]:
+    """Plot-theme module state, restored after the page.
+
+    ``set_plot_theme("dark")`` and ``set_palette(...)`` are what a reader wants to see on the
+    page, but both write globals in :mod:`spxtacular.theme` that would otherwise outlive the
+    test and recolour every later one.
+    """
+    from spxtacular import theme
+
+    mode = theme._DEFAULT_MODE
+    palettes = (theme._CATEGORICAL, theme._CHARGE_RAMP, theme._SEQUENTIAL)
+    saved = [dict(palette) for palette in palettes]
+    try:
+        yield
+    finally:
+        theme._DEFAULT_MODE = mode
+        for palette, original in zip(palettes, saved, strict=True):
+            palette.clear()
+            palette.update(original)
+
+
 @pytest.mark.parametrize("page", PAGES, ids=lambda path: path.name)
 @pytest.mark.timeout(300)
 # matchms warns about its own optional hdf5plugin on import; nothing to do with the example.
 @pytest.mark.filterwarnings("ignore:hdf5plugin is missing")
-def test_page_examples(page: Path, eval_example: EvalExample, docs_cwd: Path, headless: None) -> None:
+def test_page_examples(
+    page: Path, eval_example: EvalExample, docs_cwd: Path, headless: None, theme_state: None
+) -> None:
     """Every executable block on the page runs, in order, in one namespace."""
     for module in REQUIREMENTS.get(page.name, ()):
         pytest.importorskip(module)
