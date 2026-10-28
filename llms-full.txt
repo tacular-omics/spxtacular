@@ -1,0 +1,822 @@
+# spxtacular — full usage guide for LLMs and coding agents
+
+> Python 3.12+ mass-spectrum processing library: filtering, denoising, centroiding, isotope
+> deconvolution, charge assignment, fragment matching, PSM scoring, spectrum similarity,
+> chromatograms, raw-file readers and publication-ready figures (plotly or matplotlib),
+> all behind one chainable `Spectrum` object.
+
+This file is self-contained. It documents spxtacular 0.7.x as on the `main` branch. Every
+public name listed here is exported from the top-level package (`import spxtacular as spx`).
+Signatures are shown with defaults; `-> Self` means a new object of the same class (or the
+same object when `inplace=True`).
+
+Docs site: https://tacular-omics.github.io/spxtacular/
+Source: https://github.com/tacular-omics/spxtacular
+PyPI: https://pypi.org/project/spxtacular/
+
+---------------------------------------------------------------------------------------------
+
+## 1. Install
+
+```bash
+pip install spxtacular                  # core: numpy, pandas, plotly, peptacular, paftacular
+pip install "spxtacular[numba]"         # JIT-accelerated deconvolution
+pip install "spxtacular[bruker]"        # DReader (tdfpy)          - Bruker timsTOF .d
+pip install "spxtacular[mzml]"          # MzmlReader (mzmlpy)      - mzML, gzipped mzML
+pip install "spxtacular[thermo]"        # ThermoReader (fisher-py) - Thermo .raw, needs .NET 8
+pip install "spxtacular[readers]"       # all three readers
+pip install "spxtacular[spectrl]"       # compact URL-safe spectrum tokens
+pip install "spxtacular[matchms]"       # matchms adapter
+pip install "spxtacular[spectrum-utils]"  # spectrum_utils adapter
+pip install "spxtacular[interop]"       # matchms + spectrum_utils
+pip install "spxtacular[matplotlib]"    # backend="matplotlib": print figures (vector PDF/SVG)
+pip install "spxtacular[plotly-export]" # kaleido: PNG/SVG/PDF export of plotly figures
+pip install "spxtacular[all]"           # everything above
+```
+
+- Python >= 3.12.
+- MGF, MS2 and MSP reading/writing need no extra.
+- Reader classes always import; they raise `ImportError` with an install hint only when you
+  instantiate one whose backend is missing.
+- `ThermoReader` needs a .NET 8 runtime on the machine in addition to `fisher-py`.
+- Static image export (`save_figure(fig, "x.png")`) needs `kaleido`; `.html` does not.
+
+---------------------------------------------------------------------------------------------
+
+## 2. Core ideas (read before writing code)
+
+1. **Chainable and non-mutating.** Every transform returns a new spectrum unless you pass
+   `inplace=True`. The returned object never shares mutable arrays with the input.
+2. **Parallel arrays.** A spectrum holds `mz`, `intensity` and optional `charge`, `im`
+   (ion mobility), `iso_score` arrays. They are always the same length and in the same order.
+3. **m/z is not assumed sorted.** timsTOF frames come ordered by mobility scan. Call
+   `.sort(by="mz")` if you need sorted m/z.
+4. **Charge values mean something:**
+   - `charge > 0`: charge assigned by deconvolution (or read from the file).
+   - `charge == -1`: singleton, no isotope cluster found (unassigned).
+   - `charge == 0`: the value in `mz` is a **neutral mass**, after `decharge()`.
+   - Never test charge or `iso_score` by truthiness (`0` is meaningful).
+5. **Processing state.** `spectrum_type` is a `SpectrumType` (`CENTROID`, `PROFILE`,
+   `DECONVOLUTED`). `deconvolute()` must come before `decharge()`.
+6. **Tolerances.** Every tolerance has a unit: `tolerance_unit="da"` or `"ppm"`
+   (lowercase only; typed as `tacular.types.ToleranceUnit`). Matching and scoring default to `0.02 Da`;
+   deconvolution defaults to `50 ppm`; XIC extraction defaults to `20 ppm`.
+7. **Enum-like arguments** accept the enum member or its string value. Invalid values raise
+   `ValueError`; nothing silently falls back.
+8. **Keyword-only options.** Every parameter with a default is keyword-only:
+   `spec.normalize(method="tic")`, not `spec.normalize("tic")`. The one-line signatures in
+   this guide leave out the `*`.
+
+---------------------------------------------------------------------------------------------
+
+## 3. Quick start
+
+```python
+import numpy as np
+import peptacular as pt
+import spxtacular as spx
+
+# Build a 2+ isotope envelope for a 1500 Da peptide from the built-in peptide model.
+neutral = 1500.0
+dist = spx.PEPTIDE_ISOTOPE_MODEL.distribution(neutral, 5)
+mz = np.array([spx.PROTONATED.ion_mz(neutral + i * 1.003355, 2) for i in range(5)])
+spec = spx.Spectrum(mz=mz, intensity=dist * 1e6)
+
+decon = spec.deconvolute(charge_range=(1, 4), tolerance=10, tolerance_unit="ppm")
+print(decon.mz, decon.charge, decon.iso_score)   # [751.00727647] [2] [1.]
+neutral_spec = decon.decharge()
+print(neutral_spec.mz, neutral_spec.charge)      # [1500.] [0]
+```
+
+Typical MS2 pipeline:
+
+```python
+with spx.Reader("run.mzML") as reader:
+    for ms2 in reader.ms2:
+        clean = (
+            ms2.filter(min_intensity=1e3)
+            .normalize()
+            .deconvolute(charge_range=(1, 4), tolerance=10, tolerance_unit="ppm", min_score=0.4)
+        )
+        fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
+        scores = clean.score(fragments, tolerance=10, tolerance_unit="ppm")
+```
+
+---------------------------------------------------------------------------------------------
+
+## 4. Data model
+
+### 4.1 `Peak`
+
+```python
+Peak(mz: float, intensity: float, *, charge: int | None = None,
+     im: float | None = None, iso_score: float | None = None)
+```
+Frozen scalar record for one peak. Returned by `Spectrum.peaks`, `top_peaks`, `get_peak(s)`.
+
+### 4.2 `Precursor`
+
+```python
+Precursor(*, precursor_mz: float, intensity: float = 0.0, charge: int | None = None,
+          im: float | None = None, im_type: IMTypeLike | None = None,
+          iso_score: float | None = None, is_monoisotopic: bool | None = None)
+```
+An MS2 target ion (keyword-only; not a `Peak` subclass). `im_type` names the unit of `im`
+(1/K0 or drift time). mzML precursors read with `is_monoisotopic=None`; Bruker DDA precursors with
+`True`.
+
+### 4.3 `SpectrumType`
+
+`StrEnum` with values `"centroid"`, `"profile"`, `"deconvoluted"`.
+
+### 4.4 `Spectrum`
+
+```python
+Spectrum(
+    mz: NDArray[float64],
+    intensity: NDArray[float64],
+    *,                                    # everything after intensity is keyword-only
+    charge: NDArray[int32] | None = None,
+    im: NDArray[float64] | None = None,
+    iso_score: NDArray[float64] | None = None,
+    spectrum_type: SpectrumType | str | None = None,
+    denoised: str | None = None,          # method name recorded by denoise()
+    normalized: str | None = None,        # method name recorded by normalize()
+    deconvolution: DeconvolutionProvenance | None = None,
+)
+```
+Mass spectrum with optional charge and ion-mobility dimensions.
+
+Properties:
+- `peaks -> list[Peak]` — all peaks as `Peak` objects.
+- `is_decharged -> bool` — every non-dropped peak has `charge == 0`.
+
+Peak access:
+- `top_peaks(n: int, by: "intensity"|"mz"|"charge"|"im"|"score" = "intensity", reverse: bool = True) -> list[Peak]`
+  — top N peaks by an attribute.
+- `has_peak(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01) -> bool`
+  — is there a peak matching the criteria.
+- `get_peak(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01, peak_selection: "largest"|"closest" = "largest") -> Peak | None`
+  — one matching peak; `peak_selection` picks between several.
+- `get_peaks(target_mz, *, tolerance=0.01, tolerance_unit="da", target_charge=None, target_im=None, im_tolerance=0.01) -> list[Peak]`
+  — all matching peaks.
+
+Transforms (all return a new spectrum unless `inplace=True`):
+- `filter(min_mz=None, max_mz=None, min_intensity=None, max_intensity=None, min_charge=None, max_charge=None, min_im=None, max_im=None, min_score=None, max_score=None, top_n=None, top_n_per_window: tuple[int, float] | None = None, inplace=False) -> Self`
+  — keep peaks that meet every criterion. `min_score`/`max_score` act on `iso_score`.
+  `top_n` keeps the N most intense peaks overall; `top_n_per_window=(n, width)` keeps the N
+  most intense in each `[k*width, (k+1)*width)` m/z bin. The two are mutually exclusive
+  (`ValueError`). A criterion for a dimension the spectrum does not carry (e.g. `min_im` with
+  no `im` array) raises `ValueError`.
+- `normalize(method: "max"|"tic"|"median" = "max", inplace=False) -> Self` — scale intensities.
+- `denoise(method: "mad"|"percentile"|"histogram"|"baseline"|"iterative_median"|float|int = "mad", inplace=False) -> Self`
+  — estimate a noise floor and drop peaks below it (a number is used as the threshold directly).
+- `centroid(min_intensity: float | "noise" | None = None, inplace=False) -> Self`
+  — centroid profile data with Gaussian fitting. **Pass a floor on real data**: with `None`
+  every local maximum becomes a peak. `"noise"` uses a MAD estimate.
+- `merge(mz_tolerance=0.01, mz_tolerance_unit="da", im_tolerance=0.05, im_tolerance_unit: "relative"|"absolute" = "relative", inplace=False) -> Self`
+  — merge nearby peaks (optionally also within an ion-mobility tolerance) into
+  intensity-weighted centroids.
+- `deconvolute(...) -> Self` — see section 5.
+- `decharge(inplace=False, *, ionization_model: IonizationModelLike | None = None) -> Self`
+  — convert charged peaks to neutral masses (`charge` becomes 0). Requires a charge array
+  (else `ValueError`: "call deconvolute() first"). Warns and returns the spectrum unchanged if
+  there are no positively charged peaks. Uses the ionization model recorded by
+  `deconvolute()` unless you pass one.
+- `remove_precursor_peak(precursor_mz=None, precursor_charge=None, tolerance=0.02, tolerance_unit="da", isotopes: int | "auto" = "auto", isotope_threshold=0.01, remove_charge_states=True, inplace=False, isotope_model="peptide", ionization_model=None) -> Self`
+  — remove the precursor, its isotope envelope and (optionally) its other charge states. On an
+  `MsnSpectrum` the precursor is taken from `precursors` when not given.
+- `scale_intensity(method: "root"|"log"|"rank" = "root", degree=2, base=2.0, inplace=False) -> Self`
+  — root, log or rank intensity scaling.
+- `round_mz(decimals=0, combine: "sum"|"max" = "sum", inplace=False) -> Self`
+  — round m/z and combine peaks that collide.
+- `sort(by: "mz"|"intensity"|"charge"|"im"|"score" = "mz", reverse=False, inplace=False) -> Self`
+  — reorder all arrays together.
+- `update(inplace=False, **kwargs) -> Self` — new spectrum with some fields replaced.
+- `copy() -> Self` — deep copy.
+- `Spectrum.combine(spectra: list[Spectrum]) -> Spectrum` (classmethod) — concatenate peaks
+  of several spectra, sorted by m/z. Always returns a base `Spectrum`. Raises `ValueError`
+  when mixing neutral masses with m/z, or charged inputs with different deconvolution
+  provenance; decharge those separately first.
+
+Matching and scoring (thin wrappers over the module functions in section 6):
+- `match_fragments(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", is_monoisotopic=True) -> list[MatchedFragment]`
+- `score(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", predicted_intensities=None) -> dict[str, float]`
+
+Plotting (need plotly, which is a core dependency):
+- `plot(*, title=None, color: "charge"|"im"|None = "charge", show_scores=True, **layout_kwargs) -> go.Figure`
+- `annotate(fragments, tolerance=0.02, tolerance_unit="da", title=None, peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
+- `mass_error_plot(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", unit: "ppm"|"da" = "ppm", title=None, **layout_kwargs) -> go.Figure`
+- `facet_plot(fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, **layout_kwargs) -> go.Figure`
+- `plot_table(*, show_scores=True, color: "charge"|None = "charge") -> pd.DataFrame`
+- `annot_plot_table(fragments, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False) -> pd.DataFrame`
+
+Serialization and sharing:
+- `to_dict() -> dict` / `Spectrum.from_dict(payload) -> Spectrum | MsnSpectrum` — versioned
+  JSON-compatible dict (schema from `get_json_schema("spectrum")`).
+- `to_json(*, indent=None) -> str` / `Spectrum.from_json(value: str | bytes) -> Spectrum | MsnSpectrum`.
+- `save(path)` / `Spectrum.load(path) -> Self` — `.npz` persistence.
+- `to_spectrl_token(*, lossless=False, max_len=None) -> str` /
+  `Spectrum.from_spectrl_token(token) -> Spectrum | MsnSpectrum` — needs `[spectrl]`.
+- `to_spectrl_url(*, base=None, mode="fragment", param="d", lossless=False, max_len=None) -> str` /
+  `Spectrum.from_spectrl_url(url) -> Spectrum | MsnSpectrum` — needs `[spectrl]`.
+- `Spectrum.from_usi(usi, backend="aggregator", timeout=30) -> Spectrum | MsnSpectrum` —
+  fetch a public spectrum by Universal Spectrum Identifier (network).
+
+`from_dict`, `from_json`, `from_spectrl_*` and `from_usi` return an `MsnSpectrum` when the
+payload carries MSn metadata.
+
+### 4.5 `MsnSpectrum`
+
+`Spectrum` subclass with keyword-only scan metadata (all default to `None`):
+
+```python
+MsnSpectrum(mz, intensity, charge=None, im=None, iso_score=None, spectrum_type=None,
+            denoised=None, normalized=None, deconvolution=None, *,
+            scan_number: int | None, ms_level: int | None, native_id: str | None,
+            im_type: IMType | str | None, rt: float | None, injection_time: float | None,
+            total_ion_current: float | None, mz_range: tuple[float, float] | None,
+            im_range: tuple[float, float] | None, polarity: "positive"|"negative"|None,
+            resolution: float | None, analyzer: Analyzer | str | None,
+            ramp_time: float | None, collision_energy: float | None,
+            activation_type: ActivationType | str | None,
+            precursors: list[Precursor] | None,
+            isolation_mz_range: tuple[float, float] | None,
+            isolation_ook0_range: tuple[float, float] | None)
+```
+All `Spectrum` methods are available and preserve the metadata. `rt` should be in seconds
+(readers supply seconds; the field itself does not enforce a unit).
+
+### 4.6 Enums and `*Like` aliases (`from spxtacular import ...`)
+
+| enum | values | alias |
+|---|---|---|
+| `PeakSelection` | `closest`, `largest`, `all` | `PeakSelectionLike` |
+| `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
+| `IMType` (closed) | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or its `str` value |
+| `Analyzer` | `orbitrap`, `ft_icr`, `tof`, `quadrupole`, `ion_trap`, `linear_ion_trap`, `quadrupole_ion_trap`, `magnetic_sector`, `electrostatic_energy_analyzer` | `AnalyzerLike` = enum or any `str` |
+| `SpectrumType` | `centroid`, `profile`, `deconvoluted` | — |
+| `AcquisitionType` | `DDA`, `DIA`, `PRM`, `UNKNOWN` | — (Bruker runs) |
+| `IsotopeModelType` | `peptide`, `glycan`, `lipid`, `dna`, `rna` | — |
+
+`IMType` is closed: a string must name a member (case-insensitive; also accepts `"1/k0"` and `"drift_time"`), anything else raises `SpxtacularError`. Tolerance units and polarity are not enums: they are plain lowercase strings, `tacular.types.ToleranceUnit` (`"da"`, `"ppm"`) and `tacular.types.Polarity` (`"positive"`, `"negative"`). Any other value, including `"Da"` or `"PPM"`, raises `SpxtacularError`. `ActivationType` and `Analyzer` are open: a member name in any case or a PSI-MS accession (`"MS:1002481"` from `DReader`) becomes the member, and other vendor strings are kept as plain strings.
+
+---------------------------------------------------------------------------------------------
+
+## 5. Deconvolution
+
+```python
+Spectrum.deconvolute(
+    tolerance: float = 50,
+    tolerance_unit: ToleranceUnit = "ppm",
+    charge_range: tuple[int, int] = (1, 3),
+    intensity: "base" | "total" = "total",
+    max_dpeaks: int = 2000,
+    inplace: bool = False,
+    min_intensity: float | "min" = "min",
+    min_score: float = 0.0,
+    isotope_model: IsotopeModelLike = "peptide",
+    min_isotope_abundance: float = 0.01,
+    max_isotope_fold_error: float = 2.0,
+    max_isotope_gaps: int = 0,
+    max_isotopes: int | None = None,
+    im_tolerance: float = 0.05,
+    im_tolerance_unit: "relative" | "absolute" = "relative",
+    ionization_model: IonizationModelLike | None = None,
+) -> Self
+```
+Collapses isotope envelopes into one peak per cluster and assigns charge magnitudes.
+
+- Output: one peak per cluster at the monoisotopic m/z, `charge` set (> 0, or -1 for
+  singletons), `iso_score` in 0..1 (fit of observed vs predicted envelope),
+  `spectrum_type == DECONVOLUTED`, and `deconvolution` holding a `DeconvolutionProvenance`.
+- `intensity="total"` sums the cluster; `"base"` keeps the most intense peak's intensity.
+- `charge_range` must satisfy `1 <= min <= max` (else `ValueError`). Polarity comes from the
+  ionization model, not from the sign of the charge.
+- Matching is apex-aware: it expands both ways from the predicted most-abundant isotope and
+  can infer a missing A+0 peak. `max_isotopes=None` picks the envelope length adaptively
+  from `min_isotope_abundance`. With ion mobility present, cluster members must also agree in
+  mobility within `im_tolerance`.
+- `min_score` is the minimum isotope-profile score needed to assign a cluster. To keep only
+  good clusters afterwards use `.filter(min_score=...)`, and `.filter(min_charge=1)` to drop
+  singletons.
+- Install `[numba]` for a JIT-compiled inner loop; without it the same code runs in plain Python.
+
+Isotope models:
+
+```python
+IsotopeModel(atoms_per_da: Mapping[str, float], *, fixed_composition: Mapping[str, int] = {},
+             isotope_abundances: IsotopeAbundances | None = None, name: str = "custom")
+```
+Average elemental composition per Dalton used to predict isotope envelopes.
+- `distribution(neutral_mass, max_isotopes=32) -> NDArray` — cached envelope at the nearest integer Da.
+- `adaptive_distribution(neutral_mass, min_relative_abundance=0.01, max_isotopes=None) -> NDArray` — envelope long enough to cover the significant tail.
+- `apex_index(neutral_mass, max_isotopes=32) -> int` — index of the most abundant isotope.
+- `estimate_composition(neutral_mass) -> dict[str, int]` — integer composition estimate.
+- `fixed_mass` (property) — monoisotopic mass of the non-scaling composition.
+- `to_dict()` / `IsotopeModel.from_dict(value)`.
+
+Built-ins: `PEPTIDE_ISOTOPE_MODEL` (averagine), `GLYCAN_ISOTOPE_MODEL`, `LIPID_ISOTOPE_MODEL`,
+`DNA_ISOTOPE_MODEL`, `RNA_ISOTOPE_MODEL`; `ISOTOPE_MODELS: dict[IsotopeModelType, IsotopeModel]`.
+`IsotopeModelLike` = an `IsotopeModel`, an `IsotopeModelType`, or its string name.
+- `resolve_isotope_model(model: IsotopeModelLike = "peptide") -> IsotopeModel` — resolve a preset name, alias, enum or custom model.
+- `brain_isotopic_distribution(composition: Mapping[str, int], max_isotopes=32, isotope_abundances=None) -> NDArray` — aggregated nominal isotope distribution by the BRAIN algorithm.
+
+Ionization models:
+
+```python
+IonizationModel(name: str, polarity: "positive"|"negative", carrier_mass: float, *, carrier: str = "custom")
+```
+A repeated charge carrier.
+- `ion_mz(neutral_mass, charge)` — neutral mass to m/z (positive charge magnitudes).
+- `neutral_mass(mz, charge)` — m/z to neutral mass.
+- `notation(charge=1) -> str` — e.g. `SODIATED.notation(2) == "[M+2Na]2+"`.
+- `to_dict()` / `IonizationModel.from_dict(value)`.
+
+Presets: `PROTONATED` (`[M+H]+`, default), `DEPROTONATED` (`[M-H]-`), `SODIATED` (`[M+Na]+`),
+`AMMONIATED` (`[M+NH4]+`); `IONIZATION_MODELS: dict[str, IonizationModel]` keyed
+`"protonated"`, `"deprotonated"`, `"sodiated"`, `"ammoniated"`.
+`IonizationModelLike` = an `IonizationModel`, a preset/alias string, or a custom carrier mass.
+- `resolve_ionization_model(model: IonizationModelLike = PROTONATED) -> IonizationModel`.
+
+`DeconvolutionProvenance(isotope_model, ionization_model, charge_range, tolerance,
+tolerance_unit, intensity_mode, min_intensity, min_score, *, isotope_model_definition=None,
+min_isotope_abundance=0.01, max_isotope_fold_error=2.0, max_isotope_gaps=0,
+max_isotopes=None, im_tolerance=0.05, im_tolerance_unit="relative")` — the parameters a
+deconvolution ran with; stored on `Spectrum.deconvolution`, serialized with the spectrum
+(`to_dict()` / `DeconvolutionProvenance.from_dict()`; writes schema version 3, reads 1-3).
+
+Negative mode example:
+
+```python
+decon = spec.deconvolute(charge_range=(1, 3), ionization_model="deprotonated")
+neutral = decon.decharge()   # uses the recorded DEPROTONATED model
+```
+
+---------------------------------------------------------------------------------------------
+
+## 6. Matching, scoring, similarity
+
+Fragments come from peptacular:
+
+```python
+import peptacular as pt
+from peptacular import ProFormaAnnotation
+
+fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))        # list[Fragment]
+fragments = ProFormaAnnotation.parse("PEPTIDE").fragment(ion_types=["b", "y"], charges=[1, 2])
+```
+`FragmentInput` = a sequence of peptacular `Fragment` objects, or a dict
+`{(IonType, charge): [mz, ...]}`.
+
+```python
+match_fragments(spectrum: Spectrum, fragments: FragmentInput, tolerance: float = 0.02,
+                tolerance_unit: ToleranceUnit = "da", peak_selection: PeakSelectionLike = "closest",
+                is_monoisotopic: bool = True) -> list[MatchedFragment]
+```
+Match fragments to peaks. Works on unsorted spectra and adapts to the spectrum state: on a
+deconvoluted spectrum it respects assigned charges, on a decharged one it compares neutral
+masses. `peak_selection` resolves several peaks within tolerance (`"closest"`, `"largest"`,
+or `"all"`). Each `MatchedFragment` has `fragment`, `peak_index`, `peak_mz`,
+`peak_intensity`, `intensity_pct`, `ppm_error`, `da_error`.
+
+```python
+score(spectrum: Spectrum, fragments: FragmentInput, tolerance: float = 0.02,
+      tolerance_unit: ToleranceUnit = "da", peak_selection: PeakSelectionLike = "closest",
+      predicted_intensities: Sequence[float] | None = None) -> dict[str, float]
+```
+Match, then return all PSM metrics:
+
+| key | meaning |
+|---|---|
+| `hyperscore` | `log10(sum(I_matched)) + sum over series of log10(n_s!)`, unit theoretical intensities |
+| `probability_score` | -log10 P(>= k matches by chance) |
+| `total_matched_intensity` | sum of matched peak intensities |
+| `matched_fraction` | fraction of theoretical ions matched |
+| `intensity_fraction` | fraction of total spectrum intensity explained |
+| `mean_ppm_error` | mean absolute ppm error |
+| `spectral_angle` | 0..1; the literature metric only when `predicted_intensities` gives one value per fragment, in order; otherwise a coverage/evenness fallback |
+| `longest_run` | longest consecutive ion ladder matched |
+
+Neutral-loss, charge and isotope variants of one `(ion_type, position)` count once.
+Hyperscore is scale dependent (scaling intensities by `s` shifts it by `log10(s)`), can be
+negative on normalized input, and changed in 0.7.0: recompute scores stored by 0.6.0. It is
+not numerically interchangeable with X!Tandem, OpenMS, Comet or MSFragger.
+
+Spectrum-to-spectrum similarity (one-to-one peak matching, values 0..1):
+
+```python
+cosine(query, reference, tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
+modified_cosine(query, reference, query_precursor_mz, reference_precursor_mz,
+                tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
+entropy_similarity(query, reference, tolerance=0.02, tolerance_unit="da") -> float
+```
+- `cosine` — cosine on transformed intensities.
+- `modified_cosine` — also matches peaks shifted by the precursor mass difference (analogues).
+- `entropy_similarity` — unweighted spectral entropy similarity.
+
+Isobaric reporter ions (TMT 0/2/6/10/11, TMTpro 0/16/18, iTRAQ 4/8; channels and m/z come
+from tacular's `ISOBARIC_TAG_LOOKUP`, names case-insensitive, e.g. "TMT10", "TMTpro18", "iTRAQ4"):
+
+```python
+extract_reporter_ions(spectrum, plex, *, tolerance=20.0, tolerance_unit="ppm",
+                      impurities=None, normalize=None) -> ReporterIons   # == spectrum.reporter_ions(plex, ...)
+reporter_ion_table(spectra_or_reader, plex, *, tolerance=20.0, tolerance_unit="ppm", impurities=None,
+                   normalize=None, ms_level=None, include_errors=False) -> pd.DataFrame
+isotope_correction_matrix(plex, impurities) -> NDArray   # M, observed = M @ true
+correct_isotope_impurities(intensities, matrix_or_lot, *, plex=None) -> NDArray   # NNLS, never negative
+```
+- Per channel the most intense peak within the window is used; missing channels are intensity
+  0.0 with `observed_mz`/errors NaN. Windows that would overlap, NaN/inf intensities and
+  decharged spectra raise `SpxtacularError`.
+- `ReporterIons`: `plex`, `channels`, `reporter_mz`, `intensity`, `raw_intensity`, `observed_mz`,
+  `found`, `mz_error`, `ppm_error`, `ions["127N"]`, `to_dict()`.
+- Table columns: `spectrum_index`, `scan_number`, `native_id`, `ms_level`, `rt`, one per channel
+  (`"126"`, `"127N"`, ...), plus `<channel>_ppm_error` with `include_errors=True`. Any object
+  with `.ms2` (a reader) is read through `.ms2`; for SPS-MS3 pass `iter(reader)` with `ms_level=3`.
+- `impurities=` is the lot sheet `{"126": {"-2": 0, "-1": 0, "+1": 7.0, "+2": 0.2}, ...}` (or a
+  DataFrame, channels x shifts), in percent, or a square matrix. Numeric shifts are always 13C
+  counts; 15N impurities of N channels need "-15N"/"+15N" labels. A main-peak column ("0",
+  "main", "reporter") is ignored. An impurity counts on a channel within min(0.02 Da, half the
+  smallest channel spacing), ~3.2 mDa for TMT10/11/TMTpro, else it only lowers the diagonal. `normalize="sum"|"max"` is applied after correction.
+
+Unit helpers: `da_to_ppm(delta_mz, mz) -> float`, `ppm_to_da(delta_ppm, mz) -> float`
+(`da_to_ppm(0.001, 1000.0) == 1.0`).
+
+---------------------------------------------------------------------------------------------
+
+## 7. Reading and writing files
+
+### 7.1 `Reader` — auto-detect
+
+```python
+Reader(path: str | Path, *, centroid_config: CentroidConfig | None = None,
+       mzml_gzip_mode: "auto"|"indexed"|"stream" = "auto", mzml_in_memory: bool = False)
+```
+Detects Bruker `.d`, `.mzML` / `.mzML.gz`, Thermo `.raw`, and `.mgf`, `.ms2`, `.msp` (each
+optionally `.gz`) from the path and delegates to the matching reader.
+
+```python
+with spx.Reader("run.mzML") as reader:
+    first = next(iter(reader.ms2))     # views are iterable, NOT iterators
+    for ms1 in reader.ms1:
+        ...
+    print(reader.access_strategy)      # mzML route, None for other formats
+```
+- `ms1`, `ms2` — lazy views, iterable and indexable. They have no `len()` and are not
+  iterators: `next(reader.ms2)` raises `TypeError`.
+- `open()` / `close()` or use as a context manager.
+- `access_strategy` — concrete mzML route (`"plain"`, `"embedded"`, `"rapidgzip"`,
+  `"memory"`, `"stream"`) or `None`.
+
+Fetch one spectrum by key. Every reader (and `Reader`) has:
+```python
+reader.get_by_scan(scan_number: int, *, ms_level: int | None = None) -> MsnSpectrum
+reader.get_by_native_id(native_id: str) -> MsnSpectrum
+reader.get_by_sage_scannr(scannr: str | int) -> MsnSpectrum  # DReader/Reader: precursor_offset=
+```
+- Missing key, or wrong `ms_level` -> `KeyError`. A key that cannot name one spectrum ->
+  `SpxtacularError`: the file has no scan numbers (MSP, MGF without SCANS, Bruker/Waters/SCIEX
+  mzML ids), several spectra share it, a Bruker DDA number that is both an MS1 frame and a
+  precursor with `ms_level=None`, or a DIA/PRM frame holding several windows.
+- Scan number: mzML `scan=`/Thermo/`index=`/`spectrum=` id number (not the 0-based position);
+  Thermo scan; MGF `SCANS`; MS2 `S`; Bruker MS1 `frame_id`, DDA `precursor_id`, DIA/PRM `frame_id`.
+- Native id: mzML `spectrum/@id`; Thermo `controllerType=0 controllerNumber=1 scan=N` or
+  `scan=N`; MGF `TITLE`; MS2 `I NativeID` else `scan=N`; MSP `Name`; Bruker `frame=F`,
+  `precursor=P`, `F@wI` (DIA), `F@tT` (PRM).
+- Sage `scannr`: tried as a native id and, if it is a bare integer, as a scan number (covers
+  `results.sage.tsv` and `.pin`); if the two name different spectra, `SpxtacularError`.
+  Bruker `.d`: DDA only, precursor id = `scannr + 1` for upstream Sage (checked on
+  0.15.0-beta.1, timsrust 0.4.2, 0-based); pass `precursor_offset=0` for Sage builds on
+  timsrust >= 0.6. DIA/PRM raise `SpxtacularError`. `DReader` lookups need an open reader.
+- Peak lists build a byte-offset index on the first lookup (one full parse), then seek; the
+  index is rebuilt if the file's size or mtime changes.
+
+### 7.2 Format-specific readers
+
+```python
+DReader(analysis_dir: str | Path, *, centroid_config: CentroidConfig | None = None)
+```
+Bruker timsTOF `.d` via tdfpy (`[bruker]`). Detects `reader.acquisition_type`
+(`AcquisitionType.DDA|DIA|PRM|UNKNOWN`). `ms1` supports iteration and `ms1[frame_id]`;
+`ms2` iterates per precursor (DDA), per isolation window (DIA) or per transition (PRM);
+`ms2[precursor_id]` works for DDA only (DIA/PRM raise `NotImplementedError`). Native ids are
+`frame=F` (MS1), `precursor=P` (DDA), `F@wI` (DIA), `F@tT` (PRM). DIA MS2 spectra
+have `precursors=None`. Spectra are centroided on read and carry `im` (1/K0).
+
+```python
+CentroidConfig(*, mz_tolerance: float = 8.0, mz_tolerance_unit: "ppm"|"da" = "ppm",
+               im_tolerance: float = 0.1, im_tolerance_unit: "relative"|"absolute" = "relative",
+               min_peaks: int = 3, noise_filter: str | float | None = None)
+```
+Parameters forwarded to tdfpy's frame centroiding for `.d` MS1, DIA and PRM spectra. DDA MS2
+spectra come from tdfpy's per-precursor merged peaks and ignore it.
+
+```python
+MzmlReader(mzml_path: str | Path, *, gzip_mode: "auto"|"indexed"|"stream" = "auto",
+           in_memory: bool = False)
+```
+mzML and gzipped mzML via mzmlpy (`[mzml]`). `ms1`/`ms2` support iteration, integer index
+and native-ID lookup (`reader.ms2["scan=19"]`). `gzip_mode="auto"` prefers a self-indexed
+gzip, else another random-access route; `"stream"` reads sequentially with low latency for
+large files. `access_strategy` reports the route chosen.
+
+```python
+ThermoReader(raw_path: str | Path, prefer_vendor_centroid: bool = True)
+```
+Thermo `.raw` via fisher-py (`[thermo]` + .NET 8 runtime). `ms1`/`ms2` support iteration and
+scan-number access. Instantiating without a working .NET runtime raises `ImportError` with
+install instructions.
+
+```python
+MgfReader(path)   # .mgf  / .mgf.gz  (Mascot Generic Format)
+Ms2Reader(path)   # .ms2  / .ms2.gz
+MspReader(path)   # .msp  / .msp.gz  (NIST-style spectral libraries: MoNA, GNPS, MS-DIAL exports)
+```
+Pure standard library. `ms2` is every spectrum (index or native-ID access); `ms1` is always
+empty. `open()` only checks the file exists; no handle is held between walks.
+
+Writers (always available; replace the destination atomically on success):
+
+```python
+write_mgf(spectra: Iterable[Spectrum] | Spectrum, path, *, annotations=None) -> Path
+write_ms2(spectra: Iterable[Spectrum] | Spectrum, path) -> Path
+write_msp(spectra: Iterable[Spectrum] | Spectrum, path, *, annotations=None) -> Path
+```
+They keep only metadata the format can represent, and reject decharged (neutral-mass)
+spectra because these formats hold m/z. `annotations=` (MGF, MSP) takes one entry per
+spectrum: one mzPAF item per peak (`None`, str, `PafAnnotation`, or a list) or the list of
+`MatchedFragment` from `match_fragments`; annotated peaks get a quoted column,
+`mz intensity "y3/0.2ppm"`. Omitting it leaves the output unchanged.
+
+Spectral libraries in HUPO-PSI mzSpecLib 1.0 (text or JSON, optional `.gz`):
+
+```python
+read_mzspeclib(path) -> SpectralLibrary          # .entries, .attributes, .clusters; iterable
+with MzSpecLibReader(path) as reader:            # streams one entry at a time, text or JSON, .gz ok
+    reader.attributes                            # header, before any spectrum is read
+    for entry in reader: ...                     # LibraryEntry, one at a time; .clusters after a full pass
+write_mzspeclib(entries_or_library, path, *, format=None) -> Path   # JSON for *.json[.gz]
+entry = LibraryEntry.from_spectrum(spec, "PEPTIDE/2", score=0.99, peak_annotations=matches)
+entry.spectrum          # MsnSpectrum: precursor m/z + charge, rt (s), im, CE, activation, polarity
+entry.peptidoform       # peptacular ProFormaAnnotation with charge (first analyte)
+entry.peak_annotations  # tuple[tuple[PafAnnotation, ...], ...] per peak, or None
+entry.attributes        # CvParam(accession, name, value, value_accession, group) for unmapped terms
+```
+Attribute sets are resolved on reading and never written. native_id is kept (MS:1000767). Not
+stored: resolution, analyzer, ranges, per-peak charge/im arrays; PASEF reads back as HCD. JSON
+peak annotations are one comma-joined mzPAF string per peak, "?" when unannotated (a bare "?"
+reads as no annotation). Invalid input raises `SpxtacularError`.
+
+```python
+write_indexed_mzml_gzip(source: str | Path, output: str | Path, *, compression_level: int = 6)
+```
+Create a self-indexed (pyMZML-compatible) mzML gzip through mzmlpy; returns mzmlpy's
+`IndexedGzipWriteResult` (`spectrum_count`, `chromatogram_count`, ...). Reading the output
+back gives `access_strategy == "embedded"`.
+
+### 7.3 Public repositories (USI / PROXI)
+
+```python
+fetch_usi(usi: str, backend: str = "aggregator", timeout: float = 30) -> Spectrum | MsnSpectrum
+spectrum_from_proxi_response(data: Any, usi: str) -> Spectrum | MsnSpectrum
+```
+`backend` is one of `"aggregator"`, `"pride"`, `"massive"`, `"peptideatlas"`, `"jpost"`, or a
+full `http(s)://` PROXI base URL. `Spectrum.from_usi` is the same call.
+`spectrum_from_proxi_response` builds a spectrum from an already-decoded PROXI JSON payload.
+
+---------------------------------------------------------------------------------------------
+
+## 8. Chromatograms
+
+```python
+Chromatogram(rt: NDArray, intensity: NDArray, *, label: str = "", mz: float | None = None,
+             tolerance: float | None = None, tolerance_unit: "da"|"ppm"|None = None, meta: dict = {})
+```
+Intensity against retention time. `apex_rt` (property, `None` if empty), `total` (sum of
+intensities, not an integral), `to_dict()` / `from_dict()`, `to_json()` / `from_json()`.
+
+```python
+extract_chromatogram(spectra: Iterable[Spectrum], mode: "tic"|"bpc" = "tic",
+                     mz_range: tuple[float, float] | None = None) -> Chromatogram
+extract_xic(spectra: Iterable[Spectrum], targets: Sequence[float] | float,
+            tolerance: float = 20.0, tolerance_unit: ToleranceUnit = "ppm",
+            im_window: tuple[float, float] | None = None,
+            aggregate: "sum"|"max" = "sum") -> list[Chromatogram]
+```
+- `extract_chromatogram` — total-ion or base-peak chromatogram, optionally within an m/z range.
+- `extract_xic` — one trace per target in a single pass. Pass all targets in one call: a
+  reader view may be expensive or impossible to walk twice. `im_window` gates by mobility;
+  spectra without mobility pass ungated with a `UserWarning` (see
+  `meta["im_window_applied"]`, `meta["im_window_skipped"]`).
+- Spectra without `rt` fall back to scan index; mixing the two, or non-finite times, raises.
+
+```python
+with spx.Reader("run.d") as r:
+    xics = spx.extract_xic(r.ms1, [445.12, 512.30], tolerance=10, im_window=(0.9, 1.1))
+```
+
+---------------------------------------------------------------------------------------------
+
+## 9. Visualization
+
+Every figure function takes `backend="plotly"` (default; returns `plotly.graph_objects.Figure`),
+`"matplotlib"` (returns `matplotlib.figure.Figure`; needs `spxtacular[matplotlib]`) or `"spec"`
+(returns a backend-neutral `FigureSpec`), plus `style="paper"|"screen"|"talk"|FigureStyle`
+(`None`: `"screen"` for plotly, `"paper"` otherwise) and `size="single"|"onehalf"|"double"|mm|(w_mm, h_mm)`
+(85/114/175 mm). `**layout_kwargs` is plotly-only (raises with matplotlib). `theme_mode` is
+`"light"`, `"dark"` or `None` (global default). Unknown backend or style raises `SpxtacularError`.
+
+For a paper figure: `backend="matplotlib", style="paper", size="single"`, then
+`save_figure(fig, "fig.pdf")`: vector PDF with TrueType fonts, 7 pt text at 100% size.
+
+```python
+plot_spectrum(spectrum, *, title=None, color: "charge"|"im"|None = "charge", show_scores=True,
+              max_labels=60, theme_mode=None,
+              intensity_scale: "absolute"|"relative" = "relative",
+              intensity_transform: "sqrt"|"log"|None = None, show_precursor=True,
+              render: "sticks"|"profile"|None = None, max_points=4000, absolute_axis=False,
+              backend="plotly", style=None, size=None, **layout_kwargs)
+```
+Sticks for centroid data, a continuous trace for profile data (min/max decimated above
+`max_points`). `absolute_axis=True` shows absolute intensity with a x10^n exponent in the title.
+
+```python
+annotate_spectrum(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", title=None,
+                  peak_selection="closest", include_sequence=False, max_labels=60,
+                  theme_mode=None, intensity_scale="relative", intensity_transform=None,
+                  texture=False, show_precursor=True, peptide=None, mass_error_panel=False,
+                  absolute_axis=False, backend="plotly", style=None, size=None, **layout_kwargs)
+```
+Spectrum with matched fragment labels (typeset: y7 subscript, 2+ superscript) coloured by ion
+series. `peptide=` draws the sequence with b/y cleavage ticks above; `mass_error_panel=True` adds
+an error strip below. `texture=True` adds dash patterns.
+
+- `mirror_plot(raw, deconvoluted, *, fragments=None, names=None, similarity: "cosine"|"modified_cosine"|"entropy"|float|None = None, title=None, normalize=True, show_charges=True, show_scores=True, tolerance=0.02, tolerance_unit="da", peak_selection="closest", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — second spectrum below. With `fragments=` both halves are annotated (query vs library); `similarity=` prints a score (`"modified_cosine"` needs precursor m/z on both).
+- `mass_error_plot(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", unit="ppm", title=None, max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — mass error vs m/z, axis symmetric around zero.
+- `facet_plot(spectrum, *, fragments=None, mirror_spectrum=None, title=None, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, unit="ppm", max_labels=60, theme_mode=None, backend, style, size, **layout_kwargs)` — spectrum + mass errors + optional mirror panels.
+- `sequence_coverage_plot(spectrum, peptide: str | ProFormaAnnotation, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — backbone-bond coverage ladder.
+- `profile_centroid_plot(profile, *, centroids=None, title=None, theme_mode=None, max_points=4000, backend, style, size, **layout_kwargs)` — profile trace with centroids on top, to check `centroid()`.
+- `plot_chromatogram(chromatograms: Chromatogram | Sequence[Chromatogram] | Iterable[Spectrum], *, title=None, theme_mode=None, show_apex=True, fill=None, backend, style, size, **layout_kwargs)` — one or more chromatograms; an iterable of spectra is turned into a TIC.
+- `plot_xic(spectra, targets, *, tolerance=20.0, tolerance_unit="ppm", im_window=None, aggregate="sum", title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — `extract_xic` + `plot_chromatogram`.
+- `reporter_ion_plot(spectrum, plex: str | IsobaricTagInfo | ReporterIons = "TMT10", *, tolerance=20.0, tolerance_unit="ppm", impurities=None, show_spectrum=True, normalize=True, title=None, theme_mode=None, backend, style, size, **layout_kwargs)` — channel bars from `extract_reporter_ions`, reporter region above; missing channels marked n.d.
+- `compose_figure(figures: Sequence[FigureSpec], *, ncols=None, labels="abc"|"ABC"|list|None, size="double", style=None, backend="matplotlib", theme_mode=None)` — lettered multi-panel figure from `backend="spec"` parts.
+- `render(spec, backend="plotly"|"matplotlib")` / `spec.render(backend)`; `get_style(name) -> FigureStyle`; `FigureStyle.with_(**changes)`.
+- `save_figure(fig, path, *, scale=None, dpi=None, **kwargs) -> Path` — suffix picks the writer. plotly: `.html` needs nothing, `.png`/`.svg`/`.pdf`/`.jpg`/`.webp` need kaleido (`spxtacular[plotly-export]`). matplotlib: `.pdf`/`.svg`/`.eps`/`.png`/`.jpg`/`.tif`/`.webp`, fonts embedded as TrueType. A `FigureSpec` is drawn with matplotlib if installed. Raster `dpi` defaults to the style's (600 for paper).
+
+Plot tables (edit data between matching and drawing):
+
+- `build_plot_table(spectrum, *, show_charges=True, show_scores=True, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None) -> pd.DataFrame`
+- `build_annot_plot_table(spectrum, fragments, *, tolerance=0.02, tolerance_unit="da", peak_selection="closest", include_sequence=False, max_labels=60, theme_mode=None, intensity_scale="relative", intensity_transform=None, texture=False) -> pd.DataFrame`
+- `plot_from_table(table, *, title=None, theme_mode=None, render=None, max_points=4000, backend="plotly", style=None, size=None, absolute_axis=False, **layout_kwargs)`
+- `table_view(table, max_rows=None, annotated_only=False) -> str` — HTML `<table>`, the accessible companion to a figure.
+
+Table columns: `mz`, `intensity` (the displayed value), `intensity_abs` (original), `charge`,
+`score`, `im`, `color`, `linewidth`, `opacity`, `dash`, `series`, `label`, `label_size`
+(NaN = style default), `label_color`, `label_angle` (0 horizontal), `hover`.
+
+```python
+table = spx.build_annot_plot_table(spec, fragments, tolerance=10, tolerance_unit="ppm")
+table.loc[table["series"] == "y", "linewidth"] = 3
+fig = spx.plot_from_table(table, title="edited")
+html = spx.table_view(table, annotated_only=True)
+```
+
+`spxtacular.theme` (module) owns every colour:
+- `set_plot_theme(mode: "light"|"dark") -> None` — default mode for later plots.
+- `set_palette(*, categorical=None, charge_ramp=None, sequential=None) -> None` — swap in brand colours (dicts keyed by mode).
+- `apply(fig, theme=None) -> Figure` — apply the template to a figure in place.
+- `template(theme=None)`, `resolve_mode(theme=None)`, `surface(theme=None)`, `text_color(level="secondary", theme=None)`.
+- `ion_color(ion_type, theme=None)`, `ion_dash(ion_type)`, `charge_color(charge, theme=None)`, `neutral_color(theme=None)`, `unmatched_color(theme=None)`, `marker_outline(theme=None)`, `sequential_scale(theme=None)`.
+
+Ion series are categorical colours, charge is an ordinal ramp, isotope score and mobility are
+sequential. Intensity is relative by default; hover text keeps the true intensity. Labels are
+horizontal rich text, capped at `max_labels` and placed without overlap; omitted labels stay in
+hover/table data.
+
+---------------------------------------------------------------------------------------------
+
+## 10. Interoperability and sharing
+
+```python
+to_matchms(spectrum, *, extra_metadata=None, include_spxtacular_metadata=True) -> matchms.Spectrum
+from_matchms(spectrum, *, prefer_spxtacular_metadata=True) -> Spectrum | MsnSpectrum
+to_spectrum_utils(spectrum: MsnSpectrum, *, precursor_index=0, identifier=None, warn_on_loss=True) -> spectrum_utils.MsmsSpectrum
+from_spectrum_utils(spectrum, *, warn_on_loss=True) -> MsnSpectrum
+```
+- matchms round-trips rich metadata through a namespaced payload and realigns arrays if
+  matchms filters peaks. Needs `[matchms]`.
+- spectrum_utils needs a centroided MS2 `MsnSpectrum` with a selected, charged precursor and
+  an identifier (`identifier=`, else `native_id`, else `scan_number`). The conversion is lossy and
+  warns about what it drops unless `warn_on_loss=False`. Without an identifier, `native_id`
+  or `scan_number` it raises `ValueError`. Needs `[spectrum-utils]`.
+
+spectrl tokens (`[spectrl]`, spectrl 3.x):
+
+```python
+to_spectrl_token(spec, *, lossless=False, max_len=None) -> str        # "spectrl.v3...."
+from_spectrl_token(token) -> Spectrum | MsnSpectrum
+to_spectrl_url(spec, *, base=None, mode="fragment", param="d", lossless=False, max_len=None) -> str
+from_spectrl_url(url) -> Spectrum | MsnSpectrum
+to_inline_spectrum(spec) -> spectrl.InlineSpectrum
+```
+`lossless=True` disables numeric compression. `mode` is `"fragment"` (`base#token`),
+`"query"` (`base?<param>=token`, `param` defaults to `d`) or `"data"` (a `data:` URI, `base`
+ignored). `max_len` raises `OverflowError` if the token would be longer. The default
+encoding is lossy (m/z to ~3e-8 relative error, intensity ~1e-4); use `lossless=True` for a
+bit-exact round-trip.
+
+JSON transport: `Spectrum.to_json()` / `Spectrum.from_json()`, `Chromatogram.to_json()` /
+`Chromatogram.from_json()`; `get_json_schema(kind: "spectrum"|"chromatogram") -> dict`
+returns a fresh copy of the packaged v1 JSON Schema.
+
+---------------------------------------------------------------------------------------------
+
+## 11. Worked examples
+
+### 11.1 Score a peptide against an MS2 spectrum
+
+```python
+import numpy as np
+import peptacular as pt
+import spxtacular as spx
+
+fragments = pt.fragment("PEPTIDE", ion_types=("b", "y"), charges=(1, 2))
+mzs = np.array(sorted(f.mz for f in fragments[:6]))
+spec = spx.MsnSpectrum(
+    mz=mzs,
+    intensity=np.linspace(1e4, 6e4, len(mzs)),
+    ms_level=2,
+    scan_number=1,
+    precursors=[spx.Precursor(precursor_mz=400.19, intensity=1e5, charge=2, is_monoisotopic=True)],
+)
+matches = spec.match_fragments(fragments, tolerance=10, tolerance_unit="ppm")   # 6 matches
+scores = spec.score(fragments)            # dict with hyperscore, matched_fraction, ...
+fig = spx.annotate_spectrum(spec, fragments, max_labels=15)
+spx.save_figure(fig, "spectrum.html")
+```
+
+### 11.2 Convert a file to MGF with light preprocessing
+
+```python
+with spx.Reader("run.mzML.gz") as r:
+    cleaned = [s.filter(top_n_per_window=(10, 100.0)).normalize() for s in r.ms2]
+spx.write_mgf(cleaned, "run.mgf")
+```
+
+### 11.3 Consensus spectrum from replicates
+
+```python
+consensus = spx.Spectrum.combine(
+    [s.normalize(method="tic") for s in replicates]
+).merge(mz_tolerance=10, mz_tolerance_unit="ppm")
+```
+
+### 11.4 Library search style similarity
+
+```python
+query = query.filter(top_n=150).normalize()
+best = max(library, key=lambda ref: spx.cosine(query, ref, tolerance=10, tolerance_unit="ppm"))
+```
+
+### 11.5 Share a spectrum as a link
+
+```python
+url = spec.to_spectrl_url(base="https://example.org/viewer/")   # https://example.org/viewer/#spectrl.v3....
+same = spx.Spectrum.from_spectrl_url(url)
+```
+
+### 11.6 Glycan or lipid deconvolution
+
+```python
+glycans = spec.deconvolute(isotope_model="glycan", ionization_model="sodiated", charge_range=(1, 3))
+custom = spx.IsotopeModel(atoms_per_da={"C": 0.04, "H": 0.07, "O": 0.02}, name="mine")
+out = spec.deconvolute(isotope_model=custom)
+```
+
+---------------------------------------------------------------------------------------------
+
+## 12. Gotchas
+
+- Do not call `decharge()` before `deconvolute()`: it raises `ValueError`. Calling it on an
+  already-neutral spectrum returns it unchanged without a warning; an all-singleton spectrum
+  warns (`UserWarning`) and returns it unchanged — under `pytest -W error` that fails the test.
+- A toy spectrum of unrelated peaks deconvolutes to singletons (`charge == -1`,
+  `iso_score` 0); `.filter(min_score=0.5)` then removes everything. Test with a real isotope
+  envelope (section 3).
+- `centroid()` without `min_intensity` returns every local maximum as a peak.
+- Reader views have no `len()` and are not iterators; use `next(iter(reader.ms2))`.
+- Pass all XIC targets in one `extract_xic` call; a reader view may not be replayable cheaply.
+- `sequence_coverage_plot` wants a stripped sequence (`"PEPTIDE"`), not ProForma text.
+- `spectral_angle` is only the literature metric when `predicted_intensities` is supplied,
+  aligned with `fragments`.
+- Hyperscore values from 0.6.0 and earlier are not comparable with 0.7.0+.
+- `Spectrum.combine` always returns a base `Spectrum` (MSn metadata is dropped) and refuses to
+  mix neutral masses with m/z.
+- `filter()` raises if you filter on a dimension the spectrum does not have (e.g. `min_im`).
+- Writers reject decharged spectra: MGF/MS2/MSP hold m/z, not neutral masses.
+- Thermo reading needs a .NET 8 runtime; `ImportError` on instantiation explains how to
+  install it.
+- spectrl support targets spectrl 3.x (`spectrl>=3.0,<4`). Tokens are `spectrl.v3`; v1/v2 tokens
+  from older spxtacular releases cannot be decoded. Decoded arrays keep their declared dtype.
+- Plot colours are the theme's; change them with `spx.theme.set_palette`, not per-trace.

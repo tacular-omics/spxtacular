@@ -1,0 +1,1815 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Mass spectrometry spectrum processing in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/spxtacular/spectrum/">
+      
+      
+        <link rel="prev" href="../getting-started/">
+      
+      
+        <link rel="next" href="../deconvolution/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Spectrum - spxtacular</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#spectrum-and-msnspectrum" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spxtacular" class="md-header__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spxtacular
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Spectrum
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spxtacular" class="md-nav__button md-logo" aria-label="spxtacular" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spxtacular
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/spxtacular" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/spxtacular
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-usual-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The usual sequence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The usual sequence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-load-a-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Load a spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-inspect-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Inspect it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-clean-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Clean it up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-assign-charge-states-and-go-to-neutral-masses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Assign charge states and go to neutral masses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-match-fragments-and-score-the-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Match fragments and score the match
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-plot-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Plot it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#working-through-a-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Working through a spectrum
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Working through a spectrum">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#looking-at-peaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Looking at peaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cleaning-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleaning up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#charge-states-and-neutral-masses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Charge states and neutral masses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reordering-and-rebuilding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reordering and rebuilding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#moving-a-spectrum-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moving a spectrum somewhere else
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#precursor-removal-rescaling-and-rounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor removal, rescaling and rounding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#centroiding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Centroiding
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deconvolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deconvolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mzspeclib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral libraries (mzSpecLib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching, scoring & reporter ions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design records
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design records
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/polarity-adducts-and-isotope-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polarity, adducts, and isotope models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to 0.9
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../citation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-usual-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The usual sequence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The usual sequence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-load-a-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Load a spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-inspect-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Inspect it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-clean-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Clean it up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-assign-charge-states-and-go-to-neutral-masses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Assign charge states and go to neutral masses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-match-fragments-and-score-the-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Match fragments and score the match
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-plot-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Plot it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#working-through-a-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Working through a spectrum
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Working through a spectrum">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#looking-at-peaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Looking at peaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cleaning-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleaning up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#charge-states-and-neutral-masses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Charge states and neutral masses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reordering-and-rebuilding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reordering and rebuilding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#moving-a-spectrum-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moving a spectrum somewhere else
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#precursor-removal-rescaling-and-rounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor removal, rescaling and rounding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#msnspectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MsnSpectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#centroiding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Centroiding
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="spectrum-and-msnspectrum">Spectrum and MsnSpectrum<a class="headerlink" href="#spectrum-and-msnspectrum" title="Permanent link">&para;</a></h1>
+<p><code>Spectrum</code> holds the peak arrays of one mass spectrum: <code>mz</code> and <code>intensity</code>, and optionally
+<code>charge</code>, <code>im</code> (ion mobility) and <code>iso_score</code>. <code>MsnSpectrum</code> adds the scan metadata a reader knows —
+scan number, MS level, retention time, precursors. Processing methods return a new spectrum instead
+of changing the one they were called on, so a piece of work reads as a single chain.</p>
+<p>This page opens with the sequence most work follows, then works through the remaining methods
+on a real spectrum. Signatures and parameter tables live in the
+<a href="../api/#spectrum-methods">API reference</a>.</p>
+<h2 id="the-usual-sequence">The usual sequence<a class="headerlink" href="#the-usual-sequence" title="Permanent link">&para;</a></h2>
+<p>Load a spectrum, inspect it, clean it up, assign charge states, match fragments, plot. Every block
+below runs as written from a clone of the
+<a href="https://github.com/tacular-omics/spxtacular">repository</a> and continues the one before it. The
+input is <code>tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz</code>, a four-spectrum excerpt of a
+human fetal brain HCD spectral library that needs no optional extra. The instrument-file fixtures
+are listed under <a href="../readers/#example-files">Readers — Example files</a>.</p>
+<h3 id="1-load-a-spectrum">1. Load a spectrum<a class="headerlink" href="#1-load-a-spectrum" title="Permanent link">&para;</a></h3>
+<p><code>read_mzspeclib</code> yields <code>LibraryEntry</code> objects, each carrying an <code>MsnSpectrum</code>. A reader
+(<code>Reader</code>, <code>DReader</code>, <code>MzmlReader</code>, <code>ThermoReader</code>, <code>MgfReader</code>) yields the same <code>MsnSpectrum</code>
+objects from an instrument file, so every later step is identical whatever the input was.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">peptacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spx</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">library</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz"</span><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">peptide</span> <span class="o">=</span> <span class="s2">"LAQANGWGVM[Oxidation]VSHR/2"</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">entries</span> <span class="o">=</span> <span class="p">[</span><span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">spx</span><span class="o">.</span><span class="n">read_mzspeclib</span><span class="p">(</span><span class="n">library</span><span class="p">)</span> <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">name</span> <span class="ow">and</span> <span class="n">peptide</span> <span class="ow">in</span> <span class="n">e</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">entries</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">spectrum</span>  <span class="c1"># one of four HCD acquisitions of this peptidoform</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>MsnSpectrum(scan=None, ms_level=2, rt=1501.00s, polarity=positive, n_peaks=339)
+</code></pre></div>
+<h3 id="2-inspect-it">2. Inspect it<a class="headerlink" href="#2-inspect-it" title="Permanent link">&para;</a></h3>
+<p><code>len(spec)</code> is the peak count. <a href="../api/#peaks"><code>peaks</code></a> and <a href="../api/#top_peaks"><code>top_peaks</code></a> return
+read-only <a href="../api/#peak"><code>Peak</code></a> snapshots; <a href="../api/#has_peak"><code>has_peak</code></a>,
+<a href="../api/#get_peak"><code>get_peak</code></a> and <a href="../api/#get_peaks"><code>get_peaks</code></a> look for one m/z. The arrays
+themselves (<code>spec.mz</code>, <code>spec.intensity</code>) stay available for numpy work.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">spec</span><span class="p">),</span> <span class="s2">"peaks,"</span><span class="p">,</span> <span class="s2">"MS level"</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">ms_level</span><span class="p">,</span> <span class="s2">"at"</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">rt</span><span class="p">,</span> <span class="s2">"s"</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"precursor m/z"</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">precursor_mz</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">for</span> <span class="n">peak</span> <span class="ow">in</span> <span class="n">spec</span><span class="o">.</span><span class="n">top_peaks</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">peak</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>339 peaks, MS level 2 at 1501.0 s
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>precursor m/z 771.3848
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>Peak(mz=737.4050, int=1.00e+04)
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>Peak(mz=101.0709, int=9.48e+03)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>Peak(mz=980.5052, int=7.26e+03)
+</code></pre></div>
+<h3 id="3-clean-it-up">3. Clean it up<a class="headerlink" href="#3-clean-it-up" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#filter"><code>filter</code></a> removes peaks outside bounds (m/z, intensity, charge, ion mobility,
+isotope score) or keeps only the most intense ones. This library spectrum is already centroided and
+fairly clean, so a modest intensity floor only drops the low-intensity tail.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">clean</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_intensity</span><span class="o">=</span><span class="mf">200.0</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">spec</span><span class="p">),</span> <span class="s2">"-&gt;"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">clean</span><span class="p">),</span> <span class="s2">"peaks"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>339 -&gt; 181 peaks
+</code></pre></div>
+<p>On raw data the two companion steps come first: <a href="../api/#centroid"><code>centroid</code></a> turns profile data
+into peaks, and <a href="../api/#denoise"><code>denoise</code></a> estimates a noise floor from the spectrum itself rather
+than taking a number from you. <a href="../api/#normalize"><code>normalize</code></a> and
+<a href="../api/#scale_intensity"><code>scale_intensity</code></a> adjust the intensity scale, and
+<a href="../api/#remove_precursor_peak"><code>remove_precursor_peak</code></a> strips the surviving precursor and its
+isotopes before scoring.</p>
+<h3 id="4-assign-charge-states-and-go-to-neutral-masses">4. Assign charge states and go to neutral masses<a class="headerlink" href="#4-assign-charge-states-and-go-to-neutral-masses" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#deconvolute"><code>deconvolute</code></a> groups peaks into isotope clusters and records a charge
+magnitude and an isotopic profile score per peak. <a href="../api/#decharge"><code>decharge</code></a> then converts each
+cluster's monoisotopic m/z to a neutral mass. The order matters: <code>decharge()</code> on a spectrum that has
+not been deconvoluted raises <code>SpxtacularError</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">deconv</span> <span class="o">=</span> <span class="n">clean</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">assigned</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">deconv</span><span class="o">.</span><span class="n">charge</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">deconv</span><span class="o">.</span><span class="n">spectrum_type</span><span class="p">,</span> <span class="s2">"-"</span><span class="p">,</span> <span class="n">assigned</span><span class="p">,</span> <span class="s2">"peaks in clusters,"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">deconv</span><span class="p">),</span> <span class="s2">"peaks total"</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">neutral</span> <span class="o">=</span> <span class="n">deconv</span><span class="o">.</span><span class="n">decharge</span><span class="p">()</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">neutral</span><span class="o">.</span><span class="n">top_peaks</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>deconvoluted - 24 peaks in clusters, 157 peaks total
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Peak(mz=736.3977, int=1.31e+04, z=0, score=0.903)
+</code></pre></div>
+<p>A <code>charge</code> of <code>-1</code> marks a singleton with no isotope neighbours, <code>0</code> a neutral mass after
+<code>decharge()</code>; see <a href="../api/#charge-conventions">Charge conventions</a>. Fragment matching works on either
+m/z or neutral masses, so step 5 can take <code>clean</code>, <code>deconv</code> or <code>neutral</code>.</p>
+<h3 id="5-match-fragments-and-score-the-match">5. Match fragments and score the match<a class="headerlink" href="#5-match-fragments-and-score-the-match" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#match_fragments"><code>match_fragments</code></a> pairs peptacular fragments with peaks;
+<a href="../api/#score"><code>score</code></a> runs the same matching and returns the PSM metrics.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">fragments</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">peptide</span><span class="p">)</span><span class="o">.</span><span class="n">fragment</span><span class="p">(</span><span class="n">ion_types</span><span class="o">=</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">),</span> <span class="n">charges</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">matches</span> <span class="o">=</span> <span class="n">clean</span><span class="o">.</span><span class="n">match_fragments</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">),</span> <span class="s2">"of"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">fragments</span><span class="p">),</span> <span class="s2">"fragments matched"</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">[:</span><span class="mi">3</span><span class="p">]:</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">fragment</span><span class="o">.</span><span class="n">to_mzpaf</span><span class="p">()</span><span class="si">:</span><span class="s2">&gt;8s</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">peak_mz</span><span class="si">:</span><span class="s2">9.4f</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">ppm_error</span><span class="si">:</span><span class="s2">+5.1f</span><span class="si">}</span><span class="s2"> ppm  </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">intensity_pct</span><span class="si">:</span><span class="s2">4.1f</span><span class="si">}</span><span class="s2">%"</span><span class="p">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">scores</span> <span class="o">=</span> <span class="n">clean</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"hyperscore </span><span class="si">{</span><span class="n">scores</span><span class="p">[</span><span class="s1">'hyperscore'</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, spectral angle </span><span class="si">{</span><span class="n">scores</span><span class="p">[</span><span class="s1">'spectral_angle'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>22 of 56 fragments matched
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>   y1{R}   175.1187   -1.4 ppm   2.4%
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  b2{LA}   185.1282   -1.4 ppm   1.8%
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  y2{HR}   312.1775   -1.2 ppm   1.1%
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>hyperscore 16.19, spectral angle 0.459
+</code></pre></div>
+<p>Every metric is defined in <a href="../scoring/">Matching and scoring</a>.</p>
+<h3 id="6-plot-it">6. Plot it<a class="headerlink" href="#6-plot-it" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#plot_spectrum"><code>plot</code></a> draws the spectrum, <a href="../api/#annotate_spectrum"><code>annotate</code></a> draws it
+with the fragment labels, and <a href="../api/#mass_error_plot"><code>mass_error_plot</code></a> and
+<a href="../api/#facet_plot"><code>facet_plot</code></a> add the diagnostic panels. <code>spx.save_figure(fig,
+"annotated.html")</code> writes the figure; <code>.png</code>, <code>.svg</code> and <code>.pdf</code> work too.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Figure
+</code></pre></div>
+<p><a href="../api/#build_plot_table"><code>plot_table</code></a> and <a href="../api/#build_annot_plot_table"><code>annot_plot_table</code></a>
+return the <code>DataFrame</code> behind a figure, so the numbers a plot shows can be read or edited directly.
+Every figure and option is in <a href="../visualization/">Visualization</a>.</p>
+<hr />
+<h2 id="working-through-a-spectrum">Working through a spectrum<a class="headerlink" href="#working-through-a-spectrum" title="Permanent link">&para;</a></h2>
+<p>The rest of this page walks the remaining methods in the order a script tends to need them. Every
+block below runs as written after this one and continues the one before it, with one exception:
+the <a href="#moving-a-spectrum-somewhere-else">USI fetch</a>, which needs network access and so is not run
+here. <code>spec</code> is a three-peak spectrum built by hand; <code>ms2</code>, <code>deconvoluted</code>, <code>fragments</code>, the
+replicates and <code>profile_spec</code> stand in for a real scan, its fragments, repeat acquisitions and
+profile data.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">peptacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spx</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">Peak</span><span class="p">,</span> <span class="n">Spectrum</span><span class="p">,</span> <span class="n">plot_from_table</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="p">(</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">mz</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">500.1</span><span class="p">,</span> <span class="mf">800.2</span><span class="p">,</span> <span class="mf">1200.5</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">intensity</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1e5</span><span class="p">,</span> <span class="mf">2e5</span><span class="p">,</span> <span class="mf">9e4</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="p">)</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="c1"># Spectrum(n_peaks=3, type=None, denoised=None, normalized=None)</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># A real HCD scan, its fragments and three replicates of it, from the example library</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="n">peptide</span> <span class="o">=</span> <span class="s2">"LAQANGWGVM[Oxidation]VSHR/2"</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="n">entries</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="n">e</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>    <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">spx</span><span class="o">.</span><span class="n">read_mzspeclib</span><span class="p">(</span><span class="s2">"tests/data/mzspeclib/fetal_brain_tiny.mzSpecLib.txt.gz"</span><span class="p">)</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>    <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">name</span> <span class="ow">and</span> <span class="n">peptide</span> <span class="ow">in</span> <span class="n">e</span><span class="o">.</span><span class="n">name</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="p">]</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="n">ms2</span> <span class="o">=</span> <span class="n">entries</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">spectrum</span>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="n">deconvoluted</span> <span class="o">=</span> <span class="n">ms2</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="n">fragments</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">peptide</span><span class="p">)</span><span class="o">.</span><span class="n">fragment</span><span class="p">(</span><span class="n">ion_types</span><span class="o">=</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">),</span> <span class="n">charges</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="n">spec1</span><span class="p">,</span> <span class="n">spec2</span><span class="p">,</span> <span class="n">spec3</span> <span class="o">=</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">spectrum</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+<a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a>
+<a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="c1"># A single Gaussian peak sampled in profile mode, for the centroiding examples</span>
+<a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a><span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">499.80</span><span class="p">,</span> <span class="mf">500.40</span><span class="p">,</span> <span class="mf">0.005</span><span class="p">)</span>
+<a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a><span class="n">profile_spec</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="p">(</span>
+<a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>    <span class="n">mz</span><span class="o">=</span><span class="n">grid</span><span class="p">,</span>
+<a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>    <span class="n">intensity</span><span class="o">=</span><span class="mf">1e5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">((</span><span class="n">grid</span> <span class="o">-</span> <span class="mf">500.1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="mf">0.01</span><span class="o">**</span><span class="mi">2</span><span class="p">)),</span>
+<a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a>    <span class="n">spectrum_type</span><span class="o">=</span><span class="s2">"profile"</span><span class="p">,</span>
+<a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="looking-at-peaks">Looking at peaks<a class="headerlink" href="#looking-at-peaks" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#peaks"><code>peaks</code></a> returns every peak as a read-only <a href="../api/#peak"><code>Peak</code></a> snapshot, so peak
+fields read as attributes rather than parallel array indices. For anything numeric on a large
+spectrum, work on <code>spec.mz</code> and <code>spec.intensity</code> instead.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">for</span> <span class="n">peak</span> <span class="ow">in</span> <span class="n">spec</span><span class="o">.</span><span class="n">peaks</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">peak</span><span class="o">.</span><span class="n">mz</span><span class="p">,</span> <span class="n">peak</span><span class="o">.</span><span class="n">intensity</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#top_peaks"><code>top_peaks</code></a> sorts by any of the peak attributes — intensity, m/z, charge, ion
+mobility or isotope score — and returns the first <code>n</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Five most intense peaks</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">top5</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">top_peaks</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Lowest-mz three peaks</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">low_mz</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">top_peaks</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">by</span><span class="o">=</span><span class="s2">"mz"</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#has_peak"><code>has_peak</code></a>, <a href="../api/#get_peak"><code>get_peak</code></a> and
+<a href="../api/#get_peaks"><code>get_peaks</code></a> look for one m/z within a tolerance. <code>has_peak</code> answers yes or no,
+<code>get_peak</code> returns the best single match (most intense, or nearest in m/z with
+<code>peak_selection="closest"</code>), and <code>get_peaks</code> returns all of them. A charge or ion mobility
+criterion needs the matching array, so it needs a deconvoluted spectrum or one read with ion
+mobility.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">spec</span><span class="o">.</span><span class="n">has_peak</span><span class="p">(</span><span class="mf">500.1</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">)</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="c1"># target_charge and target_im need the matching array, so they need a deconvoluted</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># spectrum or one read with ion mobility: `deconvoluted` comes from the setup block.</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="n">deconvoluted</span><span class="o">.</span><span class="n">has_peak</span><span class="p">(</span><span class="mf">736.4050</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span> <span class="n">target_charge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">peak</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get_peak</span><span class="p">(</span><span class="mf">800.2</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">if</span> <span class="n">peak</span><span class="p">:</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found: </span><span class="si">{</span><span class="n">peak</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cleaning-up">Cleaning up<a class="headerlink" href="#cleaning-up" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#filter"><code>filter</code></a> removes peaks outside bounds on m/z, intensity, charge, ion mobility or
+isotope score, and <code>top_n</code> / <code>top_n_per_window</code> keep only the most intense survivors — globally, or
+per fixed-width m/z window, which is the usual search-engine preprocessing step.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Keep peaks between 200 and 1500 Da with intensity &gt;= 1000</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">filtered</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_mz</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_mz</span><span class="o">=</span><span class="mi">1500</span><span class="p">,</span> <span class="n">min_intensity</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># Keep only the 50 most intense peaks after m/z filtering</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="n">filtered</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">min_mz</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">top_n</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="c1"># Keep the 10 most intense peaks per 100 Th window (search-engine-style preprocessing)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">filtered</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">top_n_per_window</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">))</span>
+</code></pre></div>
+<p><a href="../api/#normalize"><code>normalize</code></a> divides by a reference (the base peak, the total ion current or the
+median) so intensities from different acquisitions are comparable.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">norm</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">normalize</span><span class="p">()</span>            <span class="c1"># max normalization</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">norm</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">"tic"</span><span class="p">)</span>       <span class="c1"># TIC normalization</span>
+</code></pre></div>
+<p><a href="../api/#denoise"><code>denoise</code></a> estimates a noise floor from the spectrum itself and drops everything
+below it, rather than taking a number from you. The <code>"mad"</code> default is robust on most spectra; a
+plain number is used as an absolute threshold.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">spec</span><span class="o">.</span><span class="n">denoise</span><span class="p">()</span>                       <span class="c1"># MAD (robust, recommended for most spectra)</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">spec</span><span class="o">.</span><span class="n">denoise</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">"histogram"</span><span class="p">)</span>            <span class="c1"># histogram mode estimate</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">spec</span><span class="o">.</span><span class="n">denoise</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="mf">5000.0</span><span class="p">)</span>          <span class="c1"># fixed absolute threshold</span>
+</code></pre></div>
+<p><a href="../api/#centroid"><code>centroid</code></a> turns profile data into peaks by fitting each local maximum. On real
+data give it a floor — see <a href="#centroiding">Centroiding</a> at the end of this page for why.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">centroided</span> <span class="o">=</span> <span class="n">profile_spec</span><span class="o">.</span><span class="n">centroid</span><span class="p">()</span>
+</code></pre></div>
+<p><a href="../api/#merge"><code>merge</code></a> collapses peaks that agree within a tolerance into one intensity-weighted
+centroid, working from the most intense peak outwards. Only peaks of the same charge merge.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">merged</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">mz_tolerance</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span> <span class="n">mz_tolerance_unit</span><span class="o">=</span><span class="s2">"da"</span><span class="p">)</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">merged</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">mz_tolerance</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">mz_tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="charge-states-and-neutral-masses">Charge states and neutral masses<a class="headerlink" href="#charge-states-and-neutral-masses" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#deconvolute"><code>deconvolute</code></a> groups peaks into isotope clusters, recording a charge
+magnitude and an isotopic profile score per peak, plus the isotope and ionization models it used.
+<a href="../deconvolution/">Deconvolution</a> is the full walkthrough, including the isotope models for
+glycans, lipids and nucleic acids.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">decon</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">deconvolute</span><span class="p">(</span><span class="n">charge_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#decharge"><code>decharge</code></a> then converts each cluster's monoisotopic m/z to a neutral mass,
+dropping the singletons. It reuses the ionization model <code>deconvolute()</code> recorded, so the carrier
+that was added is the carrier that is removed. Afterwards every <code>charge</code> is <code>0</code> — see
+<a href="../api/#charge-conventions">charge conventions</a> — and <code>iso_score</code> carries through.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">neutral</span> <span class="o">=</span> <span class="n">deconvoluted</span><span class="o">.</span><span class="n">decharge</span><span class="p">()</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="c1"># neutral.mz now contains neutral masses sorted ascending</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="c1"># neutral.charge is all zeros</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># neutral.iso_score carries through from the deconvoluted spectrum</span>
+</code></pre></div>
+<h3 id="reordering-and-rebuilding">Reordering and rebuilding<a class="headerlink" href="#reordering-and-rebuilding" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#sort"><code>sort</code></a> reorders every parallel array together, by any peak attribute.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">by_intensity</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s2">"intensity"</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># most intense first</span>
+</code></pre></div>
+<p><a href="../api/#update"><code>update</code></a> is the low-level escape hatch: a copy with named fields replaced. Prefer
+the named methods above for everything they cover.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">renamed</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">spectrum_type</span><span class="o">=</span><span class="s2">"centroid"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="moving-a-spectrum-somewhere-else">Moving a spectrum somewhere else<a class="headerlink" href="#moving-a-spectrum-somewhere-else" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#json-transport"><code>to_dict</code></a> and <code>from_dict</code> convert to and from the versioned
+<code>spxtacular.spectrum</code> transport format, which holds only JSON-native values and records whether the
+original was a <code>Spectrum</code> or an <code>MsnSpectrum</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">restored</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">restored</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">type</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="k">assert</span> <span class="n">restored</span> <span class="o">==</span> <span class="n">spec</span>
+</code></pre></div>
+<p><a href="../api/#json-transport"><code>to_json</code></a> and <code>from_json</code> are the same transport as strict JSON text, for
+APIs and browser visualization. For local storage prefer <code>.npz</code>, which is smaller and keeps the
+arrays as NumPy arrays.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">message</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_json</span><span class="p">()</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="n">restored</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+</code></pre></div>
+<p>The packaged JSON Schema is available without an extra dependency:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_json_schema</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">get_json_schema</span><span class="p">(</span><span class="s2">"spectrum"</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#token-serialisation-spectrl"><code>to_spectrl_token</code></a> encodes the whole spectrum — peaks,
+metadata, precursors — as one URL-safe <a href="https://github.com/tacular-omics/spectrl">spectrl</a> token
+that mirrors mzML semantics. The default is lossy within a bounded error; <code>lossless=True</code> keeps the
+arrays bit-exact. Requires the optional <code>[spectrl]</code> extra.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">token</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_spectrl_token</span><span class="p">()</span>                      <span class="c1"># lossy (bounded-error), default</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">token_exact</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_spectrl_token</span><span class="p">(</span><span class="n">lossless</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># bit-exact arrays</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="n">restored</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">from_spectrl_token</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#url-sharing"><code>to_spectrl_url</code></a> binds that token into a link, or a <code>data:</code> URI. With the
+default fragment binding the token sits after <code>#</code>, so the spectrum never reaches the server hosting
+the page that draws it: the <a href="https://spectra.tacular.dev/">Spectra web application</a> decodes such a
+link in the browser, and <code>from_spectrl_url</code> reads one back here.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">url</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_spectrl_url</span><span class="p">(</span><span class="n">base</span><span class="o">=</span><span class="s2">"https://example.com/view"</span><span class="p">)</span>             <span class="c1"># …#spectrl.…</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="n">uri</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">to_spectrl_url</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"data"</span><span class="p">)</span>                            <span class="c1"># data: URI</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="n">restored</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">from_spectrl_url</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#persistence-npz"><code>save</code></a> and <code>load</code> write a numpy <code>.npz</code> archive: peak arrays natively,
+scalar metadata JSON-encoded beside them. All MSn metadata survives the round trip.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">spec</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"scan_001.npz"</span><span class="p">)</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="n">restored</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"scan_001.npz"</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#usi-loading"><code>Spectrum.from_usi</code></a> fetches a spectrum from a public proteomics repository by
+Universal Spectrum Identifier, over the PROXI REST API.</p>
+<div class="highlight"><span class="filename">needs network access - not executed</span><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">fetched</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">from_usi</span><span class="p">(</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>    <span class="s2">"mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555"</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="figures">Figures<a class="headerlink" href="#figures" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#plot_spectrum"><code>plot</code></a> draws the spectrum — sticks or profile, chosen from the spectrum
+type — colouring by charge state or ion mobility.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">spec</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"My spectrum"</span><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="n">decon</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="s2">"charge"</span><span class="p">,</span> <span class="n">show_scores</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><a href="../api/#annotate_spectrum"><code>annotate</code></a> draws it with fragment ion labels: matched peaks coloured by
+ion series, unmatched peaks grey.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">ms2</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><a href="../api/#mass_error_plot"><code>mass_error_plot</code></a> plots the mass error of each matched fragment against
+its m/z, which is where a calibration drift shows up.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="n">ms2</span><span class="o">.</span><span class="n">mass_error_plot</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><a href="../api/#facet_plot"><code>facet_plot</code></a> stacks those panels on a shared m/z axis, optionally with a
+second spectrum mirrored below.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="n">ms2</span><span class="o">.</span><span class="n">facet_plot</span><span class="p">(</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>    <span class="n">fragments</span><span class="o">=</span><span class="n">fragments</span><span class="p">,</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>    <span class="n">mirror_spectrum</span><span class="o">=</span><span class="n">deconvoluted</span><span class="o">.</span><span class="n">decharge</span><span class="p">(),</span>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p><a href="../api/#build_plot_table"><code>plot_table</code></a> and
+<a href="../api/#build_annot_plot_table"><code>annot_plot_table</code></a> return the <code>DataFrame</code> behind a figure: one row
+per peak, carrying both the data and every visual property. Edit it and render it with
+<code>plot_from_table()</code>, which is how a figure gets a detail the plotting functions do not expose.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">tbl</span> <span class="o">=</span> <span class="n">decon</span><span class="o">.</span><span class="n">plot_table</span><span class="p">()</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="n">tbl</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">tbl</span><span class="p">[</span><span class="s2">"charge"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"color"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"red"</span>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="n">tbl</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">tbl</span><span class="p">[</span><span class="s2">"intensity"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1e5</span><span class="p">,</span> <span class="s2">"linewidth"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">2.0</span>
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">plot_from_table</span><span class="p">(</span><span class="n">tbl</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">"Custom plot"</span><span class="p">)</span>
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a><span class="n">fig</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">tbl</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">annot_plot_table</span><span class="p">(</span><span class="n">fragments</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="n">tbl</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">tbl</span><span class="p">[</span><span class="s2">"label"</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">""</span><span class="p">,</span> <span class="s2">"label_size"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">14</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">plot_from_table</span><span class="p">(</span><span class="n">tbl</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">"Annotated"</span><span class="p">)</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="n">fig</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p>Every figure, style and export option is in <a href="../visualization/">Visualization</a>; the column list is
+in <a href="../api/#plot-table-api">Plot table API</a>.</p>
+<h3 id="precursor-removal-rescaling-and-rounding">Precursor removal, rescaling and rounding<a class="headerlink" href="#precursor-removal-rescaling-and-rounding" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#remove_precursor_peak"><code>remove_precursor_peak</code></a> strips the surviving precursor, its isotope
+envelope and its lower charge states, which is worth doing before scoring. On an <code>MsnSpectrum</code> it
+reads the precursors from the scan; it adapts to whether the spectrum is centroided, deconvoluted
+or decharged.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="c1"># Auto from MsnSpectrum.precursors</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="n">cleaned</span> <span class="o">=</span> <span class="n">ms2</span><span class="o">.</span><span class="n">remove_precursor_peak</span><span class="p">(</span><span class="n">tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a><span class="c1"># Explicit</span>
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a><span class="n">cleaned</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">remove_precursor_peak</span><span class="p">(</span><span class="n">precursor_mz</span><span class="o">=</span><span class="mf">450.25</span><span class="p">,</span> <span class="n">precursor_charge</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</code></pre></div>
+<p><a href="../api/#scale_intensity"><code>scale_intensity</code></a> applies a non-linear transform — square root, log or
+rank — which keeps a few tall peaks from dominating a similarity score.
+<a href="../api/#round_mz"><code>round_mz</code></a> rounds m/z to a given number of decimals and sums or max-reduces the
+duplicates, for coarse binning.</p>
+<h3 id="combining-spectra">Combining spectra<a class="headerlink" href="#combining-spectra" title="Permanent link">&para;</a></h3>
+<p><a href="../api/#spectrumcombine"><code>Spectrum.combine</code></a> concatenates the peaks of several spectra into one new
+<code>Spectrum</code>, sorted by m/z. Mixing neutral masses with m/z values, or charged inputs with different
+deconvolution records, raises <code>SpxtacularError</code> rather than silently producing a spectrum whose
+axis means two things.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="n">combined</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">combine</span><span class="p">([</span><span class="n">spec1</span><span class="p">,</span> <span class="n">spec2</span><span class="p">,</span> <span class="n">spec3</span><span class="p">])</span>
+</code></pre></div>
+<p><code>combine</code> and <code>merge</code> together build a consensus spectrum from repeat measurements of the same
+analyte: normalize each replicate so no single acquisition dominates, concatenate, then collapse
+peaks that agree within tolerance into intensity-weighted centroids.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="n">replicates</span> <span class="o">=</span> <span class="p">[</span><span class="n">spec1</span><span class="p">,</span> <span class="n">spec2</span><span class="p">,</span> <span class="n">spec3</span><span class="p">]</span>          <span class="c1"># e.g. the same precursor across runs</span>
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a><span class="n">consensus</span> <span class="o">=</span> <span class="n">Spectrum</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span>
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>    <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">"tic"</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">replicates</span><span class="p">]</span>
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a><span class="p">)</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">mz_tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">mz_tolerance_unit</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">)</span>
+</code></pre></div>
+<p>Peaks seen in every replicate accumulate intensity across the merge window while one-off noise
+peaks stay small, so a follow-up <code>filter(min_intensity=...)</code> — thresholded at, say, a fraction of
+<code>1 / len(replicates)</code> of the summed TIC — keeps only reproducible signal.</p>
+<hr />
+<h2 id="msnspectrum">MsnSpectrum<a class="headerlink" href="#msnspectrum" title="Permanent link">&para;</a></h2>
+<p><code>MsnSpectrum</code> extends <code>Spectrum</code> with the instrument metadata a reader knows: scan number, MS
+level, retention time, acquisition and isolation windows, collision energy, activation type,
+analyzer, and the <a href="../api/#precursor"><code>Precursor</code></a> objects selected for fragmentation. Every file
+reader yields it, and every <code>Spectrum</code> method above works on it unchanged. The field list is in
+<a href="../api/#msnspectrum">API reference — <code>MsnSpectrum</code></a>, and the <code>ActivationType</code>, <code>IMType</code> and
+<code>Analyzer</code> vocabularies are in <a href="../api/#metadata-enums">Metadata enums</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spxtacular</span><span class="w"> </span><span class="kn">import</span> <span class="n">MzmlReader</span>
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a><span class="n">reader</span> <span class="o">=</span> <span class="n">MzmlReader</span><span class="p">(</span><span class="s2">"tests/data/example.mzML"</span><span class="p">)</span>   <span class="c1"># or your own file; see [Example files](readers.md#example-files)</span>
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a><span class="k">for</span> <span class="n">scan</span> <span class="ow">in</span> <span class="n">reader</span><span class="o">.</span><span class="n">ms2</span><span class="p">:</span>
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Scan </span><span class="si">{</span><span class="n">scan</span><span class="o">.</span><span class="n">scan_number</span><span class="si">}</span><span class="s2">, RT=</span><span class="si">{</span><span class="n">scan</span><span class="o">.</span><span class="n">rt</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">s, CE=</span><span class="si">{</span><span class="n">scan</span><span class="o">.</span><span class="n">collision_energy</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a>    <span class="k">if</span> <span class="n">scan</span><span class="o">.</span><span class="n">precursors</span><span class="p">:</span>
+<a id="__codelineno-42-7" name="__codelineno-42-7" href="#__codelineno-42-7"></a>        <span class="n">prec</span> <span class="o">=</span> <span class="n">scan</span><span class="o">.</span><span class="n">precursors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-42-8" name="__codelineno-42-8" href="#__codelineno-42-8"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Precursor: </span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">precursor_mz</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> m/z, z=</span><span class="si">{</span><span class="n">prec</span><span class="o">.</span><span class="n">charge</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-42-9" name="__codelineno-42-9" href="#__codelineno-42-9"></a>    <span class="k">break</span>
+</code></pre></div>
+<hr />
+<h2 id="centroiding">Centroiding<a class="headerlink" href="#centroiding" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="n">spec</span><span class="o">.</span><span class="n">centroid</span><span class="p">()</span>                          <span class="c1"># every local maximum becomes a peak</span>
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="n">spec</span><span class="o">.</span><span class="n">centroid</span><span class="p">(</span><span class="n">min_intensity</span><span class="o">=</span><span class="s2">"noise"</span><span class="p">)</span>     <span class="c1"># MAD-estimated floor</span>
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a><span class="n">spec</span><span class="o">.</span><span class="n">centroid</span><span class="p">(</span><span class="n">min_intensity</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span>        <span class="c1"># absolute floor</span>
+</code></pre></div>
+<p><code>min_intensity</code> is the floor an apex must clear to count as a peak.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Without one, <strong>every</strong> local maximum is a peak. On data with any noise floor that returns far
+more centroids than there are real peaks — a test spectrum with 6 real peaks and a modest noise
+floor gives 769 centroids at the default, 6 with <code>min_intensity=2000</code>. The default is <code>None</code>
+for backwards compatibility, but on real data you almost always want a floor.</p>
+</div>
+<p>Use <a href="../visualization/#checking-centroiding"><code>profile_centroid_plot()</code></a> to see what the centroider
+actually did.</p>
+<p>A flat apex counts as one peak: requiring a strict <code>prev &lt; curr &gt; next</code> would discard any peak
+whose maximum spans two or more equal samples, which is routine in quantised or saturated data.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../getting-started/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Getting started">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Getting started
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../deconvolution/" class="md-footer__link md-footer__link--next" aria-label="Next: Deconvolution">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Deconvolution
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; the spxtacular authors. MIT licence.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
