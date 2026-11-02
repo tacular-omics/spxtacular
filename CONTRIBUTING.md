@@ -7,14 +7,20 @@ error message when reporting a defect.
 
 ## Development setup
 
-spxtacular requires Python 3.12 or newer and uses [uv](https://docs.astral.sh/uv/) to manage its
-development environment:
+`pip install spxtacular` is the install for using the library. Developing it requires Python 3.12
+or newer and uses [uv](https://docs.astral.sh/uv/) for the environment and
+[just](https://github.com/casey/just) as the task runner, so that every command runs against the
+locked development environment:
 
 ```bash
 git clone https://github.com/tacular-omics/spxtacular.git
 cd spxtacular
-uv sync --locked
+just install          # uv sync --locked
 ```
+
+`just --list` prints every recipe, and the
+[development guide](https://tacular-omics.github.io/spxtacular/development/) explains them one by
+one. Without `just`, run the command inside each recipe directly (`just --show test` prints it).
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks

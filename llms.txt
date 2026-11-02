@@ -27,6 +27,7 @@ spxtacular is part of tacular-omics: fragments come from `peptacular`, and the B
 ## Optional
 
 - [CHANGELOG](https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md): user-visible changes (0.7.0 changed hyperscore; old scores are not comparable)
+- [Development](https://tacular-omics.github.io/spxtacular/development/): clone, uv environment and the `just` recipes, for working on spxtacular itself
 - [Design record: polarity, adducts and isotope models](https://tacular-omics.github.io/spxtacular/design/polarity-adducts-and-isotope-roadmap/)
 - [CLAUDE.md](https://github.com/tacular-omics/spxtacular/blob/main/CLAUDE.md): guide for agents developing spxtacular itself
 - [peptacular](https://github.com/tacular-omics/peptacular): peptide parsing and fragment generation used as scoring input

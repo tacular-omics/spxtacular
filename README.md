@@ -81,6 +81,10 @@ pip install spxtacular[plotly-export]
 pip install spxtacular[all]
 ```
 
+Those are the installs for *using* spxtacular, with pip or `uv add`. Working *on* it uses a clone,
+[uv](https://docs.astral.sh/uv/) and the `just` recipes instead — see
+[Development](#development) below.
+
 ## Quick start
 
 ```python
@@ -121,10 +125,15 @@ for peak in neutral.peaks:
 neutral.plot(title="Neutral masses").show()
 ```
 
+Every snippet below continues from this one: each repeats the imports it needs, and `spec` is the
+spectrum built here.
+
 Reading raw files works the same for every format — `Reader` picks `DReader`, `MzmlReader`, or
 `ThermoReader` from the path suffix:
 
 ```python title="needs your own data file - not executed"
+import spxtacular as spx
+
 with spx.Reader("run.mzML") as reader:   # or spx.Reader("/data/sample.d") / spx.Reader("run.raw")
     print(reader.access_strategy)         # embedded, rapidgzip, memory, stream, plain, or None
     for spec in reader.ms1:              # .ms1/.ms2 are iterable *and* indexable
@@ -260,6 +269,8 @@ ion mobility, and MSn metadata) into a single compact, URL-safe token — or a
 ready-to-share link — with no backend required.
 
 ```python
+import spxtacular as spx
+
 token = spec.to_spectrl_token()                       # spectrl.v3.… token
 restored = spx.Spectrum.from_spectrl_token(token)
 
@@ -291,6 +302,32 @@ Full documentation with API reference, guides, and interactive plots is availabl
 - [Matching, scoring & reporter ions](https://tacular-omics.github.io/spxtacular/scoring/)
 - [Visualization](https://tacular-omics.github.io/spxtacular/visualization/)
 - [API Reference](https://tacular-omics.github.io/spxtacular/api/)
+
+## Development
+
+spxtacular is developed from a clone with [uv](https://docs.astral.sh/uv/) for the environment and
+[just](https://github.com/casey/just) as the task runner. Every recipe wraps `uv run --locked`, so
+each one runs against the locked development environment:
+
+```bash
+git clone https://github.com/tacular-omics/spxtacular.git
+cd spxtacular
+just install              # uv sync --locked: the package plus its dev dependency group
+uvx pre-commit install    # ruff check + ruff format on every commit
+
+just test                 # fast run: slow tests skipped
+just lint                 # ruff check
+just check                # ty type check
+just docs                 # serve the documentation on localhost:8003
+just --list               # every recipe
+```
+
+Before opening a pull request, run what CI runs: `just lint && just fmt-check && just check &&
+just test-cov && just docs-build`. The
+[Development guide](https://tacular-omics.github.io/spxtacular/development/) explains each recipe,
+the test markers, and the wheel and Thermo jobs CI adds;
+[`CONTRIBUTING.md`](https://github.com/tacular-omics/spxtacular/blob/main/CONTRIBUTING.md) has the
+contribution guidelines.
 
 ## Citing and contributing
 

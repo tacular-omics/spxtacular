@@ -1209,6 +1209,32 @@ objects are `PEPTIDE_ISOTOPE_MODEL`, `GLYCAN_ISOTOPE_MODEL`, `LIPID_ISOTOPE_MODE
 objects. Custom models store expected atoms per Dalton plus any fixed terminal composition. When
 omitted, `fixed_composition` is an empty mapping.
 
+A model answers four questions about a neutral mass:
+
+```python title="signature only - not executed"
+IsotopeModel.distribution(neutral_mass: float, max_isotopes: int | None = None) -> NDArray[np.float64]
+IsotopeModel.adaptive_distribution(
+    neutral_mass: float,
+    *,
+    min_relative_abundance: float = 0.01,
+    max_isotopes: int | None = None,
+) -> NDArray[np.float64]
+IsotopeModel.apex_index(neutral_mass: float, max_isotopes: int | None = None) -> int
+IsotopeModel.estimate_composition(neutral_mass: float) -> dict[str, int]
+```
+
+`distribution()` returns the relative abundances of the isotope peaks, cached per integer Dalton;
+`max_isotopes=None` gives 32 peaks, or more when a high mass needs them to reach its apex, and an
+integer truncates to exactly that many. `adaptive_distribution()` instead chooses the length from
+the mass, extending it until the whole trailing window falls below `min_relative_abundance`, and
+always keeps the A+0 peak. `apex_index()` is the index of the most abundant peak, which above
+roughly 1900 Da is no longer A+0 — deconvolution uses it to anchor a cluster on its apex.
+`estimate_composition()` gives the integer elemental composition the model expects at that mass.
+
+The fields are `atoms_per_da`, `fixed_composition`, `fixed_mass` (the monoisotopic mass of that
+fixed composition), `isotope_abundances` and `name`. `to_dict()` and `from_dict()` round-trip a model
+through JSON, which is how a custom model reaches a saved spectrum's deconvolution provenance.
+
 ### Ionization models
 
 ```python title="signature only - not executed"

@@ -33,10 +33,15 @@ With uv, use `uv add "spxtacular[mzml]"` and so on.
 installed. Only creating one without its backend raises an `ImportError` that names the extra to
 install. The MGF, MS2, and MSP readers need no extra.
 
+Those commands install spxtacular to *use* it. Working *on* spxtacular is a clone,
+[uv](https://docs.astral.sh/uv/) and the `just` recipes instead: see
+[Development](development.md).
+
 ## Process a spectrum
 
 Build a `Spectrum` from m/z and intensity arrays, then chain the processing steps. Every step
-returns a new spectrum.
+returns a new spectrum. The blocks on the rest of this page continue from this one: each repeats
+the imports it needs, and `spec` is the spectrum built here.
 
 ```python
 import numpy as np
@@ -141,6 +146,8 @@ With the `[spectrl]` extra, a whole spectrum fits in a URL-safe token, so no bac
 share it:
 
 ```python
+from spxtacular import Spectrum
+
 token = spec.to_spectrl_token()
 restored = Spectrum.from_spectrl_token(token)
 

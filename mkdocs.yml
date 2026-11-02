@@ -69,5 +69,6 @@ nav:
   - Design records:
       - Polarity, adducts, and isotope models: design/polarity-adducts-and-isotope-roadmap.md
   - Migrating to 0.9: migration.md
+  - Development: development.md
   - Changelog: https://github.com/tacular-omics/spxtacular/blob/main/CHANGELOG.md
   - Citation: citation.md

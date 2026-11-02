@@ -26,6 +26,7 @@ Python 3.12 or newer. File readers are optional extras, listed in
 - Guides: [Spectrum](spectrum.md), [Deconvolution](deconvolution.md), [Readers](readers.md),
   [Matching & scoring](scoring.md), [Visualization](visualization.md)
 - [API reference](api.md): every public name
+- [Development](development.md): clone, environment and the `just` recipes, for working on spxtacular
 - [Citation](citation.md): how to cite spxtacular
 
 ## Related packages

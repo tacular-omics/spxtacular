@@ -4,6 +4,22 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Added
+
+- Documentation: a [Development](https://tacular-omics.github.io/spxtacular/development/) page —
+  clone, uv environment, every `just` recipe, the checks to run before a pull request, and what
+  CI adds on top — linked from the README, Getting started and `llms.txt`.
+
+### Changed
+
+- Documentation: the README and `CONTRIBUTING.md` say which install is for using spxtacular (pip
+  or `uv add`) and which is for working on it (a clone with uv and the `just` recipes).
+- Documentation: every snippet in the README quick start and in Getting started carries the
+  imports it needs, and both pages state that the blocks after the first one continue from it.
+- Documentation: the API reference describes `IsotopeModel`'s methods (`distribution`,
+  `adaptive_distribution`, `apex_index`, `estimate_composition`, `to_dict`/`from_dict`) and its
+  fields, which only the migration guide referred to before.
+
 ## [0.9.3] (2026-10-26)
 
 ### Changed
