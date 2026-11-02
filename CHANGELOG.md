@@ -19,6 +19,9 @@ User-visible changes only; implementation details belong in commits and pull req
 - Documentation: the API reference describes `IsotopeModel`'s methods (`distribution`,
   `adaptive_distribution`, `apex_index`, `estimate_composition`, `to_dict`/`from_dict`) and its
   fields, which only the migration guide referred to before.
+- The `thermo`, `readers` and `all` extras now require `fisher-py>=2.0.2` instead of
+  `>=2.0.0`: fisher-py 2.0.0 and 2.0.1 were never published to PyPI, where 2.0.2 is the only
+  2.x release, so the old floor named a version no installer could supply.
 
 ## [0.9.3] (2026-10-26)
 

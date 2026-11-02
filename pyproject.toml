@@ -78,8 +78,8 @@ bruker = ["tdfpy>=5,<6"]
 mzml = ["mzmlpy>=0.10,<0.11"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
-thermo = ["fisher-py>=2.0.0"]
-readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.0"]
+thermo = ["fisher-py>=2.0.2"]
+readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
 matchms = ["matchms>=0.33.1"]
 spectrum-utils = ["spectrum-utils>=0.5.0"]
@@ -92,7 +92,7 @@ all = [
     "numba>=0.64.0",
     "tdfpy>=5,<6",
     "mzmlpy>=0.10,<0.11",
-    "fisher-py>=2.0.0",
+    "fisher-py>=2.0.2",
     "spectrl>=3.0,<4",
     "matchms>=0.33.1",
     "spectrum-utils>=0.5.0",
@@ -102,7 +102,7 @@ all = [
 
 [dependency-groups]
 dev = [
-    "fisher-py>=2.0.0",
+    "fisher-py>=2.0.2",
     "hypothesis>=6.100",
     "jsonschema>=4.25.1",
     "mkdocs>=1.6.1",

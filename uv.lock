@@ -2550,9 +2550,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fisher-py", marker = "extra == 'all'", specifier = ">=2.0.0" },
-    { name = "fisher-py", marker = "extra == 'readers'", specifier = ">=2.0.0" },
-    { name = "fisher-py", marker = "extra == 'thermo'", specifier = ">=2.0.0" },
+    { name = "fisher-py", marker = "extra == 'all'", specifier = ">=2.0.2" },
+    { name = "fisher-py", marker = "extra == 'readers'", specifier = ">=2.0.2" },
+    { name = "fisher-py", marker = "extra == 'thermo'", specifier = ">=2.0.2" },
     { name = "kaleido", marker = "extra == 'all'", specifier = ">=1.0" },
     { name = "kaleido", marker = "extra == 'plotly-export'", specifier = ">=1.0" },
     { name = "matchms", marker = "extra == 'all'", specifier = ">=0.33.1" },
@@ -2584,7 +2584,7 @@ provides-extras = ["all", "bruker", "interop", "matchms", "matplotlib", "mzml", 
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "fisher-py", specifier = ">=2.0.0" },
+    { name = "fisher-py", specifier = ">=2.0.2" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "matchms", specifier = ">=0.33.1" },
