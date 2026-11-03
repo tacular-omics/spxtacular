@@ -2485,6 +2485,7 @@ all = [
     { name = "matplotlib" },
     { name = "mzmlpy" },
     { name = "numba" },
+    { name = "plotly" },
     { name = "spectrl" },
     { name = "spectrum-utils" },
     { name = "tdfpy" },
@@ -2510,6 +2511,7 @@ numba = [
 ]
 plotly-export = [
     { name = "kaleido" },
+    { name = "plotly" },
 ]
 readers = [
     { name = "fisher-py" },
@@ -2569,7 +2571,9 @@ requires-dist = [
     { name = "paftacular", specifier = ">=2,<3" },
     { name = "pandas", specifier = ">=2.1.2" },
     { name = "peptacular", specifier = ">=5,<6" },
-    { name = "plotly", specifier = ">=6.1.1" },
+    { name = "plotly", specifier = ">=5.15" },
+    { name = "plotly", marker = "extra == 'all'", specifier = ">=6.1.1" },
+    { name = "plotly", marker = "extra == 'plotly-export'", specifier = ">=6.1.1" },
     { name = "spectrl", marker = "extra == 'all'", specifier = ">=3.0,<4" },
     { name = "spectrl", marker = "extra == 'spectrl'", specifier = ">=3.0,<4" },
     { name = "spectrum-utils", marker = "extra == 'all'", specifier = ">=0.4.0" },

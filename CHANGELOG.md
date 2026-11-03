@@ -30,11 +30,17 @@ User-visible changes only; implementation details belong in commits and pull req
   2.1.2 is the first release that caps `numpy<2`.
 - The `numba` and `all` extras require `numba>=0.59` instead of `>=0.64.0`. 0.59.0 is the
   first numba with a Python 3.12 wheel and it passes the full test suite.
-- `plotly>=6.1.1` replaces `plotly>=6.6.0`. The plotly floor and the `kaleido>=1.0` floor in
-  the `plotly-export` extra are a pair, because static image export goes through whichever
-  kaleido interface a plotly release knows. plotly 6.0.1 and below raise an error with
-  kaleido 1.x, plotly 6.1.0 silently writes no file, and 6.1.1 is the first release that
-  exports correctly with kaleido 1.0.0 and later.
+- `plotly>=5.15` replaces `plotly>=6.6.0` for the base install, and the `plotly-export`
+  extra now requires `plotly>=6.1.1` alongside `kaleido>=1.0`. 5.15.0 is the lowest release
+  the test suite passes on. Static image export is the only feature that needs a newer
+  plotly, so its requirement sits in the extra that asks for export rather than in the base
+  install. plotly and kaleido are a pair there, because export goes through whichever
+  kaleido interface a plotly release knows: plotly 6.0.1 and below raise an error with
+  kaleido 1.x, plotly 6.1.0 writes no file and raises nothing, and 6.1.1 is the first
+  release that exports correctly with kaleido 1.0.0 and later. 6.1.0 is the reason the
+  extra names a floor at all. A user gets a missing figure, no traceback and a warning
+  they will not read, and a floor of 6.1.1 is the only thing that stops a resolver
+  choosing it.
 - The `matchms`, `interop` and `all` extras require `matchms>=0.30` instead of `>=0.33.1`,
   and the `spectrum-utils`, `interop` and `all` extras require `spectrum-utils>=0.4.0`
   instead of `>=0.5.0`. Both are the lowest releases that pass the interop tests.

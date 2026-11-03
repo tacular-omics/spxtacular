@@ -29,13 +29,11 @@ dependencies = [
     "peptacular>=5,<6",
     "tacular>=2,<3",
     "paftacular>=2,<3",
-    # plotly and the kaleido floor in `plotly-export` are a pair: static export runs through
-    # whichever kaleido API that plotly release knows. plotly 6.1.0 and below drive the
-    # kaleido 0.2 `scope` API, which kaleido 1.x removed, so with kaleido>=1.0 they either
-    # raise "requires the kaleido package" (<=6.0.1) or write no file at all (6.1.0). 6.1.1 is
-    # the first release that exports with kaleido 1.x, measured against kaleido 1.0.0 and
-    # 1.5.0, and it is what plotly's own 6.1.0 warning tells users to upgrade to.
-    "plotly>=6.1.1",
+    # 5.15.0 is the lowest release the test suite passes on. Static image export needs
+    # plotly>=6.1.1 as well, but only when it is asked for, so that requirement lives in the
+    # `plotly-export` extra beside kaleido rather than here, where it would constrain every
+    # install for a feature it does not use.
+    "plotly>=5.15",
 ]
 authors = [
     { name = "Patrick T. Garrett", email = "pgarrett@scripps.edu" },
@@ -97,20 +95,25 @@ thermo = ["fisher-py>=2.0.2"]
 readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
 # matchms 0.30.0 is the lowest release that passes the interop tests. Lowering the floor does
-# not free numpy or pandas (0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3); what it buys
-# is matchms's own matplotlib demand dropping from >=3.10.8 to >=3.7.
+# not free numpy or pandas, because 0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3. What
+# it buys is matchms's own matplotlib demand dropping from >=3.10.8 to >=3.7.
 matchms = ["matchms>=0.30"]
 spectrum-utils = ["spectrum-utils>=0.4.0"]
 interop = ["matchms>=0.30", "spectrum-utils>=0.4.0"]
 # Print figures: backend="matplotlib" (vector PDF/SVG with embedded fonts).
 # 3.8 is kept deliberately. matplotlib 3.8-3.10 call pyparsing's deprecated `parseString` and
-# `oneOf` aliases, which our test config promotes to failures; that is our config being
+# `oneOf` aliases, which our test config promotes to failures. That is our config being
 # stricter than the library, not an incompatibility users would hit, so it is handled by a
 # scoped filter in [tool.pytest.ini_options] instead of by this floor. In `all` the effective
 # floor is matchms's >=3.10.8 whatever we declare here.
 matplotlib = ["matplotlib>=3.8"]
 # Static PNG/SVG/PDF export of plotly figures (save_figure). Needs Chrome/Chromium.
-plotly-export = ["kaleido>=1.0"]
+# plotly and kaleido are a pair here, because export runs through whichever kaleido interface
+# a plotly release knows. Measured against kaleido 1.0.0 and 1.5.0: plotly 6.0.1 and below
+# look for the kaleido 0.2 `scope` API that kaleido 1.x removed and raise "requires the
+# kaleido package", 6.1.0 pinned kaleido==1.0.0rc13 and writes no file while raising nothing,
+# and 6.1.1 is the first release that exports correctly.
+plotly-export = ["kaleido>=1.0", "plotly>=6.1.1"]
 all = [
     "numba>=0.59",
     "tdfpy>=5,<6",
@@ -121,6 +124,7 @@ all = [
     "spectrum-utils>=0.4.0",
     "matplotlib>=3.8",
     "kaleido>=1.0",
+    "plotly>=6.1.1",
 ]
 
 [dependency-groups]
