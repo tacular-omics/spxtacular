@@ -23,11 +23,15 @@ User-visible changes only; implementation details belong in commits and pull req
   `>=2.0.0`: fisher-py 2.0.0 and 2.0.1 were never published to PyPI, where 2.0.2 is the only
   2.x release, so the old floor named a version no installer could supply.
 - `pandas>=2.1.2` replaces `pandas>=2.0`. No pandas 2.0.x or 2.1.0 ships a wheel for Python
-  3.12, the oldest Python spxtacular supports, so the old floor named releases no installer
-  could supply. The floor skips 2.1.1, the first release with a 3.12 wheel, on purpose:
-  2.1.1 requires `numpy>=1.26.0` with no upper cap while shipping the numpy 1.x binary
-  interface, so an installer may pair it with numpy 2.x and importing pandas then fails.
-  2.1.2 is the first release that caps `numpy<2`.
+  3.12, the oldest Python spxtacular supports, but each of them does publish a source
+  distribution that claims to support it, so an installer selects one and then fails to build
+  it. 2.0.0 and 2.0.3 abort on a `pkg_resources` build dependency they do not declare, and
+  2.1.0 aborts because numpy's Cython headers now require Cython 3. The one installable
+  release this floor removes is 2.1.1, the first with a 3.12 wheel, and it is removed on
+  purpose: 2.1.1 requires `numpy>=1.26.0` with no upper cap while shipping the numpy 1.x
+  binary interface, so an installer pairs it with numpy 2.x and importing pandas raises
+  `numpy.dtype size changed`. 2.1.2 is the first release that caps `numpy<2` and imports
+  cleanly.
 - The `numba` and `all` extras require `numba>=0.59` instead of `>=0.64.0`. 0.59.0 is the
   first numba with a Python 3.12 wheel and it passes the full test suite.
 - `plotly>=5.15` replaces `plotly>=6.6.0` for the base install, and the `plotly-export`
