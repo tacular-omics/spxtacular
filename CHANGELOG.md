@@ -33,29 +33,32 @@ User-visible changes only; implementation details belong in commits and pull req
   `numpy.dtype size changed`. 2.1.2 is the first release that caps `numpy<2` and imports
   cleanly.
 - The `numba` and `all` extras require `numba>=0.59` instead of `>=0.64.0`. 0.59.0 is the
-  first numba with a Python 3.12 wheel and it passes the full test suite.
-- `plotly>=5.15` replaces `plotly>=6.6.0` for the base install, and the `plotly-export`
-  extra now requires `plotly>=6.1.1` alongside `kaleido>=1.0`. 5.15.0 is the lowest release
-  the test suite passes on. Static image export is the only feature that needs a newer
-  plotly, so its requirement sits in the extra that asks for export rather than in the base
-  install. plotly and kaleido are a pair there, because export goes through whichever
+  first numba with a Python 3.12 wheel, and it installs and imports at that floor. Only an
+  install that asks for `numba` without the interop extras can reach it: numba 0.59 requires
+  `numpy<1.27` while matchms requires `numpy>=2.0.0`, so `spxtacular[all]` with numba pinned
+  to 0.59.0 has no solution at all, and the lowest numba a full install resolves to is
+  0.61.0. That is the version the lowest-resolution CI job tests, so the suite is not
+  exercised at 0.59 itself.
+- `plotly>=5.15` replaces `plotly>=6.6.0` for the base install, and the `plotly-export` and
+  `all` extras now require `plotly>=6.1.1` alongside `kaleido>=1.0`. 5.15.0 is the lowest
+  release the test suite passes on. Static image export is the only feature that needs a
+  newer plotly, so its requirement sits in the extra that asks for export rather than in the
+  base install. plotly and kaleido are a pair there, because export goes through whichever
   kaleido interface a plotly release knows: plotly 6.0.1 and below raise an error with
-  kaleido 1.x, plotly 6.1.0 writes no file and raises nothing, and 6.1.1 is the first
-  release that exports correctly with kaleido 1.0.0 and later. 6.1.0 is the reason the
-  extra names a floor at all. A user gets a missing figure, no traceback and a warning
-  they will not read, and a floor of 6.1.1 is the only thing that stops a resolver
-  choosing it. The test suite now exports a plotly figure for real, so this pair is
-  exercised at its floor and not only at current versions. That one test is marked
-  `slow`, skips without kaleido or a Chrome or Chromium binary, and carries a 60 second
-  per-test timeout on purpose, because the suite's 15 second default does not fit a cold
-  browser start.
+  kaleido 1.x, plotly 6.1.0 writes no file and raises nothing, and 6.1.1 is the first release
+  that exports correctly with kaleido 1.0.0 and later. 6.1.0 is why the extra names a floor
+  at all, because it leaves a user with a missing figure and no traceback, and only a floor
+  of 6.1.1 keeps a resolver away from it. The test suite now exports a plotly figure for
+  real, so this pair is exercised at its floor and not only at current versions. That one
+  test is marked `slow`, skips unless kaleido, a Chrome or Chromium binary and plotly 6.1.1
+  or newer are all present, and carries a 60 second per-test timeout on purpose, because the
+  suite's 15 second default does not fit a cold browser start.
 - The `matchms`, `interop` and `all` extras require `matchms>=0.30` instead of `>=0.33.1`,
   and the `spectrum-utils`, `interop` and `all` extras require `spectrum-utils>=0.4.0`
-  instead of `>=0.5.0`. Both are the lowest releases that pass the interop tests.
-- The `dev` dependency group repeats the lowered floors (`matchms>=0.30`, `numba>=0.59`,
-  `spectrum-utils>=0.4.0`) on purpose. A resolution that installs the extras and the dev
-  group together takes the higher of the two requirements, so a dev pin above a runtime
-  floor would hide that floor from the lowest-resolution test job.
+  instead of `>=0.5.0`. The interop tests pass at both floors, which the lowest-resolution
+  CI job installs. Lowering the matchms floor does not lower the numpy or pandas a user ends
+  up with, because matchms 0.30.0 itself requires `numpy>=2.0.0` and `pandas>=2.2.3`: any
+  install that includes matchms stays above this package's own numpy and pandas floors.
 
 ## [0.9.3] (2026-10-26)
 

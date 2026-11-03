@@ -105,7 +105,9 @@ interop = ["matchms>=0.30", "spectrum-utils>=0.4.0"]
 # `oneOf` aliases, which our test config promotes to failures. That is our config being
 # stricter than the library, not an incompatibility users would hit, so it is handled by a
 # scoped filter in [tool.pytest.ini_options] instead of by this floor. In `all` the effective
-# floor is matchms's >=3.10.8 whatever we declare here.
+# floor is the highest any installed extra asks for, which moves with the matchms floor:
+# matchms 0.30.0 asks for >=3.7, so the lowest-resolution CI job installs 3.8.4 from the floor
+# here, while matchms 0.33.1 asks for >=3.10.8.
 matplotlib = ["matplotlib>=3.8"]
 # Static PNG/SVG/PDF export of plotly figures (save_figure). Needs Chrome/Chromium.
 # plotly and kaleido are a pair here, because export runs through whichever kaleido interface
