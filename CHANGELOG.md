@@ -22,6 +22,26 @@ User-visible changes only; implementation details belong in commits and pull req
 - The `thermo`, `readers` and `all` extras now require `fisher-py>=2.0.2` instead of
   `>=2.0.0`: fisher-py 2.0.0 and 2.0.1 were never published to PyPI, where 2.0.2 is the only
   2.x release, so the old floor named a version no installer could supply.
+- `pandas>=2.1.2` replaces `pandas>=2.0`. No pandas 2.0.x or 2.1.0 ships a wheel for Python
+  3.12, the oldest Python spxtacular supports, so the old floor named releases no installer
+  could supply. The floor skips 2.1.1, the first release with a 3.12 wheel, on purpose:
+  2.1.1 requires `numpy>=1.26.0` with no upper cap while shipping the numpy 1.x binary
+  interface, so an installer may pair it with numpy 2.x and importing pandas then fails.
+  2.1.2 is the first release that caps `numpy<2`.
+- The `numba` and `all` extras require `numba>=0.59` instead of `>=0.64.0`. 0.59.0 is the
+  first numba with a Python 3.12 wheel and it passes the full test suite.
+- `plotly>=6.1.1` replaces `plotly>=6.6.0`. The plotly floor and the `kaleido>=1.0` floor in
+  the `plotly-export` extra are a pair, because static image export goes through whichever
+  kaleido interface a plotly release knows. plotly 6.0.1 and below raise an error with
+  kaleido 1.x, plotly 6.1.0 silently writes no file, and 6.1.1 is the first release that
+  exports correctly with kaleido 1.0.0 and later.
+- The `matchms`, `interop` and `all` extras require `matchms>=0.30` instead of `>=0.33.1`,
+  and the `spectrum-utils`, `interop` and `all` extras require `spectrum-utils>=0.4.0`
+  instead of `>=0.5.0`. Both are the lowest releases that pass the interop tests.
+- The `dev` dependency group repeats the lowered floors (`matchms>=0.30`, `numba>=0.59`,
+  `spectrum-utils>=0.4.0`) on purpose. A resolution that installs the extras and the dev
+  group together takes the higher of the two requirements, so a dev pin above a runtime
+  floor would hide that floor from the lowest-resolution test job.
 
 ## [0.9.3] (2026-10-26)
 
