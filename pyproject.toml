@@ -16,12 +16,24 @@ keywords = [
     "glycomics",
 ]
 dependencies = [
+    # 1.26.0 is the first numpy with a cp312 wheel, so this is as low as requires-python
+    # allows. It binds in `readers` (tdfpy also requires >=1.26) but is a dead letter in
+    # `all`, where matchms requires numpy>=2.0.0 at every version we allow.
     "numpy>=1.26",
-    "pandas>=2.0",
+    # pandas 2.1.1 is the first release with a cp312 wheel, but it requires numpy>=1.26.0
+    # with no upper cap while shipping the numpy 1.x ABI, so a resolver may legally pair it
+    # with numpy 2.x and the import then fails with "numpy.dtype size changed". 2.1.2 is the
+    # first release that caps numpy<2, so this floor skips exactly one installable release
+    # on purpose.
+    "pandas>=2.1.2",
     "peptacular>=5,<6",
     "tacular>=2,<3",
     "paftacular>=2,<3",
-    "plotly>=6.6.0",
+    # 5.15.0 is the lowest release the test suite passes on. Static image export needs
+    # plotly>=6.1.1 as well, but only when it is asked for, so that requirement lives in the
+    # `plotly-export` extra beside kaleido rather than here, where it would constrain every
+    # install for a feature it does not use.
+    "plotly>=5.15",
 ]
 authors = [
     { name = "Patrick T. Garrett", email = "pgarrett@scripps.edu" },
@@ -73,7 +85,8 @@ only-include = [
 ]
 
 [project.optional-dependencies]
-numba = ["numba>=0.64.0"]
+# 0.59.0 is the first numba with a cp312 wheel and the lowest that passes the test suite.
+numba = ["numba>=0.59"]
 bruker = ["tdfpy>=5,<6"]
 mzml = ["mzmlpy>=0.10,<0.11"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
@@ -81,35 +94,54 @@ mzml = ["mzmlpy>=0.10,<0.11"]
 thermo = ["fisher-py>=2.0.2"]
 readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
-matchms = ["matchms>=0.33.1"]
-spectrum-utils = ["spectrum-utils>=0.5.0"]
-interop = ["matchms>=0.33.1", "spectrum-utils>=0.5.0"]
+# matchms 0.30.0 is the lowest release that passes the interop tests. Lowering the floor does
+# not free numpy or pandas, because 0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3. What
+# it buys is matchms's own matplotlib demand dropping from >=3.10.8 to >=3.7.
+matchms = ["matchms>=0.30"]
+spectrum-utils = ["spectrum-utils>=0.4.0"]
+interop = ["matchms>=0.30", "spectrum-utils>=0.4.0"]
 # Print figures: backend="matplotlib" (vector PDF/SVG with embedded fonts).
+# 3.8 is kept deliberately. matplotlib 3.8-3.10 call pyparsing's deprecated `parseString` and
+# `oneOf` aliases, which our test config promotes to failures. That is our config being
+# stricter than the library, not an incompatibility users would hit, so it is handled by a
+# scoped filter in [tool.pytest.ini_options] instead of by this floor. In `all` the effective
+# floor is matchms's >=3.10.8 whatever we declare here.
 matplotlib = ["matplotlib>=3.8"]
 # Static PNG/SVG/PDF export of plotly figures (save_figure). Needs Chrome/Chromium.
-plotly-export = ["kaleido>=1.0"]
+# plotly and kaleido are a pair here, because export runs through whichever kaleido interface
+# a plotly release knows. Measured against kaleido 1.0.0 and 1.5.0: plotly 6.0.1 and below
+# look for the kaleido 0.2 `scope` API that kaleido 1.x removed and raise "requires the
+# kaleido package", 6.1.0 pinned kaleido==1.0.0rc13 and writes no file while raising nothing,
+# and 6.1.1 is the first release that exports correctly.
+plotly-export = ["kaleido>=1.0", "plotly>=6.1.1"]
 all = [
-    "numba>=0.64.0",
+    "numba>=0.59",
     "tdfpy>=5,<6",
     "mzmlpy>=0.10,<0.11",
     "fisher-py>=2.0.2",
     "spectrl>=3.0,<4",
-    "matchms>=0.33.1",
-    "spectrum-utils>=0.5.0",
+    "matchms>=0.30",
+    "spectrum-utils>=0.4.0",
     "matplotlib>=3.8",
     "kaleido>=1.0",
+    "plotly>=6.1.1",
 ]
 
 [dependency-groups]
+# The floors repeated from the runtime extras (fisher-py, matchms, numba, spectrum-utils,
+# mzmlpy, spectrl, tdfpy) are deliberate and must move with them. `uv sync --all-extras
+# --all-groups --resolution lowest-direct`, which the CI lowest job runs, takes the higher of
+# the extra's and this group's requirement, so a dev pin above a runtime floor shadows it and
+# the lowest job then never tests the floor we publish.
 dev = [
     "fisher-py>=2.0.2",
     "hypothesis>=6.100",
     "jsonschema>=4.25.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
-    "matchms>=0.33.1",
+    "matchms>=0.30",
     "mzmlpy>=0.10,<0.11",
-    "numba>=0.64.0",
+    "numba>=0.59",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "pytest-examples>=0.0.18",
@@ -117,7 +149,7 @@ dev = [
     "pytest-xdist>=3.8,<4",
     "ruff>=0.16.8",
     "spectrl>=3.0,<4",
-    "spectrum-utils>=0.5.0",
+    "spectrum-utils>=0.4.0",
     "tdfpy>=5,<6",
     "ty>=0.0.83",
 ]
@@ -181,7 +213,19 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config --timeout=15"
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # matplotlib 3.8-3.10 reach pyparsing's deprecated camelCase names (`parseString`,
+    # `resetCache`, `oneOf`, `enablePackrat`, `endQuoteChar`, `parseAll`) from
+    # matplotlib._fontconfig_pattern, matplotlib._mathtext and pyparsing's own alias shim. The
+    # warning is matplotlib's and matplotlib still works, so "error" must not turn it into a
+    # dependency floor. Scoped to pyparsing's two alias-deprecation messages from those three
+    # modules. The category is left open because pyparsing has moved
+    # PyparsingDeprecationWarning between DeprecationWarning and UserWarning, and naming the
+    # class here would make pytest import pyparsing even in installs with no matplotlib.
+    "default:'[A-Za-z_]+' deprecated - use '[A-Za-z_]+':Warning:(matplotlib._(fontconfig_pattern|mathtext)|pyparsing.util)",
+    "default:'[A-Za-z_]+' argument is deprecated, use '[A-Za-z_]+':Warning:(matplotlib._(fontconfig_pattern|mathtext)|pyparsing.util)",
+]
 markers = ["slow: slow test (> ~2 s), skipped unless --run-slow or RUN_SLOW=1 (CI runs them)"]
 
 [tool.coverage.run]

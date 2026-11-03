@@ -9,7 +9,10 @@ corresponds to a real defect the previous implementation had.
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import shutil
+from importlib.metadata import version
 
 import numpy as np
 import pandas as pd
@@ -27,6 +30,19 @@ from spxtacular.visualization import (
     profile_centroid_plot,
     save_figure,
     sequence_coverage_plot,
+)
+
+# Plotly static export is a three-part requirement: kaleido, a browser for it to drive, and a
+# plotly new enough to speak kaleido 1.x's interface. Measured against kaleido 1.0.0 and 1.5.0,
+# plotly 6.0.1 and below raise because they look for the kaleido 0.2 ``scope`` API, and 6.1.0
+# writes no file while raising nothing, so 6.1.1 is the floor the ``plotly-export`` extra
+# declares. A non-numeric segment (a release candidate) parses short and skips, which is the
+# safe direction.
+_PLOTLY_VERSION = tuple(int(part) for part in version("plotly").split(".")[:3] if part.isdigit())
+_HAS_BROWSER = any(shutil.which(name) for name in ("google-chrome", "chrome", "chromium", "chromium-browser"))
+requires_plotly_export = pytest.mark.skipif(
+    importlib.util.find_spec("kaleido") is None or not _HAS_BROWSER or _PLOTLY_VERSION < (6, 1, 1),
+    reason="plotly static export needs kaleido, a Chrome or Chromium binary on PATH, and plotly>=6.1.1",
 )
 
 
@@ -595,6 +611,17 @@ class TestSaveFigure:
         fig = plot_spectrum(_spectrum(3))
         with pytest.raises(ValueError, match="unsupported figure format"):
             save_figure(fig, tmp_path / "fig.eps")
+
+    @pytest.mark.slow  # kaleido drives a headless browser, several seconds
+    @pytest.mark.timeout(60)  # the suite's 15 s default is too tight for a cold browser start
+    @requires_plotly_export
+    def test_static_export_writes_a_png(self, tmp_path) -> None:
+        """The one test that exercises the plotly/kaleido pair the ``plotly-export`` extra pins."""
+        fig = plot_spectrum(_spectrum(5))
+        out = save_figure(fig, tmp_path / "fig.png")
+        data = out.read_bytes()
+        assert data.startswith(b"\x89PNG\r\n\x1a\n"), "kaleido wrote something that is not a PNG"
+        assert len(data) > 1000
 
     def test_missing_kaleido_has_an_install_hint(self, tmp_path, monkeypatch) -> None:
         import importlib
