@@ -40,7 +40,11 @@ User-visible changes only; implementation details belong in commits and pull req
   release that exports correctly with kaleido 1.0.0 and later. 6.1.0 is the reason the
   extra names a floor at all. A user gets a missing figure, no traceback and a warning
   they will not read, and a floor of 6.1.1 is the only thing that stops a resolver
-  choosing it.
+  choosing it. The test suite now exports a plotly figure for real, so this pair is
+  exercised at its floor and not only at current versions. That one test is marked
+  `slow`, skips without kaleido or a Chrome or Chromium binary, and carries a 60 second
+  per-test timeout on purpose, because the suite's 15 second default does not fit a cold
+  browser start.
 - The `matchms`, `interop` and `all` extras require `matchms>=0.30` instead of `>=0.33.1`,
   and the `spectrum-utils`, `interop` and `all` extras require `spectrum-utils>=0.4.0`
   instead of `>=0.5.0`. Both are the lowest releases that pass the interop tests.
