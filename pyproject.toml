@@ -88,11 +88,11 @@ only-include = [
 # 0.59.0 is the first numba with a cp312 wheel and the lowest that passes the test suite.
 numba = ["numba>=0.59"]
 bruker = ["tdfpy>=5,<6"]
-mzml = ["mzmlpy>=0.10,<0.11"]
+mzml = ["mzmlpy>=0.11,<0.12"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.2"]
-readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
+readers = ["tdfpy>=5,<6", "mzmlpy>=0.11,<0.12", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
 # matchms 0.30.0 is the lowest release that passes the interop tests. Lowering the floor does
 # not free numpy or pandas, because 0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3. What
@@ -117,7 +117,7 @@ plotly-export = ["kaleido>=1.0", "plotly>=6.1.1"]
 all = [
     "numba>=0.59",
     "tdfpy>=5,<6",
-    "mzmlpy>=0.10,<0.11",
+    "mzmlpy>=0.11,<0.12",
     "fisher-py>=2.0.2",
     "spectrl>=3.0,<4",
     "matchms>=0.30",
@@ -140,7 +140,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "matchms>=0.30",
-    "mzmlpy>=0.10,<0.11",
+    "mzmlpy>=0.11,<0.12",
     "numba>=0.59",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",

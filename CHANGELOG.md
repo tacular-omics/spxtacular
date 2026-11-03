@@ -48,6 +48,9 @@ User-visible changes only; implementation details belong in commits and pull req
 - The `matchms`, `interop` and `all` extras require `matchms>=0.30` instead of `>=0.33.1`,
   and the `spectrum-utils`, `interop` and `all` extras require `spectrum-utils>=0.4.0`
   instead of `>=0.5.0`. Both are the lowest releases that pass the interop tests.
+- The `mzml`, `readers` and `all` extras and the `dev` group now require
+  `mzmlpy>=0.11,<0.12` instead of `>=0.10,<0.11`, for mzmlpy 0.11.0. The cap moves with the
+  floor because mzmlpy is a 0.x package, where a minor release may change behaviour.
 - The `dev` dependency group repeats the lowered floors (`matchms>=0.30`, `numba>=0.59`,
   `spectrum-utils>=0.4.0`) on purpose. A resolution that installs the extras and the dev
   group together takes the higher of the two requirements, so a dev pin above a runtime
