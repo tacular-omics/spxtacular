@@ -63,6 +63,16 @@ User-visible changes only; implementation details belong in commits and pull req
   up with, because matchms 0.30.0 itself requires `numpy>=2.0.0` and `pandas>=2.2.3`: any
   install that includes matchms stays above this package's own numpy and pandas floors.
 
+### Fixed
+
+- `MzmlReader`'s scan-number lookups no longer answer for an mzML index that has since been
+  rebuilt. mzmlpy 0.10.3 treats the document as the authority and its offset index as a cache
+  of it, so reading a file whose index does not list every spectrum lengthens that index
+  mid-read; the index `get_by_scan()`, `get_by_native_id()` and `get_by_sage_scannr()` share
+  was built from the old ids and kept raising `KeyError` for a spectrum the walk had just
+  yielded. It is now rebuilt when an open file's spectrum count changes, and dropped when the
+  reader is closed.
+
 ## [0.9.3] (2026-10-26)
 
 ### Changed
