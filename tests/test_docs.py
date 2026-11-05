@@ -6,6 +6,18 @@ same way a reader works through the page. A block that is *not* meant to be exec
 says so in its fence title (see :data:`NOT_EXECUTED`), which also renders as a label
 above the block, so a reader can tell which blocks they can paste.
 
+What the shared namespace does and does not prove. It proves that a page works as a
+walkthrough: read top to bottom, every block runs. It does *not* prove that a block
+works on its own, because the setup block's imports satisfy every later block on the
+page -- a block that uses ``Spectrum`` without importing it passes here and raises
+``NameError`` for a reader who copies that one block. Thirty blocks were in exactly
+that state until 2026-11-05 (a JOSS review item), and this test was green throughout.
+Finding them needs a per-block check instead: extract each block with
+``pytest_examples.find_examples`` and report the names it loads but neither imports nor
+assigns that an earlier block on the same page imported. Keep the imports repeated in
+every block; the data each page's setup block defines is deliberately shared, and the
+pages say so.
+
 Examples run in a scratch directory that links the shipped fixtures under
 ``tests/data``, so files an example writes (``spectrum.html``, ``scan_001.npz``, ...)
 never land in the checkout. ``Figure.show()`` is stubbed and matplotlib is forced onto
