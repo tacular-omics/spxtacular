@@ -107,6 +107,8 @@ matches = match_fragments(
 **Example:**
 
 ```python
+from spxtacular import match_fragments
+
 matches = match_fragments(spec, fragments, tolerance=10, tolerance_unit="ppm")
 for m in matches:
     print(f"  Peak {m.peak_index} ({m.peak_mz:.4f} m/z) matched {m.fragment} (Δ={m.ppm_error:+.1f} ppm)")
@@ -179,6 +181,8 @@ Supply `predicted_intensities` — one value per fragment, in the same order —
 spectral angle of the literature (Toprak et al.; the metric Prosit and Spectronaut report):
 
 ```python
+import spxtacular as spx
+
 result = spx.score(
     spec, fragments,
     tolerance=10, tolerance_unit="ppm",
@@ -262,6 +266,8 @@ fragment containing the modified site is shifted by the modification's mass. A p
 those as mismatches:
 
 ```python
+from spxtacular import cosine, modified_cosine
+
 # same peptide, one +79.966 phospho on the C-terminal half
 cosine(a, b, tolerance=0.02)                                           # 0.59 - looks unrelated
 modified_cosine(a, b, a_precursor_mz, b_precursor_mz, tolerance=0.02)  # 1.00 - recovered
@@ -335,6 +341,8 @@ percentage of its reporter signal that appears 2 or 1 Da below and 1 or 2 Da abo
 sheet as `impurities=` and the intensities are corrected:
 
 ```python
+import spxtacular as spx
+
 lot = {
     "126":  {"-2": 0.0, "-1": 0.0, "+1": 7.0, "+2": 0.2},
     "127N": {"-2": 0.0, "-1": 0.4, "+1": 6.5, "+2": 0.0},

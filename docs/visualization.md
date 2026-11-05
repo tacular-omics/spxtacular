@@ -65,6 +65,8 @@ from what the blocks below draw.
 With those names in hand, every plot function draws the same figure with any of the three backends:
 
 ```python
+import spxtacular as spx
+
 fig = spx.annotate_spectrum(spec, fragments, peptide=peptide)                     # plotly, on screen
 fig = spx.annotate_spectrum(spec, fragments, peptide=peptide,
                             backend="matplotlib", style="paper", size="single")  # print
@@ -123,6 +125,8 @@ profile data exists — survives. Everything else stays a stick plot. Override w
 the `FigureStyle` dataclass; change any field with `.with_(...)` and pass the result as `style=`:
 
 ```python
+import spxtacular as spx
+
 tight = spx.get_style("paper").with_(font_size=6.0, label_size=5.5)
 fig = spx.annotate_spectrum(spec, fragments, backend="matplotlib", style=tight)
 ```
@@ -272,6 +276,8 @@ score and prints it in the corner (`"modified_cosine"` needs a precursor m/z on 
 raises `SpxtacularError` otherwise):
 
 ```python
+from spxtacular.visualization import mirror_plot
+
 fig = mirror_plot(query, library, fragments=fragments, names=("query", "library"), similarity="cosine")
 ```
 
@@ -281,6 +287,9 @@ the labels that differ, such as the shifted ions of a modified form passed as `l
 `"both"` labels every match on both halves and `"top"` labels the upper half only:
 
 ```python
+import peptacular as pt
+from spxtacular.visualization import mirror_plot
+
 phospho = pt.parse("LAQANGWGVM[Oxidation]VS[Phospho]HR/2").fragment(ion_types=("b", "y"), charges=[1, 2])
 fig = mirror_plot(library, query, fragments=fragments, lower_fragments=phospho)
 ```
@@ -489,11 +498,15 @@ Everything above works on a single spectrum. These two work on a *run* — any i
 carrying retention times, which is what `reader.ms1` yields.
 
 ```python
+import spxtacular as spx
+
 with spx.Reader(run_path) as reader:
     spx.plot_chromatogram(reader.ms1).show()          # TIC, extracted for you
 ```
 
 ```python
+import spxtacular as spx
+
 with spx.Reader(run_path) as reader:                  # an ion and its first two isotopes
     spx.plot_xic(reader.ms1, [599.3262, 599.8268, 600.3306], tolerance=20).show()
 ```
@@ -522,6 +535,8 @@ On mobility data an `im_window` is what makes a trace selective — two co-eluti
 same m/z usually separate in mobility:
 
 ```python
+import spxtacular as spx
+
 with spx.Reader(run_path) as reader:
     spx.plot_xic(reader.ms1, [599.3262], tolerance=20, im_window=(0.84, 0.94)).show()
 ```
@@ -581,6 +596,8 @@ middle of the plateau.
 ## `reporter_ion_plot()`
 
 ```python
+import spxtacular as spx
+
 fig = spx.reporter_ion_plot(
     spec,
     "TMT10",                 # plex name, IsobaricTagInfo, or an extracted ReporterIons
@@ -604,6 +621,8 @@ exactly as you computed them.
 ## `compose_figure()`
 
 ```python
+import spxtacular as spx
+
 parts = [
     spx.annotate_spectrum(spec, fragments, peptide=peptide, backend="spec"),
     spx.mirror_plot(query, library, fragments=fragments, backend="spec"),
@@ -681,6 +700,8 @@ peak would otherwise flatten everything else:
 ### Brand colours
 
 ```python
+from spxtacular import theme
+
 theme.set_palette(
     categorical={
         "light": ["#1f5fa9", "#c0392b", "#1d7a4c", "#0f7f8f", "#6b4fa8", "#b4600a", "#7a5248", "#5a5a5a"],
@@ -701,6 +722,8 @@ theme.set_palette(
 survives print, forced-colours, and readers who cannot separate two hues:
 
 ```python
+import spxtacular as spx
+
 spx.annotate_spectrum(spec, fragments, tolerance=20, tolerance_unit="ppm", texture=True)
 ```
 
@@ -735,6 +758,7 @@ shows — the table is the place values are reported exactly.
 ## `save_figure()`
 
 ```python
+import spxtacular as spx
 from spxtacular import save_figure
 
 fig = spx.annotate_spectrum(spec, fragments)                        # a plotly figure

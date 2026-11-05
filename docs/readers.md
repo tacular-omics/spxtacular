@@ -345,6 +345,8 @@ access reuse it (the fast path). Without one, every `.ms1` / `.ms2` / `reader[..
 and closes the file again — correct, but considerably slower. Prefer the context manager:
 
 ```python
+from spxtacular import MzmlReader
+
 with MzmlReader("tests/data/example.mzML") as reader:
     for spec in reader.ms1:
         ...

@@ -1296,7 +1296,7 @@ document and an integrity checksum.
 Requires the optional ``[spectrl]`` extra.
 
 ```python
-from spxtacular import to_spectrl_token, from_spectrl_token, to_inline_spectrum
+from spxtacular import Spectrum, to_spectrl_token, from_spectrl_token, to_inline_spectrum
 
 token = spec.to_spectrl_token()                      # lossy (bounded-error), default
 token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact arrays
@@ -1492,6 +1492,8 @@ scalar metadata is JSON-encoded under the `meta` key. The `.npz` extension is
 appended automatically when missing.
 
 ```python
+from spxtacular import MsnSpectrum, Spectrum
+
 spec.save("scan_001.npz")
 restored = Spectrum.load("scan_001.npz")
 
@@ -2304,6 +2306,8 @@ Convert a mass difference between Dalton and ppm at a given reference `mz`. Both
 *difference* first and the reference m/z second.
 
 ```python
+from spxtacular import da_to_ppm, ppm_to_da
+
 da_to_ppm(0.01, 500.0)   # 20.0 ppm
 ppm_to_da(20.0, 500.0)   # 0.01 Da
 ```

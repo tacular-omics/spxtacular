@@ -117,6 +117,8 @@ m/z or neutral masses, so step 5 can take `clean`, `deconv` or `neutral`.
 [`score`](api.md#score) runs the same matching and returns the PSM metrics.
 
 ```python
+import peptacular as pt
+
 fragments = pt.parse(peptide).fragment(ion_types=("b", "y"), charges=[1, 2])
 matches = clean.match_fragments(fragments, tolerance=20, tolerance_unit="ppm")
 print(len(matches), "of", len(fragments), "fragments matched")
@@ -340,6 +342,8 @@ renamed = spec.update(spectrum_type="centroid")
 original was a `Spectrum` or an `MsnSpectrum`.
 
 ```python
+from spxtacular import Spectrum
+
 payload = spec.to_dict()
 restored = Spectrum.from_dict(payload)
 
@@ -352,6 +356,8 @@ APIs and browser visualization. For local storage prefer `.npz`, which is smalle
 arrays as NumPy arrays.
 
 ```python
+from spxtacular import Spectrum
+
 message = spec.to_json()
 restored = Spectrum.from_json(message)
 ```
@@ -370,6 +376,8 @@ that mirrors mzML semantics. The default is lossy within a bounded error; `lossl
 arrays bit-exact. Requires the optional `[spectrl]` extra.
 
 ```python
+from spxtacular import Spectrum
+
 token = spec.to_spectrl_token()                      # lossy (bounded-error), default
 token_exact = spec.to_spectrl_token(lossless=True)   # bit-exact arrays
 restored = Spectrum.from_spectrl_token(token)
@@ -381,6 +389,8 @@ the page that draws it: the [Spectra web application](https://spectra.tacular.de
 link in the browser, and `from_spectrl_url` reads one back here.
 
 ```python
+from spxtacular import Spectrum
+
 url = spec.to_spectrl_url(base="https://example.com/view")             # …#spectrl.…
 uri = spec.to_spectrl_url(mode="data")                            # data: URI
 restored = Spectrum.from_spectrl_url(url)
@@ -390,6 +400,8 @@ restored = Spectrum.from_spectrl_url(url)
 scalar metadata JSON-encoded beside them. All MSn metadata survives the round trip.
 
 ```python
+from spxtacular import Spectrum
+
 spec.save("scan_001.npz")
 restored = Spectrum.load("scan_001.npz")
 ```
@@ -444,6 +456,8 @@ per peak, carrying both the data and every visual property. Edit it and render i
 `plot_from_table()`, which is how a figure gets a detail the plotting functions do not expose.
 
 ```python
+from spxtacular import plot_from_table
+
 tbl = decon.plot_table()
 tbl.loc[tbl["charge"] == 2, "color"] = "red"
 tbl.loc[tbl["intensity"] > 1e5, "linewidth"] = 2.0
@@ -452,6 +466,8 @@ fig.show()
 ```
 
 ```python
+from spxtacular import plot_from_table
+
 tbl = spec.annot_plot_table(fragments, tolerance=10, tolerance_unit="ppm")
 tbl.loc[tbl["label"] != "", "label_size"] = 14
 fig = plot_from_table(tbl, title="Annotated")
@@ -489,6 +505,8 @@ deconvolution records, raises `SpxtacularError` rather than silently producing a
 axis means two things.
 
 ```python
+from spxtacular import Spectrum
+
 combined = Spectrum.combine([spec1, spec2, spec3])
 ```
 
@@ -497,6 +515,8 @@ analyte: normalize each replicate so no single acquisition dominates, concatenat
 peaks that agree within tolerance into intensity-weighted centroids.
 
 ```python
+from spxtacular import Spectrum
+
 replicates = [spec1, spec2, spec3]          # e.g. the same precursor across runs
 
 consensus = Spectrum.combine(

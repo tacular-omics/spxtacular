@@ -14,8 +14,11 @@ User-visible changes only; implementation details belong in commits and pull req
 
 - Documentation: the README and `CONTRIBUTING.md` say which install is for using spxtacular (pip
   or `uv add`) and which is for working on it (a clone with uv and the `just` recipes).
-- Documentation: every snippet in the README quick start and in Getting started carries the
-  imports it needs, and both pages state that the blocks after the first one continue from it.
+- Documentation: every runnable snippet in the README and in the documentation carries the imports
+  it needs. Thirty blocks across the API reference, Readers, Scoring, Spectrum and Visualization
+  pages previously ran only because an earlier block on the page had imported the name. Each page
+  already said that its blocks share the data its setup block defines; now only the data is
+  shared, not the imports.
 - Documentation: the API reference describes `IsotopeModel`'s methods (`distribution`,
   `adaptive_distribution`, `apex_index`, `estimate_composition`, `to_dict`/`from_dict`) and its
   fields, which only the migration guide referred to before.
