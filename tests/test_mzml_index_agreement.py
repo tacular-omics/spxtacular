@@ -18,6 +18,7 @@ import pytest
 
 pytest.importorskip("mzmlpy")
 
+from spxtacular import reader as reader_module  # noqa: E402
 from spxtacular.reader import MzmlReader  # noqa: E402
 
 HEADER = (
@@ -154,3 +155,66 @@ def test_complete_index_is_read_once_and_not_rebuilt(tmp_path: Path) -> None:
         for position, identifier in enumerate(expected):
             assert reader.get_by_scan(position).native_id == identifier
             assert reader[identifier].native_id == identifier
+
+
+def test_closing_the_reader_drops_the_cached_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cache does not outlive the handle it was built from.
+
+    An index a persistent handle rebuilt from the document would otherwise name spectra the
+    next per-operation handle cannot look up, so closing has to drop it and the next lookup
+    has to read the ids again. Needs nothing of mzmlpy beyond a sound file.
+    """
+    path = _written(tmp_path, "complete", build(spectra=3))
+    reads: list[object] = []
+    real = reader_module._mzml_spectrum_ids  # noqa: SLF001
+
+    def counting(handle: object) -> list[str]:
+        reads.append(handle)
+        return real(handle)
+
+    monkeypatch.setattr(reader_module, "_mzml_spectrum_ids", counting)
+
+    reader = MzmlReader(path)
+    with reader:
+        assert reader.get_by_scan(1).native_id == "scan=1"
+        assert reader.get_by_scan(2).native_id == "scan=2"  # the second lookup reuses the cache
+        assert len(reads) == 1
+    assert reader._index is None  # noqa: SLF001
+    assert reader._indexed_count is None  # noqa: SLF001
+    with reader:
+        assert reader.get_by_scan(1).native_id == "scan=1"
+        assert len(reads) == 2
+
+
+def test_an_unknown_spectrum_count_keeps_the_cached_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A count mzmlpy cannot supply leaves the cache in place rather than raising.
+
+    The invalidation asks for ``spectra.count``, which is ``int | None``, and not
+    ``len(handle.spectra)``, which raises ``TypeError`` for exactly this file -- asserted
+    below, so the reason survives anyone tempted to simplify the check back to ``len()``.
+    An unknown count says nothing about the index, so the cached one keeps answering.
+    """
+    path = _written(tmp_path, "complete", build(spectra=3))
+    reads: list[object] = []
+    real = reader_module._mzml_spectrum_ids  # noqa: SLF001
+
+    def counting(handle: object) -> list[str]:
+        reads.append(handle)
+        return real(handle)
+
+    monkeypatch.setattr(reader_module, "_mzml_spectrum_ids", counting)
+
+    with MzmlReader(path) as reader:
+        assert reader.get_by_scan(1).native_id == "scan=1"
+        assert len(reads) == 1
+
+        handle = reader._mzml_handle  # noqa: SLF001 - the count comes from mzmlpy's own lookup
+        assert handle is not None
+        lookup = handle.spectra
+        monkeypatch.setattr(type(lookup), "count", property(lambda _self: None))
+        with pytest.raises(TypeError):
+            len(lookup)
+
+        assert reader.get_by_scan(2).native_id == "scan=2"
+        assert reader["scan=1"].native_id == "scan=1"
+        assert len(reads) == 1
