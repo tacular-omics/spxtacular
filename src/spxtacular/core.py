@@ -2094,9 +2094,10 @@ class Spectrum:
             selected average-composition model to determine the significant
             isotopes. Pass an ``int`` to override (0 = monoisotopic only).
         isotope_threshold:
-            Where the envelope ends when ``isotopes="auto"``: the last isotope
-            at or above this relative abundance. The monoisotopic peak is always
-            removed, however small it is.  Default 0.01 (1 %).
+            Where the envelope ends when ``isotopes="auto"``: the significant
+            tail :meth:`IsotopeModel.adaptive_distribution` returns for this
+            threshold. The monoisotopic peak is always removed, however small
+            it is.  Default 0.01 (1 %).
         remove_charge_states:
             If ``True`` (default) and the precursor charge is known, remove
             peaks at **all** charge states from 1 to ``precursor_charge``.
