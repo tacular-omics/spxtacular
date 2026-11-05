@@ -63,6 +63,15 @@ User-visible changes only; implementation details belong in commits and pull req
   up with, because matchms 0.30.0 itself requires `numpy>=2.0.0` and `pandas>=2.2.3`: any
   install that includes matchms stays above this package's own numpy and pandas floors.
 
+### Fixed
+
+- `remove_precursor_peak(isotopes="auto")` now removes the whole isotope envelope the isotope
+  model reports, including the monoisotopic peak of a heavy precursor. It re-filtered that
+  envelope against its own apex, so from roughly 12 kDa upwards the monoisotopic peak and the
+  isotopes next to it fall below the 1% threshold and were left in the spectrum: a 20 kDa
+  precursor at m/z 2001.0073 kept three of its peaks. Peptide-sized precursors are unaffected,
+  since their monoisotopic peak is at or near the apex.
+
 ## [0.9.3] (2026-10-26)
 
 ### Changed

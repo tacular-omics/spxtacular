@@ -155,6 +155,34 @@ class TestRemovePrecursorPeak:
         assert len(result.mz) == 1
         assert result.mz[0] == pytest.approx(250.0)
 
+    def test_auto_isotopes_removes_monoisotopic_of_heavy_precursor(self) -> None:
+        # A 20 kDa precursor's monoisotopic peak is ~1e-4 of the envelope apex, far below
+        # the 1% threshold, but adaptive_distribution keeps it and so must the removal.
+        import peptacular as pt
+
+        PROTON = pt.PROTON_MASS
+        NEUTRON = pt.C13_NEUTRON_MASS
+        neutral = 20000.0
+        prec_z = 10
+        prec_mz = (neutral + prec_z * PROTON) / prec_z
+        dist = PEPTIDE_ISOTOPE_MODEL.adaptive_distribution(neutral, min_relative_abundance=0.01)
+        # Precondition: the monoisotopic peak is below the threshold the old code filtered on.
+        assert dist[0] / dist.max() < 0.01
+        mz_list = [prec_mz + i * NEUTRON / prec_z for i in range(len(dist))]
+        mz_list.append(250.0)  # fragment
+        mz = np.array(mz_list, dtype=np.float64)
+        spec = Spectrum(mz=mz, intensity=np.ones(len(mz_list), dtype=np.float64))
+        result = spec.remove_precursor_peak(
+            precursor_mz=prec_mz,
+            precursor_charge=prec_z,
+            tolerance=0.01,
+            isotopes="auto",
+            remove_charge_states=False,
+        )
+        assert not np.any(np.abs(result.mz - prec_mz) <= 0.01)
+        assert len(result.mz) == 1
+        assert result.mz[0] == pytest.approx(250.0)
+
     def test_deconvoluted_charge_aware(self) -> None:
         # Deconvoluted spectrum: monoisotopic peaks with known charges
         mz = np.array([300.0, 500.0, 500.0], dtype=np.float64)
