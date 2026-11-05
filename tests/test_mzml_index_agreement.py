@@ -186,6 +186,40 @@ def test_closing_the_reader_drops_the_cached_index(tmp_path: Path, monkeypatch: 
         assert len(reads) == 2
 
 
+def test_a_changed_spectrum_count_drops_the_cached_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A count that no longer matches the ids the index was built from drops the index.
+
+    This is the branch mzmlpy 0.10.3 produces for real, by lengthening a short offset index
+    mid-read, and the test above it is the only one that reaches it that way -- so it is
+    uncovered wherever the lock resolves 0.10.2 and that test skips. The comparison is this
+    reader's own logic, not mzmlpy's, so forcing the count proves the branch on any mzmlpy.
+    """
+    path = _written(tmp_path, "complete", build(spectra=3))
+    reads: list[object] = []
+    real = reader_module._mzml_spectrum_ids  # noqa: SLF001
+
+    def counting(handle: object) -> list[str]:
+        reads.append(handle)
+        return real(handle)
+
+    monkeypatch.setattr(reader_module, "_mzml_spectrum_ids", counting)
+
+    with MzmlReader(path) as reader:
+        assert reader.get_by_scan(1).native_id == "scan=1"
+        assert len(reads) == 1
+
+        handle = reader._mzml_handle  # noqa: SLF001 - the count comes from mzmlpy's own lookup
+        assert handle is not None
+        monkeypatch.setattr(type(handle.spectra), "count", property(lambda _self: 99))
+
+        assert reader.get_by_scan(1).native_id == "scan=1"  # answered from a freshly read index
+        assert len(reads) == 2
+        # ``get_by_native_id`` reads the cache too; ``reader[native_id]`` goes straight to
+        # mzmlpy's own lookup and would not show the drop either way.
+        assert reader.get_by_native_id("scan=2").native_id == "scan=2"
+        assert len(reads) == 3  # the counts still disagree, so each lookup reads the ids again
+
+
 def test_an_unknown_spectrum_count_keeps_the_cached_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A count mzmlpy cannot supply leaves the cache in place rather than raising.
 
@@ -216,5 +250,5 @@ def test_an_unknown_spectrum_count_keeps_the_cached_index(tmp_path: Path, monkey
             len(lookup)
 
         assert reader.get_by_scan(2).native_id == "scan=2"
-        assert reader["scan=1"].native_id == "scan=1"
+        assert reader.get_by_native_id("scan=1").native_id == "scan=1"
         assert len(reads) == 1
