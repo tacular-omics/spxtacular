@@ -65,7 +65,7 @@ def test_zero_or_negative_flanks_keep_the_peak(flank: float) -> None:
 def test_isolated_spikes_in_zero_padded_profile_are_kept() -> None:
     # Zero-padded profile data (common in vendor exports) with single-sample spikes.
     intensity = np.array([0.0, 0.0, 4.0, 0.0, 0.0, 2.0, 1.0, 0.0, 0.0])
-    mz = 500.0 + np.arange(intensity.size) * STEP
+    mz = 500.0 + np.arange(intensity.size, dtype=np.float64) * STEP
     centers, heights, _ = _centroid_peaks(mz, intensity)
     assert centers.size == 2
     _assert_sane(mz, intensity, centers, heights)
@@ -78,7 +78,7 @@ def test_isolated_spikes_in_zero_padded_profile_are_kept() -> None:
 @pytest.mark.parametrize("width", [2, 3])
 def test_flat_top_with_tiny_flanks_uses_plateau(flank: float, width: int) -> None:
     intensity = np.array([flank] + [3.0] * width + [flank])
-    mz = 200.0 + np.arange(intensity.size) * STEP
+    mz = 200.0 + np.arange(intensity.size, dtype=np.float64) * STEP
     centers, heights, _ = _centroid_peaks(mz, intensity)
     np.testing.assert_allclose(centers, [(mz[1] + mz[width]) / 2], atol=1e-12)
     np.testing.assert_array_equal(heights, [3.0])

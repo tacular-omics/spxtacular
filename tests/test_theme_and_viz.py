@@ -13,6 +13,7 @@ import importlib.util
 import re
 import shutil
 from importlib.metadata import distribution, version
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -453,6 +454,19 @@ class TestSequenceCoverage:
             sequence_coverage_plot(spec, "", frags)
 
 
+# The ion names peptacular's fragment() accepts, so a case added here with a name it does
+# not know fails the type check instead of the assertion.
+LadderIon = Literal["c-H", "d", "z.", "z+H", "v", "w"]
+LADDER_CASES: tuple[tuple[LadderIon, str, bool], ...] = (
+    ("c-H", "c", True),
+    ("d", "d", True),
+    ("z.", "z", False),
+    ("z+H", "z", False),
+    ("v", "v", False),
+    ("w", "w", False),
+)
+
+
 class TestIonTypeVariants:
     """Ion types beyond a/b/c/x/y/z take their side and colour from tacular's IonType metadata."""
 
@@ -477,18 +491,8 @@ class TestIonTypeVariants:
             expected = "n" if info.is_forward else "c" if info.is_backward else None
             assert _ion_terminus(str(ion_type)) == expected, ion_type
 
-    @pytest.mark.parametrize(
-        ("ion", "colour_of", "above"),
-        [
-            ("c-H", "c", True),
-            ("d", "d", True),
-            ("z.", "z", False),
-            ("z+H", "z", False),
-            ("v", "v", False),
-            ("w", "w", False),
-        ],
-    )
-    def test_ion_ticks_sit_at_their_bonds(self, ion: str, colour_of: str, above: bool) -> None:
+    @pytest.mark.parametrize(("ion", "colour_of", "above"), LADDER_CASES)
+    def test_ion_ticks_sit_at_their_bonds(self, ion: LadderIon, colour_of: str, above: bool) -> None:
         import peptacular as pt
 
         peptide = "PEPTIDEK"
@@ -510,7 +514,9 @@ class TestIonTypeVariants:
         bond_at = {round((dxs[k - 1] + dxs[k]) / 2.0, 6): k for k in range(1, n)}
         stems = [seg for t in ticks for seg in t.segments if seg[2] == seg[4]]
         drawn = sorted(bond_at[round(seg[2], 6)] for seg in stems)
-        positions = {f.position for f in frags if 0 < f.position < n}
+        # Fragment.position is int | tuple[int, int] | None; these ion types are all
+        # single-position, so narrow rather than assume.
+        positions = {p for f in frags if isinstance(p := f.position, int) and 0 < p < n}
         expected = sorted(positions if above else {n - p for p in positions})
         assert drawn == expected
         assert all((seg[5] > dy) == above for seg in stems)
@@ -667,7 +673,7 @@ class TestSaveFigure:
 
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
         with pytest.raises(PermissionError, match="read-only destination"):
-            save_figure(BrokenFigure(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+            save_figure(BrokenFigure(), tmp_path / "fig.png")
 
     def test_a_missing_browser_names_the_installer(self, tmp_path, monkeypatch) -> None:
         """kaleido needs a browser and installs none, so say which command installs it.

@@ -8,7 +8,7 @@ import random
 import time
 import tracemalloc
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 import numpy as np
 import paftacular as paf
@@ -44,8 +44,8 @@ SPECTRAST_TEXT = DATA / "fetal_brain_tiny.mzSpecLib.txt.gz"
 SPECTRAST_JSON = DATA / "fetal_brain_tiny.mzSpecLib.json.gz"
 
 
-def make_spectrum(**overrides: object) -> MsnSpectrum:
-    values: dict[str, object] = {
+def make_spectrum(**overrides: Any) -> MsnSpectrum:
+    values: dict[str, Any] = {
         "mz": np.array([175.119, 263.087, 376.171, 505.214]),
         "intensity": np.array([100.0, 55.5, 20.25, 7.0]),
         "spectrum_type": SpectrumType.CENTROID,
@@ -70,16 +70,18 @@ def make_spectrum(**overrides: object) -> MsnSpectrum:
         ],
     }
     values.update(overrides)
-    return MsnSpectrum(**values)  # type: ignore[arg-type]
+    return MsnSpectrum(**values)
 
 
-def make_entry(**overrides: object) -> LibraryEntry:
-    values: dict[str, object] = {
+def make_entry(**overrides: Any) -> LibraryEntry:
+    values: dict[str, Any] = {
         "key": 1,
         "name": "PEPTIDE/2",
         "analytes": (
             Analyte(
-                peptidoform="PEPT[Phospho]IDE/2", attributes=(CvParam("MS:1000885", "protein accession", "P12345"),)
+                # The field type is the parsed value; __post_init__ also accepts a ProForma string.
+                peptidoform="PEPT[Phospho]IDE/2",  # ty: ignore[invalid-argument-type]
+                attributes=(CvParam("MS:1000885", "protein accession", "P12345"),),
             ),
         ),
         "interpretations": (Interpretation(score=0.99),),
@@ -92,7 +94,7 @@ def make_entry(**overrides: object) -> LibraryEntry:
     }
     spectrum = values.pop("spectrum", None) or make_spectrum()
     values.update(overrides)
-    return LibraryEntry(spectrum, **values)  # type: ignore[arg-type]
+    return LibraryEntry(spectrum, **values)
 
 
 # ---------------------------------------------------------------------------
@@ -428,9 +430,10 @@ def test_invalid_entries_raise(tmp_path: Path) -> None:
     with pytest.raises(SpxtacularError, match="im_type"):
         write_mzspeclib(LibraryEntry(generic_im), tmp_path / "a.txt")
     with pytest.raises(SpxtacularError, match="format"):
-        write_mzspeclib([make_entry()], tmp_path / "a.txt", format="xml")  # type: ignore[arg-type]
+        write_mzspeclib([make_entry()], tmp_path / "a.txt", format="xml")  # ty: ignore[invalid-argument-type]
     with pytest.raises(SpxtacularError, match="conflicts"):
-        Analyte(peptidoform="PEPTIDE/2", charge=3)
+        # Same as above: a string input to a field typed as the parsed value.
+        Analyte(peptidoform="PEPTIDE/2", charge=3)  # ty: ignore[invalid-argument-type]
     with pytest.raises(SpxtacularError, match="accession"):
         CvParam("bad accession", "x")
 

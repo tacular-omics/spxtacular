@@ -20,7 +20,7 @@ jobs:
         run: python scripts/release_version.py check --tag "${{ github.event.release.tag_name }}"
       - run: uv sync --locked --all-extras --all-groups
       - run: uv run ruff check src tests
-      - run: uv run ty check src
+      - run: uv run ty check src tests
       - run: uv run pytest tests
         env:
           RUN_SLOW: "1"
