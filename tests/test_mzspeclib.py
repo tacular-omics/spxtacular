@@ -8,7 +8,7 @@ import random
 import time
 import tracemalloc
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 import numpy as np
 import paftacular as paf
@@ -44,8 +44,8 @@ SPECTRAST_TEXT = DATA / "fetal_brain_tiny.mzSpecLib.txt.gz"
 SPECTRAST_JSON = DATA / "fetal_brain_tiny.mzSpecLib.json.gz"
 
 
-def make_spectrum(**overrides: object) -> MsnSpectrum:
-    values: dict[str, object] = {
+def make_spectrum(**overrides: Any) -> MsnSpectrum:
+    values: dict[str, Any] = {
         "mz": np.array([175.119, 263.087, 376.171, 505.214]),
         "intensity": np.array([100.0, 55.5, 20.25, 7.0]),
         "spectrum_type": SpectrumType.CENTROID,
@@ -70,11 +70,11 @@ def make_spectrum(**overrides: object) -> MsnSpectrum:
         ],
     }
     values.update(overrides)
-    return MsnSpectrum(**values)  # type: ignore[arg-type]
+    return MsnSpectrum(**values)
 
 
-def make_entry(**overrides: object) -> LibraryEntry:
-    values: dict[str, object] = {
+def make_entry(**overrides: Any) -> LibraryEntry:
+    values: dict[str, Any] = {
         "key": 1,
         "name": "PEPTIDE/2",
         "analytes": (
@@ -92,7 +92,7 @@ def make_entry(**overrides: object) -> LibraryEntry:
     }
     spectrum = values.pop("spectrum", None) or make_spectrum()
     values.update(overrides)
-    return LibraryEntry(spectrum, **values)  # type: ignore[arg-type]
+    return LibraryEntry(spectrum, **values)
 
 
 # ---------------------------------------------------------------------------
