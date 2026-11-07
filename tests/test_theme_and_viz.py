@@ -690,7 +690,7 @@ class TestSaveFigure:
 
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
         with pytest.raises(RuntimeError, match="plotly_get_chrome") as caught:
-            save_figure(Chromeless(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+            save_figure(Chromeless(), tmp_path / "fig.png")
         plotlys = caught.value.__cause__
         assert isinstance(plotlys, RuntimeError)
         assert plotlys.__cause__ is None, "the fixture must leave only __context__ set"
@@ -706,7 +706,7 @@ class TestSaveFigure:
 
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
         with pytest.raises(RuntimeError, match="the renderer died mid-write") as caught:
-            save_figure(Broken(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+            save_figure(Broken(), tmp_path / "fig.png")
         assert "plotly_get_chrome" not in str(caught.value)
         assert caught.value.__cause__ is None, "the original was re-raised, not wrapped"
 
