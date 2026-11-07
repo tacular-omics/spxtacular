@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import peptacular as pt
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from paftacular import PaftacularError
 from tacular import ELEMENT_LOOKUP, FRAGMENT_ION_LOOKUP, IonType, IonTypeProperty
@@ -460,12 +460,32 @@ def test_large_protein_apex_is_past_the_old_32_peak_window() -> None:
 
 
 @given(st.floats(min_value=500.0, max_value=200000.0, allow_nan=False))
+# The masses where the old unrounded reference disagreed, one per model, pinned so the
+# regression does not depend on a draw: at 53222.25 the apex moved by one peak.
+@example(mass=1862.5)
+@example(mass=2672.5)
+@example(mass=3999.5)
+@example(mass=8504.5)
+@example(mass=8775.5)
+@example(mass=53222.25)
 def test_apex_matches_reference_at_any_mass(mass: float) -> None:
+    """The apex is exact at every mass, against the envelope the model actually builds.
+
+    ``distribution()`` snaps to ``nominal_mass = floor(mass + 0.5)`` and takes the
+    composition of that integer, while ``estimate_composition(mass)`` rounds per element
+    from the unrounded mass. At a fractional mass the two can be different molecules, so a
+    reference built from ``estimate_composition(mass)`` is not the envelope under test and
+    its apex can sit one peak away - 0.5 Da from a nominal mass it differed by up to 7.0e-3
+    in peak height. Rounding the mass first compares like with like, which is what makes
+    the exact index assertion below the right one.
+    """
     model = ISOTOPE_MODELS[IsotopeModelType.PEPTIDE]
+    nominal_mass = float(np.floor(mass + 0.5))
     dist = model.distribution(mass)
-    reference = _reference_envelope(model.estimate_composition(mass), len(dist) + 64)
+    reference = _reference_envelope(model.estimate_composition(nominal_mass), len(dist) + 64)
     assert dist.sum() == pytest.approx(1.0, abs=1e-9)
     assert model.apex_index(mass) == int(np.argmax(reference))
+    assert int(np.argmax(dist)) == int(np.argmax(reference))
 
 
 # ---------------------------------------------------------------------------
