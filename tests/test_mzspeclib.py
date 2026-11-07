@@ -79,7 +79,9 @@ def make_entry(**overrides: Any) -> LibraryEntry:
         "name": "PEPTIDE/2",
         "analytes": (
             Analyte(
-                peptidoform="PEPT[Phospho]IDE/2", attributes=(CvParam("MS:1000885", "protein accession", "P12345"),)
+                # The field type is the parsed value; __post_init__ also accepts a ProForma string.
+                peptidoform="PEPT[Phospho]IDE/2",  # ty: ignore[invalid-argument-type]
+                attributes=(CvParam("MS:1000885", "protein accession", "P12345"),),
             ),
         ),
         "interpretations": (Interpretation(score=0.99),),
@@ -430,7 +432,8 @@ def test_invalid_entries_raise(tmp_path: Path) -> None:
     with pytest.raises(SpxtacularError, match="format"):
         write_mzspeclib([make_entry()], tmp_path / "a.txt", format="xml")  # ty: ignore[invalid-argument-type]
     with pytest.raises(SpxtacularError, match="conflicts"):
-        Analyte(peptidoform="PEPTIDE/2", charge=3)
+        # Same as above: a string input to a field typed as the parsed value.
+        Analyte(peptidoform="PEPTIDE/2", charge=3)  # ty: ignore[invalid-argument-type]
     with pytest.raises(SpxtacularError, match="accession"):
         CvParam("bad accession", "x")
 

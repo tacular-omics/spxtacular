@@ -157,16 +157,18 @@ def test_mzml_write_read_round_trip() -> None:
     # existing file. Every spectrum must read back the same through it.
     pytest.importorskip("mzmlpy")
     from spxtacular import write_indexed_mzml_gzip
-    from spxtacular.reader import MzmlReader
+    from spxtacular.reader import MzmlReader, MzmlSpectraLookup
 
     source = Path(__file__).parent / "data" / "example.mzML"
+    # A reader is a context manager over lookups, not itself an iterable; the lookup
+    # walks every spectrum in file order, whatever its MS level.
     with MzmlReader(source) as reader:
-        original = list(reader)
+        original = list(MzmlSpectraLookup(reader))
     with tempfile.TemporaryDirectory() as tmp:
         output = Path(tmp) / "example.mzML.gz"
         write_indexed_mzml_gzip(source, output)
         with MzmlReader(output) as reader:
-            restored = list(reader)
+            restored = list(MzmlSpectraLookup(reader))
     assert len(restored) == len(original) > 0
     for got, want in zip(restored, original, strict=True):
         assert got == want
