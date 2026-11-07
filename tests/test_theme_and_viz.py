@@ -673,7 +673,7 @@ class TestSaveFigure:
 
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
         with pytest.raises(PermissionError, match="read-only destination"):
-            save_figure(BrokenFigure(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+            save_figure(BrokenFigure(), tmp_path / "fig.png")
 
     def test_a_missing_browser_names_the_installer(self, tmp_path, monkeypatch) -> None:
         """kaleido needs a browser and installs none, so say which command installs it.
