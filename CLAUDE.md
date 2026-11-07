@@ -165,6 +165,13 @@ Load-bearing rules (kept from the previous guide, all still true of the code):
 - Keep all parallel peak arrays (`mz`, `intensity`, `charge`, `im`, `iso_score`) the same
   length and in the same permutation.
 - Do not assume m/z is sorted; timsTOF frames are ordered by ion-mobility scan.
+- `isolation_ook0_range` is tdfpy's window verbatim, for DDA precursors, DIA windows and PRM
+  transitions alike: `reader.py` passes `.ook0_range` straight into `MsnSpectrum` and nothing
+  here sorts, widens or rounds it, so an upstream conversion bug arrives silently. tdfpy
+  converted the edge one scan past its half-open window until its #62, which made every range
+  this package reported one scan too wide. Verified against tdfpy 374414f on 2026-11-07: all 9
+  windows in the three `.d` fixtures equal the 1/K0 at `[scan_num_begin, scan_num_end - 1]`.
+  `tests/test_dreader.py` pins that relation, not the numbers, which are tdfpy's.
 - `charge > 0` is assigned, `-1` is singleton/unassigned, `0` is neutral mass after
   `decharge()`. Never test charge or `iso_score` by truthiness.
 - Call `deconvolute()` before `decharge()`; `SpectrumType` guards the transition

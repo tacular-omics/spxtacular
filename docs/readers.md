@@ -475,6 +475,10 @@ Passing `centroid_config=None` (the default) uses `CentroidConfig()` with the va
 | `precursors` | Single `Precursor` built from the PRM target (monoisotopic m/z, charge, 1/K0); intensity is the summed MS2 peak intensity, since PRM targets carry no measured precursor intensity |
 | `collision_energy` | From transition record |
 
+`isolation_ook0_range` is always `(low, high)` and spans only the mobility scans inside the
+window itself, so adjacent DIA windows do not share an edge. The values come from tdfpy
+unchanged.
+
 ### Examples
 
 **Iterate MS1 frames (DDA or DIA):**
