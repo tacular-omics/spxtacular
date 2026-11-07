@@ -97,6 +97,7 @@ def test_multiple_im_arrays_use_first_matching_and_warn(tmp_path, original_im):
     assert any("multiple ion mobility arrays" in str(w.message) for w in caught)
     # accessions are sorted, so MS:1002477 (drift time, seconds) comes first
     assert spec.im_type == IMType.DRIFT_TIME_MS
+    assert spec.im is not None
     np.testing.assert_allclose(spec.im, original_im.im * 1000.0)
 
 
