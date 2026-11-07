@@ -8,6 +8,7 @@ the profiles are in ``conftest.py``.
 import tempfile
 import warnings
 from pathlib import Path
+from typing import Literal, get_args
 
 import numpy as np
 import pytest
@@ -16,6 +17,15 @@ from hypothesis import strategies as st
 from peptacular import IonType
 
 from spxtacular import MgfReader, MsnSpectrum, Precursor, Spectrum, score, write_mgf
+
+SortKey = Literal["mz", "intensity"]
+NormalizeMethod = Literal["max", "tic", "median"]
+DenoiseMethod = Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
+ToleranceUnit = Literal["da", "ppm"]
+SORT_KEYS: tuple[SortKey, ...] = get_args(SortKey)
+NORMALIZE_METHODS: tuple[NormalizeMethod, ...] = get_args(NormalizeMethod)
+DENOISE_METHODS: tuple[DenoiseMethod, ...] = get_args(DenoiseMethod)
+TOLERANCE_UNITS: tuple[ToleranceUnit, ...] = get_args(ToleranceUnit)
 
 MZ = st.floats(min_value=50.0, max_value=3000.0, allow_nan=False, allow_infinity=False)
 FINITE_INTENSITY = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=1e9, allow_nan=False))
@@ -191,10 +201,10 @@ def test_top_n_per_window_is_idempotent(spectrum: Spectrum, n: int, width: float
     _assert_same(once.filter(top_n_per_window=(n, width)), once)
 
 
-@given(spectrum=spectra(), by=st.sampled_from(["mz", "intensity"]), reverse=st.booleans())
-def test_sort_is_idempotent(spectrum: Spectrum, by: str, reverse: bool) -> None:
-    once = spectrum.sort(by=by, reverse=reverse)  # type: ignore[arg-type]
-    _assert_same(once.sort(by=by, reverse=reverse), once)  # type: ignore[arg-type]
+@given(spectrum=spectra(), by=st.sampled_from(SORT_KEYS), reverse=st.booleans())
+def test_sort_is_idempotent(spectrum: Spectrum, by: SortKey, reverse: bool) -> None:
+    once = spectrum.sort(by=by, reverse=reverse)
+    _assert_same(once.sort(by=by, reverse=reverse), once)
     if by == "mz" and len(once.mz):
         steps = np.diff(once.mz)
         assert np.all(steps <= 0) if reverse else np.all(steps >= 0)
@@ -205,22 +215,22 @@ def test_sort_is_idempotent(spectrum: Spectrum, by: str, reverse: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-@given(spectrum=spectra(extras=False), method=st.sampled_from(["max", "tic", "median"]))
-def test_normalize_does_not_crash(spectrum: Spectrum, method: str) -> None:
+@given(spectrum=spectra(extras=False), method=st.sampled_from(NORMALIZE_METHODS))
+def test_normalize_does_not_crash(spectrum: Spectrum, method: NormalizeMethod) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        out = spectrum.normalize(method=method)  # type: ignore[arg-type]
+        out = spectrum.normalize(method=method)
     assert len(out.mz) == len(spectrum.mz)
 
 
 @given(
     spectrum=spectra(extras=False),
-    method=st.sampled_from(["mad", "percentile", "histogram", "baseline", "iterative_median"]),
+    method=st.sampled_from(DENOISE_METHODS),
 )
-def test_denoise_does_not_crash(spectrum: Spectrum, method: str) -> None:
+def test_denoise_does_not_crash(spectrum: Spectrum, method: DenoiseMethod) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        out = spectrum.denoise(method=method)  # type: ignore[arg-type]
+        out = spectrum.denoise(method=method)
     assert len(out.mz) <= len(spectrum.mz)
 
 
@@ -251,8 +261,8 @@ def test_deconvolute_does_not_crash(spectrum: Spectrum) -> None:
 FRAGMENTS = {(IonType("b"), 1): [98.06004031562, 227.10263340359], (IonType("y"), 1): [148.06043, 263.08737]}
 
 
-@given(spectrum=spectra(), tolerance=st.floats(0.0, 1.0), unit=st.sampled_from(["da", "ppm"]))
-def test_match_fragments_and_score_do_not_crash(spectrum: Spectrum, tolerance: float, unit: str) -> None:
+@given(spectrum=spectra(), tolerance=st.floats(0.0, 1.0), unit=st.sampled_from(TOLERANCE_UNITS))
+def test_match_fragments_and_score_do_not_crash(spectrum: Spectrum, tolerance: float, unit: ToleranceUnit) -> None:
     matches = spectrum.match_fragments(FRAGMENTS, tolerance=tolerance, tolerance_unit=unit)
     assert all(0 <= m.peak_index < len(spectrum.mz) for m in matches)
     with warnings.catch_warnings():
@@ -294,8 +304,8 @@ def test_sort_descending_by_intensity_orders_ties_by_input() -> None:
     np.testing.assert_array_equal(spectrum.sort(by="intensity", reverse=True).mz, [200.0, 400.0, 100.0, 300.0])
 
 
-@pytest.mark.parametrize("method", ["mad", "percentile", "histogram", "baseline", "iterative_median"])
-def test_denoise_ignores_nan_intensity(method: str) -> None:
+@pytest.mark.parametrize("method", DENOISE_METHODS)
+def test_denoise_ignores_nan_intensity(method: DenoiseMethod) -> None:
     # One NaN made histogram raise and every other estimator return NaN, and a
     # NaN threshold then removed every peak.
     intensity = np.array([1.0, 2.0, 1.5, np.nan, 1000.0, 1.2, 0.8, 2000.0])
@@ -303,8 +313,8 @@ def test_denoise_ignores_nan_intensity(method: str) -> None:
     finite = Spectrum(mz=spectrum.mz[np.isfinite(intensity)], intensity=intensity[np.isfinite(intensity)])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        denoised = spectrum.denoise(method=method)  # type: ignore[arg-type]
-    np.testing.assert_array_equal(denoised.mz, finite.denoise(method=method).mz)  # type: ignore[arg-type]
+        denoised = spectrum.denoise(method=method)
+    np.testing.assert_array_equal(denoised.mz, finite.denoise(method=method).mz)
     assert 2000.0 in denoised.intensity
 
 

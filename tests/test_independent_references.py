@@ -8,6 +8,7 @@ CODATA/AME constants). See that script's header for the sources and versions.
 import json
 import math
 from pathlib import Path
+from typing import Literal, get_args
 
 import numpy as np
 import pytest
@@ -20,6 +21,9 @@ from spxtacular.ionization import IONIZATION_MODELS
 from spxtacular.isotopes import PEPTIDE_ISOTOPE_MODEL, brain_isotopic_distribution
 from spxtacular.matching import match_fragments
 from spxtacular.scoring import _binom_log10_survival
+
+ToleranceUnit = Literal["ppm", "da"]
+TOLERANCE_UNITS: tuple[ToleranceUnit, ...] = get_args(ToleranceUnit)
 
 REF = json.loads((Path(__file__).parent / "reference" / "independent_references.json").read_text())
 
@@ -151,9 +155,9 @@ def test_exact_fragments_all_match(case: dict) -> None:
         assert match.peak_mz == pytest.approx(match.fragment.mz, abs=1e-9)
 
 
-@pytest.mark.parametrize("unit", ["ppm", "da"])
+@pytest.mark.parametrize("unit", TOLERANCE_UNITS)
 @pytest.mark.parametrize("case", REF["fragments"], ids=lambda c: f"{c['sequence']}-z{c['charge']}")
-def test_fragment_tolerance_edges(case: dict, unit: str) -> None:
+def test_fragment_tolerance_edges(case: dict, unit: ToleranceUnit) -> None:
     # A peak just inside the window matches and one just outside does not. ppm is
     # relative to the theoretical m/z.
     theoretical = np.asarray(case["b"] + case["y"])
