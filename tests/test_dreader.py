@@ -1,3 +1,4 @@
+import itertools
 import pathlib
 import re
 import sqlite3
@@ -447,3 +448,63 @@ def test_dda_precursor_mobility_is_labelled_ook0(ms2_spectrum):
     assert precursor.im is not None
     assert precursor.im_type == "ook0"
     assert ms2_spectrum.isolation_ook0_range is not None
+
+
+# --- isolation 1/K0 windows ---
+
+
+def _ook0_edges(timsdata, frame_id: int, scan_begin: int, scan_end: int) -> tuple[float, float]:
+    """``(low, high)`` 1/K0 at the first and last scans of ``[scan_begin, scan_end)``.
+
+    The scan range excludes ``scan_end``, so the window's last scan is ``scan_end - 1``;
+    converting at ``scan_end`` reads the first scan of the next window instead.
+    """
+    last_scan = max(scan_begin, scan_end - 1)
+    lo, hi = sorted(float(v) for v in timsdata.scan_num_to_ook0(frame_id, [scan_begin, last_scan]))
+    return lo, hi
+
+
+def test_dda_isolation_ook0_range_spans_the_precursors_own_scans():
+    """The range is tdfpy's window verbatim: neither widened by a scan nor reordered."""
+    with tdfpy.DDA(str(HELA_D)) as reader, DReader(str(HELA_D)) as dreader:
+        spectra = {int(s.scan_number): s for s in itertools.islice(dreader.ms2, 3)}
+        checked = 0
+        for precursor in reader.precursors:
+            spectrum = spectra.get(int(precursor.precursor_id))
+            if spectrum is None:
+                continue
+            edges = {
+                _ook0_edges(reader.timsdata, i.frame_id, i.scan_num_begin, i.scan_num_end)
+                for i in precursor.pasef_frame_msms_infos
+            }
+            # tdfpy reports one range per precursor, so every PASEF frame must agree on it.
+            assert len(edges) == 1
+            assert spectrum.isolation_ook0_range == edges.pop()
+            checked += 1
+            if checked == len(spectra):
+                break
+        assert checked == len(spectra) == 3
+
+
+def test_dia_isolation_ook0_range_spans_the_windows_own_scans():
+    with tdfpy.DIA(str(DIA_D)) as reader, DReader(str(DIA_D)) as dreader:
+        windows = list(itertools.islice(reader.windows, 3))
+        spectra = list(itertools.islice(dreader.ms2, 3))
+        for window, spectrum in zip(windows, spectra, strict=True):
+            assert spectrum.native_id == f"{window.frame_id}@w{window.window_index}"
+            assert spectrum.isolation_ook0_range == _ook0_edges(
+                reader.timsdata, window.frame_id, window.scan_num_begin, window.scan_num_end
+            )
+        assert len(spectra) == 3
+
+
+def test_prm_isolation_ook0_range_spans_the_transitions_own_scans():
+    with tdfpy.PRM(str(PRM_D)) as reader, DReader(str(PRM_D)) as dreader:
+        transitions = list(itertools.islice(reader.transitions, 3))
+        spectra = list(itertools.islice(dreader.ms2, 3))
+        for transition, spectrum in zip(transitions, spectra, strict=True):
+            assert spectrum.native_id == f"{transition.frame_id}@t{transition.target.target_id}"
+            assert spectrum.isolation_ook0_range == _ook0_edges(
+                reader.timsdata, transition.frame_id, transition.scan_num_begin, transition.scan_num_end
+            )
+        assert len(spectra) == 3
