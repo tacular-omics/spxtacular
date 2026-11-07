@@ -4,5 +4,13 @@ plots/** linguist-vendored
 *.tdf_bin binary
 *.tdf binary
 
+# mzML is XML, but `indexListOffset` and every `offset` in its indexList are BYTE
+# offsets into this exact file. A Windows checkout with core.autocrlf=true rewrites
+# LF to CRLF, which shifts every offset and makes a reader rebuild the index from the
+# document - mzmlpy >=0.10.3 warns when it does, and pytest's filterwarnings=error
+# turns that warning into an error in every mzML fixture. Keep the bytes verbatim.
+*.mzML -text
+*.mzml -text
+
 # Lockfile is machine-generated; keep it out of diffs and language stats.
 uv.lock -diff linguist-generated
