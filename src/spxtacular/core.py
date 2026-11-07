@@ -2094,8 +2094,10 @@ class Spectrum:
             selected average-composition model to determine the significant
             isotopes. Pass an ``int`` to override (0 = monoisotopic only).
         isotope_threshold:
-            Minimum relative abundance for an isotope to be considered
-            significant when ``isotopes="auto"``.  Default 0.01 (1 %).
+            Where the envelope ends when ``isotopes="auto"``: the significant
+            tail :meth:`IsotopeModel.adaptive_distribution` returns for this
+            threshold. The monoisotopic peak is always removed, however small
+            it is.  Default 0.01 (1 %).
         remove_charge_states:
             If ``True`` (default) and the precursor charge is known, remove
             peaks at **all** charge states from 1 to ``precursor_charge``.
@@ -2176,8 +2178,10 @@ class Spectrum:
                             neutral,
                             min_relative_abundance=isotope_threshold,
                         )
-                        relative = dist / float(dist.max())
-                        offsets = np.flatnonzero(relative >= isotope_threshold).tolist()
+                        # adaptive_distribution already starts at A+0 and stops at the last
+                        # isotope above the threshold; re-filtering it against the apex would
+                        # drop the leading peaks of a heavy precursor's envelope.
+                        offsets = list(range(len(dist)))
                     else:
                         # No charge → can't compute neutral mass reliably
                         offsets = [0]
