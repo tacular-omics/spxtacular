@@ -214,7 +214,7 @@ def test_centroid_of_sampled_gaussian_is_exact(
 ) -> None:
     # A three-point parabola in log space is exact for a Gaussian, so the fitted
     # centre and height should be recovered to round-off.
-    mz = center + (np.arange(-40, 41) + phase) * step
+    mz = center + (np.arange(-40, 41, dtype=np.float64) + phase) * step
     intensity = height * np.exp(-0.5 * ((mz - center) / sigma) ** 2)
     centers, heights, _ = _centroid_peaks(mz, intensity)
     assert centers.size == 1
