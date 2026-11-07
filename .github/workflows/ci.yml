@@ -30,7 +30,7 @@ jobs:
       - run: uv sync --locked --all-extras --all-groups
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
-      - run: uv run ty check src
+      - run: uv run ty check src tests
       - run: python scripts/release_version.py check
 
   test:
