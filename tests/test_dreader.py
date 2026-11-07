@@ -467,7 +467,10 @@ def _ook0_edges(timsdata, frame_id: int, scan_begin: int, scan_end: int) -> tupl
 def test_dda_isolation_ook0_range_spans_the_precursors_own_scans():
     """The range is tdfpy's window verbatim: neither widened by a scan nor reordered."""
     with tdfpy.DDA(str(HELA_D)) as reader, DReader(str(HELA_D)) as dreader:
-        spectra = {int(s.scan_number): s for s in itertools.islice(dreader.ms2, 3)}
+        spectra: dict[int, MsnSpectrum] = {}
+        for msms in itertools.islice(dreader.ms2, 3):
+            assert msms.scan_number is not None, "a DDA MS2 spectrum carries its precursor id"
+            spectra[msms.scan_number] = msms
         checked = 0
         for precursor in reader.precursors:
             spectrum = spectra.get(int(precursor.precursor_id))
