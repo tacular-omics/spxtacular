@@ -87,12 +87,15 @@ only-include = [
 [project.optional-dependencies]
 # 0.59.0 is the first numba with a cp312 wheel and the lowest that passes the test suite.
 numba = ["numba>=0.59"]
-bruker = ["tdfpy>=5,<6"]
+# 5.1.0 is the first tdfpy whose isolation 1/K0 range covers only the mobility scans inside
+# the window (its #62); every earlier release reported it one scan too wide, so adjacent DIA
+# windows shared an edge. `tests/test_dreader.py` asserts the narrow range.
+bruker = ["tdfpy>=5.1,<6"]
 mzml = ["mzmlpy>=0.10,<0.11"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.2"]
-readers = ["tdfpy>=5,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
+readers = ["tdfpy>=5.1,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
 # matchms 0.30.0 is the lowest release that passes the interop tests. Lowering the floor does
 # not free numpy or pandas, because 0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3. What
@@ -118,7 +121,7 @@ matplotlib = ["matplotlib>=3.8"]
 plotly-export = ["kaleido>=1.0", "plotly>=6.1.1"]
 all = [
     "numba>=0.59",
-    "tdfpy>=5,<6",
+    "tdfpy>=5.1,<6",
     "mzmlpy>=0.10,<0.11",
     "fisher-py>=2.0.2",
     "spectrl>=3.0,<4",
@@ -152,7 +155,7 @@ dev = [
     "ruff>=0.16.8",
     "spectrl>=3.0,<4",
     "spectrum-utils>=0.4.0",
-    "tdfpy>=5,<6",
+    "tdfpy>=5.1,<6",
     "ty>=0.0.83",
 ]
 
