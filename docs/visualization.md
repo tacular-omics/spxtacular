@@ -154,7 +154,9 @@ has 7 pt text, which is what most journals ask for. Do not rescale it in the lay
 `save_figure(fig, "fig.pdf")` from a matplotlib figure writes vector PDF with the fonts embedded as
 TrueType (Type 42), not Type 3. Journals accept this, and the text stays editable in Illustrator or
 Inkscape. SVG keeps text as `<text>` elements. PNG is rendered at the style's `dpi` (600 for
-`"paper"`). The plotly backend writes the same formats through kaleido (`spxtacular[plotly-export]`).
+`"paper"`). The plotly backend writes the same formats through kaleido (`spxtacular[plotly-export]`), which
+drives a Chrome or Chromium browser and never downloads one: `plotly_get_chrome` installs a
+browser for it, or install Chrome or Chromium with your system package manager.
 
 ### What changes in print
 
@@ -778,7 +780,9 @@ The file extension picks the writer, and the figure type picks the backend:
   vector with TrueType fonts; rasters use `dpi` (default: the style's `dpi`, 600 for `"paper"`).
 - **plotly figure:** `.html` (or no suffix) needs nothing extra. `.png`, `.svg`, `.pdf`, `.jpg`,
   `.webp` go through kaleido and raise `ImportError` naming `spxtacular[plotly-export]` if it is
-  missing. `scale=` sets the device pixel ratio and overrides `dpi`.
+  missing. kaleido then needs a Chrome or Chromium browser to drive and never downloads one; with
+  no browser the export raises `RuntimeError` naming `plotly_get_chrome`, which installs one.
+  `scale=` sets the device pixel ratio and overrides `dpi`.
 - **`FigureSpec`:** drawn with matplotlib when it is installed, else plotly; `.html` always uses
   plotly.
 

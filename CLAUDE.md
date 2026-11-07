@@ -204,6 +204,37 @@ Other traps:
 - spectrl is pinned `>=3.0,<4` (token format `spectrl.v3`); each spectrl major changes the token
   format, so the major cap is deliberate. spectrl 3 rejects boolean parameter values, so the
   bridge writes flags as int 0/1.
+- **kaleido raises when no browser is installed; it never downloads one.** Retracting an earlier
+  reading of my own numbers: a 4.4 s first plotly export followed by a 3.0 s second one looked
+  like a one-off chromium fetch, but they were measured on a box carrying
+  `/usr/bin/google-chrome`, so they timed a browser *start*. In a browser-less
+  `python:3.13-slim` container, `save_figure(fig, "x.png")` raises `builtins.RuntimeError` after
+  **0.02 s** at both ends of the extra's floor (kaleido 1.0.0 with plotly 6.1.1, and 1.5.0 with
+  7.1.0): choreographer raises `ChromeNotFoundError` unconditionally and plotly re-raises it
+  bare, so `__context__` is set and `__cause__` is `None`. The message names
+  `$ plotly_get_chrome` -- that is the command to put in docs and error messages, not
+  `kaleido_get_chrome`, which only kaleido's own message names and the user never sees. So **a
+  60 s timeout in CI is never a browser download**: when `test (macos-latest, 3.13)` skipped the
+  export test for want of a browser while the ubuntu `lowest` job ran it to the `pytest-timeout`
+  limit in the same run, that was a stall after discovery, and re-running the job cleared it.
+- **To reproduce the browser-less case, use a container, not a namespace.** `unshare -r` and
+  `bwrap` are both refused on this machine (`kernel.apparmor_restrict_unprivileged_userns = 1`),
+  and it has three findable browsers (`google-chrome`, `google-chrome-stable`, `/snap/bin/brave`),
+  so no local run can produce the negative:
+
+  ```bash
+  docker run --rm -v "$PWD:/src:ro" -v "$SCRATCH:/out" python:3.13-slim \
+    sh -c 'pip install -q "/src[plotly-export]" && python /out/probe.py'
+  ```
+
+  Have the probe print `Chromium.find_browser(skip_local=False)` and **exit 3 if it answers**,
+  before it calls `write_image`: a verdict from a tool that failed to look reads exactly like
+  the real negative. `skip_local` is keyword-only with no default, so a bare `find_browser()`
+  raises `TypeError`; catch `ImportError` only, and let that one through.
+- The export test's browser guard is `_find_browser` in `tests/test_theme_and_viz.py`, which asks
+  choreographer rather than `shutil.which`: PATH misses edge, brave and vivaldi, the hardcoded
+  install paths, and the deps directory `plotly_get_chrome` writes into, which is never on PATH.
+  A `which`-based guard tells a user who followed our own install hint that they have no browser.
 
 ## Releasing
 

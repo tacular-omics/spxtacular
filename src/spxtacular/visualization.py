@@ -193,6 +193,31 @@ def _precursor_marks(spectrum: Spectrum, style: FigureStyle, mode: theme.ThemeMo
     return marks
 
 
+def _missing_chrome(exc: BaseException) -> bool:
+    """Whether ``exc`` is kaleido reporting that it found no browser to drive.
+
+    kaleido raises ``kaleido.errors.ChromeNotFoundError``, which plotly catches and
+    re-raises as a plain :class:`RuntimeError`, so the original survives only on
+    ``__context__``. The whole chain is walked, starting at ``exc`` itself, because
+    ``ChromeNotFoundError`` is a ``RuntimeError`` subclass and a plotly that stopped
+    re-wrapping would put it at the head rather than inside the chain. ``raise ... from``
+    sets ``__context__`` as well, so following that one attribute covers both forms.
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__context__
+    try:
+        from kaleido.errors import ChromeNotFoundError
+    except ImportError:
+        # kaleido moved or renamed the error; the class name is the weaker check.
+        return any(type(item).__name__ == "ChromeNotFoundError" for item in chain)
+    return any(isinstance(item, ChromeNotFoundError) for item in chain)
+
+
 def save_figure(
     fig: Any,
     path: str | Path,
@@ -211,7 +236,10 @@ def save_figure(
     Illustrator or Inkscape. ``.png`` is rendered at the figure style's
     resolution (600 dpi for ``"paper"``) unless ``dpi`` says otherwise.
     ``.html`` is plotly only and always works. Plotly static export needs
-    ``kaleido``: ``pip install 'spxtacular[plotly-export]'``.
+    ``kaleido``: ``pip install 'spxtacular[plotly-export]'``. kaleido drives a
+    Chrome or Chromium browser and never downloads one, so static export also
+    needs a browser: ``plotly_get_chrome`` installs one, or install Chrome or
+    Chromium with the system package manager.
 
     Parameters
     ----------
@@ -277,7 +305,16 @@ def save_figure(
         # An autosized screen figure has no width until a browser gives it one;
         # export it at its design width rather than plotly's 700 px default.
         kwargs.setdefault("width", meta["spx_width"])
-    fig.write_image(str(out), scale=scale, **kwargs)
+    try:
+        fig.write_image(str(out), scale=scale, **kwargs)
+    except RuntimeError as exc:
+        if not _missing_chrome(exc):
+            raise
+        raise RuntimeError(
+            f"writing {suffix} needs a Chrome or Chromium browser for kaleido to drive, and kaleido does "
+            "not download one: install it with the `plotly_get_chrome` command, or install Chrome or "
+            "Chromium with the system package manager. Saving to .html needs neither."
+        ) from exc
     return out
 
 

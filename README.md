@@ -75,7 +75,7 @@ pip install spxtacular[readers]     # all three readers
 
 # Optional: publication figures (matplotlib backend) and static export of plotly figures
 pip install spxtacular[matplotlib]
-pip install spxtacular[plotly-export]
+pip install spxtacular[plotly-export]  # kaleido; also needs a browser (plotly_get_chrome)
 
 # Everything (numba + readers + spectrl + interoperability adapters + figure backends)
 pip install spxtacular[all]

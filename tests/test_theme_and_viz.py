@@ -12,7 +12,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import shutil
-from importlib.metadata import version
+from importlib.metadata import distribution, version
 
 import numpy as np
 import pandas as pd
@@ -39,10 +39,33 @@ from spxtacular.visualization import (
 # declares. A non-numeric segment (a release candidate) parses short and skips, which is the
 # safe direction.
 _PLOTLY_VERSION = tuple(int(part) for part in version("plotly").split(".")[:3] if part.isdigit())
-_HAS_BROWSER = any(shutil.which(name) for name in ("google-chrome", "chrome", "chromium", "chromium-browser"))
+_BROWSER_NAMES = ("google-chrome", "google-chrome-stable", "chrome", "chromium", "chromium-browser")
+
+
+def _find_browser() -> str | None:
+    """Ask choreographer where a browser is, the way kaleido asks it.
+
+    ``shutil.which`` sees only PATH, and only the names handed to it, so it reports "no
+    browser" for several real positives: edge, brave and vivaldi, the hardcoded install
+    paths choreographer also tries, and the deps directory ``plotly_get_chrome`` writes to,
+    which is never on PATH. A user who follows our install hint would get a working export
+    and a skip claiming they have no browser. ``skip_local`` is keyword-only and has no
+    default, so a signature change raises ``TypeError`` here at collection rather than
+    quietly becoming "no browser" -- only ``ImportError`` is caught.
+    """
+    try:
+        from choreographer.browsers.chromium import Chromium
+    except ImportError:
+        found = None
+    else:
+        found = Chromium.find_browser(skip_local=False)
+    return found or next((path for path in (shutil.which(name) for name in _BROWSER_NAMES) if path), None)
+
+
+_HAS_BROWSER = _find_browser() is not None
 requires_plotly_export = pytest.mark.skipif(
     importlib.util.find_spec("kaleido") is None or not _HAS_BROWSER or _PLOTLY_VERSION < (6, 1, 1),
-    reason="plotly static export needs kaleido, a Chrome or Chromium binary on PATH, and plotly>=6.1.1",
+    reason="plotly static export needs kaleido, a Chrome or Chromium browser, and plotly>=6.1.1",
 )
 
 
@@ -645,6 +668,72 @@ class TestSaveFigure:
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
         with pytest.raises(PermissionError, match="read-only destination"):
             save_figure(BrokenFigure(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+
+    def test_a_missing_browser_names_the_installer(self, tmp_path, monkeypatch) -> None:
+        """kaleido needs a browser and installs none, so say which command installs it.
+
+        The fixture raises inside an ``except`` block rather than with ``raise ... from``,
+        because that is the shape plotly produces: ``__context__`` set, ``__cause__`` None.
+        A fixture using ``from`` would pass an implementation that reads only ``__cause__``
+        and never fires in production.
+        """
+        import importlib
+
+        errors = pytest.importorskip("kaleido.errors")
+
+        class Chromeless:
+            def write_image(self, *_args, **_kwargs) -> None:
+                try:
+                    raise errors.ChromeNotFoundError("Could not find a chrome.")
+                except errors.ChromeNotFoundError:
+                    raise RuntimeError("Kaleido requires Google Chrome to be installed.")  # noqa: B904
+
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        with pytest.raises(RuntimeError, match="plotly_get_chrome") as caught:
+            save_figure(Chromeless(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+        plotlys = caught.value.__cause__
+        assert isinstance(plotlys, RuntimeError)
+        assert plotlys.__cause__ is None, "the fixture must leave only __context__ set"
+        assert isinstance(plotlys.__context__, errors.ChromeNotFoundError)
+
+    def test_an_unrelated_runtime_error_keeps_its_own_message(self, tmp_path, monkeypatch) -> None:
+        """Only the browser case is relabelled; every other ``RuntimeError`` passes through."""
+        import importlib
+
+        class Broken:
+            def write_image(self, *_args, **_kwargs) -> None:
+                raise RuntimeError("the renderer died mid-write")
+
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        with pytest.raises(RuntimeError, match="the renderer died mid-write") as caught:
+            save_figure(Broken(), tmp_path / "fig.png")  # ty: ignore[invalid-argument-type]
+        assert "plotly_get_chrome" not in str(caught.value)
+        assert caught.value.__cause__ is None, "the original was re-raised, not wrapped"
+
+    def test_the_browser_error_is_where_the_wrap_looks_for_it(self) -> None:
+        """Two facts the wrap rests on and neither package promises.
+
+        ``kaleido.errors`` re-exports choreographer's error, and that error is itself a
+        ``RuntimeError`` subclass -- which is why the wrap walks the chain starting at the
+        exception rather than only its ``__context__``: a plotly that stopped re-wrapping
+        would put the error at the head of the walk.
+        """
+        errors = pytest.importorskip("kaleido.errors")
+        assert issubclass(errors.ChromeNotFoundError, RuntimeError)
+
+    @pytest.mark.skipif(_PLOTLY_VERSION < (6, 1, 1), reason="plotly_get_chrome arrived in plotly 6.1.1")
+    def test_plotly_still_ships_the_command_we_name(self) -> None:
+        """Our message names a command, so fail here if plotly renames or drops it.
+
+        Scoped to plotly's own distribution on purpose: kaleido and choreographer each ship
+        a get-chrome script of their own, so an environment-wide entry-point query passes
+        even once plotly's is gone -- three names read as coverage when they are three
+        packages competing for one claim. The gate is the ``plotly-export`` floor rather
+        than kaleido's presence, because the core allows ``plotly>=5.15``, which ships no
+        console scripts at all.
+        """
+        scripts = {ep.name for ep in distribution("plotly").entry_points if ep.group == "console_scripts"}
+        assert "plotly_get_chrome" in scripts, scripts
 
 
 class TestDegenerateInputs:

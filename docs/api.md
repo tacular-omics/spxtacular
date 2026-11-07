@@ -2155,7 +2155,7 @@ save_figure(fig, path: str | Path, *, scale: float | None = None, dpi: float | N
 | Figure | Suffixes | Extra install |
 |---|---|---|
 | plotly | `.html` or none (`.html` is appended) | none |
-| plotly | `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp` | `pip install 'spxtacular[plotly-export]'` (kaleido); missing raises `ImportError` |
+| plotly | `.png`, `.svg`, `.pdf`, `.jpg`, `.jpeg`, `.webp` | `pip install 'spxtacular[plotly-export]'` (kaleido); missing raises `ImportError`. kaleido drives a Chrome or Chromium browser and downloads none: without one the export raises `RuntimeError` naming `plotly_get_chrome` |
 | matplotlib | `.pdf`, `.svg`, `.eps`, `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.webp` | none; PDF/SVG embed fonts as TrueType |
 | any | anything else | raises `SpxtacularError` |
 

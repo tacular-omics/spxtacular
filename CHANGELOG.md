@@ -62,6 +62,12 @@ User-visible changes only; implementation details belong in commits and pull req
   CI job installs. Lowering the matchms floor does not lower the numpy or pandas a user ends
   up with, because matchms 0.30.0 itself requires `numpy>=2.0.0` and `pandas>=2.2.3`: any
   install that includes matchms stays above this package's own numpy and pandas floors.
+- `save_figure()` says what to do when plotly static export finds no browser. kaleido drives a
+  Chrome or Chromium browser and never downloads one, so a machine without one got plotly's
+  bare `RuntimeError`. The error now also names `plotly_get_chrome`, the command that installs
+  a browser, and keeps the original on `__cause__`; any other `RuntimeError` from the writer is
+  re-raised untouched. The browser requirement is documented wherever the `plotly-export` extra
+  is.
 
 ### Fixed
 
