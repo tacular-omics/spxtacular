@@ -2,30 +2,74 @@
 
 import os
 import warnings
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import numpy as np
 import pytest
 
-# Importing matchms pulls in pynndescent, which JIT-compiles numba kernels at import
-# time (15-20 s). That cost lands at collection, so a slow marker alone would not
-# avoid it: skip the whole module unless slow tests were requested (conftest sets
-# RUN_SLOW=1 for --run-slow).
-if os.environ.get("RUN_SLOW") != "1":
-    pytest.skip(
-        "slow: importing matchms JIT-compiles pynndescent; pass --run-slow or set RUN_SLOW=1",
-        allow_module_level=True,
-    )
-pytestmark = pytest.mark.slow
+from spxtacular import MsnSpectrum, Precursor, Spectrum, SpectrumType, from_matchms, to_matchms
 
-# psims (imported by matchms) warns when the optional hdf5plugin is missing.
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
-    matchms = pytest.importorskip("matchms")
+# Importing matchms pulls in pynndescent, which JIT-compiles numba kernels at import time
+# (15-20 s), so the import must not sit at module scope: that cost lands at collection. The
+# module-level skip that used to avoid it deleted these nine tests from the run rather than
+# skipping them - absent from the collected total and from the skip count alike. The import
+# happens in the fixture below instead, so the tests are collected either way, and each
+# matchms test carries `slow` on itself rather than the module carrying `pytestmark`, so that
+# the two gate tests at the end of this file - which never import matchms - still run in the
+# default suite.
 
-from matchms import Spectrum as MatchmsSpectrum  # noqa: E402
-from matchms.filtering import normalize_intensities  # noqa: E402
+#: Set to "1" to make an absent matchms a failure instead of a skip, as
+#: ``SPXTACULAR_REQUIRE_THERMO`` does for fisher-py in ``tests/test_thermo.py``. CI sets it on
+#: every job that installs the ``interop`` extra and runs the whole suite.
+REQUIRE_MATCHMS = "SPXTACULAR_REQUIRE_MATCHMS"
 
-from spxtacular import MsnSpectrum, Precursor, Spectrum, SpectrumType, from_matchms, to_matchms  # noqa: E402
+
+class MatchmsApi(NamedTuple):
+    """The matchms symbols these tests build objects with.
+
+    Typed ``Any`` deliberately: annotating them precisely would need ``import matchms`` at
+    module scope, which is the collection cost the fixture exists to avoid.
+    """
+
+    spectrum: Any
+    normalize_intensities: Any
+
+
+def _import_matchms() -> MatchmsApi:
+    """Import matchms, raising :class:`ImportError` when it is not installed.
+
+    psims, which matchms imports, warns when the optional hdf5plugin is missing; under
+    ``filterwarnings = error`` that failed whichever test imported matchms first, so the
+    import is made here with that one warning suppressed.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
+        import matchms
+        from matchms.filtering import normalize_intensities
+
+    return MatchmsApi(spectrum=matchms.Spectrum, normalize_intensities=normalize_intensities)
+
+
+def _matchms_api_or_skip(importer: Callable[[], MatchmsApi] = _import_matchms) -> MatchmsApi:
+    """Return the matchms symbols, skipping unless :data:`REQUIRE_MATCHMS` asks for a failure.
+
+    ``importer`` is injectable so that the gate tests below can drive the absent-matchms branch
+    in an environment where matchms is installed, which is every environment this suite
+    normally runs in.
+    """
+    try:
+        return importer()
+    except ImportError:
+        if os.environ.get(REQUIRE_MATCHMS) == "1":
+            raise
+        pytest.skip(f"matchms is not installed; set {REQUIRE_MATCHMS}=1 to make this a failure")
+
+
+@pytest.fixture(scope="module")
+def matchms_api() -> MatchmsApi:
+    """Import matchms once per module, or skip the requesting test if it is unavailable."""
+    return _matchms_api_or_skip()
 
 
 def _rich_msn() -> MsnSpectrum:
@@ -56,6 +100,8 @@ def _rich_msn() -> MsnSpectrum:
     )
 
 
+@pytest.mark.slow
+@pytest.mark.usefixtures("matchms_api")
 def test_to_matchms_sorts_and_populates_conventional_metadata() -> None:
     converted = to_matchms(_rich_msn(), extra_metadata={"smiles": "CCO"})
     np.testing.assert_array_equal(converted.peaks.mz, [100.0, 200.0, 300.0])
@@ -69,6 +115,8 @@ def test_to_matchms_sorts_and_populates_conventional_metadata() -> None:
     assert isinstance(converted.get("spxtacular_metadata"), str)
 
 
+@pytest.mark.slow
+@pytest.mark.usefixtures("matchms_api")
 def test_matchms_round_trip_preserves_rich_spectrum() -> None:
     restored = from_matchms(to_matchms(_rich_msn()))
     assert isinstance(restored, MsnSpectrum)
@@ -86,9 +134,10 @@ def test_matchms_round_trip_preserves_rich_spectrum() -> None:
     assert restored.precursors[0].is_monoisotopic is True
 
 
-def test_matchms_filtered_subset_realigns_per_peak_arrays() -> None:
+@pytest.mark.slow
+def test_matchms_filtered_subset_realigns_per_peak_arrays(matchms_api: MatchmsApi) -> None:
     converted = to_matchms(_rich_msn())
-    filtered = MatchmsSpectrum(
+    filtered = matchms_api.spectrum(
         mz=converted.peaks.mz[[0, 2]],
         intensities=converted.peaks.intensities[[0, 2]],
         metadata=converted.metadata,
@@ -101,17 +150,19 @@ def test_matchms_filtered_subset_realigns_per_peak_arrays() -> None:
     np.testing.assert_array_equal(restored.iso_score, [0.1, 0.3])
 
 
-def test_real_matchms_filter_preserves_payload_and_uses_processed_intensity() -> None:
+@pytest.mark.slow
+def test_real_matchms_filter_preserves_payload_and_uses_processed_intensity(matchms_api: MatchmsApi) -> None:
     converted = to_matchms(_rich_msn())
-    normalized = normalize_intensities(converted)
+    normalized = matchms_api.normalize_intensities(converted)
     restored = from_matchms(normalized)
     assert restored.intensity.max() == pytest.approx(1.0)
     np.testing.assert_array_equal(restored.charge, [1, 2, 3])
 
 
-def test_matchms_changed_mz_drops_unalignable_extension_arrays() -> None:
+@pytest.mark.slow
+def test_matchms_changed_mz_drops_unalignable_extension_arrays(matchms_api: MatchmsApi) -> None:
     converted = to_matchms(_rich_msn())
-    rounded = MatchmsSpectrum(
+    rounded = matchms_api.spectrum(
         mz=converted.peaks.mz + 0.1,
         intensities=converted.peaks.intensities,
         metadata=converted.metadata,
@@ -124,8 +175,9 @@ def test_matchms_changed_mz_drops_unalignable_extension_arrays() -> None:
     assert restored.iso_score is None
 
 
-def test_foreign_matchms_spectrum_maps_to_msn() -> None:
-    foreign = MatchmsSpectrum(
+@pytest.mark.slow
+def test_foreign_matchms_spectrum_maps_to_msn(matchms_api: MatchmsApi) -> None:
+    foreign = matchms_api.spectrum(
         mz=np.array([100.0, 200.0]),
         intensities=np.array([10.0, 20.0]),
         metadata={
@@ -146,8 +198,9 @@ def test_foreign_matchms_spectrum_maps_to_msn() -> None:
     assert converted.precursors[0].charge == 2
 
 
-def test_foreign_matchms_pepmass_sequence_maps_to_precursor() -> None:
-    foreign = MatchmsSpectrum(
+@pytest.mark.slow
+def test_foreign_matchms_pepmass_sequence_maps_to_precursor(matchms_api: MatchmsApi) -> None:
+    foreign = matchms_api.spectrum(
         mz=np.array([100.0]),
         intensities=np.array([10.0]),
         metadata={"pepmass": [500.2, 9000.0], "charge": "2+"},
@@ -160,8 +213,9 @@ def test_foreign_matchms_pepmass_sequence_maps_to_precursor() -> None:
     assert converted.precursors[0].charge == 2
 
 
-def test_foreign_plain_matchms_spectrum_maps_to_plain_spectrum() -> None:
-    foreign = MatchmsSpectrum(
+@pytest.mark.slow
+def test_foreign_plain_matchms_spectrum_maps_to_plain_spectrum(matchms_api: MatchmsApi) -> None:
+    foreign = matchms_api.spectrum(
         mz=np.array([100.0]),
         intensities=np.array([10.0]),
         metadata={},
@@ -171,6 +225,8 @@ def test_foreign_plain_matchms_spectrum_maps_to_plain_spectrum() -> None:
     assert type(converted) is Spectrum
 
 
+@pytest.mark.slow
+@pytest.mark.usefixtures("matchms_api")
 def test_payload_can_be_ignored() -> None:
     converted = to_matchms(_rich_msn())
     restored = from_matchms(converted, prefer_spxtacular_metadata=False)
@@ -178,3 +234,30 @@ def test_payload_can_be_ignored() -> None:
     assert restored.charge is None
     assert restored.precursors is not None
     assert restored.precursors[0].precursor_mz == pytest.approx(500.25)
+
+
+def _missing_matchms() -> MatchmsApi:
+    """Stand in for an environment where matchms is not installed."""
+    raise ImportError("No module named 'matchms'")
+
+
+def test_require_matchms_turns_an_absent_install_into_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With the switch set, an absent matchms must raise rather than skip.
+
+    The ``except pytest.skip.Exception`` is the point of the test, not defensive dressing: an
+    escaped ``Skipped`` is reported as a skip and not as a failure, so without it the test
+    announcing this gate's death would itself read as a green suite.
+    """
+    monkeypatch.setenv(REQUIRE_MATCHMS, "1")
+    try:
+        with pytest.raises(ImportError):
+            _matchms_api_or_skip(_missing_matchms)
+    except pytest.skip.Exception as exc:
+        pytest.fail(f"{REQUIRE_MATCHMS}=1 skipped instead of failing: {exc}")
+
+
+def test_without_the_switch_an_absent_install_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The other direction: unset, the absent-matchms branch must still skip rather than fail."""
+    monkeypatch.delenv(REQUIRE_MATCHMS, raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        _matchms_api_or_skip(_missing_matchms)
