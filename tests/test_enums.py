@@ -109,7 +109,7 @@ def test_precursor_im_type_is_validated() -> None:
     with pytest.raises(SpxtacularError, match=r"Precursor\.im_type"):
         Precursor(precursor_mz=1.0, im_type="banana")
     with pytest.raises(SpxtacularError):
-        Precursor(precursor_mz=1.0, im_type=5)
+        Precursor(precursor_mz=1.0, im_type=5)  # ty: ignore[invalid-argument-type]
 
 
 def test_tolerance_unit_is_lowercase_only() -> None:

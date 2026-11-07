@@ -402,11 +402,12 @@ class TestPeakSelectionValidation:
         """An unrecognised mode used to fall through to "closest" silently."""
         spec = _boundary_spec()
         with pytest.raises(SpxtacularError, match="not a valid PeakSelection"):
-            spec.get_peak(100.0, tolerance=0.5, peak_selection="nearest")
+            spec.get_peak(100.0, tolerance=0.5, peak_selection="nearest")  # ty: ignore[invalid-argument-type]
 
     def test_peak_selection_is_case_insensitive(self) -> None:
         spec = _boundary_spec()
-        upper = spec.get_peak(100.0, tolerance=0.5, peak_selection="LARGEST")
+        # The Literal lists the canonical spellings; the coercion accepts any case.
+        upper = spec.get_peak(100.0, tolerance=0.5, peak_selection="LARGEST")  # ty: ignore[invalid-argument-type]
         assert upper == spec.get_peak(100.0, tolerance=0.5, peak_selection="largest")
 
     def test_peak_selection_all_points_to_get_peaks(self) -> None:

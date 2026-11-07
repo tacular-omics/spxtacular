@@ -428,7 +428,7 @@ def test_invalid_entries_raise(tmp_path: Path) -> None:
     with pytest.raises(SpxtacularError, match="im_type"):
         write_mzspeclib(LibraryEntry(generic_im), tmp_path / "a.txt")
     with pytest.raises(SpxtacularError, match="format"):
-        write_mzspeclib([make_entry()], tmp_path / "a.txt", format="xml")  # type: ignore[arg-type]
+        write_mzspeclib([make_entry()], tmp_path / "a.txt", format="xml")  # ty: ignore[invalid-argument-type]
     with pytest.raises(SpxtacularError, match="conflicts"):
         Analyte(peptidoform="PEPTIDE/2", charge=3)
     with pytest.raises(SpxtacularError, match="accession"):
