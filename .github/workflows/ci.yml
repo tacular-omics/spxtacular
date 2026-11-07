@@ -43,6 +43,11 @@ jobs:
           - { os: macos-latest, python: "3.13" }
           - { os: windows-latest, python: "3.13" }
     runs-on: ${{ matrix.os }}
+    # Set only on the jobs that install the `interop` extra AND run the whole suite:
+    # with matchms absent the switch turns the interop module's skip into a failure, so a
+    # job syncing without extras (`thermo`, the first `docs` sync) must not carry it.
+    env:
+      SPXTACULAR_REQUIRE_MATCHMS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -55,6 +60,11 @@ jobs:
   # version of every direct dependency.
   lowest:
     runs-on: ubuntu-latest
+    # Set only on the jobs that install the `interop` extra AND run the whole suite:
+    # with matchms absent the switch turns the interop module's skip into a failure, so a
+    # job syncing without extras (`thermo`, the first `docs` sync) must not carry it.
+    env:
+      SPXTACULAR_REQUIRE_MATCHMS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -158,6 +168,11 @@ jobs:
   coverage:
     name: Coverage upload
     runs-on: ubuntu-latest
+    # Set only on the jobs that install the `interop` extra AND run the whole suite:
+    # with matchms absent the switch turns the interop module's skip into a failure, so a
+    # job syncing without extras (`thermo`, the first `docs` sync) must not carry it.
+    env:
+      SPXTACULAR_REQUIRE_MATCHMS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
