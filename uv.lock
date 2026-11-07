@@ -2580,9 +2580,9 @@ requires-dist = [
     { name = "spectrum-utils", marker = "extra == 'interop'", specifier = ">=0.4.0" },
     { name = "spectrum-utils", marker = "extra == 'spectrum-utils'", specifier = ">=0.4.0" },
     { name = "tacular", specifier = ">=2,<3" },
-    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=5,<6" },
-    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=5,<6" },
-    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=5,<6" },
+    { name = "tdfpy", marker = "extra == 'all'", specifier = ">=5.1,<6" },
+    { name = "tdfpy", marker = "extra == 'bruker'", specifier = ">=5.1,<6" },
+    { name = "tdfpy", marker = "extra == 'readers'", specifier = ">=5.1,<6" },
 ]
 provides-extras = ["all", "bruker", "interop", "matchms", "matplotlib", "mzml", "numba", "plotly-export", "readers", "spectrl", "spectrum-utils", "thermo"]
 
@@ -2604,7 +2604,7 @@ dev = [
     { name = "ruff", specifier = ">=0.16.8" },
     { name = "spectrl", specifier = ">=3.0,<4" },
     { name = "spectrum-utils", specifier = ">=0.4.0" },
-    { name = "tdfpy", specifier = ">=5,<6" },
+    { name = "tdfpy", specifier = ">=5.1,<6" },
     { name = "ty", specifier = ">=0.0.83" },
 ]
 
@@ -2654,7 +2654,7 @@ wheels = [
 
 [[package]]
 name = "tdfpy"
-version = "5.0.2"
+version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numba" },
@@ -2662,9 +2662,9 @@ dependencies = [
     { name = "pandas" },
     { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/3d/8b713094881807f09dcc2c43f27160a1a2477a40bf9e18764537e51b388d/tdfpy-5.0.2.tar.gz", hash = "sha256:7c93310700fd07dd9edf0a17f21d014a81a6a6ae671b489be8580479b5a9a71c", size = 120409, upload-time = "2026-10-28T02:19:37.615Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/94/a7a4240babf125cb7992baa7481d1c1bd09175379ad34c05bbc67b37383d/tdfpy-5.1.0.tar.gz", hash = "sha256:dd3062839bcfd1bb68b730e0d83083fb5128d2152e4cb0bad6290339176e8b3a", size = 122611, upload-time = "2026-11-07T18:28:47.109Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/ad/327bf55da705812af9a41fd7fe7e0dfabf62b7c4df14c8bda29949f10630/tdfpy-5.0.2-py3-none-any.whl", hash = "sha256:70b15c434b1b0d9c48824533fe15482bca8a1d31ea4a7fdfea89d6be4e945c22", size = 113711, upload-time = "2026-10-28T02:19:36.291Z" },
+    { url = "https://files.pythonhosted.org/packages/89/35/3c98cfdc73fdde9797a5c9cad6856de153603eb8471e1958fc8484018adc/tdfpy-5.1.0-py3-none-any.whl", hash = "sha256:e0d53e420abb1edbb4745ecc78120e9c98a4c96bfd16a349d73f1c655da686de", size = 113907, upload-time = "2026-11-07T18:28:45.799Z" },
 ]
 
 [[package]]
