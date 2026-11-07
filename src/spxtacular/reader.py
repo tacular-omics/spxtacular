@@ -876,6 +876,7 @@ class MzmlReader:
         self._mzml_handle = None
         self._last_access_strategy: str | None = None
         self._index: IdIndex[str] | None = None
+        self._indexed_count: int | None = None
 
     def _new_handle(self) -> Any:
         """Create an mzmlpy handle with this reader's public I/O options."""
@@ -1092,16 +1093,32 @@ class MzmlReader:
     # ------------------------------------------------------------------
 
     def _id_index(self) -> IdIndex[str]:
-        """Scan-number index of the file's native ids, built on first use and cached."""
+        """Scan-number index of the file's native ids, built on first use and cached.
+
+        The cache is dropped when an open handle's spectrum count no longer matches the
+        number of ids it was built from. mzmlpy treats the document as the authority and
+        its offset index as a cache of it, so reading a file whose index does not list
+        every spectrum lengthens that index mid-iteration (mzmlpy 0.10.3), and an index
+        built before the walk would keep answering for the short one. Only a persistent
+        handle can grow under the cache: a handle opened per operation reads the same
+        short index again. ``count`` rather than ``len()`` because
+        ``mzmlpy.lookup.BaseLookup.__len__`` raises when the count is unknown.
+        """
+        handle = self._mzml_handle
+        if self._index is not None and handle is not None:
+            with _mzml_errors(self.mzml_path):
+                count = handle.spectra.count
+            if count is not None and count != self._indexed_count:
+                self._index = None
         if self._index is None:
             with _mzml_errors(self.mzml_path):
-                handle = self._mzml_handle
                 if handle is not None:
                     ids = _mzml_spectrum_ids(handle)
                 else:
                     with self._new_handle() as r:
                         ids = _mzml_spectrum_ids(r)
             self._index = build_id_index((native_id_scan_number(i), i, i) for i in ids)
+            self._indexed_count = len(ids)
         return self._index
 
     def get_by_native_id(self, native_id: str) -> MsnSpectrum:
@@ -1190,6 +1207,7 @@ class MzmlReader:
     def open(self) -> None:
         """Open a persistent mzmlpy reader. Call :meth:`close` when done, or use as a context manager."""
         self._index = None
+        self._indexed_count = None
         if self._mzml_handle is not None:
             self.close()
         with _mzml_errors(self.mzml_path):
@@ -1200,7 +1218,13 @@ class MzmlReader:
         self._mzml_handle = handle
 
     def close(self) -> None:
-        """Close the persistent mzmlpy reader."""
+        """Close the persistent mzmlpy reader.
+
+        The id index goes with it: an index this handle rebuilt from the document would
+        otherwise name spectra the next per-operation handle cannot look up.
+        """
+        self._index = None
+        self._indexed_count = None
         if self._mzml_handle is not None:
             self._mzml_handle.__exit__(None, None, None)
             self._mzml_handle = None
