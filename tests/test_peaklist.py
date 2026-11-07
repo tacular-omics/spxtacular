@@ -30,7 +30,7 @@ from spxtacular.errors import SpxtacularError
 
 def make_spectrum(
     *,
-    scan: int = 1,
+    scan: int | None = 1,
     mz: list[float] | None = None,
     intensity: list[float] | None = None,
     precursor_mz: float | None = 445.1234567,
