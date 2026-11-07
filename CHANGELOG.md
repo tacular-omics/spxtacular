@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.4] (2026-11-07)
+
 ### Added
 
 - Documentation: a [Development](https://tacular-omics.github.io/spxtacular/development/) page —
@@ -62,6 +64,11 @@ User-visible changes only; implementation details belong in commits and pull req
   CI job installs. Lowering the matchms floor does not lower the numpy or pandas a user ends
   up with, because matchms 0.30.0 itself requires `numpy>=2.0.0` and `pandas>=2.2.3`: any
   install that includes matchms stays above this package's own numpy and pandas floors.
+- The `bruker`, `readers`, `all` and dev requirements now require `tdfpy>=5.1,<6` instead of
+  `>=5,<6`. tdfpy 5.1.0 is the first release whose `isolation_ook0_range` ends at the window's
+  last scan rather than one past it, and `MsnSpectrum.isolation_ook0_range` is that window
+  verbatim, so every range this package reported with tdfpy 5.0.x was one scan too wide.
+
 - `save_figure()` says what to do when plotly static export finds no browser. kaleido drives a
   Chrome or Chromium browser and never downloads one, so a machine without one got plotly's
   bare `RuntimeError`. The error now also names `plotly_get_chrome`, the command that installs
