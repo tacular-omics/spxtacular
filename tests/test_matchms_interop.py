@@ -1,75 +1,18 @@
 """Interoperability tests for matchms."""
 
-import os
-import warnings
-from collections.abc import Callable
-from typing import Any, NamedTuple
-
 import numpy as np
 import pytest
 
 from spxtacular import MsnSpectrum, Precursor, Spectrum, SpectrumType, from_matchms, to_matchms
+from tests.matchms_gate import REQUIRE_MATCHMS, MatchmsApi, matchms_api_or_skip
 
-# Importing matchms pulls in pynndescent, which JIT-compiles numba kernels at import time
-# (15-20 s), so the import must not sit at module scope: that cost lands at collection. The
-# module-level skip that used to avoid it deleted these nine tests from the run rather than
-# skipping them - absent from the collected total and from the skip count alike. The import
-# happens in the fixture below instead, so the tests are collected either way, and each
-# matchms test carries `slow` on itself rather than the module carrying `pytestmark`, so that
-# the two gate tests at the end of this file - which never import matchms - still run in the
-# default suite.
-
-#: Set to "1" to make an absent matchms a failure instead of a skip, as
-#: ``SPXTACULAR_REQUIRE_THERMO`` does for fisher-py in ``tests/test_thermo.py``. CI sets it on
-#: every job that installs the ``interop`` extra and runs the whole suite.
-REQUIRE_MATCHMS = "SPXTACULAR_REQUIRE_MATCHMS"
-
-
-class MatchmsApi(NamedTuple):
-    """The matchms symbols these tests build objects with.
-
-    Typed ``Any`` deliberately: annotating them precisely would need ``import matchms`` at
-    module scope, which is the collection cost the fixture exists to avoid.
-    """
-
-    spectrum: Any
-    normalize_intensities: Any
-
-
-def _import_matchms() -> MatchmsApi:
-    """Import matchms, raising :class:`ImportError` when it is not installed.
-
-    psims, which matchms imports, warns when the optional hdf5plugin is missing; under
-    ``filterwarnings = error`` that failed whichever test imported matchms first, so the
-    import is made here with that one warning suppressed.
-    """
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
-        import matchms
-        from matchms.filtering import normalize_intensities
-
-    return MatchmsApi(spectrum=matchms.Spectrum, normalize_intensities=normalize_intensities)
-
-
-def _matchms_api_or_skip(importer: Callable[[], MatchmsApi] = _import_matchms) -> MatchmsApi:
-    """Return the matchms symbols, skipping unless :data:`REQUIRE_MATCHMS` asks for a failure.
-
-    ``importer`` is injectable so that the gate tests below can drive the absent-matchms branch
-    in an environment where matchms is installed, which is every environment this suite
-    normally runs in.
-    """
-    try:
-        return importer()
-    except ImportError:
-        if os.environ.get(REQUIRE_MATCHMS) == "1":
-            raise
-        pytest.skip(f"matchms is not installed; set {REQUIRE_MATCHMS}=1 to make this a failure")
-
-
-@pytest.fixture(scope="module")
-def matchms_api() -> MatchmsApi:
-    """Import matchms once per module, or skip the requesting test if it is unavailable."""
-    return _matchms_api_or_skip()
+# This module used to open with a module-level `pytest.importorskip("matchms")`, which did not
+# skip these nine tests so much as delete them: a module-scope skip removes its tests from the
+# collected total and from the skip count alike. The import now happens inside the
+# session-scoped `matchms_api` fixture in `tests/conftest.py`, gated by `tests/matchms_gate.py`,
+# so the nine are collected either way. Each carries `slow` on itself rather than the module
+# carrying `pytestmark`, so that the two gate tests at the end of this file - which never import
+# matchms - still run in the default suite.
 
 
 def _rich_msn() -> MsnSpectrum:
@@ -251,7 +194,7 @@ def test_require_matchms_turns_an_absent_install_into_a_failure(monkeypatch: pyt
     monkeypatch.setenv(REQUIRE_MATCHMS, "1")
     try:
         with pytest.raises(ImportError):
-            _matchms_api_or_skip(_missing_matchms)
+            matchms_api_or_skip(_missing_matchms)
     except pytest.skip.Exception as exc:
         pytest.fail(f"{REQUIRE_MATCHMS}=1 skipped instead of failing: {exc}")
 
@@ -260,4 +203,4 @@ def test_without_the_switch_an_absent_install_skips(monkeypatch: pytest.MonkeyPa
     """The other direction: unset, the absent-matchms branch must still skip rather than fail."""
     monkeypatch.delenv(REQUIRE_MATCHMS, raising=False)
     with pytest.raises(pytest.skip.Exception):
-        _matchms_api_or_skip(_missing_matchms)
+        matchms_api_or_skip(_missing_matchms)

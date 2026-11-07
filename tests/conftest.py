@@ -14,6 +14,8 @@ import os
 import pytest
 from hypothesis import HealthCheck, settings
 
+from tests.matchms_gate import MatchmsApi, matchms_api_or_skip
+
 settings.register_profile(
     "default",
     max_examples=30,
@@ -47,7 +49,7 @@ def _run_slow(config: pytest.Config) -> bool:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    # Modules whose *import* is slow (test_matchms_interop.py) check this at collection.
+    # Exported so a subprocess or a module-scope check sees the same switch the option set.
     if _run_slow(config):
         os.environ["RUN_SLOW"] = "1"
 
@@ -59,3 +61,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+
+
+@pytest.fixture(scope="session")
+def matchms_api() -> MatchmsApi:
+    """Import matchms once for the whole session, or skip the requesting test.
+
+    Session-scoped so the numba JIT cost is paid once across every module that needs matchms.
+    ``tests/matchms_gate.py`` holds the gate itself, including the ``SPXTACULAR_REQUIRE_MATCHMS``
+    switch that turns an absent matchms into a failure.
+    """
+    return matchms_api_or_skip()

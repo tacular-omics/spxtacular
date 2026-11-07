@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import peptacular as pt
 import pytest
@@ -25,18 +23,6 @@ from spxtacular import (
     to_matchms,
     to_spectrl_token,
 )
-
-
-@pytest.fixture(scope="module")
-def matchms_imported() -> None:
-    """Import matchms up front: it is slow (numba JIT) and noisy at import time.
-
-    psims, which matchms imports, warns when the optional hdf5plugin is missing; under
-    ``filterwarnings = error`` that failed whichever test happened to import matchms first.
-    """
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="hdf5plugin is missing", category=UserWarning)
-        pytest.importorskip("matchms")
 
 
 @pytest.mark.parametrize("model", [PROTONATED, DEPROTONATED, SODIATED, AMMONIATED])
@@ -270,7 +256,7 @@ def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
 
 @pytest.mark.slow  # first matchms import JIT-compiles pynndescent (15-20 s)
 @pytest.mark.timeout(90)  # the import can land in this test's fixture setup
-@pytest.mark.usefixtures("matchms_imported")
+@pytest.mark.usefixtures("matchms_api")
 def test_custom_isotope_model_roundtrips_through_matchms() -> None:
     model, result = _custom_isotope_model_result()
     _assert_custom_model_restored(from_matchms(to_matchms(result)), model, result)
@@ -302,7 +288,7 @@ def _sodiated_spectrum() -> Spectrum:
 
 @pytest.mark.slow  # first matchms import JIT-compiles pynndescent (15-20 s)
 @pytest.mark.timeout(90)  # the import can land in this test's fixture setup
-@pytest.mark.usefixtures("matchms_imported")
+@pytest.mark.usefixtures("matchms_api")
 def test_provenance_roundtrips_matchms_payload() -> None:
     spec = _sodiated_spectrum()
     restored = from_matchms(to_matchms(spec))
