@@ -468,6 +468,7 @@ def test_large_protein_apex_is_past_the_old_32_peak_window() -> None:
 @example(mass=8504.5)
 @example(mass=8775.5)
 @example(mass=53222.25)
+@example(mass=111054.5)
 def test_apex_matches_reference_at_any_mass(mass: float) -> None:
     """The apex is exact at every mass, against the envelope the model actually builds.
 
