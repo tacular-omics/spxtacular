@@ -27,11 +27,17 @@ The extras are `bruker` (tdfpy), `mzml` (mzmlpy), `thermo` (fisher-py), `spectrl
 Install them with `uv sync --locked --all-extras`, and do that if your change touches figures,
 static export, or an optional reader.
 
-Read the passed and skipped counts, never the collected total. The collected total is identical
-with and without the extras, because these tests are collected and then skipped by an
-`importorskip` or a fixture, so only the skip count moves. `uv pip list` says what is actually
-installed, which is a measurement of the environment rather than of the declarations, and the
-`SKIPPED` lines pytest prints under `-ra` name every test that did not run and why.
+Read every outcome pytest prints, not the collected total alone, because the two kinds of skip
+look different. A test gated inside a function or a fixture is collected and then skipped, so the
+collected total does not move. A module whose `pytest.importorskip` runs at import, at the top
+level of the file, is never imported at all, so its tests leave the collected total altogether and
+the whole file reports as one skip. spxtacular has both shapes, so neither number answers on its
+own. What separates them is a subtraction: add the passed, failed, skipped, xfailed, xpassed and
+error counts, leave out any subtest count, and subtract the collected total. The difference is the
+number of files skipped at collection, and it is zero when every optional library is installed.
+`uv pip list` says what is actually installed, which is a measurement of the environment rather
+than of the declarations, and the `SKIPPED` lines pytest prints under `-ra` name every test that
+did not run and why.
 
 Thermo is the one no sync can fix: `fisher-py` installs from the development group, but reading a
 `.raw` file needs a .NET 8 runtime on the machine, so those tests skip without it. CI has a job
