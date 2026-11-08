@@ -27,17 +27,27 @@ The extras are `bruker` (tdfpy), `mzml` (mzmlpy), `thermo` (fisher-py), `spectrl
 Install them with `uv sync --locked --all-extras`, and do that if your change touches figures,
 static export, or an optional reader.
 
-Read every outcome pytest prints, not the collected total alone, because the two kinds of skip
-look different. A test gated inside a function or a fixture is collected and then skipped, so the
-collected total does not move. A module whose `pytest.importorskip` runs at import, at the top
-level of the file, is never imported at all, so its tests leave the collected total altogether and
-the whole file reports as one skip. spxtacular has both shapes, so neither number answers on its
-own. What separates them is a subtraction: add the passed, failed, skipped, xfailed, xpassed and
-error counts, leave out any subtest count, and subtract the collected total. The difference is the
-number of files skipped at collection, and it is zero when every optional library is installed.
-`uv pip list` says what is actually installed, which is a measurement of the environment rather
-than of the declarations, and the `SKIPPED` lines pytest prints under `-ra` name every test that
-did not run and why.
+Which counts to read depends on the environment, because the two kinds of skip look different. A
+test gated inside a function or a fixture is collected and then skipped, so the collected total
+does not move and only the pass and skip counts do. A module whose `pytest.importorskip` runs at
+import, at the top level of the file, is never imported at all, so its tests leave the collected
+total altogether and the whole file reports as one skip. spxtacular has both shapes.
+
+Under the install above the total does not move: `uv sync --locked` brings the development group,
+which carries `mzmlpy`, `tdfpy`, `spectrl` and `spectrum-utils`, and those are exactly the
+libraries the module-scope gates guard, so none of them fires and adding `--all-extras` changes
+the pass and skip counts only. Measured 2026-11-07, 2247 collected either way. Without the
+development group the claim fails, which is the environment the release checklist builds from the
+wheel: those four libraries are absent, six test modules drop out at import, and the total falls
+to 2055 collected (2026-11-07, the wheel with no extras).
+
+The cheapest instrument is pytest's own header. A non-quiet run prints `collected N items /
+M skipped`, where M is the number of files dropped at collection, and `-q` hides it: the wheel run
+above reads `collected 2055 items / 6 skipped`. Under `-q` the same number is a subtraction. Add
+the passed, failed, skipped, xfailed, xpassed and error counts, leave out any subtest count, and
+subtract the collected total. The `-ra` already in `addopts` keeps the `SKIPPED` lines, which is
+the only thing that catches a fixture-scope skip, and `uv pip list` says what is actually
+installed, which is a measurement of the environment rather than of the declarations.
 
 Thermo is the one no sync can fix: `fisher-py` installs from the development group, but reading a
 `.raw` file needs a .NET 8 runtime on the machine, so those tests skip without it. CI has a job
