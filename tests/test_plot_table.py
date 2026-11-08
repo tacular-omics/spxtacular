@@ -344,10 +344,9 @@ def test_annot_plot_table_y_ion_color() -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_from_table — guarded by plotly availability
+# plot_from_table. plotly is a hard runtime dependency, not an extra, so these
+# tests need no availability guard.
 # ---------------------------------------------------------------------------
-
-pytest.importorskip("plotly", reason="plotly is not installed")
 
 
 def test_plot_from_table_returns_figure() -> None:
