@@ -8,6 +8,9 @@ User-visible changes only; implementation details belong in commits and pull req
 
 - Length-mismatch errors from `Spectrum` and `Chromatogram` now name both lengths, for example
   "intensity has 412 values, mz has 411".
+- Looking up a channel that is not in the plex, for example `ions["134N"]` on TMT10 reporter ions,
+  raises a `KeyError` that names the channel, the plex and the channels it has, instead of only
+  the channel name.
 
 ## [0.9.4] (2026-11-07)
 

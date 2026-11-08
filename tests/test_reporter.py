@@ -86,6 +86,16 @@ def test_most_intense_peak_in_window_wins() -> None:
     assert ions.raw_intensity[0] == 900.0
 
 
+def test_unknown_channel_names_channel_and_plex() -> None:
+    ions = extract_reporter_ions(_reporter_spectrum(), "TMT10")
+    with pytest.raises(KeyError) as excinfo:
+        ions["134N"]
+    message = str(excinfo.value)
+    assert "'134N'" in message
+    assert "TMT10" in message
+    assert ", ".join(TMT10.channels) in message
+
+
 def test_missing_channels_are_zero_and_nan() -> None:
     ions = extract_reporter_ions(_reporter_spectrum(skip=("127C", "131N")), "TMT10")
     for channel in ("127C", "131N"):
