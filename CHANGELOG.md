@@ -4,6 +4,11 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Changed
+
+- Length-mismatch errors from `Spectrum` and `Chromatogram` now name both lengths, for example
+  "intensity has 412 values, mz has 411".
+
 ## [0.9.4] (2026-11-07)
 
 ### Added

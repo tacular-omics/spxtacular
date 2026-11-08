@@ -93,7 +93,10 @@ class Chromatogram:
         if self.intensity.ndim != 1:
             raise SpxtacularError(f"intensity array must be one-dimensional; got shape {self.intensity.shape}")
         if len(self.rt) != len(self.intensity):
-            raise SpxtacularError("rt and intensity must have the same length")
+            raise SpxtacularError(
+                "rt and intensity must have the same length; "
+                f"intensity has {len(self.intensity)} values, rt has {len(self.rt)}"
+            )
         if self.tolerance_unit is not None:
             self.tolerance_unit = check_tolerance_unit(self.tolerance_unit)
 
