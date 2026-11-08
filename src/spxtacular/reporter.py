@@ -442,7 +442,8 @@ class ReporterIons:
         """Intensity of ``channel`` (case-insensitive, e.g. ``"127n"``)."""
         key = channel.strip().upper() if isinstance(channel, str) else channel
         if key not in self.channels:
-            raise KeyError(f"channel {channel!r} is not in the {self.plex} plex (channels: {', '.join(self.channels)})")
+            known = ", ".join(self.channels)
+            raise KeyError(f"channel {channel!r} is not in the {self.plex} plex (channels: {known})")
         return float(self.intensity[self.channels.index(key)])
 
     def to_dict(self) -> dict[str, Any]:
