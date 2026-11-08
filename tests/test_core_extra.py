@@ -195,8 +195,16 @@ def test_peak_repr_with_iso_score() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_spectrum_wrong_length_intensity_raises() -> None:
+    with pytest.raises(ValueError, match="intensity has 3 values, mz has 2"):
+        Spectrum(
+            mz=np.array([1.0, 2.0], dtype=np.float64),
+            intensity=np.array([1.0, 2.0, 3.0], dtype=np.float64),
+        )
+
+
 def test_spectrum_wrong_length_charge_raises() -> None:
-    with pytest.raises(ValueError, match="charge array"):
+    with pytest.raises(ValueError, match="charge has 1 values, mz has 2"):
         Spectrum(
             mz=np.array([1.0, 2.0], dtype=np.float64),
             intensity=np.array([1.0, 2.0], dtype=np.float64),
@@ -205,7 +213,7 @@ def test_spectrum_wrong_length_charge_raises() -> None:
 
 
 def test_spectrum_wrong_length_im_raises() -> None:
-    with pytest.raises(ValueError, match="im array"):
+    with pytest.raises(ValueError, match="im has 1 values, mz has 2"):
         Spectrum(
             mz=np.array([1.0, 2.0], dtype=np.float64),
             intensity=np.array([1.0, 2.0], dtype=np.float64),
@@ -214,7 +222,7 @@ def test_spectrum_wrong_length_im_raises() -> None:
 
 
 def test_spectrum_wrong_length_iso_score_raises() -> None:
-    with pytest.raises(ValueError, match="score array"):
+    with pytest.raises(ValueError, match="iso_score has 1 values, mz has 2"):
         Spectrum(
             mz=np.array([1.0, 2.0], dtype=np.float64),
             intensity=np.array([1.0, 2.0], dtype=np.float64),

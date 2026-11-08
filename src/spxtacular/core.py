@@ -419,13 +419,19 @@ class Spectrum:
 
         n = len(self.mz)
         if len(self.intensity) != n:
-            raise SpxtacularError("mz and intensity must have same length")
+            raise SpxtacularError(
+                f"mz and intensity must have same length; intensity has {len(self.intensity)} values, mz has {n}"
+            )
         if self.charge is not None and len(self.charge) != n:
-            raise SpxtacularError("charge array must match mz length")
+            raise SpxtacularError(
+                f"charge array must match mz length; charge has {len(self.charge)} values, mz has {n}"
+            )
         if self.im is not None and len(self.im) != n:
-            raise SpxtacularError("im array must match mz length")
+            raise SpxtacularError(f"im array must match mz length; im has {len(self.im)} values, mz has {n}")
         if self.iso_score is not None and len(self.iso_score) != n:
-            raise SpxtacularError("score array must match mz length")
+            raise SpxtacularError(
+                f"score array must match mz length; iso_score has {len(self.iso_score)} values, mz has {n}"
+            )
 
     def __eq__(self, other: object) -> bool:
         """Value equality; array fields compare element-wise.

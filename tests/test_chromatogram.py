@@ -89,7 +89,7 @@ class TestChromatogramModel:
         assert chromatogram.apex_rt == 2.0
 
     def test_mismatched_lengths_are_rejected(self) -> None:
-        with pytest.raises(ValueError, match="same length"):
+        with pytest.raises(ValueError, match="intensity has 1 values, rt has 2"):
             Chromatogram(rt=np.array([1.0, 2.0]), intensity=np.array([3.0]))
 
     @pytest.mark.parametrize(
