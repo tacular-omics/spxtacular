@@ -127,6 +127,32 @@ def _chromatograms() -> list[spx.Chromatogram]:
     return out
 
 
+def _xic_spectra() -> list[MsnSpectrum]:
+    """MS1 scans across the ``_chromatograms`` elution window: the XIC entry extracts the same two ions."""
+    rt = np.linspace(1100, 1300, 300)
+    rng = np.random.default_rng(9)
+    targets = ((416.8757, 1189.6, 4.5, 6.3e5), (842.8869, 1175.3, 6.0, 1.7e6))
+    out = []
+    for t in rt:
+        mz, inten = [], []
+        for target, apex, width, top in targets:
+            # Scan-to-scan noise on the analytic elution profile, like a measured trace.
+            peak = top * np.exp(-0.5 * ((t - apex) / width) ** 2) * rng.uniform(0.85, 1.15)
+            mz.append(target * (1.0 + rng.normal(0.0, 2e-6)))  # ~2 ppm error, inside the 20 ppm window
+            inten.append(peak + 2e3 * rng.uniform(0.8, 1.2))
+        order = np.argsort(mz)
+        out.append(
+            MsnSpectrum(
+                mz=np.asarray(mz)[order],
+                intensity=np.asarray(inten)[order],
+                ms_level=1,
+                rt=float(t),
+                spectrum_type=SpectrumType.CENTROID,
+            )
+        )
+    return out
+
+
 def figures() -> dict[str, Callable[..., Any]]:
     spectrum, peptide, fragments = _psm()
     replicate = _replicate()
@@ -159,6 +185,7 @@ def figures() -> dict[str, Callable[..., Any]]:
         "ion_mobility": lambda **kw: spx.plot_spectrum(_im_spectrum(), color="im", **kw),
         "reporter": lambda **kw: spx.reporter_ion_plot(_reporter_spectrum(), "TMT10", **kw),
         "chromatogram": lambda **kw: spx.plot_chromatogram(_chromatograms(), **kw),
+        "xic": lambda **kw: spx.plot_xic(_xic_spectra(), (416.8757, 842.8869), **kw),
         "composed": lambda **kw: spx.compose_figure(
             [
                 spx.annotate_spectrum(spectrum, fragments, peptide=peptide, backend="spec", style=kw.get("style")),
