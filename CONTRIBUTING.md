@@ -18,6 +18,25 @@ cd spxtacular
 just install          # uv sync --locked
 ```
 
+`just install` is `uv sync --locked`, which installs the development group. That group happens to
+carry most of the optional libraries already, so almost the whole suite runs from it, but not all
+of them, and a test whose library is absent skips instead of running.
+
+The extras are `bruker` (tdfpy), `mzml` (mzmlpy), `thermo` (fisher-py), `spectrl`, `interop`
+(matchms, spectrum-utils), `numba`, `matplotlib`, `plotly-export` (kaleido and plotly), and `all`.
+Install them with `uv sync --locked --all-extras`, and do that if your change touches figures,
+static export, or an optional reader.
+
+Read the passed and skipped counts, never the collected total. The collected total is identical
+with and without the extras, because these tests are collected and then skipped by an
+`importorskip` or a fixture, so only the skip count moves. `uv pip list` says what is actually
+installed, which is a measurement of the environment rather than of the declarations, and the
+`SKIPPED` lines pytest prints under `-ra` name every test that did not run and why.
+
+Thermo is the one no sync can fix: `fisher-py` installs from the development group, but reading a
+`.raw` file needs a .NET 8 runtime on the machine, so those tests skip without it. CI has a job
+that installs .NET 8 and sets `SPXTACULAR_REQUIRE_THERMO=1`, where they cannot skip.
+
 `just --list` prints every recipe, and the
 [development guide](https://tacular-omics.github.io/spxtacular/development/) explains them one by
 one. Without `just`, run the command inside each recipe directly (`just --show test` prints it).
