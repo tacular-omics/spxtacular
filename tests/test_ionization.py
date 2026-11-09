@@ -23,6 +23,7 @@ from spxtacular import (
     to_matchms,
     to_spectrl_token,
 )
+from tests.spectrl_gate import spectrl_or_skip
 
 
 @pytest.mark.parametrize("model", [PROTONATED, DEPROTONATED, SODIATED, AMMONIATED])
@@ -240,7 +241,7 @@ def _assert_custom_model_restored(restored: Spectrum, model: IsotopeModel, resul
 
 
 def test_custom_isotope_model_roundtrips_in_provenance(tmp_path) -> None:
-    pytest.importorskip("spectrl")
+    spectrl_or_skip()
     model, result = _custom_isotope_model_result()
     path = tmp_path / "custom-isotope-model.npz"
 
@@ -296,7 +297,7 @@ def test_provenance_roundtrips_matchms_payload() -> None:
 
 
 def test_provenance_roundtrips_spectrl_user_parameter() -> None:
-    pytest.importorskip("spectrl")
+    spectrl_or_skip()
     spec = _sodiated_spectrum()
     restored = from_spectrl_token(to_spectrl_token(spec, lossless=True))
     assert restored.deconvolution == spec.deconvolution

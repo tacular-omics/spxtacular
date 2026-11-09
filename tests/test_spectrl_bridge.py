@@ -3,7 +3,12 @@
 import numpy as np
 import pytest
 
-spectrl = pytest.importorskip("spectrl")
+from tests.spectrl_gate import spectrl_or_skip
+
+# Module scope on purpose: the imports below are spectrl symbols, so there is nothing to
+# gate per test, and spectrl costs about 0.23 s to import. A module-scope skip removes this
+# file's tests from the collected total, which `tests/test_spectrl_gate.py` does not share.
+spectrl = spectrl_or_skip()
 
 from spectrl.model import (  # noqa: E402
     SpectrlCvParam,
