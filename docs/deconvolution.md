@@ -103,6 +103,30 @@ until every input peak has been consumed or `max_dpeaks` is reached.
 
 ---
 
+## Calculating an isotope envelope
+
+Use [`brain_isotopic_distribution`](api.md#isotope-models) to calculate
+nominal isotope probabilities directly from integer atom counts. For glucose:
+
+```python
+from spxtacular import brain_isotopic_distribution
+
+probabilities = brain_isotopic_distribution(
+    {"C": 6, "H": 12, "O": 6}, max_isotopes=4
+)
+print(probabilities.round(6).tolist())
+print(round(float(probabilities.sum()), 6))
+```
+
+```text
+[0.922712, 0.063261, 0.013221, 0.000805]
+1.0
+```
+
+The entries represent A+0 through A+3, starting at the all-light-isotope
+composition. The probabilities are normalized over the requested four-peak window.
+Omit `max_isotopes` to use the default window, which extends for large compositions.
+
 ## Parameters
 
 ```python title="signature only - not executed"
