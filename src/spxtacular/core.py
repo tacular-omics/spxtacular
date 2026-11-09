@@ -499,7 +499,7 @@ class Spectrum:
         elif by == "score":
             sort_key = self._argsort_score
         else:
-            raise SpxtacularError(f"Unknown sort key: {by!r}")
+            raise SpxtacularError(f"Unknown sort key: {by!r}; expected 'intensity', 'mz', 'charge', 'im', or 'score'")
 
         n = max(n, 0)
         if not reverse:
@@ -821,7 +821,7 @@ class Spectrum:
         elif method == "median":
             norm_factor = np.median(self.intensity)
         else:
-            raise SpxtacularError(f"Unknown normalization method: {method!r}")
+            raise SpxtacularError(f"Unknown normalization method: {method!r}; expected 'max', 'tic', or 'median'")
 
         if norm_factor == 0:
             warnings.warn(
@@ -1061,7 +1061,7 @@ class Spectrum:
         elif by == "score":
             order = self._argsort_score
         else:
-            raise SpxtacularError(f"Unknown sort key: {by!r}")
+            raise SpxtacularError(f"Unknown sort key: {by!r}; expected 'mz', 'intensity', 'charge', 'im', or 'score'")
 
         if reverse:
             # ``order[::-1]`` would flip every tie. Stably sort the reversed keys
@@ -2273,7 +2273,7 @@ class Spectrum:
             order = np.argsort(np.argsort(self.intensity))
             scaled = (order + 1).astype(np.float64)
         else:
-            raise SpxtacularError(f"Unknown scaling method: {method!r}")
+            raise SpxtacularError(f"Unknown scaling method: {method!r}; expected 'root', 'log', or 'rank'")
 
         # Scaling changes the intensity distribution, so any prior normalisation
         # no longer holds. Clearing the flag lets normalize() run again instead
@@ -2319,7 +2319,7 @@ class Spectrum:
             new_intensity = np.full(len(unique_mz), -np.inf, dtype=np.float64)
             np.maximum.at(new_intensity, inverse, self.intensity)
         else:
-            raise SpxtacularError(f"Unknown combine method: {combine!r}")
+            raise SpxtacularError(f"Unknown combine method: {combine!r}; expected 'sum' or 'max'")
 
         return self.update(
             mz=unique_mz,
