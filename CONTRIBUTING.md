@@ -109,5 +109,8 @@ releases. Design discussions should take place in public issues or pull requests
 Participants are expected to be respectful, constructive, and welcoming. Harassment, personal
 attacks, and discriminatory conduct are not acceptable.
 
+AI-assisted contributions are welcome; you are responsible for reviewing and testing what you
+submit.
+
 For a suspected security vulnerability, use GitHub's private security-advisory reporting for this
 repository instead of opening a public issue.
