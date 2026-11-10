@@ -16,6 +16,10 @@ User-visible changes only; implementation details belong in commits and pull req
 - Looking up a channel that is not in the plex, for example `ions["134N"]` on TMT10 reporter ions,
   raises a `KeyError` that names the channel, the plex and the channels it has, instead of only
   the channel name.
+- Errors for an unknown option in `Spectrum` transforms (`top_peaks`, `sort`,
+  `normalize`, `scale_intensity`, `round_mz`, `denoise`) now list the accepted
+  values, for example "Unknown sort key: 'bogus'; expected 'mz', 'intensity',
+  'charge', 'im', or 'score'".
 
 ## [0.9.4] (2026-11-07)
 
@@ -88,10 +92,6 @@ User-visible changes only; implementation details belong in commits and pull req
   a browser, and keeps the original on `__cause__`; any other `RuntimeError` from the writer is
   re-raised untouched. The browser requirement is documented wherever the `plotly-export` extra
   is.
-- Errors for an unknown option in `Spectrum` transforms (`top_peaks`, `sort`,
-  `normalize`, `scale_intensity`, `round_mz`, `denoise`) now list the accepted
-  values, for example "Unknown sort key: 'bogus'; expected 'mz', 'intensity',
-  'charge', 'im', or 'score'".
 
 ### Fixed
 
