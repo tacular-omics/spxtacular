@@ -4,6 +4,11 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Documentation
+
+- Show a runnable `brain_isotopic_distribution` example and its normalized
+  probabilities in the deconvolution guide.
+
 ### Changed
 
 - Length-mismatch errors from `Spectrum` and `Chromatogram` now name both lengths, for example
