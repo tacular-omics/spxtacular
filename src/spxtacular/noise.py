@@ -151,5 +151,5 @@ def estimate_noise_level(
     elif method == "iterative_median":
         return _estimate_noise_iterative_median(intensity_array)
     else:
-        msg = f"Unknown method: {method}"
+        msg = f"Unknown method: {method}; expected 'mad', 'percentile', 'histogram', 'baseline', or 'iterative_median'"
         raise SpxtacularError(msg)

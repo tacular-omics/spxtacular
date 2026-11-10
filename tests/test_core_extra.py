@@ -677,6 +677,18 @@ def test_sort_unknown_key_raises() -> None:
         spec.sort(by=bad)
 
 
+def test_top_peaks_unknown_key_raises() -> None:
+    from typing import cast
+
+    spec = _spec()
+    bad: Any = cast(Any, "bogus")
+    with pytest.raises(
+        ValueError,
+        match=r"Unknown sort key.*expected 'intensity', 'mz', 'charge', 'im', or 'score'",
+    ):
+        spec.top_peaks(3, by=bad)
+
+
 # ---------------------------------------------------------------------------
 # copy
 # ---------------------------------------------------------------------------

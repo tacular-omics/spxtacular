@@ -88,6 +88,10 @@ User-visible changes only; implementation details belong in commits and pull req
   a browser, and keeps the original on `__cause__`; any other `RuntimeError` from the writer is
   re-raised untouched. The browser requirement is documented wherever the `plotly-export` extra
   is.
+- Errors for an unknown option in `Spectrum` transforms (`top_peaks`, `sort`,
+  `normalize`, `scale_intensity`, `round_mz`, `denoise`) now list the accepted
+  values, for example "Unknown sort key: 'bogus'; expected 'mz', 'intensity',
+  'charge', 'im', or 'score'".
 
 ### Fixed
 
