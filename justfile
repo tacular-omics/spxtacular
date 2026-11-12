@@ -109,12 +109,16 @@ paper-preflight: paper
     test -s paper/abstract/data/stages.json
     test -s paper/figures/graphical_abstract.png
     test paper/figures/graphical_abstract.png -nt paper/abstract/data/stages.json
-    # The committed figure must be the one draw.py produces from the committed
-    # stages.json, so a hand-edited PNG or a stale redraw cannot reach the paper.
-    redrawn="$(mktemp -d)"
-    trap 'rm -rf "$redrawn"' EXIT
-    uv run --locked python paper/abstract/draw.py "$redrawn/graphical_abstract"
-    cmp paper/figures/graphical_abstract.png "$redrawn/graphical_abstract.png"
+    # `paper` has just redrawn the figure, so the committed PNG must now be
+    # unchanged: that is what proves the file in the paper is the one draw.py
+    # produces from the committed stages.json, and not a hand-edited image.
+    # Comparing a fresh redraw against the working tree instead would compare two
+    # fresh redraws, since paper-figure overwrites the file first, and could never fail.
+    if ! git diff --quiet -- paper/figures/graphical_abstract.png; then
+        echo "paper/figures/graphical_abstract.png differs from a redraw by paper/abstract/draw.py" >&2
+        echo "commit the redrawn figure, or restore it with: git checkout -- paper/figures/graphical_abstract.png" >&2
+        exit 1
+    fi
     just paper-wordcount
     pdfinfo paper/paper.pdf | sed -n '1,18p'
 
