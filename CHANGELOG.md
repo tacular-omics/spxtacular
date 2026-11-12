@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.9.5] (2026-11-11)
+
 ### Documentation
 
 - Show a runnable `brain_isotopic_distribution` example and its normalized
