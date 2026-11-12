@@ -5,6 +5,16 @@ Bug reports, feature proposals, documentation fixes, and code contributions are 
 support. Please include a minimal example, the spxtacular and Python versions, and the complete
 error message when reporting a defect.
 
+## Claiming an issue
+
+Comment on the issue to say you are taking it before you start, and check that nobody has
+already done so. One issue, one contributor: when two pull requests arrive for the same issue,
+the first one that was claimed is reviewed and the other is closed, however good it is. If a
+claim has had no pull request or update for 14 days, comment to take it over.
+
+Issues labelled `good first issue` need no knowledge of the codebase. Issues labelled
+`help wanted` do: each one names the files to read first and the test that shows it is done.
+
 ## Development setup
 
 `pip install spxtacular` is the install for using the library. Developing it requires Python 3.12
