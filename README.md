@@ -34,7 +34,7 @@ out without hand-rolling the signal processing.
 > Part of the [tacular-omics](https://github.com/tacular-omics) ecosystem alongside [peptacular](https://github.com/tacular-omics/peptacular), [paftacular](https://github.com/tacular-omics/paftacular), and [mzmlpy](https://github.com/tacular-omics/mzmlpy).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tacular-omics/spxtacular/main/paper/figures/graphical_abstract.png" alt="Graphical abstract showing the spxtacular mass spectrometry processing workflow" width="100%"/>
+  <img src="https://raw.githubusercontent.com/tacular-omics/spxtacular/main/paper/figures/graphical_abstract.png" alt="Five-panel graphical abstract: one public spectrum fetched by USI, then denoised, deconvoluted into charge-assigned isotope clusters, decharged to neutral masses, and scored against b and y fragment ions, with the chained code that produced each panel" width="100%"/>
 </p>
 
 A spectrum can also be shared as a link. `to_spectrl_url()` encodes the peaks and the scan
