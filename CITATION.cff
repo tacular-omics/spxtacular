@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use spxtacular in your research, please cite the archived software release."
 type: software
-title: "spxtacular: Mass spectrometry spectrum processing in Python"
+title: "spxtacular: A chainable Python library for mass spectrum processing"
 abstract: >-
   spxtacular is a Python library for general mass-spectrum processing
   through chainable Spectrum and MsnSpectrum objects. Processing operations

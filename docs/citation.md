@@ -10,7 +10,7 @@ lists a version-specific DOI for each release if you need to cite an exact versi
 ```bibtex
 @software{spxtacular,
   author  = {Garrett, Patrick T. and Yates III, John R.},
-  title   = {spxtacular: Mass spectrometry spectrum processing in Python},
+  title   = {spxtacular: A chainable Python library for mass spectrum processing},
   doi     = {10.5281/zenodo.19342437},
   url     = {https://github.com/tacular-omics/spxtacular},
   license = {MIT}
