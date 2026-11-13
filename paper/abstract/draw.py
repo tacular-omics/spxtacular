@@ -87,7 +87,9 @@ def header(x, y, n, call, caption, maxw=None):
     num = T(x, y, str(n), size=8.5, color="white", weight="bold", ha="center", va="center",
             bbox=dict(boxstyle="circle,pad=0.32", fc=INK, ec="none"))
     num.set_position(((x + 0.11) / W, (y + 0.045) / H))
-    T(x + 0.32, y, call, size=12.6, color=BLUE, weight="bold", family=MONO)
+    call_t = T(x + 0.32, y, call, size=12.6, color=BLUE, weight="bold", family=MONO)
+    if maxw is not None and width_in(call_t) > maxw - 0.32:
+        raise SystemExit(f"call {call!r} is {width_in(call_t):.2f} in wide, panel is {maxw - 0.32:.2f} in")
     cap = T(x, y - 0.235, caption, size=10.0, color=SUB)
     # A caption wider than its panel runs into the next panel's caption, which reads as one
     # sentence rather than as a drawing bug. Fail here instead.
@@ -137,10 +139,12 @@ sticks(ax, cmz[cz == 1], logh(cin[cz == 1] / cin.max()), Z1, 1.0, 2)
 sticks(ax, cmz[cz == 2], logh(cin[cz == 2] / cin.max()), Z2, 1.3, 3)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
-header(x4, YH, 4, ".decharge()", f"{len(neu['mass'])} neutral masses", wS)
+header(x4, YH, 4, ".decharge().merge()", f"{len(neu['mass'])} neutral masses", wS)
 ax = AX(x4, Y0, wS, HP)
-k = cz > 0
-sticks(ax, (cmz[k] - PROTON) * cz[k], logh(cin[k] / cin[k].max()), INK, 1.0)
+# Drawn from the pipeline's own neutral array, not recomputed from the charged peaks, so
+# the panel shows the merge: an ion seen at 1+ and at 2+ gives one neutral mass, not two.
+nmass, nint = np.array(neu["mass"]), np.array(neu["intensity"])
+sticks(ax, nmass, logh(nint / nint.max()), INK, 1.0)
 ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 ya = Y0 + HP * 0.45
@@ -208,6 +212,7 @@ code = [
     [("    .", INK), ("denoise", BLUE), ('(method="iterative_median")', INK)],
     [("    .", INK), ("deconvolute", BLUE), ("(**ppm)", INK)],
     [("    .", INK), ("decharge", BLUE), ("()", INK)],
+    [("    .", INK), ("merge", BLUE), ('(mz_tolerance=20, mz_tolerance_unit="ppm")', INK)],
     [("    .", INK), ("score", BLUE), ("(fragments, **ppm)", INK)],
     [(")", INK)],
 ]
