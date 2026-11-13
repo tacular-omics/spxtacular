@@ -35,8 +35,23 @@ plt.rcParams.update({"font.family": SANS, "svg.fonttype": "none", "pdf.fonttype"
 D = json.load(open(HERE / "data/stages.json"))
 INK, SUB, FAINT, HAIR = "#111827", "#6B7280", "#C7CCD4", "#E5E7EB"
 BLUE, RED = "#0061FF", "#DC1D1D"
-Z1, Z2 = "#0E9F8E", "#7C3AED"
+# Charge is ordinal, so spxtacular's own palette encodes it as one hue's lightness rather
+# than as separate colours (theme.py, charge_color). Taking it from the library keeps the
+# abstract from inventing a scheme the package does not use.
+from spxtacular.theme import charge_color  # noqa: E402
+Z1, Z2 = charge_color(1), charge_color(2)
 PROTON = 1.007276
+
+# Band A is drawn on a square-root intensity scale, the usual one for spectral display and
+# the transform cosine() itself applies. The peaks denoise() removes are the small ones,
+# 2.2e-3 to 1.2e-2 of the base peak against 1.2e-2 to 1 for the peaks it keeps, so on a
+# linear axis the removal is invisible and panel 2 looks like panel 1. A log scale makes
+# them visible but lifts every small peak to a similar height, which stops the panels
+# looking like spectra at all.
+
+def logh(rel):
+    """Stick height for a relative intensity, on a square-root scale."""
+    return np.sqrt(np.clip(np.asarray(rel, dtype=np.float64), 0, 1))
 
 W, H = 12.0, 7.9
 fig = plt.figure(figsize=(W, H), dpi=300)
@@ -104,27 +119,28 @@ YH, Y0, HP = 6.30, 4.66, 1.22
 XL = (90, 1460)
 
 header(x1, YH, 1, "fetch_usi(usi)", f"{len(rmz)} peaks, as acquired", wS)
-ax = AX(x1, Y0, wS, HP); sticks(ax, rmz, rin / rin.max(), "#4B5563", 0.55)
+ax = AX(x1, Y0, wS, HP); sticks(ax, rmz, logh(rin / rin.max()), INK, 0.55)
+ax.set_ylabel("\u221a intensity", fontsize=9.0, color=SUB, labelpad=2)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x2, YH, 2, ".denoise()", f"{len(dmz)} peaks above the noise floor", wS)
 ax = AX(x2, Y0, wS, HP)
-sticks(ax, dmz, din / rin.max(), INK, 0.65, 2)
-sticks(ax, rmz[~kept], rin[~kept] / rin.max(), "#EF6B6B", 0.8, 3)
+sticks(ax, dmz, logh(din / rin.max()), INK, 0.65, 2)
+sticks(ax, rmz[~kept], logh(rin[~kept] / rin.max()), "#EF6B6B", 0.8, 3)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x3, YH, 3, ".deconvolute()", f"{n_charged} clusters given a charge state", w3)
 ax = AX(x3, Y0, w3, HP)
 u = cz < 0
-sticks(ax, cmz[u], cin[u] / cin.max(), FAINT, 0.55, 1)
-sticks(ax, cmz[cz == 1], cin[cz == 1] / cin.max(), Z1, 1.0, 2)
-sticks(ax, cmz[cz == 2], cin[cz == 2] / cin.max(), Z2, 1.3, 3)
+sticks(ax, cmz[u], logh(cin[u] / cin.max()), FAINT, 0.55, 1)
+sticks(ax, cmz[cz == 1], logh(cin[cz == 1] / cin.max()), Z1, 1.0, 2)
+sticks(ax, cmz[cz == 2], logh(cin[cz == 2] / cin.max()), Z2, 1.3, 3)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x4, YH, 4, ".decharge()", f"{len(neu['mass'])} neutral masses", wS)
 ax = AX(x4, Y0, wS, HP)
 k = cz > 0
-sticks(ax, (cmz[k] - PROTON) * cz[k], cin[k] / cin[k].max(), INK, 1.0)
+sticks(ax, (cmz[k] - PROTON) * cz[k], logh(cin[k] / cin[k].max()), INK, 1.0)
 ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 ya = Y0 + HP * 0.45
