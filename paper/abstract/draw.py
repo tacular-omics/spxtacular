@@ -112,7 +112,6 @@ ax = AX(x2, Y0, wS, HP)
 sticks(ax, dmz, din / rin.max(), INK, 0.65, 2)
 sticks(ax, rmz[~kept], rin[~kept] / rin.max(), "#EF6B6B", 0.8, 3)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
-ax.text(0.99, 0.97, f"{int((~kept).sum())} noise peaks removed", transform=ax.transAxes, ha="right", va="top", fontsize=8.6, color="#D85C5C")
 
 header(x3, YH, 3, ".deconvolute()", f"{n_charged} clusters given a charge state", w3)
 ax = AX(x3, Y0, w3, HP)
@@ -124,12 +123,9 @@ ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x4, YH, 4, ".decharge()", f"{len(neu['mass'])} neutral masses", wS)
 ax = AX(x4, Y0, wS, HP)
-for z, col, lw in ((1, Z1, 1.0), (2, Z2, 1.3)):
-    m = cz == z
-    sticks(ax, (cmz[m] - PROTON) * z, cin[m] / cin[cz > 0].max(), col, lw)
+k = cz > 0
+sticks(ax, (cmz[k] - PROTON) * cz[k], cin[k] / cin[k].max(), INK, 1.0)
 ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
-ax.text(0.99, 0.97, "from 1+", transform=ax.transAxes, ha="right", va="top", fontsize=8.6, color=Z1)
-ax.text(0.99, 0.82, "from 2+", transform=ax.transAxes, ha="right", va="top", fontsize=8.6, color=Z2)
 
 ya = Y0 + HP * 0.45
 arrow(x1 + wS + 0.07, x2 - 0.07, ya); arrow(x2 + wS + 0.07, x3 - 0.07, ya); arrow(x3 + w3 + 0.07, x4 - 0.07, ya)
