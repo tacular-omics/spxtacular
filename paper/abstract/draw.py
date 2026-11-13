@@ -85,9 +85,6 @@ t1 = T(M, 7.16, "spx", size=31, color=BLUE, weight="extra bold")
 T(M + width_in(t1), 7.16, "tacular", size=31, color=RED, weight="extra bold")
 T(M, 6.82, "One chainable Spectrum object, from the peaks an instrument records to a scored peptide-spectrum match.",
   size=12, color="#374151")
-T(W - M, 7.30, "real data, public spectrum", size=7.6, color=SUB, ha="right")
-T(W - M, 7.14, D["usi"], size=7.2, color=SUB, family=MONO, ha="right")
-T(W - M, 6.98, f'{D["peptide"]}, precursor charge 2', size=7.6, color=SUB, ha="right")
 
 # ------------------------------------------------------------------ band A: four stages
 raw, den, dec, neu = D["raw"], D["denoised"], D["deconvoluted"], D["neutral"]
@@ -224,20 +221,24 @@ for r, row in enumerate(code):
         T(xr + col * cw, ctop - r * lh, txt, size=cs, color=c, family=MONO, weight="medium" if c == BLUE else "regular")
         col += len(txt)
 
-# ------------------------------------------------------------------ footer
+# ---------------------------------------------------- footer: where the data came from
 line(M, 0.42, W - M, 0.42)
-foot = [("READS", "Bruker .d  ·  mzML  ·  Thermo RAW  ·  MGF  ·  MS2  ·  MSP  ·  mzSpecLib  ·  USI"),
-        ("ALSO", "reporter ions  ·  chromatograms  ·  spectral similarity  ·  figures"),
-        ("WORKS WITH", "matchms  ·  spectrum_utils  ·  spectrl")]
-sizes = []
-for lab, body in foot:
-    a = T(0, -1, lab, size=7.0, weight="bold"); b = T(0, -1, body, size=7.8)
-    sizes.append((width_in(a), width_in(b))); a.remove(); b.remove()
-tot = [a + 0.09 + b for a, b in sizes]
-starts = [M, M + (W - 2 * M - tot[1]) / 2 + (tot[0] - tot[2]) / 2, W - M - tot[2]]
-for (lab, body), (wa, wb), x in zip(foot, sizes, starts):
-    T(x, 0.20, lab, size=7.0, color=INK, weight="bold")
-    T(x + wa + 0.09, 0.20, body, size=7.8, color=SUB)
+prov = [("REAL DATA, PUBLIC SPECTRUM", 7.0, "bold", SANS, INK),
+        (D["usi"], 7.8, "regular", MONO, SUB),
+        (f'{D["peptide"]}, precursor charge 2', 7.8, "regular", SANS, SUB)]
+SEP, PAD = "·", 0.10
+widths = []
+for s, size, weight, family, _ in prov:
+    probe = T(0, -1, s, size=size, weight=weight, family=family)
+    widths.append(width_in(probe)); probe.remove()
+probe = T(0, -1, SEP, size=7.8); w_sep = width_in(probe); probe.remove()
+x = (W - (sum(widths) + 2 * (w_sep + 2 * PAD))) / 2
+for i, (s, size, weight, family, color) in enumerate(prov):
+    T(x, 0.20, s, size=size, color=color, weight=weight, family=family)
+    x += widths[i]
+    if i < len(prov) - 1:
+        T(x + PAD, 0.20, SEP, size=7.8, color=SUB)
+        x += w_sep + 2 * PAD
 
 out = sys.argv[1]
 fig.savefig(out + ".png", dpi=300, facecolor="white")
