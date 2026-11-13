@@ -40,7 +40,7 @@ Mass spectra record detected ions as peaks defined by a mass-to-charge ratio (m/
 
 # Statement of need
 
-During interactive method development, moving among specialized tools can require repeated data-model conversions and manual preservation of charge assignments, isotope scores, and other peak-level metadata. spxtacular removes those conversions by representing deconvolution output as another spectrum that continues through the same workflow. The intended users are mass spectrometry researchers, method developers, and software authors who need to inspect or transform spectra without adopting a complete analysis pipeline.
+Reading a vendor file, filtering, centroiding, deconvolution, fragment matching, scoring, reporter-ion quantification and plotting are usually spread across several libraries, each with its own representation, so effort goes into converting between them and into carrying by hand what processing produces: per-peak charge, isotope scores, ion mobility, and which steps have already been applied. spxtacular keeps all of it on one object, and every method returns another spectrum, so the chain continues and any stage can be inspected. The intended users are mass spectrometry researchers, method developers, and software authors who need to inspect or transform spectra without adopting a complete analysis pipeline.
 
 # State of the field
 
