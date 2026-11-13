@@ -13,7 +13,7 @@ TOL = 20.0
 raw = spx.fetch_usi(USI)
 den = raw.denoise(method="iterative_median")
 dec = den.deconvolute(charge_range=(1, 3), tolerance=TOL, tolerance_unit="ppm")
-neu = dec.decharge()
+neu = dec.decharge().merge(mz_tolerance=TOL, mz_tolerance_unit="ppm")
 frags = pt.fragment(PEP, ion_types=("b", "y"), charges=0)
 matches = spx.match_fragments(neu, frags, tolerance=TOL, tolerance_unit="ppm")
 has_method = hasattr(neu, "score")

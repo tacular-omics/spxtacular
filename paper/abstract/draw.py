@@ -35,8 +35,27 @@ plt.rcParams.update({"font.family": SANS, "svg.fonttype": "none", "pdf.fonttype"
 D = json.load(open(HERE / "data/stages.json"))
 INK, SUB, FAINT, HAIR = "#111827", "#6B7280", "#C7CCD4", "#E5E7EB"
 BLUE, RED = "#0061FF", "#DC1D1D"
-Z1, Z2 = "#0E9F8E", "#7C3AED"
+# spxtacular's own palette encodes charge as one hue's lightness, since charge is ordinal
+# (theme.py, charge_color). That is right for a plot a reader can zoom, and wrong here: this
+# figure is placed at 5.4 in and its sticks are under a point wide, where charge_color(1) and
+# charge_color(2), one lightness step apart by design, are the same colour. Two charge states
+# need two hues to be told apart at this size, so the panel uses a blue and an orange, which
+# stay distinct in greyscale and for the common colour-vision deficiencies.
+Z1, Z2 = "#0061FF", "#E8710A"
+# merge() is not a charge state, so panel 4 does not reuse a charge colour for it.
+MERGED = "#16A34A"
 PROTON = 1.007276
+
+# Band A is drawn on a square-root intensity scale, the usual one for spectral display and
+# the transform cosine() itself applies. The peaks denoise() removes are the small ones,
+# 2.2e-3 to 1.2e-2 of the base peak against 1.2e-2 to 1 for the peaks it keeps, so on a
+# linear axis the removal is invisible and panel 2 looks like panel 1. A log scale makes
+# them visible but lifts every small peak to a similar height, which stops the panels
+# looking like spectra at all.
+
+def logh(rel):
+    """Stick height for a relative intensity, on a square-root scale."""
+    return np.sqrt(np.clip(np.asarray(rel, dtype=np.float64), 0, 1))
 
 W, H = 12.0, 7.9
 fig = plt.figure(figsize=(W, H), dpi=300)
@@ -54,7 +73,7 @@ def AX(x, y, w, h):
     for s in ("top", "right", "left"): ax.spines[s].set_visible(False)
     ax.spines["bottom"].set_color(INK); ax.spines["bottom"].set_linewidth(0.8)
     ax.set_yticks([]); ax.patch.set_alpha(0)
-    ax.tick_params(axis="x", colors=SUB, labelsize=8, length=2.5, width=0.7, pad=2)
+    ax.tick_params(axis="x", colors=SUB, labelsize=9, length=2.5, width=0.7, pad=2)
     for l in ax.get_xticklabels(): l.set_fontfamily(SANS)
     return ax
 
@@ -68,12 +87,18 @@ def chip(x, y, n):
     r = 0.105
     fig.add_artist(Circle((x / W, y / H), r / W, transform=fig.transFigure, fc=INK, ec="none"))
     # circle in figure coords is an ellipse unless corrected: draw with a text bbox instead
-def header(x, y, n, call, caption):
+def header(x, y, n, call, caption, maxw=None):
     num = T(x, y, str(n), size=8.5, color="white", weight="bold", ha="center", va="center",
             bbox=dict(boxstyle="circle,pad=0.32", fc=INK, ec="none"))
     num.set_position(((x + 0.11) / W, (y + 0.045) / H))
-    T(x + 0.32, y, call, size=11.5, color=BLUE, weight="bold", family=MONO)
-    T(x, y - 0.235, caption, size=8.8, color=SUB)
+    call_t = T(x + 0.32, y, call, size=12.6, color=BLUE, weight="bold", family=MONO)
+    if maxw is not None and width_in(call_t) > maxw - 0.32:
+        raise SystemExit(f"call {call!r} is {width_in(call_t):.2f} in wide, panel is {maxw - 0.32:.2f} in")
+    cap = T(x, y - 0.235, caption, size=10.0, color=SUB)
+    # A caption wider than its panel runs into the next panel's caption, which reads as one
+    # sentence rather than as a drawing bug. Fail here instead.
+    if maxw is not None and width_in(cap) > maxw:
+        raise SystemExit(f"caption {caption!r} is {width_in(cap):.2f} in wide, panel is {maxw:.2f} in")
 
 def arrow(x0, x1, y):
     fig.add_artist(FancyArrowPatch((x0 / W, y / H), (x1 / W, y / H), transform=fig.transFigure,
@@ -83,11 +108,8 @@ def arrow(x0, x1, y):
 M = 0.45
 t1 = T(M, 7.16, "spx", size=31, color=BLUE, weight="extra bold")
 T(M + width_in(t1), 7.16, "tacular", size=31, color=RED, weight="extra bold")
-T(M, 6.82, "One chainable Spectrum object, from the peaks an instrument records to a scored peptide-spectrum match.",
+T(M, 6.82, "One object, one chain: from a raw spectrum to a scored peptide-spectrum match.",
   size=12, color="#374151")
-T(W - M, 7.30, "real data, public spectrum", size=7.6, color=SUB, ha="right")
-T(W - M, 7.14, D["usi"], size=7.2, color=SUB, family=MONO, ha="right")
-T(W - M, 6.98, f'{D["peptide"]}, precursor charge 2', size=7.6, color=SUB, ha="right")
 
 # ------------------------------------------------------------------ band A: four stages
 raw, den, dec, neu = D["raw"], D["denoised"], D["deconvoluted"], D["neutral"]
@@ -97,54 +119,52 @@ cmz, cin, cz = np.array(dec["mz"]), np.array(dec["intensity"]), np.array(dec["ch
 n_charged = int((cz > 0).sum())
 
 GAP = 0.36
-wS, w3 = 2.22, 3.36
+wS = w3 = (W - 2 * M - 3 * GAP) / 4
 x1 = M; x2 = x1 + wS + GAP; x3 = x2 + wS + GAP; x4 = x3 + w3 + GAP
-YH, Y0, HP = 6.30, 4.80, 1.02
+YH, Y0, HP = 6.30, 4.66, 1.22
 XL = (90, 1460)
 
-header(x1, YH, 1, "fetch_usi(usi)", f"{len(rmz)} peaks, as acquired")
-ax = AX(x1, Y0, wS, HP); sticks(ax, rmz, rin / rin.max(), "#4B5563", 0.55)
-ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200]); ax.set_xlabel("m/z", fontsize=8.5, color=SUB, labelpad=1, style="italic")
+header(x1, YH, 1, "fetch_usi(usi)", f"{len(rmz)} peaks in one MS2 scan", wS)
+ax = AX(x1, Y0, wS, HP); sticks(ax, rmz, logh(rin / rin.max()), INK, 0.55)
+ax.set_ylabel("\u221a intensity", fontsize=9.0, color=SUB, labelpad=2)
+ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
-header(x2, YH, 2, ".denoise()", f"{len(dmz)} peaks above the noise floor")
+header(x2, YH, 2, ".denoise()", f"{len(dmz)} peaks above the noise floor", wS)
 ax = AX(x2, Y0, wS, HP)
-sticks(ax, dmz, din / rin.max(), INK, 0.65, 2)
-sticks(ax, rmz[~kept], rin[~kept] / rin.max(), "#EF6B6B", 0.8, 3)
-ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200]); ax.set_xlabel("m/z", fontsize=8.5, color=SUB, labelpad=1, style="italic")
-ax.text(0.99, 0.97, f"{int((~kept).sum())} noise peaks removed", transform=ax.transAxes, ha="right", va="top", fontsize=7.6, color="#D85C5C")
+sticks(ax, dmz, logh(din / rin.max()), INK, 0.65, 2)
+sticks(ax, rmz[~kept], logh(rin[~kept] / rin.max()), "#EF6B6B", 0.8, 3)
+ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
+for row, (lab, col) in enumerate((("kept", INK), ("noise", "#EF6B6B"))):
+    ax.text(0.99, 0.99 - row * 0.15, lab, transform=ax.transAxes, ha="right", va="top",
+            fontsize=9.5, color=col, fontweight="bold")
 
-header(x3, YH, 3, ".deconvolute()", f"{n_charged} isotope clusters assigned a charge state")
-wm = 2.02
-ax = AX(x3, Y0, wm, HP)
+header(x3, YH, 3, ".deconvolute()", f"{n_charged} isotope clusters, charge assigned", w3)
+ax = AX(x3, Y0, w3, HP)
 u = cz < 0
-sticks(ax, cmz[u], cin[u] / cin.max(), FAINT, 0.55, 1)
-sticks(ax, cmz[cz == 1], cin[cz == 1] / cin.max(), Z1, 1.0, 2)
-sticks(ax, cmz[cz == 2], cin[cz == 2] / cin.max(), Z2, 1.3, 3)
-ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200]); ax.set_xlabel("m/z", fontsize=8.5, color=SUB, labelpad=1, style="italic")
-# lens: two real isotope envelopes
-lx = x3 + wm + 0.22
-for k, L in enumerate(sorted(D["lens"], key=lambda q: q["z"])):
-    z = L["z"]; col = Z1 if z == 1 else Z2
-    pk = np.array(L["peaks"]); wL = 0.50
-    a = AX(lx + k * (wL + 0.14), Y0 + 0.02, wL, HP - 0.30)
-    a.spines["bottom"].set_color(FAINT)
-    a.vlines(pk[:, 0], 0, pk[:, 1] / pk[:, 1].max(), colors=col, linewidths=1.8)
-    a.set_xlim(pk[0, 0] - 0.45, pk[0, 0] + 3.5); a.set_ylim(0, 1.45); a.set_xticks([])
-    # spacing bracket between the first two isotope peaks
-    yb = 1.13; a.plot([pk[0, 0], pk[0, 0], pk[1, 0], pk[1, 0]], [yb - 0.06, yb, yb, yb - 0.06], color=SUB, lw=0.7)
-    a.text((pk[0, 0] + pk[1, 0]) / 2 + (0.0 if z == 1 else 0.55), yb + 0.05, f"Δ {pk[1, 0] - pk[0, 0]:.2f}", ha="center", va="bottom", fontsize=7.4, color=SUB)
-    T(lx + k * (wL + 0.14) + wL / 2, Y0 - 0.17, f"{z}+", size=10, color=col, weight="bold", ha="center")
-    T(lx + k * (wL + 0.14) + wL / 2, Y0 - 0.33, f"m/z {pk[0, 0]:.1f}", size=7.0, color=SUB, ha="center")
-T(lx + 0.57, Y0 + HP - 0.13, "isotope spacing", size=7.8, color=SUB, ha="center")
+sticks(ax, cmz[u], logh(cin[u] / cin.max()), FAINT, 0.55, 1)
+sticks(ax, cmz[cz == 1], logh(cin[cz == 1] / cin.max()), Z1, 1.0, 2)
+sticks(ax, cmz[cz == 2], logh(cin[cz == 2] / cin.max()), Z2, 1.3, 3)
+# 1.3 ylim above leaves the top of the panel empty, so the key cannot sit on a peak.
+for row, (zc, col) in enumerate(((1, Z1), (2, Z2))):
+    ax.text(0.99, 0.99 - row * 0.15, f"{zc}+", transform=ax.transAxes, ha="right", va="top",
+            fontsize=9.5, color=col, fontweight="bold")
+ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
-header(x4, YH, 4, ".decharge()", f"{len(neu['mass'])} neutral masses")
+header(x4, YH, 4, ".decharge().merge()", f"{len(neu['mass'])} neutral masses", wS)
 ax = AX(x4, Y0, wS, HP)
-for z, col, lw in ((1, Z1, 1.0), (2, Z2, 1.3)):
-    m = cz == z
-    sticks(ax, (cmz[m] - PROTON) * z, cin[m] / cin[cz > 0].max(), col, lw)
-ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200]); ax.set_xlabel("neutral mass (Da)", fontsize=8.5, color=SUB, labelpad=1)
-ax.text(0.99, 0.97, "from 1+", transform=ax.transAxes, ha="right", va="top", fontsize=7.6, color=Z1)
-ax.text(0.99, 0.82, "from 2+", transform=ax.transAxes, ha="right", va="top", fontsize=7.6, color=Z2)
+# Drawn from the pipeline's own neutral array, not recomputed from the charged peaks, so
+# the panel shows the merge: an ion seen at 1+ and at 2+ gives one neutral mass, not two.
+nmass, nint = np.array(neu["mass"]), np.array(neu["intensity"])
+# A merged peak is one the chain built from more than one charge state: its mass matches
+# two of the neutral masses decharge() produced before merge() ran.
+pre = np.sort((cmz[cz > 0] - PROTON) * cz[cz > 0])
+tol = D["tolerance_ppm"] * 1e-6
+merged = np.array([int(np.sum(np.abs(pre - m) <= tol * m)) > 1 for m in nmass])
+sticks(ax, nmass[~merged], logh(nint[~merged] / nint.max()), INK, 1.0)
+sticks(ax, nmass[merged], logh(nint[merged] / nint.max()), MERGED, 1.6, 3)
+ax.text(0.99, 0.99, f"{int(merged.sum())} merged", transform=ax.transAxes, ha="right", va="top",
+        fontsize=9.5, color=MERGED, fontweight="bold")
+ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 ya = Y0 + HP * 0.45
 arrow(x1 + wS + 0.07, x2 - 0.07, ya); arrow(x2 + wS + 0.07, x3 - 0.07, ya); arrow(x3 + w3 + 0.07, x4 - 0.07, ya)
@@ -153,7 +173,7 @@ arrow(x1 + wS + 0.07, x2 - 0.07, ya); arrow(x2 + wS + 0.07, x3 - 0.07, ya); arro
 line(M, 4.18, W - M, 4.18)
 ms = D["matches"]; sc = D["scores"]; pep = D["peptide"]; n = len(pep)
 wHero = 7.05
-header(M, 3.78, 5, ".score(fragments)", f"{len(ms)} of {D['n_fragments']} theoretical b and y fragment ions found, within {D['tolerance_ppm']:.0f} ppm")
+header(M, 3.78, 5, ".score(fragments)", f"{len(ms)} of {D['n_fragments']} theoretical b and y fragment ions found")
 nm, ni = np.array(neu["mass"]), np.array(neu["intensity"])
 XH = (200, 1380)
 axh = AX(M, 1.34, wHero, 1.95)
@@ -173,10 +193,10 @@ axe.axhline(0, color=FAINT, lw=0.7, zorder=0)
 for m in ms:
     axe.plot(m["mass"], m["ppm"], "o", ms=3.4, color=BLUE if m["ion"] == "b" else RED, mec="none")
 axe.set_xlim(*XH); axe.set_ylim(-8, 8); axe.set_xticks([400, 600, 800, 1000, 1200])
-axe.set_yticks([-5, 0, 5]); axe.tick_params(axis="y", colors=SUB, labelsize=7, length=2, width=0.6, pad=1.5)
+axe.set_yticks([-5, 0, 5]); axe.tick_params(axis="y", colors=SUB, labelsize=8, length=2, width=0.6, pad=1.5)
 axe.spines["left"].set_visible(True); axe.spines["left"].set_color(FAINT); axe.spines["left"].set_linewidth(0.7)
-axe.set_xlabel("neutral mass (Da)", fontsize=8.5, color=SUB, labelpad=1)
-axe.text(0.004, 0.95, "mass error (ppm)", transform=axe.transAxes, ha="left", va="top", fontsize=7.4, color=SUB)
+axe.set_xlabel("neutral mass (Da)", fontsize=9.5, color=SUB, labelpad=1)
+axe.set_ylabel("Δ mass (ppm)", fontsize=9.0, color=SUB, labelpad=2)
 
 # sequence ladder, centred over the hero plot
 bset = {m["pos"] for m in ms if m["ion"] == "b"}; yset = {m["pos"] for m in ms if m["ion"] == "y"}
@@ -189,8 +209,6 @@ for i in range(1, n):  # cleavage after residue i
         line(xc, yL + 0.02, xc, yL + 0.19, BLUE, 1.3); line(xc, yL + 0.19, xc - 0.11, yL + 0.19, BLUE, 1.3)
     if (n - i) in yset:
         line(xc, yL - 0.02, xc, yL - 0.19, RED, 1.3); line(xc, yL - 0.19, xc + 0.11, yL - 0.19, RED, 1.3)
-T(xs0 - 0.42, yL + 0.14, "b", size=9.5, color=BLUE, weight="bold", ha="right", va="center")
-T(xs0 - 0.42, yL - 0.14, "y", size=9.5, color=RED, weight="bold", ha="right", va="center")
 
 # ------------------------------------------------------------------ band B right: numbers and code
 xr = M + wHero + 0.55; wr = W - M - xr
@@ -211,6 +229,7 @@ code = [
     [("    .", INK), ("denoise", BLUE), ('(method="iterative_median")', INK)],
     [("    .", INK), ("deconvolute", BLUE), ("(**ppm)", INK)],
     [("    .", INK), ("decharge", BLUE), ("()", INK)],
+    [("    .", INK), ("merge", BLUE), ('(mz_tolerance=20, mz_tolerance_unit="ppm")', INK)],
     [("    .", INK), ("score", BLUE), ("(fragments, **ppm)", INK)],
     [(")", INK)],
 ]
@@ -224,20 +243,24 @@ for r, row in enumerate(code):
         T(xr + col * cw, ctop - r * lh, txt, size=cs, color=c, family=MONO, weight="medium" if c == BLUE else "regular")
         col += len(txt)
 
-# ------------------------------------------------------------------ footer
+# ---------------------------------------------------- footer: where the data came from
 line(M, 0.42, W - M, 0.42)
-foot = [("READS", "Bruker .d  ·  mzML  ·  Thermo RAW  ·  MGF  ·  MS2  ·  MSP  ·  mzSpecLib  ·  USI"),
-        ("ALSO", "reporter ions  ·  chromatograms  ·  spectral similarity  ·  figures"),
-        ("WORKS WITH", "matchms  ·  spectrum_utils  ·  spectrl")]
-sizes = []
-for lab, body in foot:
-    a = T(0, -1, lab, size=7.0, weight="bold"); b = T(0, -1, body, size=7.8)
-    sizes.append((width_in(a), width_in(b))); a.remove(); b.remove()
-tot = [a + 0.09 + b for a, b in sizes]
-starts = [M, M + (W - 2 * M - tot[1]) / 2 + (tot[0] - tot[2]) / 2, W - M - tot[2]]
-for (lab, body), (wa, wb), x in zip(foot, sizes, starts):
-    T(x, 0.20, lab, size=7.0, color=INK, weight="bold")
-    T(x + wa + 0.09, 0.20, body, size=7.8, color=SUB)
+prov = [("REAL DATA, PUBLIC SPECTRUM", 8.0, "bold", SANS, INK),
+        (D["usi"], 8.6, "regular", MONO, SUB),
+        (f'{D["peptide"]}, precursor charge 2', 8.6, "regular", SANS, SUB)]
+SEP, PAD = "·", 0.10
+widths = []
+for s, size, weight, family, _ in prov:
+    probe = T(0, -1, s, size=size, weight=weight, family=family)
+    widths.append(width_in(probe)); probe.remove()
+probe = T(0, -1, SEP, size=7.8); w_sep = width_in(probe); probe.remove()
+x = (W - (sum(widths) + 2 * (w_sep + 2 * PAD))) / 2
+for i, (s, size, weight, family, color) in enumerate(prov):
+    T(x, 0.20, s, size=size, color=color, weight=weight, family=family)
+    x += widths[i]
+    if i < len(prov) - 1:
+        T(x + PAD, 0.20, SEP, size=7.8, color=SUB)
+        x += w_sep + 2 * PAD
 
 out = sys.argv[1]
 fig.savefig(out + ".png", dpi=300, facecolor="white")
