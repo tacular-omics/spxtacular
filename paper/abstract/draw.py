@@ -35,11 +35,15 @@ plt.rcParams.update({"font.family": SANS, "svg.fonttype": "none", "pdf.fonttype"
 D = json.load(open(HERE / "data/stages.json"))
 INK, SUB, FAINT, HAIR = "#111827", "#6B7280", "#C7CCD4", "#E5E7EB"
 BLUE, RED = "#0061FF", "#DC1D1D"
-# Charge is ordinal, so spxtacular's own palette encodes it as one hue's lightness rather
-# than as separate colours (theme.py, charge_color). Taking it from the library keeps the
-# abstract from inventing a scheme the package does not use.
-from spxtacular.theme import charge_color  # noqa: E402
-Z1, Z2 = charge_color(1), charge_color(2)
+# spxtacular's own palette encodes charge as one hue's lightness, since charge is ordinal
+# (theme.py, charge_color). That is right for a plot a reader can zoom, and wrong here: this
+# figure is placed at 5.4 in and its sticks are under a point wide, where charge_color(1) and
+# charge_color(2), one lightness step apart by design, are the same colour. Two charge states
+# need two hues to be told apart at this size, so the panel uses a blue and an orange, which
+# stay distinct in greyscale and for the common colour-vision deficiencies.
+Z1, Z2 = "#0061FF", "#E8710A"
+# merge() is not a charge state, so panel 4 does not reuse a charge colour for it.
+MERGED = "#16A34A"
 PROTON = 1.007276
 
 # Band A is drawn on a square-root intensity scale, the usual one for spectral display and
@@ -104,7 +108,7 @@ def arrow(x0, x1, y):
 M = 0.45
 t1 = T(M, 7.16, "spx", size=31, color=BLUE, weight="extra bold")
 T(M + width_in(t1), 7.16, "tacular", size=31, color=RED, weight="extra bold")
-T(M, 6.82, "One chainable Spectrum object, from the peaks an instrument records to a scored peptide-spectrum match.",
+T(M, 6.82, "One object, one chain: from a raw spectrum to a scored peptide-spectrum match.",
   size=12, color="#374151")
 
 # ------------------------------------------------------------------ band A: four stages
@@ -120,7 +124,7 @@ x1 = M; x2 = x1 + wS + GAP; x3 = x2 + wS + GAP; x4 = x3 + w3 + GAP
 YH, Y0, HP = 6.30, 4.66, 1.22
 XL = (90, 1460)
 
-header(x1, YH, 1, "fetch_usi(usi)", f"{len(rmz)} peaks, as acquired", wS)
+header(x1, YH, 1, "fetch_usi(usi)", f"{len(rmz)} peaks in one MS2 scan", wS)
 ax = AX(x1, Y0, wS, HP); sticks(ax, rmz, logh(rin / rin.max()), INK, 0.55)
 ax.set_ylabel("\u221a intensity", fontsize=9.0, color=SUB, labelpad=2)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
@@ -130,21 +134,20 @@ ax = AX(x2, Y0, wS, HP)
 sticks(ax, dmz, logh(din / rin.max()), INK, 0.65, 2)
 sticks(ax, rmz[~kept], logh(rin[~kept] / rin.max()), "#EF6B6B", 0.8, 3)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
+for row, (lab, col) in enumerate((("kept", INK), ("noise", "#EF6B6B"))):
+    ax.text(0.99, 0.99 - row * 0.15, lab, transform=ax.transAxes, ha="right", va="top",
+            fontsize=9.5, color=col, fontweight="bold")
 
-header(x3, YH, 3, ".deconvolute()", f"{n_charged} clusters given a charge state", w3)
+header(x3, YH, 3, ".deconvolute()", f"{n_charged} isotope clusters, charge assigned", w3)
 ax = AX(x3, Y0, w3, HP)
 u = cz < 0
 sticks(ax, cmz[u], logh(cin[u] / cin.max()), FAINT, 0.55, 1)
 sticks(ax, cmz[cz == 1], logh(cin[cz == 1] / cin.max()), Z1, 1.0, 2)
 sticks(ax, cmz[cz == 2], logh(cin[cz == 2] / cin.max()), Z2, 1.3, 3)
-# The charge key. Deconvolution's whole output is the charge state, so the panel has to say
-# which colour is which: the ordinal ramp puts 1+ and 2+ one lightness step apart on purpose,
-# which is legible beside a label and not on its own.
+# 1.3 ylim above leaves the top of the panel empty, so the key cannot sit on a peak.
 for row, (zc, col) in enumerate(((1, Z1), (2, Z2))):
-    ax.text(0.99, 0.97 - row * 0.17, f"{int((cz == zc).sum())} at {zc}+", transform=ax.transAxes,
-            ha="right", va="top", fontsize=8.6, color=col, fontweight="semibold")
-ax.text(0.99, 0.97 - 2 * 0.17, f"{int((cz < 0).sum())} unassigned", transform=ax.transAxes,
-        ha="right", va="top", fontsize=8.6, color=SUB)
+    ax.text(0.99, 0.99 - row * 0.15, f"{zc}+", transform=ax.transAxes, ha="right", va="top",
+            fontsize=9.5, color=col, fontweight="bold")
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x4, YH, 4, ".decharge().merge()", f"{len(neu['mass'])} neutral masses", wS)
@@ -152,7 +155,15 @@ ax = AX(x4, Y0, wS, HP)
 # Drawn from the pipeline's own neutral array, not recomputed from the charged peaks, so
 # the panel shows the merge: an ion seen at 1+ and at 2+ gives one neutral mass, not two.
 nmass, nint = np.array(neu["mass"]), np.array(neu["intensity"])
-sticks(ax, nmass, logh(nint / nint.max()), INK, 1.0)
+# A merged peak is one the chain built from more than one charge state: its mass matches
+# two of the neutral masses decharge() produced before merge() ran.
+pre = np.sort((cmz[cz > 0] - PROTON) * cz[cz > 0])
+tol = D["tolerance_ppm"] * 1e-6
+merged = np.array([int(np.sum(np.abs(pre - m) <= tol * m)) > 1 for m in nmass])
+sticks(ax, nmass[~merged], logh(nint[~merged] / nint.max()), INK, 1.0)
+sticks(ax, nmass[merged], logh(nint[merged] / nint.max()), MERGED, 1.6, 3)
+ax.text(0.99, 0.99, f"{int(merged.sum())} merged", transform=ax.transAxes, ha="right", va="top",
+        fontsize=9.5, color=MERGED, fontweight="bold")
 ax.set_xlim(90, 1460); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 ya = Y0 + HP * 0.45
@@ -162,7 +173,7 @@ arrow(x1 + wS + 0.07, x2 - 0.07, ya); arrow(x2 + wS + 0.07, x3 - 0.07, ya); arro
 line(M, 4.18, W - M, 4.18)
 ms = D["matches"]; sc = D["scores"]; pep = D["peptide"]; n = len(pep)
 wHero = 7.05
-header(M, 3.78, 5, ".score(fragments)", f"{len(ms)} of {D['n_fragments']} theoretical b and y fragment ions found, within {D['tolerance_ppm']:.0f} ppm")
+header(M, 3.78, 5, ".score(fragments)", f"{len(ms)} of {D['n_fragments']} theoretical b and y fragment ions found")
 nm, ni = np.array(neu["mass"]), np.array(neu["intensity"])
 XH = (200, 1380)
 axh = AX(M, 1.34, wHero, 1.95)
@@ -198,8 +209,6 @@ for i in range(1, n):  # cleavage after residue i
         line(xc, yL + 0.02, xc, yL + 0.19, BLUE, 1.3); line(xc, yL + 0.19, xc - 0.11, yL + 0.19, BLUE, 1.3)
     if (n - i) in yset:
         line(xc, yL - 0.02, xc, yL - 0.19, RED, 1.3); line(xc, yL - 0.19, xc + 0.11, yL - 0.19, RED, 1.3)
-T(xs0 - 0.42, yL + 0.14, "b", size=9.5, color=BLUE, weight="bold", ha="right", va="center")
-T(xs0 - 0.42, yL - 0.14, "y", size=9.5, color=RED, weight="bold", ha="right", va="center")
 
 # ------------------------------------------------------------------ band B right: numbers and code
 xr = M + wHero + 0.55; wr = W - M - xr
