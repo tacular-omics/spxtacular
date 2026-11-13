@@ -32,9 +32,7 @@ bibliography: paper.bib
 
 # Summary
 
-Mass spectra record detected ions as peaks defined by a mass-to-charge ratio (m/z) and an intensity. Interpreting them takes several steps, from noise removal to scoring, and reimplementing those steps in separate scripts can make workflows difficult to reproduce and intermediate results difficult to inspect.
-
-**spxtacular** organizes this workflow around a `Spectrum` object whose processing methods return another `Spectrum`, so operations can be called in sequence. The object keeps charge assignments, ion-mobility values, isotope scores, and other peak-level metadata aligned with their peaks, so each stage can be inspected without detached arrays or intermediate files. The same objects are used for isobaric reporter-ion quantification, reading and writing of standard spectral libraries, and figures for print or interactive use.
+Mass spectra record detected ions as peaks defined by a mass-to-charge ratio (m/z) and an intensity. **spxtacular** organizes their interpretation around a `Spectrum` object whose processing methods return another `Spectrum`, so operations can be called in sequence, and a `SpectrumType` value records whether the peaks are profile, centroid or deconvoluted. The object keeps charge assignments, ion-mobility values, isotope scores, and other peak-level metadata aligned with their peaks, so each stage can be inspected without detached arrays or intermediate files. The same objects are used for isobaric reporter-ion quantification, reading and writing of standard spectral libraries, and figures for print or interactive use.
 
 ![The spxtacular workflow on one public spectrum (ProteomeXchange dataset PXD000561, scan 17555, peptide VLHPLEGAVVIIFK). Each panel is headed by the method call that produced it: the spectrum as fetched, after denoising, after deconvolution with the isotope spacing of a 1+ and a 2+ cluster inset, after conversion to neutral masses, and after scoring against the b and y fragment ions from `peptacular`. The code block is the complete script.](figures/graphical_abstract.png){ #fig:abstract }
 
