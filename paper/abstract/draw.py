@@ -137,6 +137,14 @@ u = cz < 0
 sticks(ax, cmz[u], logh(cin[u] / cin.max()), FAINT, 0.55, 1)
 sticks(ax, cmz[cz == 1], logh(cin[cz == 1] / cin.max()), Z1, 1.0, 2)
 sticks(ax, cmz[cz == 2], logh(cin[cz == 2] / cin.max()), Z2, 1.3, 3)
+# The charge key. Deconvolution's whole output is the charge state, so the panel has to say
+# which colour is which: the ordinal ramp puts 1+ and 2+ one lightness step apart on purpose,
+# which is legible beside a label and not on its own.
+for row, (zc, col) in enumerate(((1, Z1), (2, Z2))):
+    ax.text(0.99, 0.97 - row * 0.17, f"{int((cz == zc).sum())} at {zc}+", transform=ax.transAxes,
+            ha="right", va="top", fontsize=8.6, color=col, fontweight="semibold")
+ax.text(0.99, 0.97 - 2 * 0.17, f"{int((cz < 0).sum())} unassigned", transform=ax.transAxes,
+        ha="right", va="top", fontsize=8.6, color=SUB)
 ax.set_xlim(*XL); ax.set_ylim(0, 1.05); ax.set_xticks([400, 800, 1200])
 
 header(x4, YH, 4, ".decharge().merge()", f"{len(neu['mass'])} neutral masses", wS)
