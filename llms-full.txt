@@ -398,6 +398,26 @@ Match, then return all PSM metrics:
 | `spectral_angle` | 0..1; the literature metric only when `predicted_intensities` gives one value per fragment, in order; otherwise a coverage/evenness fallback |
 | `longest_run` | longest consecutive ion ladder matched |
 
+```python
+localize(spectrum: Spectrum, peptide: str | ProFormaAnnotation, ion_types=("b", "y"), charges=(1,),
+         tolerance: float = 0.02, tolerance_unit: ToleranceUnit = "da",
+         peak_depths: Sequence[int] = (1, ..., 10), window: float = 100.0,
+         max_isomers: int | None = 10_000) -> LocalizationResult
+```
+PTM site localization by Ascore (Beausoleil et al. 2006, doi:10.1038/nbt1240). Candidate
+placements come from the ProForma ambiguity alone (a `#label` group, a range, or an
+unknown position), through peptacular's `localization_isomers`; a peptide with no ambiguity
+gives one candidate and `ascore=None`. Per peak depth, keep the top *depth* peaks per
+`window` Da, match each candidate's ions, and score the count with the cumulative binomial
+at `p = depth * 2 * tolerance_in_da / window`; rank by the weighted mean over the paper's
+depth weights; the AScore is the difference of the top two scores recomputed from their
+site-determining ions alone, at the depth that separates them best. Full-length ions are
+dropped. `LocalizationResult` has `isomers`, `best`, `runner_up`, `ascore`,
+`peptide_scores`, `peak_depth`, `site_determining` (`(matched, available)` per candidate),
+`provenance`, `is_ambiguous(cut=ASCORE_CONFIDENT_CUT)` and `to_dict`/`from_dict`.
+`ASCORE_CONFIDENT_CUT` is the paper's 19. Refuses a decharged or profile spectrum.
+Agrees with pyAscore 1.0.1 exactly on the package's test cases.
+
 Neutral-loss, charge and isotope variants of one `(ion_type, position)` count once.
 Hyperscore is scale dependent (scaling intensities by `s` shifts it by `log10(s)`), can be
 negative on normalized input, and changed in 0.7.0: recompute scores stored by 0.6.0. It is

@@ -1829,6 +1829,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pyascore"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyteomics" },
+    { name = "scipy" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/b6/b14d0cab47574fd421e4aca53e52037fa15065b8b97d63ba57131e960c7b/pyascore-1.0.1.tar.gz", hash = "sha256:6f434be0b39a36ed8bdb4db90a234ef4e42b12a7dbdfb4d3c941a4e136050c15", size = 478684, upload-time = "2023-12-15T02:23:04.278Z" }
+
+[[package]]
 name = "pycparser"
 version = "3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2538,6 +2552,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "mzmlpy" },
     { name = "numba" },
+    { name = "pyascore" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-examples" },
@@ -2596,6 +2611,7 @@ dev = [
     { name = "mkdocs-material", specifier = ">=9.7.5" },
     { name = "mzmlpy", specifier = ">=0.10,<0.11" },
     { name = "numba", specifier = ">=0.59" },
+    { name = "pyascore", specifier = ">=1.0.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-examples", specifier = ">=0.0.18" },

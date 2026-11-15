@@ -63,6 +63,7 @@ nav:
       - Readers: readers.md
       - Spectral libraries (mzSpecLib): mzspeclib.md
       - Matching, scoring & reporter ions: scoring.md
+      - PTM site localization: localization.md
       - Visualization: visualization.md
   - API reference:
       - API reference: api.md

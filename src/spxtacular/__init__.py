@@ -39,6 +39,13 @@ from .isotopes import (
     brain_isotopic_distribution,
     resolve_isotope_model,
 )
+from .localization import (
+    ASCORE_CONFIDENT_CUT,
+    ASCORE_PEAK_DEPTHS,
+    LocalizationProvenance,
+    LocalizationResult,
+    localize,
+)
 from .matching import MatchedFragment, match_fragments
 from .mzml import write_indexed_mzml_gzip
 from .mzspeclib import (
@@ -167,6 +174,11 @@ __all__ = [
     "mass_error_plot",
     "facet_plot",
     "match_fragments",
+    "ASCORE_CONFIDENT_CUT",
+    "ASCORE_PEAK_DEPTHS",
+    "LocalizationProvenance",
+    "LocalizationResult",
+    "localize",
     "to_matchms",
     "from_matchms",
     "to_spectrum_utils",
