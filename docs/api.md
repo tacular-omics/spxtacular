@@ -2424,6 +2424,53 @@ def score(
 ) -> dict[str, float]
 ```
 
+### `localize`
+
+```python
+from spxtacular import localize
+```
+
+```python title="signature only - not executed"
+localize(
+    spectrum: Spectrum,
+    peptide: str | ProFormaAnnotation,
+    *,
+    ion_types: Sequence[IonTypeLike] = ("b", "y"),
+    charges: Sequence[int] = (1,),
+    tolerance: float = 0.02,
+    tolerance_unit: Literal["da", "ppm"] = "da",
+    peak_depths: Sequence[int] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+    window: float = 100.0,
+    max_isomers: int | None = 10_000,
+) -> LocalizationResult
+```
+
+PTM site localization by Ascore ([Beausoleil et al. 2006](https://doi.org/10.1038/nbt1240)). The candidate placements come from `peptide`'s ProForma ambiguity (a `#label` group, a range, or an unknown position), through peptacular's `localization_isomers`. See the [PTM site localization guide](localization.md) for the method and its validation.
+
+| Parameter | Meaning |
+|---|---|
+| `spectrum` | A centroided spectrum in m/z. A decharged or profile spectrum raises |
+| `peptide` | ProForma string or peptacular annotation whose modification positions are ambiguous; one candidate is allowed and gives no AScore |
+| `ion_types`, `charges` | Fragment ions to generate, as for `match_fragments`. Full-length ions are dropped: they are the same mass for every placement |
+| `tolerance`, `tolerance_unit` | Match tolerance, which also sets the random-match probability `depth * 2 * tolerance_in_da / window` |
+| `peak_depths` | Peak depths to score. The paper's ten by default, and only that set uses the paper's weights; any other set is weighted uniformly |
+| `window` | Width in Da of the peak-depth window (the paper's 100 Da) |
+| `max_isomers` | Passed to peptacular; more candidates than this raises |
+
+**`LocalizationResult`** (frozen dataclass, `to_dict()` / `from_dict()` at `schema_version` 1):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `isomers` | `tuple[str, ...]` | Every candidate, in peptacular's fixed order |
+| `best`, `runner_up` | `str`, `str \| None` | Top and second candidate by peptide score |
+| `ascore` | `float \| None` | Best against runner-up in `-10 log10 P`; `None` with one candidate, `0.0` with no site-determining evidence |
+| `peptide_scores` | `tuple[float, ...]` | Weighted peptide score per candidate, in `isomers` order |
+| `peak_depth` | `int` | The depth the AScore was computed at |
+| `site_determining` | `tuple[tuple[int, int], ...]` | `(matched, available)` per candidate at `peak_depth`, against the best other candidate |
+| `provenance` | `LocalizationProvenance` | Every argument above, plus `method` and `schema_version` |
+
+`is_ambiguous(cut=ASCORE_CONFIDENT_CUT)` is `True` when `ascore` is below `cut`; `ASCORE_CONFIDENT_CUT` is the paper's 19, and `ASCORE_PEAK_DEPTHS` is its ten depths.
+
 ### Spectrum similarity
 
 ```python title="signature only - not executed"

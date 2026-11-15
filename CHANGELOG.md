@@ -4,6 +4,20 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Added
+
+- `localize()` scores which placement of an ambiguous modification a spectrum supports, by
+  Ascore (Beausoleil et al. 2006, doi:10.1038/nbt1240). Candidate placements come from the
+  ProForma ambiguity alone, through peptacular's `localization_isomers`, so a `#label`
+  group, a range or an unknown position all work; a peptide with no ambiguity returns one
+  candidate and no AScore instead of raising. `LocalizationResult` carries the candidates,
+  the weighted peptide score of each, the AScore of the best against the runner-up, the
+  peak depth it was computed at, the site-determining ion counts and a
+  `LocalizationProvenance` of every argument, with `to_dict()`/`from_dict()` at
+  `schema_version` 1. `ASCORE_CONFIDENT_CUT` is the paper's cut of 19 and
+  `ASCORE_PEAK_DEPTHS` its ten peak depths. Matches pyAscore 1.0.1 exactly on the package's
+  test cases, including its peptide scores and AScore.
+
 ## [0.9.5] (2026-11-11)
 
 ### Documentation
