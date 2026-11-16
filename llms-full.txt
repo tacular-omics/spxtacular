@@ -507,6 +507,17 @@ correct_isotope_impurities(intensities, matrix_or_lot, *, plex=None) -> NDArray 
   "main", "reporter") is ignored. An impurity counts on a channel within min(0.02 Da, half the
   smallest channel spacing), ~3.2 mDa for TMT10/11/TMTpro, else it only lowers the diagonal. `normalize="sum"|"max"` is applied after correction.
 
+Diagnostic ions (named mzPAF reference `r[TMT126]` and immonium `IY` ions; m/z from paftacular):
+
+```python
+find_diagnostic_ions(spectrum, ions=None, *, tolerance=20.0, tolerance_unit="ppm") -> DiagnosticIons
+DIAGNOSTIC_IONS   # 94 names: 71 r[<REFMOL_LOOKUP name>], then 23 I<aa>; glycan oxonium names are not included
+```
+- `DiagnosticIons`: `ions`, `ion_mz`, `intensity`, `observed_mz`, `found` (read-only arrays), `present()`.
+  Most intense peak per window; missing = intensity 0.0, `observed_mz` NaN. Names sharing an m/z all
+  report; overlapping windows do not raise. Empty/unresolvable `ions`, decharged spectra and
+  NaN/inf intensities raise `SpxtacularError`.
+
 Unit helpers: `da_to_ppm(delta_mz, mz) -> float`, `ppm_to_da(delta_ppm, mz) -> float`
 (`da_to_ppm(0.001, 1000.0) == 1.0`).
 
