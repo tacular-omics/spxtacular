@@ -3,6 +3,7 @@ __version__ = "0.9.5"
 from .calibration import CalibrationProvenance, recalibrate
 from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
 from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType
+from .diagnostic import DIAGNOSTIC_IONS, DiagnosticIons, find_diagnostic_ions
 from .enums import (
     ActivationType,
     ActivationTypeLike,
@@ -191,6 +192,9 @@ __all__ = [
     "score",
     "ReporterIons",
     "extract_reporter_ions",
+    "DIAGNOSTIC_IONS",
+    "DiagnosticIons",
+    "find_diagnostic_ions",
     "reporter_ion_table",
     "isotope_correction_matrix",
     "correct_isotope_impurities",
