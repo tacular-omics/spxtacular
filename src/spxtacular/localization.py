@@ -25,12 +25,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import KW_ONLY, dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from tacular.types import ToleranceUnit
 
 from .core import Spectrum, SpectrumType
+from .enums import fragmentation_preset_name
 from .errors import SpxtacularError
 from .matching import match_fragments
 from .scoring import _binom_log10_survival
@@ -210,11 +211,42 @@ def _weights(peak_depths: tuple[int, ...]) -> tuple[float, ...]:
     return (1.0,) * len(peak_depths)
 
 
+def _resolve_ion_types(spectrum: Spectrum, ion_types: Sequence[Any] | str, pt: Any) -> tuple[Any, ...]:
+    """The ion types to generate, resolving ``"auto"`` from the spectrum's activation method.
+
+    Only the ion series comes from the preset. ``localize`` generates no neutral losses,
+    with ``"auto"`` as without it, because the Ascore counts site-determining backbone
+    ions and a loss series would change ``n`` in the binomial.
+    """
+    if not isinstance(ion_types, str):
+        return tuple(ion_types)
+    if ion_types.strip().casefold() != "auto":
+        raise SpxtacularError(
+            f'ion_types must be a sequence of ion types or "auto", got {ion_types!r}; '
+            "a string is not read as a sequence of one-letter ion types."
+        )
+    activation = getattr(spectrum, "activation_type", None)
+    name = fragmentation_preset_name(activation)
+    if name is None:
+        shown = None if activation is None else str(activation)
+        raise SpxtacularError(
+            'ion_types="auto" needs an activation method with a fragmentation preset; this spectrum has '
+            f"activation_type={shown!r}. Pass ion_types explicitly."
+        )
+    preset = getattr(pt, "fragmentation_preset", None)
+    if preset is None:
+        raise SpxtacularError(
+            'ion_types="auto" needs a peptacular that has fragmentation_preset(); the installed peptacular '
+            f"({getattr(pt, '__version__', 'unknown')}) does not. Upgrade peptacular, or pass ion_types explicitly."
+        )
+    return tuple(preset(name)["ion_types"])
+
+
 def localize(
     spectrum: Spectrum,
     peptide: str | Any,
     *,
-    ion_types: Sequence[Any] = ("b", "y"),
+    ion_types: Sequence[Any] | Literal["auto"] = ("b", "y"),
     charges: Sequence[int] = (1,),
     tolerance: float = 0.02,
     tolerance_unit: ToleranceUnit = "da",
@@ -236,7 +268,15 @@ def localize(
         scores already written into the string are used only to find the candidate
         residues, never read as evidence.
     ion_types, charges:
-        Fragment ions to generate, as for :func:`~spxtacular.match_fragments`.
+        Fragment ions to generate, as for :func:`~spxtacular.match_fragments`. The default
+        is the Ascore paper's b and y ions. ``ion_types="auto"`` instead takes the series
+        from the peptacular fragmentation preset for the spectrum's own
+        ``activation_type`` (:func:`~spxtacular.fragmentation_preset_name`), so an ETD
+        spectrum is scored on c and z. ions; it raises when the spectrum has no activation
+        method, when the method has no preset, or when the installed peptacular has no
+        ``fragmentation_preset``. ``charges`` is never taken from the preset, and no
+        neutral losses are generated either way. The resolved series is what the
+        provenance records.
     tolerance, tolerance_unit:
         Match tolerance. It also sets the random-match probability, which is
         ``depth * 2 * tolerance_in_da / window``.
@@ -280,6 +320,7 @@ def localize(
         raise SpxtacularError("Site localization needs m/z values; this spectrum is decharged to neutral masses.")
     if spectrum.spectrum_type == SpectrumType.PROFILE:
         raise SpxtacularError("Site localization needs centroid data, not profile data. Call .centroid() first.")
+    series = _resolve_ion_types(spectrum, ion_types, pt)
     depths = tuple(int(d) for d in peak_depths)
     if not depths:
         raise SpxtacularError("peak_depths is empty; pass at least one peak depth.")
@@ -298,8 +339,7 @@ def localize(
 
     tol_da = _tolerance_da(spectrum, tolerance, tolerance_unit)
     fragments = [
-        _sequence_informative(pt.fragment(isomer, ion_types=tuple(ion_types), charges=tuple(charges)))
-        for isomer in isomers
+        _sequence_informative(pt.fragment(isomer, ion_types=series, charges=tuple(charges))) for isomer in isomers
     ]
     filtered = {d: spectrum.filter(top_n_per_window=(d, float(window))) for d in depths}
 
@@ -329,7 +369,7 @@ def localize(
             peak_depth=depth,
             site_determining=((0, 0),),
             provenance=LocalizationProvenance(
-                ion_types=tuple(str(t) for t in ion_types),
+                ion_types=tuple(str(t) for t in series),
                 charges=tuple(int(c) for c in charges),
                 tolerance=float(tolerance),
                 tolerance_unit=tolerance_unit,
@@ -348,7 +388,7 @@ def localize(
     at_depth = filtered[depth]
 
     pairs = pt.pairwise_site_determining_ions(
-        isomers, ion_types=tuple(ion_types), charges=tuple(charges), tolerance=tolerance, tolerance_unit=tolerance_unit
+        isomers, ion_types=series, charges=tuple(charges), tolerance=tolerance, tolerance_unit=tolerance_unit
     )
 
     def _sdi(i: int, j: int) -> tuple[int, int]:
@@ -369,7 +409,7 @@ def localize(
         peak_depth=depth,
         site_determining=site_determining,
         provenance=LocalizationProvenance(
-            ion_types=tuple(str(t) for t in ion_types),
+            ion_types=tuple(str(t) for t in series),
             charges=tuple(int(c) for c in charges),
             tolerance=float(tolerance),
             tolerance_unit=tolerance_unit,

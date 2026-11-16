@@ -252,7 +252,7 @@ All `Spectrum` methods are available and preserve the metadata. `rt` should be i
 | enum | values | alias |
 |---|---|---|
 | `PeakSelection` | `closest`, `largest`, `all` | `PeakSelectionLike` |
-| `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
+| `ActivationType` | `CID`, `HCD`, `ETD`, `ECD`, `EAD`, `EThcD`, `ETciD`, `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` | `ActivationTypeLike` = enum or any `str` |
 | `IMType` (closed) | `ook0`, `im`, `drift_time_ms`, `ccs` | `IMTypeLike` = enum or its `str` value |
 | `Analyzer` | `orbitrap`, `ft_icr`, `tof`, `quadrupole`, `ion_trap`, `linear_ion_trap`, `quadrupole_ion_trap`, `magnetic_sector`, `electrostatic_energy_analyzer` | `AnalyzerLike` = enum or any `str` |
 | `SpectrumType` | `centroid`, `profile`, `deconvoluted` | — |
@@ -399,7 +399,8 @@ Match, then return all PSM metrics:
 | `longest_run` | longest consecutive ion ladder matched |
 
 ```python
-localize(spectrum: Spectrum, peptide: str | ProFormaAnnotation, ion_types=("b", "y"), charges=(1,),
+localize(spectrum: Spectrum, peptide: str | ProFormaAnnotation,
+         ion_types: Sequence[IonTypeLike] | Literal["auto"] = ("b", "y"), charges=(1,),
          tolerance: float = 0.02, tolerance_unit: ToleranceUnit = "da",
          peak_depths: Sequence[int] = (1, ..., 10), window: float = 100.0,
          max_isomers: int | None = 10_000) -> LocalizationResult
@@ -417,6 +418,26 @@ dropped. `LocalizationResult` has `isomers`, `best`, `runner_up`, `ascore`,
 `provenance`, `is_ambiguous(cut=ASCORE_CONFIDENT_CUT)` and `to_dict`/`from_dict`.
 `ASCORE_CONFIDENT_CUT` is the paper's 19. Refuses a decharged or profile spectrum.
 Agrees with pyAscore 1.0.1 exactly on the package's test cases.
+
+`ion_types="auto"` takes the series from the peptacular fragmentation preset for the
+spectrum's own `activation_type`, so an ETD spectrum is scored on c and `z.` ions instead of
+the b/y default. It raises when the spectrum has no activation method, when the method has no
+preset, or when the installed peptacular has no `fragmentation_preset()`. `charges` is never
+taken from the preset and no neutral losses are generated either way; the provenance records
+the resolved series, not `"auto"`.
+
+```python
+fragmentation_preset_name(activation: ActivationType | str | None) -> str | None
+```
+The peptacular preset name for an activation method, or `None`. Takes a member, a member name
+in any case, or a PSI-MS dissociation-method accession. `cid`, `hcd`, `etd`, `ecd`, `ead`,
+`ethcd`, `uvpd` for the methods they are named after; `ethcd` for `ETciD` (electron transfer
+with supplemental collisional activation: the same series, a different energy); `cid` for
+`PQD`, `SID`, `IRMPD`, `BIRD`, `SORI` (collisional or slow-heating activation); `hcd` for
+`PASEF` (beam-type CID). `None` for `NETD` (a and x ions, which no preset covers), `PD` (no
+wavelength and no series implied), `None`, and any string that names no member. A preset is a
+default for the series a method usually gives, not a measurement about one spectrum;
+peptacular owns `FRAGMENTATION_PRESETS` and the literature behind each one.
 
 m/z recalibration from the matched fragments of an identified spectrum:
 
