@@ -66,6 +66,7 @@ src/spxtacular/
   scoring.py         # score(): hyperscore, probability, spectral angle, coverage metrics
   similarity.py      # cosine, modified_cosine, entropy_similarity
   chromatogram.py    # Chromatogram, extract_chromatogram (TIC/BPC), extract_xic
+  diagnostic.py      # find_diagnostic_ions: named mzPAF reference / immonium ions in a spectrum
   reporter.py        # TMT/TMTpro/iTRAQ reporter ions (tacular ISOBARIC_TAG_LOOKUP), impurity correction (NNLS)
   reader.py          # Reader (format auto-detect), DReader (tdfpy), MzmlReader (mzmlpy), CentroidConfig, AcquisitionType
   thermo.py          # ThermoReader (fisher-py, lazy)
@@ -115,6 +116,7 @@ importing each one).
 - **Chromatograms:** `Chromatogram`, `extract_chromatogram`, `extract_xic`.
 - **Reporter ions:** `ReporterIons`, `extract_reporter_ions`, `reporter_ion_table`,
   `isotope_correction_matrix`, `correct_isotope_impurities`.
+- **Diagnostic ions:** `DIAGNOSTIC_IONS`, `DiagnosticIons`, `find_diagnostic_ions`.
 - **I/O:** `Reader`, `DReader`, `MzmlReader`, `ThermoReader`, `CentroidConfig`,
   `AcquisitionType`, `MgfReader`, `Ms2Reader`, `MspReader`, `write_mgf`, `write_ms2`,
   `write_msp`, `write_indexed_mzml_gzip`, `fetch_usi`, `spectrum_from_proxi_response`.
