@@ -62,6 +62,16 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "README.md": ("spectrl",),
 }
 
+# Attributes a page's runnable examples need from a dependency that only has them in a
+# newer release than the floor this package pins. The page is skipped when the installed
+# release does not have one, so the example is exercised wherever the feature exists and is
+# never red where it cannot run. Module-level needs go in REQUIREMENTS above.
+ATTR_REQUIREMENTS: dict[str, tuple[tuple[str, str], ...]] = {
+    # ion_types="auto" in docs/localization.md needs peptacular's fragmentation presets,
+    # which peptacular 5.1.0 (the released floor) does not have.
+    "localization.md": (("peptacular", "fragmentation_preset"),),
+}
+
 PAGES = [*sorted((ROOT / "docs").glob("*.md")), ROOT / "README.md"]
 
 
@@ -166,6 +176,10 @@ def test_page_examples(
     """Every executable block on the page runs, in order, in one namespace."""
     for module in REQUIREMENTS.get(page.name, ()):
         pytest.importorskip(module)
+    for module_name, attribute in ATTR_REQUIREMENTS.get(page.name, ()):
+        module = pytest.importorskip(module_name)
+        if not hasattr(module, attribute):
+            pytest.skip(f"{module_name} has no {attribute}; this page's examples need it")
 
     namespace: dict[str, Any] = {}
     for example in _examples(page):

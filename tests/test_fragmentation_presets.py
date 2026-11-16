@@ -51,9 +51,15 @@ def test_every_member_is_decided() -> None:
 
 @needs_presets
 def test_every_preset_name_exists_in_peptacular() -> None:
-    """The cross-package drift guard: peptacular owns the preset names."""
+    """The cross-package drift guard: peptacular owns the preset names.
+
+    Read through ``getattr`` because the released peptacular has neither name, and the
+    package's own lint job type-checks against that release.
+    """
+    presets: dict[str, Any] = getattr(pt, "FRAGMENTATION_PRESETS", {})
+    assert presets, "peptacular has fragmentation_preset() but no FRAGMENTATION_PRESETS"
     for member, name in _ACTIVATION_PRESETS.items():
-        assert name in pt.FRAGMENTATION_PRESETS, f"{member!r} -> {name!r} is not a peptacular preset"
+        assert name in presets, f"{member!r} -> {name!r} is not a peptacular preset"
 
 
 @pytest.mark.parametrize(
