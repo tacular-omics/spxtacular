@@ -261,6 +261,10 @@ write_indexed_mzml_gzip("tests/data/example.mzML", "example.indexed.mzML.gz")
 | `spectrum_type` | `centroid spectrum` / `profile spectrum` CV params |
 | `charge` (array) | Per-peak charge array when present in the binary data |
 | `im` (array) | First ion mobility binary array when present |
+| `im_type` | Unit of the selected ion mobility binary array, with generic `im` for an unknown unit |
+| `injection_time` | `ion injection time` (MS:1000927) |
+| `total_ion_current` | `total ion current` (MS:1000285) |
+| `isolation_mz_range` | MS2 only: `isolation window target m/z` (MS:1000827) minus the lower offset (MS:1000828) and plus the upper offset (MS:1000829) |
 | `precursors` | MS2 only: selected ion m/z, intensity, charge, and activation info |
 | `collision_energy` | MS2 only: from activation element |
 | `activation_type` | MS2 only: from activation element |
