@@ -14,6 +14,8 @@ User-visible changes only; implementation details belong in commits and pull req
   (`r[HexNAc]`) are not in it, so pass them by name. The most intense peak within 20 ppm
   (or `tolerance=`/`tolerance_unit=`) is taken, and a missing ion has intensity 0.0 and
   observed m/z NaN. Names that share an m/z all report, and overlapping windows do not raise.
+  The minimum paftacular is now 2.1, the first release that resolves the `IJ`, `IO` and `IU`
+  immonium ions in the default list.
 - `fragmentation_preset_name()` names the peptacular fragmentation preset for an activation
   method, so a reader's `activation_type` can choose the ion series: `cid`, `hcd`, `etd`,
   `ecd`, `ead`, `ethcd` and `uvpd` for the methods they are named after, `ethcd` for `ETciD`,
