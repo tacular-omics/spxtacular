@@ -12,6 +12,7 @@ from .enums import (
     IMTypeLike,
     PeakSelection,
     PeakSelectionLike,
+    fragmentation_preset_name,
 )
 from .errors import SpxtacularError
 from .figspec import FigureSpec, compose_figure, render
@@ -182,6 +183,7 @@ __all__ = [
     "localize",
     "CalibrationProvenance",
     "recalibrate",
+    "fragmentation_preset_name",
     "to_matchms",
     "from_matchms",
     "to_spectrum_utils",

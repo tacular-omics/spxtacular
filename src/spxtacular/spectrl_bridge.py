@@ -130,6 +130,7 @@ _ACTIVATION_ACCESSIONS: dict[str, str] = {
     ActivationType.HCD: "MS:1000422",  # beam-type collision-induced dissociation
     ActivationType.ETD: "MS:1000598",  # electron transfer dissociation
     ActivationType.ECD: "MS:1000250",  # electron capture dissociation
+    ActivationType.EAD: "MS:1003294",  # electron activated dissociation (is_a ECD in the CV)
     ActivationType.ETHCD: "MS:1002631",  # electron-transfer/higher-energy collision dissociation
     ActivationType.ETCID: "MS:1003182",  # electron-transfer/collision-induced dissociation
     ActivationType.NETD: "MS:1003247",  # negative electron transfer dissociation

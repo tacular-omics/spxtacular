@@ -96,6 +96,7 @@ class ActivationType(_SpxEnum):
     HCD = "HCD"  # beam-type collision-induced dissociation
     ETD = "ETD"  # electron transfer dissociation
     ECD = "ECD"  # electron capture dissociation
+    EAD = "EAD"  # electron activated dissociation (a child of ECD in the PSI-MS CV)
     ETHCD = "EThcD"  # electron-transfer/higher-energy collision dissociation
     ETCID = "ETciD"  # electron-transfer/collision-induced dissociation
     NETD = "NETD"  # negative electron transfer dissociation
@@ -120,6 +121,78 @@ class ActivationType(_SpxEnum):
         from .spectrl_bridge import _ACTIVATION_NAMES
 
         return _ACTIVATION_NAMES.get(str(accession), str(accession))
+
+
+# The peptacular fragmentation preset for each activation method, with one line each
+# saying why. The presets themselves (ion series, neutral losses, the charge rule) and the
+# literature behind them live in ``peptacular.FRAGMENTATION_PRESETS``; this table only
+# chooses a name. A preset is a default, not a measurement about a particular spectrum.
+_ACTIVATION_PRESETS: dict[str, str] = {
+    ActivationType.CID: "cid",  # the preset is named for this method
+    ActivationType.HCD: "hcd",  # beam-type CID, the method the hcd preset was measured on
+    ActivationType.ETD: "etd",  # the preset is named for this method
+    ActivationType.ECD: "ecd",  # the preset is named for this method
+    ActivationType.EAD: "ead",  # the preset is named for this method
+    ActivationType.ETHCD: "ethcd",  # the preset is named for this method
+    ActivationType.ETCID: "ethcd",  # electron transfer with supplemental collisional activation: the
+    # same b/y added to c/z. as EThcD, differing in the activation energy, not the series
+    ActivationType.UVPD: "uvpd",  # the preset is named for this method
+    ActivationType.PQD: "cid",  # pulsed-Q collisional activation of trapped ions: b and y
+    ActivationType.SID: "cid",  # collisional activation against a surface: b and y
+    ActivationType.IRMPD: "cid",  # slow heating by infrared photons: b and y, as in CID
+    ActivationType.BIRD: "cid",  # slow heating by blackbody photons: b and y, as in CID
+    ActivationType.SORI: "cid",  # sustained off-resonance irradiation CID is collisional
+    ActivationType.PASEF: "hcd",  # Bruker PASEF fragments by beam-type CID (see spectrl_bridge)
+}
+# Deliberately absent, so they map to None: NETD cleaves deprotonated peptides to a and x
+# ions, a series no peptacular preset covers, and PD names neither a wavelength nor a series.
+
+
+def fragmentation_preset_name(activation: ActivationType | str | None) -> str | None:
+    """The :func:`peptacular.fragmentation_preset` name for an activation method.
+
+    A preset is a default for the ion series a method usually gives, not a measurement
+    about one spectrum: override it whenever the data says otherwise.
+
+    Parameters
+    ----------
+    activation:
+        An :class:`ActivationType`, a member name in any case, or a PSI-MS
+        dissociation-method accession (what a reader hands over before
+        :class:`~spxtacular.core.MsnSpectrum` normalises it).
+
+    Returns
+    -------
+    str | None
+        A key of ``peptacular.FRAGMENTATION_PRESETS``, or ``None`` when there is no
+        sensible preset: ``None`` input, a vendor string that names no member,
+        :attr:`ActivationType.NETD` (a and x ions, which no preset covers) and
+        :attr:`ActivationType.PD` (no wavelength and no series implied).
+
+    Examples
+    --------
+    >>> from spxtacular import ActivationType, fragmentation_preset_name
+    >>> fragmentation_preset_name(ActivationType.HCD)
+    'hcd'
+    >>> fragmentation_preset_name("ETciD")
+    'ethcd'
+    >>> fragmentation_preset_name("MS:1003294")
+    'ead'
+    >>> fragmentation_preset_name(ActivationType.NETD) is None
+    True
+    >>> fragmentation_preset_name("Vendor magic mode") is None
+    True
+    """
+    if activation is None:
+        return None
+    candidate: object = activation
+    if isinstance(candidate, str) and not isinstance(candidate, ActivationType):
+        candidate = ActivationType.from_accession(candidate)
+    try:
+        member = ActivationType(candidate)
+    except SpxtacularError:
+        return None
+    return _ACTIVATION_PRESETS.get(member)
 
 
 class IMType(_SpxEnum):

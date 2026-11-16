@@ -326,7 +326,7 @@ from spxtacular import ActivationType, IMType, Analyzer
 
 | Enum | Vocabulary | Members |
 |---|---|---|
-| `ActivationType` | Open | `CID`, `HCD`, `ETD`, `ECD`, `ETHCD` (`"EThcD"`), `ETCID` (`"ETciD"`), `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` |
+| `ActivationType` | Open | `CID`, `HCD`, `ETD`, `ECD`, `EAD`, `ETHCD` (`"EThcD"`), `ETCID` (`"ETciD"`), `NETD`, `UVPD`, `PD`, `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI`, `PASEF` |
 | `IMType` | Closed | `OOK0` (`"ook0"`), `IM` (`"im"`), `DRIFT_TIME_MS` (`"drift_time_ms"`), `CCS` (`"ccs"`) |
 | `Analyzer` | Open | `ORBITRAP`, `FT_ICR`, `TOF`, `QUADRUPOLE`, `ION_TRAP`, `LINEAR_ION_TRAP`, `QUADRUPOLE_ION_TRAP`, `MAGNETIC_SECTOR`, `ELECTROSTATIC_ENERGY_ANALYZER` |
 
@@ -2428,6 +2428,33 @@ def score(
 ) -> dict[str, float]
 ```
 
+### `fragmentation_preset_name`
+
+```python
+from spxtacular import fragmentation_preset_name
+```
+
+```python title="signature only - not executed"
+fragmentation_preset_name(activation: ActivationType | str | None) -> str | None
+```
+
+The peptacular fragmentation preset name for an activation method: a key of `peptacular.FRAGMENTATION_PRESETS`, or `None` when there is no sensible preset.
+`activation` may be an `ActivationType`, a member name in any case, or a PSI-MS
+dissociation-method accession (what a reader hands over before `MsnSpectrum` normalises it).
+
+| Activation method | Preset | Why |
+|---|---|---|
+| `CID`, `HCD`, `ETD`, `ECD`, `EAD`, `ETHCD`, `UVPD` | `cid`, `hcd`, `etd`, `ecd`, `ead`, `ethcd`, `uvpd` | The preset is named for the method |
+| `ETCID` | `ethcd` | Electron transfer with supplemental collisional activation adds the same b and y ions to c and `z.`; the activation energy differs, the series do not |
+| `PQD`, `SID`, `IRMPD`, `BIRD`, `SORI` | `cid` | Collisional or slow-heating activation: b and y, as in CID |
+| `PASEF` | `hcd` | Bruker PASEF fragments by beam-type CID |
+| `NETD`, `PD`, anything else, `None` | `None` | NETD cleaves to a and x ions, which no preset covers; `PD` names neither a wavelength nor a series; a vendor string that names no member is unknown, not guessed |
+
+A preset is a default for the series a method usually gives, not a measurement about one
+spectrum: the real series depend on the instrument, the energy and the peptide. The ion series,
+the neutral losses and the literature behind each preset belong to peptacular, which owns
+`FRAGMENTATION_PRESETS`; this function only picks the name.
+
 ### `localize`
 
 ```python
@@ -2439,7 +2466,7 @@ localize(
     spectrum: Spectrum,
     peptide: str | ProFormaAnnotation,
     *,
-    ion_types: Sequence[IonTypeLike] = ("b", "y"),
+    ion_types: Sequence[IonTypeLike] | Literal["auto"] = ("b", "y"),
     charges: Sequence[int] = (1,),
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
@@ -2455,7 +2482,7 @@ PTM site localization by Ascore ([Beausoleil et al. 2006](https://doi.org/10.103
 |---|---|
 | `spectrum` | A centroided spectrum in m/z. A decharged or profile spectrum raises |
 | `peptide` | ProForma string or peptacular annotation whose modification positions are ambiguous; one candidate is allowed and gives no AScore |
-| `ion_types`, `charges` | Fragment ions to generate, as for `match_fragments`. Full-length ions are dropped: they are the same mass for every placement |
+| `ion_types`, `charges` | Fragment ions to generate, as for `match_fragments`. Full-length ions are dropped: they are the same mass for every placement. `ion_types="auto"` takes the series from the fragmentation preset for the spectrum's own `activation_type` (see [`fragmentation_preset_name`](#fragmentation_preset_name)); `charges` is never taken from the preset, and no neutral losses are generated either way |
 | `tolerance`, `tolerance_unit` | Match tolerance, which also sets the random-match probability `depth * 2 * tolerance_in_da / window` |
 | `peak_depths` | Peak depths to score. The paper's ten by default, and only that set uses the paper's weights; any other set is weighted uniformly |
 | `window` | Width in Da of the peak-depth window (the paper's 100 Da) |

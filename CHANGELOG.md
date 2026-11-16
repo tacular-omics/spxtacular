@@ -6,6 +6,21 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Added
 
+- `fragmentation_preset_name()` names the peptacular fragmentation preset for an activation
+  method, so a reader's `activation_type` can choose the ion series: `cid`, `hcd`, `etd`,
+  `ecd`, `ead`, `ethcd` and `uvpd` for the methods they are named after, `ethcd` for `ETciD`,
+  `cid` for `PQD`, `SID`, `IRMPD`, `BIRD` and `SORI`, `hcd` for `PASEF`, and `None` for
+  `NETD` (a and x ions, which no preset covers), `PD`, and any string that names no member.
+  A preset is a default for the series a method usually gives, not a measurement about one
+  spectrum. It takes a member, a member name in any case, or a PSI-MS accession.
+- `ActivationType.EAD` for electron activated dissociation, with its PSI-MS accession
+  `MS:1003294`.
+- `localize(..., ion_types="auto")` takes the ion series from the preset for the spectrum's
+  own `activation_type`, so an ETD spectrum is scored on c and `z.` ions instead of the b/y
+  default. The default is unchanged: a caller who passes no `ion_types` still gets b and y.
+  `charges` is never taken from the preset, and the provenance records the series that was
+  used rather than `"auto"`. It raises when the spectrum has no activation method, when the
+  method has no preset, or when the installed peptacular has no `fragmentation_preset()`.
 - `localize()` scores which placement of an ambiguous modification a spectrum supports, by
   Ascore (Beausoleil et al. 2006, doi:10.1038/nbt1240). Candidate placements come from the
   ProForma ambiguity alone, through peptacular's `localization_isomers`, so a `#label`

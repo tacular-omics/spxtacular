@@ -80,6 +80,47 @@ candidates have no such ions, or none of them matched, `ascore` is `0.0` rather 
 error: a precursor-only annotation, or two placements inside one uncleaved stretch, carry
 no site information and the result says so.
 
+## Following the activation method
+
+The default ion types are the paper's b and y, which score nothing on an ETD or EAD
+spectrum. `ion_types="auto"` takes the series from the peptacular fragmentation preset for
+the spectrum's own `activation_type`:
+
+```python
+import numpy as np
+import peptacular as pt
+from spxtacular import MsnSpectrum, localize, fragmentation_preset_name
+
+# A c/z. spectrum, as electron-transfer dissociation gives.
+fragments = pt.fragment("PEPT[Phospho]IDESK", ion_types=("c", "z."), charges=(1,))
+spectrum = MsnSpectrum(
+    mz=np.array(sorted(f.mz for f in fragments)),
+    intensity=np.full(len(fragments), 1000.0),
+    activation_type="ETD",
+)
+
+print(fragmentation_preset_name(spectrum.activation_type))  # etd
+
+auto = localize(spectrum, "PEPT[Phospho#g1]IDES[#g1]K", ion_types="auto", tolerance=0.05)
+print(auto.provenance.ion_types)   # ('c', 'z.')
+print(round(auto.ascore, 4))       # 215.9176
+
+byions = localize(spectrum, "PEPT[Phospho#g1]IDES[#g1]K", tolerance=0.05)
+print(byions.ascore)               # 0.0, the b/y default sees nothing here
+```
+
+The preset decides the series and nothing else: `charges` stays whatever you passed, and no
+neutral losses are generated with `"auto"` or without it, because the AScore's binomial
+counts backbone ions and a loss series would change *n*. The provenance records the series
+that was used, never `"auto"`, so a stored result says what it was scored on.
+
+It raises rather than guessing when the spectrum has no activation method, when the method
+has no preset (`NETD`, `PD`, a vendor string nobody has mapped), or when the installed
+peptacular is older than `fragmentation_preset()`. A preset is a default for the series a
+method usually gives, not a measurement about your spectrum: see
+[`fragmentation_preset_name`](api.md#fragmentation_preset_name) for the whole table and
+override it whenever the data says otherwise.
+
 ## How the score is built
 
 1. For each peak depth 1 to 10, keep the most intense *depth* peaks per 100 Da window
