@@ -260,7 +260,7 @@ write_indexed_mzml_gzip("tests/data/example.mzML", "example.indexed.mzML.gz")
 | `polarity` | `positive scan` / `negative scan` CV params |
 | `spectrum_type` | `centroid spectrum` / `profile spectrum` CV params |
 | `charge` (array) | Per-peak charge array when present in the binary data |
-| `im` (array) | First ion mobility binary array when present |
+| `im` (array) | The spectrum's ion mobility binary array; its length must match the m/z array. With several arrays, the first in accession order whose length matches, with a warning naming it, and `None` when none of them matches |
 | `im_type` | Unit of the selected ion mobility binary array, with generic `im` for an unknown unit |
 | `injection_time` | `ion injection time` (MS:1000927) |
 | `total_ion_current` | `total ion current` (MS:1000285) |
