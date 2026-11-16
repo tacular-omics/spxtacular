@@ -300,6 +300,8 @@ Full documentation with API reference, guides, and interactive plots is availabl
 - [Deconvolution](https://tacular-omics.github.io/spxtacular/deconvolution/)
 - [Readers](https://tacular-omics.github.io/spxtacular/readers/)
 - [Matching, scoring & reporter ions](https://tacular-omics.github.io/spxtacular/scoring/)
+- [PTM site localization](https://tacular-omics.github.io/spxtacular/localization/)
+- [m/z recalibration](https://tacular-omics.github.io/spxtacular/calibration/)
 - [Visualization](https://tacular-omics.github.io/spxtacular/visualization/)
 - [API Reference](https://tacular-omics.github.io/spxtacular/api/)
 
