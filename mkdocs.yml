@@ -64,6 +64,7 @@ nav:
       - Spectral libraries (mzSpecLib): mzspeclib.md
       - Matching, scoring & reporter ions: scoring.md
       - PTM site localization: localization.md
+      - m/z recalibration: calibration.md
       - Visualization: visualization.md
   - API reference:
       - API reference: api.md

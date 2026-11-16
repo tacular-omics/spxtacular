@@ -16,16 +16,17 @@ import spxtacular
 
 # Measured 2026-11-08. Raise these when you add modules or examples; never lower them
 # without saying why in the commit message.
-MIN_MODULES = 39
-MIN_EXAMPLES = 8
-# MIN_EXAMPLES is 8, the eight executable lines of localization.py's ``localize`` example.
+MIN_MODULES = 40
+MIN_EXAMPLES = 20
+# MIN_EXAMPLES is 20: the eight executable lines of localization.py's ``localize`` example
+# plus the twelve of calibration.py's ``recalibrate`` example.
 # It was 0 while the only ``>>>`` example in src (mzspeclib.py, opening a library
 # file) carries ``# doctest: +SKIP``, and ``attempted`` cannot be relied on to notice it: a
 # skipped example counts toward ``attempted`` on Python 3.13 and 3.14 but not on 3.12, which
 # CI also tests (measured 2026-11-08: attempted=0 on 3.12.3, 1 on 3.13.7 and 3.14.0rc2).
 # DocTestFinder counts examples it parsed, skipped or not, so this floor is the one that
 # notices the example being deleted on every version we support.
-MIN_EXAMPLES_FOUND = 9
+MIN_EXAMPLES_FOUND = 21
 
 # No module is excluded. Every optional dependency in src is imported lazily or inside a
 # ``try/except ImportError``, so the whole walk imports with no extra installed.

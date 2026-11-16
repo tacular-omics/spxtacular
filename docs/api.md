@@ -195,6 +195,7 @@ Spectrum(
     denoised: str | None = None,
     normalized: str | None = None,
     deconvolution: DeconvolutionProvenance | None = None,
+    calibration: CalibrationProvenance | None = None,
 )
 ```
 
@@ -216,6 +217,7 @@ identity, and a `Spectrum` is unhashable.
 | `denoised` | `str \| None` | Name of the denoising method applied, or `None` |
 | `normalized` | `str \| None` | Name of the normalization method applied, or `None` |
 | `deconvolution` | `DeconvolutionProvenance \| None` | Isotope and ionization models plus every deconvolution parameter, recorded by `deconvolute()` |
+| `calibration` | `CalibrationProvenance \| None` | The fitted m/z correction and its residual spread, recorded by `recalibrate()` |
 
 **Validation rules enforced in `__post_init__`:**
 
@@ -1459,9 +1461,11 @@ arrays, and `kind` records whether the original object was a `Spectrum` or an `M
 fields, malformed arrays and non-finite numeric values instead of silently discarding data.
 
 The spectrum envelope uses schema name `spxtacular.spectrum`, schema version
-`2` (version `1` still loads), and kind `spectrum` or `msn_spectrum`. Its
-`deconvolution` provenance block has its own `schema_version` `3` (versions `1`
-and `2`, with the old `tolerance_type` keys, still load). The chromatogram
+`3` (versions `1` and `2` still load; they predate `calibration` and read back
+with a null one), and kind `spectrum` or `msn_spectrum`. Its `deconvolution`
+provenance block has its own `schema_version` `3` (versions `1` and `2`, with
+the old `tolerance_type` keys, still load), and its `calibration` block has
+`schema_version` `1`. The chromatogram
 envelope uses schema name `spxtacular.chromatogram`, schema version `2`
 (version `1`, with the old `tolerance_type` key, still loads), and kind
 `chromatogram`. Unknown schema versions are rejected so consumers never
@@ -1475,7 +1479,7 @@ isotope score, and processing provenance.
 The JSON Schema documents are packaged as:
 
 ```text
-spxtacular/schemas/spectrum-v2.schema.json
+spxtacular/schemas/spectrum-v3.schema.json
 spxtacular/schemas/chromatogram-v2.schema.json
 ```
 
@@ -2470,6 +2474,57 @@ PTM site localization by Ascore ([Beausoleil et al. 2006](https://doi.org/10.103
 | `provenance` | `LocalizationProvenance` | Every argument above, plus `method` and `schema_version` |
 
 `is_ambiguous(cut=ASCORE_CONFIDENT_CUT)` is `True` when `ascore` is below `cut`; `ASCORE_CONFIDENT_CUT` is the paper's 19, and `ASCORE_PEAK_DEPTHS` is its ten depths.
+
+### `recalibrate`
+
+```python
+from spxtacular import recalibrate
+```
+
+```python title="signature only - not executed"
+recalibrate(
+    spectrum: Spectrum,
+    matches: Sequence[MatchedFragment],
+    *,
+    model: Literal["offset", "linear"] = "offset",
+    estimator: Literal["median", "least_squares"] = "median",
+    min_matches: int = 8,
+    min_mz_span: float = 200.0,
+    max_abs_ppm: float = 50.0,
+    tolerance: float = 0.02,
+    tolerance_unit: Literal["da", "ppm"] = "da",
+    inplace: bool = False,
+) -> Spectrum
+```
+
+Corrects a spectrum's m/z axis from the signed ppm errors its matched fragments already carry, and applies the fit to **every** peak as `mz / (1 + ppm(mz) * 1e-6)`. One pass: there is no refit-and-rematch loop. See the [m/z recalibration guide](calibration.md).
+
+| Parameter | Meaning |
+|---|---|
+| `spectrum` | The spectrum the matches came from, still in m/z. A decharged spectrum raises |
+| `matches` | Matched fragments from `match_fragments` |
+| `model` | `"offset"` fits `ppm = a`; `"linear"` fits `ppm = a + b * mz`, by least squares |
+| `estimator` | `"median"` (the default) takes the median signed error; `"least_squares"` takes the mean. `model="linear"` requires `"least_squares"` |
+| `min_matches` | Minimum matched fragments, and minimum **distinct** matched peaks |
+| `min_mz_span` | Minimum matched m/z span for `model="linear"` only |
+| `max_abs_ppm` | Largest correction allowed anywhere in the spectrum's m/z range |
+| `tolerance`, `tolerance_unit` | The matching tolerance the matches came from; recorded in the provenance, it does not change the fit |
+| `inplace` | Modify and return `spectrum` instead of a new one |
+
+**`CalibrationProvenance`** (frozen dataclass, `to_dict()` / `from_dict()` at `schema_version` 1), on the returned spectrum's `calibration`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `model`, `estimator` | `str` | As passed |
+| `offset_ppm` | `float` | The fitted intercept, in ppm |
+| `slope_ppm_per_mz` | `float \| None` | The fitted slope in ppm per Th; `None` for `model="offset"` |
+| `n_matches`, `n_unique_peaks` | `int` | Matched fragments, and the distinct peaks they occupy |
+| `mz_span` | `tuple[float, float]` | `(min, max)` observed m/z of the matches |
+| `residual_ppm_sd`, `residual_ppm_mad` | `float` | Spread left after the correction: sample SD, and median absolute deviation |
+| `tolerance`, `tolerance_unit` | `float`, `str` | The matching tolerance, as passed |
+| `previous` | `CalibrationProvenance \| None` | The spectrum's earlier record, so a second `recalibrate()` keeps the total auditable |
+
+`correction_ppm(mz)` returns the correction this record applies at a given m/z.
 
 ### Spectrum similarity
 
