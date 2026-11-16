@@ -109,7 +109,7 @@ class TestSpectrumDictionary:
         restored = Spectrum.from_dict(payload)
 
         assert payload["schema"] == "spxtacular.spectrum"
-        assert payload["schema_version"] == 2
+        assert payload["schema_version"] == 3
         assert payload["kind"] == "spectrum"
         assert type(restored) is Spectrum
         assert restored == spectrum
@@ -199,10 +199,32 @@ class TestSchemaV1Upgrade:
         payload["schema_version"] = 1
         assert Spectrum.from_dict(payload) == _plain_spectrum()
 
-    def test_writer_emits_v2(self) -> None:
+    def test_writer_emits_v3(self) -> None:
         payload = _msn_spectrum().to_dict()
-        assert payload["schema_version"] == 2
+        assert payload["schema_version"] == 3
         assert "precursor_mz" in payload["metadata"]["precursors"][0]
+
+
+class TestSchemaV2Upgrade:
+    """0.9.5 and earlier wrote schema v2, which predates ``calibration``; 0.9.6 still reads it."""
+
+    @staticmethod
+    def _as_v2(payload: dict) -> dict:
+        payload["schema_version"] = 2
+        del payload["metadata"]["calibration"]
+        return payload
+
+    def test_v2_plain_payload_is_upgraded(self) -> None:
+        spectrum = _plain_spectrum()
+        restored = Spectrum.from_dict(self._as_v2(spectrum.to_dict()))
+        assert restored == spectrum
+        assert restored.calibration is None
+
+    def test_v2_msn_payload_is_upgraded(self) -> None:
+        spectrum = _msn_spectrum()
+        restored = MsnSpectrum.from_dict(self._as_v2(spectrum.to_dict()))
+        assert restored == spectrum
+        assert restored.calibration is None
 
 
 class TestSpectrumJson:
@@ -280,9 +302,9 @@ class TestSpectrumJson:
 class TestSpectrumValidation:
     def test_unsupported_version_is_rejected(self) -> None:
         payload = _plain_spectrum().to_dict()
-        payload["schema_version"] = 3
+        payload["schema_version"] = 4
 
-        with pytest.raises(ValueError, match=r"Unsupported spxtacular\.spectrum schema version 3"):
+        with pytest.raises(ValueError, match=r"Unsupported spxtacular\.spectrum schema version 4"):
             Spectrum.from_dict(payload)
 
     def test_boolean_version_is_rejected(self) -> None:
@@ -620,11 +642,11 @@ class TestReaderAndPersistenceCompatibility:
 
 def test_packaged_json_schemas_are_valid_json() -> None:
     schema_package = files("spxtacular.schemas")
-    spectrum_schema = json.loads(schema_package.joinpath("spectrum-v2.schema.json").read_text())
+    spectrum_schema = json.loads(schema_package.joinpath("spectrum-v3.schema.json").read_text())
     chromatogram_schema = json.loads(schema_package.joinpath("chromatogram-v2.schema.json").read_text())
 
     assert spectrum_schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert spectrum_schema["properties"]["schema_version"] == {"const": 2}
+    assert spectrum_schema["properties"]["schema_version"] == {"const": 3}
     assert chromatogram_schema["properties"]["schema_version"] == {"const": 2}
     Draft202012Validator.check_schema(spectrum_schema)
     Draft202012Validator.check_schema(chromatogram_schema)

@@ -15,13 +15,13 @@ from .errors import SpxtacularError
 SPECTRUM_SCHEMA = "spxtacular.spectrum"
 CHROMATOGRAM_SCHEMA = "spxtacular.chromatogram"
 CHROMATOGRAM_SCHEMA_VERSION = 2
-SPECTRUM_SCHEMA_VERSION = 2
+SPECTRUM_SCHEMA_VERSION = 3
 
 
 def get_json_schema(kind: Literal["spectrum", "chromatogram"]) -> dict[str, Any]:
-    """Return a fresh copy of the packaged JSON Schema document (spectrum v2, chromatogram v2)."""
+    """Return a fresh copy of the packaged JSON Schema document (spectrum v3, chromatogram v2)."""
     schema_files = {
-        "spectrum": "spectrum-v2.schema.json",
+        "spectrum": "spectrum-v3.schema.json",
         "chromatogram": "chromatogram-v2.schema.json",
     }
     try:

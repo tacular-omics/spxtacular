@@ -418,6 +418,32 @@ dropped. `LocalizationResult` has `isomers`, `best`, `runner_up`, `ascore`,
 `ASCORE_CONFIDENT_CUT` is the paper's 19. Refuses a decharged or profile spectrum.
 Agrees with pyAscore 1.0.1 exactly on the package's test cases.
 
+m/z recalibration from the matched fragments of an identified spectrum:
+
+```python
+recalibrate(spectrum: Spectrum, matches: Sequence[MatchedFragment],
+            model: Literal["offset", "linear"] = "offset",
+            estimator: Literal["median", "least_squares"] = "median",
+            min_matches: int = 8, min_mz_span: float = 200.0, max_abs_ppm: float = 50.0,
+            tolerance: float = 0.02, tolerance_unit: ToleranceUnit = "da",
+            inplace: bool = False) -> Spectrum
+```
+Fits the matches' signed `ppm_error` against observed m/z and applies the result to every
+peak, matched or not, as `mz / (1 + ppm(mz) * 1e-6)`. `model="offset"` fits one number;
+`model="linear"` fits `ppm = a + b * mz` by least squares and requires
+`estimator="least_squares"`. `estimator="median"` (the default) is the breakdown-resistant
+choice; `"least_squares"` is the mean. One pass: no refit-and-rematch loop. Raises
+`SpxtacularError`, never a silent no-op, when there are fewer than `min_matches` matches or
+fewer than that many **distinct** matched peaks, when `model="linear"` has a matched m/z
+span below `min_mz_span`, when the correction exceeds `max_abs_ppm` anywhere in the
+spectrum's range, when the spectrum is already decharged (a neutral mass is not an m/z, so
+recalibrate before `decharge()`), or when a fitted coefficient is not finite. The returned
+spectrum carries `calibration`, a `CalibrationProvenance` with `model`, `estimator`,
+`offset_ppm`, `slope_ppm_per_mz`, `n_matches`, `n_unique_peaks`, `mz_span`,
+`residual_ppm_sd`, `residual_ppm_mad`, `tolerance`, `tolerance_unit`, `previous` (the
+earlier record, so a second call stays auditable), `correction_ppm(mz)` and
+`to_dict`/`from_dict` at `schema_version` 1.
+
 Neutral-loss, charge and isotope variants of one `(ion_type, position)` count once.
 Hyperscore is scale dependent (scaling intensities by `s` shifts it by `log10(s)`), can be
 negative on normalized input, and changed in 0.7.0: recompute scores stored by 0.6.0. It is

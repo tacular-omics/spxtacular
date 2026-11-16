@@ -17,6 +17,24 @@ User-visible changes only; implementation details belong in commits and pull req
   `schema_version` 1. `ASCORE_CONFIDENT_CUT` is the paper's cut of 19 and
   `ASCORE_PEAK_DEPTHS` its ten peak depths. Matches pyAscore 1.0.1 exactly on the package's
   test cases, including its peptide scores and AScore.
+- `recalibrate()` corrects a spectrum's m/z axis from the signed ppm errors of its matched
+  fragments, and applies the fit to every peak, matched or not. `model="offset"` fits one
+  number by the median signed error, which is the default because a minority of
+  mis-assigned matches cannot move it; `model="linear"` fits `ppm = a + b * mz` by least
+  squares for an instrument whose error fans out with m/z. It refuses, rather than
+  returning a spectrum it cannot stand behind, on too few matches, too few *distinct*
+  matched peaks, too narrow a matched m/z span for the linear model, a correction above
+  `max_abs_ppm` anywhere in the spectrum's range, an already decharged spectrum, or a
+  non-finite coefficient. The returned spectrum carries a `CalibrationProvenance` on
+  `calibration` with the fitted coefficients, what they were fitted on, the residual spread
+  they left behind, and the spectrum's previous record, with `to_dict()`/`from_dict()` at
+  `schema_version` 1.
+
+### Changed
+
+- The spectrum JSON transport is schema version 3: its metadata gained a `calibration`
+  object. Versions 1 and 2 still load and read back with no calibration record, and the
+  packaged schema document is now `spxtacular/schemas/spectrum-v3.schema.json`.
 
 ## [0.9.5] (2026-11-11)
 

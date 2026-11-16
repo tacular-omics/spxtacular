@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tacular-omics.github.io/spxtacular/schemas/spectrum-v2.schema.json",
-  "title": "Spxtacular Spectrum v2",
+  "$id": "https://tacular-omics.github.io/spxtacular/schemas/spectrum-v3.schema.json",
+  "title": "Spxtacular Spectrum v3",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "schema_version", "kind", "arrays", "metadata"],
   "properties": {
     "schema": {"const": "spxtacular.spectrum"},
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "kind": {"enum": ["spectrum", "msn_spectrum"]},
     "arrays": {"$ref": "#/$defs/arrays"},
     "metadata": {"type": "object"}
@@ -133,6 +133,47 @@
         "im_tolerance_unit": {"enum": ["relative", "absolute"]}
       }
     },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "model",
+        "estimator",
+        "offset_ppm",
+        "slope_ppm_per_mz",
+        "n_matches",
+        "n_unique_peaks",
+        "mz_span",
+        "residual_ppm_sd",
+        "residual_ppm_mad",
+        "tolerance",
+        "tolerance_unit",
+        "previous"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "model": {"enum": ["offset", "linear"]},
+        "estimator": {"enum": ["median", "least_squares"]},
+        "offset_ppm": {"type": "number"},
+        "slope_ppm_per_mz": {"type": ["number", "null"]},
+        "n_matches": {"type": "integer", "minimum": 0},
+        "n_unique_peaks": {"type": "integer", "minimum": 0},
+        "mz_span": {
+          "type": "array",
+          "prefixItems": [{"type": "number"}, {"type": "number"}],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "residual_ppm_sd": {"type": "number", "minimum": 0},
+        "residual_ppm_mad": {"type": "number", "minimum": 0},
+        "tolerance": {"type": "number", "minimum": 0},
+        "tolerance_unit": {"enum": ["da", "ppm"]},
+        "previous": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/calibration"}]
+        }
+      }
+    },
     "arrays": {
       "type": "object",
       "additionalProperties": false,
@@ -154,13 +195,16 @@
     "spectrumMetadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["spectrum_type", "denoised", "normalized", "deconvolution"],
+      "required": ["spectrum_type", "denoised", "normalized", "deconvolution", "calibration"],
       "properties": {
         "spectrum_type": {"$ref": "#/$defs/nullableString"},
         "denoised": {"$ref": "#/$defs/nullableString"},
         "normalized": {"$ref": "#/$defs/nullableString"},
         "deconvolution": {
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/deconvolution"}]
+        },
+        "calibration": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/calibration"}]
         }
       }
     },
@@ -186,6 +230,7 @@
         "denoised",
         "normalized",
         "deconvolution",
+        "calibration",
         "scan_number",
         "ms_level",
         "native_id",
@@ -211,6 +256,9 @@
         "normalized": {"$ref": "#/$defs/nullableString"},
         "deconvolution": {
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/deconvolution"}]
+        },
+        "calibration": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/calibration"}]
         },
         "scan_number": {"type": ["integer", "null"], "minimum": 0},
         "ms_level": {"type": ["integer", "null"], "minimum": 1},

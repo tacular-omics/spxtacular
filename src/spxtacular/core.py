@@ -23,6 +23,7 @@ from numpy.typing import NDArray
 from tacular.types import Polarity, ToleranceUnit
 
 from ._merge import merge_peaks as _merge_peaks
+from .calibration import CalibrationProvenance
 from .decon.greedy import NEUTRON_MASS
 from .decon.scored import _deconvolve_spectrum_with_sources as _deconvolve
 from .enums import (
@@ -130,6 +131,48 @@ def _validate_deconvolution_json(value: Any) -> dict[str, Any] | None:
 
 _LEGACY_PROVENANCE_UNIT_KEYS = ("tolerance_type", "im_tolerance_type")
 
+_CALIBRATION_JSON_KEYS = frozenset(
+    {
+        "schema_version",
+        "model",
+        "estimator",
+        "offset_ppm",
+        "slope_ppm_per_mz",
+        "n_matches",
+        "n_unique_peaks",
+        "mz_span",
+        "residual_ppm_sd",
+        "residual_ppm_mad",
+        "tolerance",
+        "tolerance_unit",
+        "previous",
+    }
+)
+
+
+def _validate_calibration_json(value: Any, path: str = "payload.metadata.calibration") -> dict[str, Any] | None:
+    """Validate calibration provenance metadata and return it as canonical schema v1."""
+    if value is None:
+        return None
+    payload = require_mapping(value, path)
+    require_exact_keys(payload, set(_CALIBRATION_JSON_KEYS), path)
+    if require_integer(payload["schema_version"], f"{path}.schema_version") != 1:
+        raise SpxtacularError(f"{path}.schema_version must be 1")
+    for field in ("n_matches", "n_unique_peaks"):
+        if require_integer(payload[field], f"{path}.{field}") < 0:
+            raise SpxtacularError(f"{path}.{field} must be nonnegative")
+    span = require_number_array_or_none(payload["mz_span"], f"{path}.mz_span")
+    if span is None or len(span) != 2:
+        raise SpxtacularError(f"{path}.mz_span must contain exactly two numbers")
+    _validate_calibration_json(payload["previous"], f"{path}.previous")
+    try:
+        canonical = to_json_value(CalibrationProvenance.from_dict(dict(payload)).to_dict(), path)
+    except (KeyError, TypeError, ValueError) as error:
+        raise SpxtacularError(f"{path} is invalid: {error}") from error
+    if canonical != to_json_value(payload, path):
+        raise SpxtacularError(f"{path} must use canonical schema-v1 value types and fields")
+    return cast(dict[str, Any], canonical)
+
 
 def _v1_isolation_range(value: Any) -> Any:
     """Return a 0.8 isolation 1/K0 range as (low, high).
@@ -165,6 +208,19 @@ def _upgrade_spectrum_payload_v1(payload: Mapping[str, Any]) -> dict[str, Any]:
     return upgraded
 
 
+def _upgrade_spectrum_payload_v2(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Add the schema-v3 ``calibration`` metadata key to a 0.9.5-or-earlier payload.
+
+    Schema versions 1 and 2 predate :func:`~spxtacular.recalibrate`, so a payload
+    written by them carries no calibration record and gets a null one.
+    """
+    upgraded = dict(payload)
+    metadata = dict(require_mapping(payload["metadata"], "payload.metadata"))
+    metadata.setdefault("calibration", None)
+    upgraded["metadata"] = metadata
+    return upgraded
+
+
 def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[str, Any]:
     """Validate and normalize the schema-v2 metadata object."""
     result = dict(metadata)
@@ -172,6 +228,7 @@ def _validate_json_metadata(metadata: Mapping[str, Any], *, msn: bool) -> dict[s
     result["denoised"] = require_string(metadata["denoised"], "payload.metadata.denoised", nullable=True)
     result["normalized"] = require_string(metadata["normalized"], "payload.metadata.normalized", nullable=True)
     result["deconvolution"] = _validate_deconvolution_json(metadata["deconvolution"])
+    result["calibration"] = _validate_calibration_json(metadata["calibration"])
     if not msn:
         return result
 
@@ -380,9 +437,10 @@ class Spectrum:
     denoised: str | None = None
     normalized: str | None = None
     deconvolution: DeconvolutionProvenance | None = None
+    calibration: CalibrationProvenance | None = None
 
     _JSON_META_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"spectrum_type", "denoised", "normalized", "deconvolution"}
+        {"spectrum_type", "denoised", "normalized", "deconvolution", "calibration"}
     )
 
     def __post_init__(self):
@@ -397,6 +455,8 @@ class Spectrum:
             self.iso_score = np.asarray(self.iso_score, dtype=np.float64)
         if isinstance(self.deconvolution, dict):
             self.deconvolution = DeconvolutionProvenance.from_dict(self.deconvolution)
+        if isinstance(self.calibration, dict):
+            self.calibration = CalibrationProvenance.from_dict(self.calibration)
         self._validate()
         # A charge array on its own implies deconvolution only when the caller
         # did not say otherwise — an explicit spectrum_type is always honoured,
@@ -1789,10 +1849,12 @@ class Spectrum:
         """
         data = require_mapping(payload, "payload")
         kind = require_schema(
-            data, SPECTRUM_SCHEMA, {"spectrum", "msn_spectrum"}, versions=(1, SPECTRUM_SCHEMA_VERSION)
+            data, SPECTRUM_SCHEMA, {"spectrum", "msn_spectrum"}, versions=(1, 2, SPECTRUM_SCHEMA_VERSION)
         )
         if data["schema_version"] == 1 and kind == "msn_spectrum":
             data = _upgrade_spectrum_payload_v1(data)
+        if data["schema_version"] < SPECTRUM_SCHEMA_VERSION:
+            data = _upgrade_spectrum_payload_v2(data)
 
         if cls is Spectrum:
             target_cls: Any = MsnSpectrum if kind == "msn_spectrum" else Spectrum
@@ -1849,6 +1911,7 @@ class Spectrum:
             "denoised": self.denoised,
             "normalized": self.normalized,
             "deconvolution": self.deconvolution.to_dict() if self.deconvolution is not None else None,
+            "calibration": self.calibration.to_dict() if self.calibration is not None else None,
         }
 
     @classmethod
@@ -1865,6 +1928,9 @@ class Spectrum:
                 DeconvolutionProvenance.from_dict(meta["deconvolution"])
                 if meta.get("deconvolution") is not None
                 else None
+            ),
+            "calibration": (
+                CalibrationProvenance.from_dict(meta["calibration"]) if meta.get("calibration") is not None else None
             ),
         }
 

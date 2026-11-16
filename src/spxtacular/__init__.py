@@ -1,5 +1,6 @@
 __version__ = "0.9.5"
 
+from .calibration import CalibrationProvenance, recalibrate
 from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
 from .core import MsnSpectrum, Peak, Precursor, Spectrum, SpectrumType
 from .enums import (
@@ -179,6 +180,8 @@ __all__ = [
     "LocalizationProvenance",
     "LocalizationResult",
     "localize",
+    "CalibrationProvenance",
+    "recalibrate",
     "to_matchms",
     "from_matchms",
     "to_spectrum_utils",
