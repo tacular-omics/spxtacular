@@ -24,6 +24,8 @@ from spxtacular import (
     match_fragments, MatchedFragment, score, cosine, modified_cosine, entropy_similarity,
     # Isobaric reporter ions (TMT, TMTpro, iTRAQ)
     ReporterIons, extract_reporter_ions, reporter_ion_table,
+    # Diagnostic ions (named mzPAF reference and immonium ions)
+    DIAGNOSTIC_IONS, DiagnosticIons, find_diagnostic_ions,
     isotope_correction_matrix, correct_isotope_impurities,
     # Isotope envelopes and average-composition models
     IsotopeModel, IsotopeModelType, IsotopeModelLike,
@@ -2629,6 +2631,32 @@ The most intense peak in each window is used; a missing channel is intensity 0.0
 `observed_mz` NaN. A bad plex, unit, tolerance (overlapping windows) or impurity table, a
 decharged spectrum, or NaN/inf intensities raise `SpxtacularError`. Numeric impurity shifts
 are 13C counts; label 15N impurities `"-15N"`. See [Scoring](scoring.md#isotope-impurity-correction).
+
+---
+
+## Diagnostic ions
+
+```python title="signature only - not executed"
+find_diagnostic_ions(
+    spectrum: Spectrum,
+    ions: Sequence[str] | None = None,     # mzPAF names: "r[TMT126]", "IY"; None = DIAGNOSTIC_IONS
+    *,
+    tolerance: float = 20.0,
+    tolerance_unit: Literal["da", "ppm"] = "ppm",
+) -> DiagnosticIons
+```
+
+`DIAGNOSTIC_IONS` is 94 names: `r[<name>]` for the 71 reference molecules in tacular's
+`REFMOL_LOOKUP`, then `I<aa>` for the 23 residues with a positive monoisotopic mass. Glycan
+oxonium ions (`"r[HexNAc]"`) are not in it; pass them in `ions`. m/z comes from
+`paftacular.parse(name).mz()`.
+
+`DiagnosticIons` (frozen, read-only arrays in `ions` order): `ions`, `ion_mz`, `intensity`,
+`observed_mz`, `found`, and `present()`, the names found. The most intense peak in each window
+is used; a missing ion is intensity 0.0, `observed_mz` NaN and `found` False. Names that share an
+m/z all report, and overlapping windows do not raise. An empty `ions`, a name that does not
+resolve, a bad unit or tolerance, a decharged spectrum, or NaN/inf intensities raise
+`SpxtacularError`.
 
 ---
 

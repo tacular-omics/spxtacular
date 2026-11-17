@@ -28,7 +28,7 @@ dependencies = [
     "pandas>=2.1.2",
     "peptacular>=5,<6",
     "tacular>=2,<3",
-    "paftacular>=2,<3",
+    "paftacular>=2.1,<3",
     # 5.15.0 is the lowest release the test suite passes on. Static image export needs
     # plotly>=6.1.1 as well, but only when it is asked for, so that requirement lives in the
     # `plotly-export` extra beside kaleido rather than here, where it would constrain every
