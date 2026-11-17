@@ -171,8 +171,9 @@ def test_the_identifier_declines_a_length_no_array_has():
             spec = handle.spectra[0]
             assert spec.im_types, "the fixture must have an ion mobility array for this to mean anything"
             assert reader_module._mzml_im_binary_array(spec, np.zeros(3)) is None
-            found = reader_module._mzml_im_binary_array(spec, spec.ion_mobility_array)
-            assert found is not None, "and it finds the real one"
+            values = spec.ion_mobility_array
+            assert values is not None, "the fixture's array must decode for the next line to mean anything"
+            assert reader_module._mzml_im_binary_array(spec, values) is not None, "and it finds the real one"
 
 
 def test_an_unidentifiable_array_is_refused(monkeypatch):
