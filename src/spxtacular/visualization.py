@@ -21,6 +21,7 @@ and draws it with the engine you ask for:
 from __future__ import annotations
 
 import importlib.util
+import time
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -196,6 +197,23 @@ def _precursor_marks(spectrum: Spectrum, style: FigureStyle, mode: theme.ThemeMo
 _KALEIDO_SCOPE_RACE = "kaleido_scopes is not defined"
 """Chrome's text for kaleido's startup race; see :func:`_kaleido_scope_race`."""
 
+_KALEIDO_SCOPE_RACE_ATTEMPTS = 3
+"""How many times a static export is attempted when kaleido keeps losing its startup race.
+
+One retry was not enough: on 2026-11-17 the race took both attempts of the same export in
+``test (macos-latest, 3.13)`` of run 44009392488, two ``ReferenceError`` lines in one
+traceback. Each attempt starts its own browser, so attempts are independent rolls, and three
+of them cost nothing when the export works first time -- which is every run but a rare one.
+"""
+
+_KALEIDO_SCOPE_RACE_PAUSE_S = 0.25
+"""Pause between those attempts.
+
+The retry that failed went straight back in with no pause. Whatever makes Chrome answer late
+-- a loaded CI runner is the obvious candidate -- is likelier to have passed after a moment
+than after nothing, and a quarter of a second is invisible beside a browser start.
+"""
+
 
 def _exc_chain(exc: BaseException) -> list[BaseException]:
     """``exc`` and everything it was raised from or during, outermost first, no repeats."""
@@ -270,8 +288,9 @@ def save_figure(
     Chrome or Chromium browser and never downloads one, so static export also
     needs a browser: ``plotly_get_chrome`` installs one, or install Chrome or
     Chromium with the system package manager. A static export that fails on kaleido's own
-    startup race (``kaleido_scopes is not defined``, seen with kaleido 1.5.1) is attempted once
-    more, because each export starts its own browser; nothing else is retried.
+    startup race (``kaleido_scopes is not defined``, seen with kaleido 1.5.1) is attempted up to
+    three times in all, a quarter of a second apart, because each export starts its own browser;
+    nothing else is retried, and the third race is raised with the other two on its chain.
 
     Parameters
     ----------
@@ -337,24 +356,36 @@ def save_figure(
         # An autosized screen figure has no width until a browser gives it one;
         # export it at its design width rather than plotly's 700 px default.
         kwargs.setdefault("width", meta["spx_width"])
-    try:
-        fig.write_image(str(out), scale=scale, **kwargs)
-    except RuntimeError as exc:
-        if _missing_chrome(exc):
-            raise RuntimeError(
-                f"writing {suffix} needs a Chrome or Chromium browser for kaleido to drive, and kaleido does "
-                "not download one: install it with the `plotly_get_chrome` command, or install Chrome or "
-                "Chromium with the system package manager. Saving to .html needs neither."
-            ) from exc
-        if not _kaleido_scope_race(exc):
-            raise
-        # One more attempt, for this one error, because the second attempt is a genuinely fresh
-        # roll: plotly exports through ``kaleido.write_fig_from_object_sync``, which is
-        # ``async with Kaleido()``, so every call starts its own browser and navigates its own
-        # tab rather than reusing the page that lost the race. Observed with kaleido 1.5.1 on
-        # macOS CI. Anything else, a second race included, is raised with the first on
-        # ``__context__``.
-        fig.write_image(str(out), scale=scale, **kwargs)
+    # Up to ``_KALEIDO_SCOPE_RACE_ATTEMPTS`` goes, for that one error and nothing else, because
+    # each attempt is a genuinely fresh roll: plotly exports through
+    # ``kaleido.write_fig_from_object_sync``, which is ``async with Kaleido()``, so every call
+    # starts its own browser and navigates its own tab rather than reusing the page that lost
+    # the race.
+    earlier: BaseException | None = None
+    for attempt in range(1, _KALEIDO_SCOPE_RACE_ATTEMPTS + 1):
+        try:
+            fig.write_image(str(out), scale=scale, **kwargs)
+            break
+        except RuntimeError as exc:
+            if _missing_chrome(exc):
+                raise RuntimeError(
+                    f"writing {suffix} needs a Chrome or Chromium browser for kaleido to drive, and kaleido does "
+                    "not download one: install it with the `plotly_get_chrome` command, or install Chrome or "
+                    "Chromium with the system package manager. Saving to .html needs neither."
+                ) from exc
+            # Decided before the chain below is touched: an earlier attempt's race must not be
+            # what makes a genuine failure look like one, since the match walks ``__context__``.
+            race = _kaleido_scope_race(exc)
+            if earlier is not None:
+                # Each attempt runs outside the previous attempt's ``except`` block, where
+                # Python chains nothing (measured: ``__context__`` is None in all three
+                # iterations of the equivalent loop), so the earlier failures are attached by
+                # hand rather than lost -- a report then shows every attempt, not just the last.
+                exc.__context__ = earlier
+            if not race or attempt == _KALEIDO_SCOPE_RACE_ATTEMPTS:
+                raise
+            earlier = exc
+            time.sleep(_KALEIDO_SCOPE_RACE_PAUSE_S)
     return out
 
 

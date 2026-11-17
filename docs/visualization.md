@@ -783,8 +783,9 @@ The file extension picks the writer, and the figure type picks the backend:
   missing. kaleido then needs a Chrome or Chromium browser to drive and never downloads one; with
   no browser the export raises `RuntimeError` naming `plotly_get_chrome`, which installs one.
   `scale=` sets the device pixel ratio and overrides `dpi`. An export that fails on kaleido's own
-  startup race (`kaleido_scopes is not defined`, seen with kaleido 1.5.1) is attempted once more,
-  because every export starts its own browser; no other failure is retried.
+  startup race (`kaleido_scopes is not defined`, seen with kaleido 1.5.1) is attempted up to
+  three times in all, a quarter of a second apart, because every export starts its own browser;
+  no other failure is retried, and a third race is raised with the other two on its chain.
 - **`FigureSpec`:** drawn with matplotlib when it is installed, else plotly; `.html` always uses
   plotly.
 
