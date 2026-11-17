@@ -193,6 +193,42 @@ def _precursor_marks(spectrum: Spectrum, style: FigureStyle, mode: theme.ThemeMo
     return marks
 
 
+_KALEIDO_SCOPE_RACE = "kaleido_scopes is not defined"
+"""Chrome's text for kaleido's startup race; see :func:`_kaleido_scope_race`."""
+
+
+def _exc_chain(exc: BaseException) -> list[BaseException]:
+    """``exc`` and everything it was raised from or during, outermost first, no repeats."""
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__context__
+    return chain
+
+
+def _kaleido_scope_race(exc: BaseException) -> bool:
+    """Whether ``exc`` is kaleido losing its own startup race, rather than a real failure.
+
+    kaleido 1.5.1 moved ``Page.enable`` ahead of ``Page.navigate`` in
+    ``kaleido._kaleido_tab._tab.navigate`` -- its only change from 1.5.0, made to stop an
+    occasional hang on startup. That function waits on two readiness signals,
+    ``Runtime.executionContextCreated`` and ``Page.loadEventFired``, and the reorder changes
+    which of them can arrive first; when one is satisfied before the navigated page has run
+    ``kaleido_scopes.js``, kaleido evaluates ``kaleido_scopes.plotly(...)`` in a context where
+    that name does not exist and Chrome answers ``ReferenceError: kaleido_scopes is not
+    defined``. Nothing on this side can influence that order: it all happens inside
+    ``fig.write_image()``.
+
+    The message is the check, not the type: kaleido raises ``kaleido.errors.JavascriptError``,
+    but plotly re-wraps kaleido's errors as a plain :class:`RuntimeError` on at least one path
+    (see :func:`_missing_chrome`), so the chain is walked and matched on the text Chrome sent.
+    """
+    return any(_KALEIDO_SCOPE_RACE in str(item) for item in _exc_chain(exc))
+
+
 def _missing_chrome(exc: BaseException) -> bool:
     """Whether ``exc`` is kaleido reporting that it found no browser to drive.
 
@@ -203,13 +239,7 @@ def _missing_chrome(exc: BaseException) -> bool:
     re-wrapping would put it at the head rather than inside the chain. ``raise ... from``
     sets ``__context__`` as well, so following that one attribute covers both forms.
     """
-    chain: list[BaseException] = []
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        chain.append(current)
-        current = current.__context__
+    chain = _exc_chain(exc)
     try:
         from kaleido.errors import ChromeNotFoundError
     except ImportError:
@@ -239,7 +269,9 @@ def save_figure(
     ``kaleido``: ``pip install 'spxtacular[plotly-export]'``. kaleido drives a
     Chrome or Chromium browser and never downloads one, so static export also
     needs a browser: ``plotly_get_chrome`` installs one, or install Chrome or
-    Chromium with the system package manager.
+    Chromium with the system package manager. A static export that fails on kaleido's own
+    startup race (``kaleido_scopes is not defined``, seen with kaleido 1.5.1) is attempted once
+    more, because each export starts its own browser; nothing else is retried.
 
     Parameters
     ----------
@@ -308,13 +340,21 @@ def save_figure(
     try:
         fig.write_image(str(out), scale=scale, **kwargs)
     except RuntimeError as exc:
-        if not _missing_chrome(exc):
+        if _missing_chrome(exc):
+            raise RuntimeError(
+                f"writing {suffix} needs a Chrome or Chromium browser for kaleido to drive, and kaleido does "
+                "not download one: install it with the `plotly_get_chrome` command, or install Chrome or "
+                "Chromium with the system package manager. Saving to .html needs neither."
+            ) from exc
+        if not _kaleido_scope_race(exc):
             raise
-        raise RuntimeError(
-            f"writing {suffix} needs a Chrome or Chromium browser for kaleido to drive, and kaleido does "
-            "not download one: install it with the `plotly_get_chrome` command, or install Chrome or "
-            "Chromium with the system package manager. Saving to .html needs neither."
-        ) from exc
+        # One more attempt, for this one error, because the second attempt is a genuinely fresh
+        # roll: plotly exports through ``kaleido.write_fig_from_object_sync``, which is
+        # ``async with Kaleido()``, so every call starts its own browser and navigates its own
+        # tab rather than reusing the page that lost the race. Observed with kaleido 1.5.1 on
+        # macOS CI. Anything else, a second race included, is raised with the first on
+        # ``__context__``.
+        fig.write_image(str(out), scale=scale, **kwargs)
     return out
 
 

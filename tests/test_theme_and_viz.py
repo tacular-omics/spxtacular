@@ -12,7 +12,9 @@ from __future__ import annotations
 import importlib.util
 import re
 import shutil
+from collections.abc import Callable
 from importlib.metadata import distribution, version
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -619,6 +621,37 @@ class TestPaletteOverride:
             theme.set_palette(categorical={"light": ["#000000"], "dark": ["#ffffff"]})
 
 
+def _raise_scope_race() -> None:
+    """Raise what kaleido's startup race produces: Chrome's text, in a bare ``RuntimeError``."""
+    raise RuntimeError(
+        "{'result': {'className': 'ReferenceError', 'description': "
+        "'ReferenceError: kaleido_scopes is not defined\\n    at <anonymous>:1:26'}}"
+    )
+
+
+class _RacyFigure:
+    """A plotly-like figure whose static export fails ``failures`` times, then writes the file.
+
+    ``write_image`` writes the file only once it stops raising, so a test that asserts the file
+    exists is asserting that a later attempt ran, not that the first one did.
+
+    ``raiser`` must **raise**, not build and return an exception: ``__context__`` is set at the
+    raise site from whatever is being handled there, so a fixture that returns a ready-made
+    error hands over an unchained one and quietly tests a shape production never produces.
+    """
+
+    def __init__(self, failures: int, raiser: Callable[[], None] | None = None) -> None:
+        self.failures = failures
+        self.calls = 0
+        self._raiser = raiser or _raise_scope_race
+
+    def write_image(self, path, *_args, **_kwargs) -> None:
+        self.calls += 1
+        if self.calls <= self.failures:
+            self._raiser()
+        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 1200)
+
+
 class TestSaveFigure:
     def test_html_round_trips(self, tmp_path) -> None:
         fig = plot_spectrum(_spectrum(4))
@@ -715,6 +748,77 @@ class TestSaveFigure:
             save_figure(Broken(), tmp_path / "fig.png")
         assert "plotly_get_chrome" not in str(caught.value)
         assert caught.value.__cause__ is None, "the original was re-raised, not wrapped"
+
+    def test_the_kaleido_startup_race_is_retried_once(self, tmp_path, monkeypatch) -> None:
+        """kaleido 1.5.1 can evaluate its own script before the page defines it; try again.
+
+        Every export starts its own browser, so the second attempt is a fresh navigate rather
+        than the same broken page. Only this one error is retried.
+        """
+        import importlib
+
+        fig = _RacyFigure(failures=1)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        out = save_figure(fig, tmp_path / "fig.png")
+        assert fig.calls == 2, "the export was not attempted a second time"
+        assert out.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_a_second_startup_race_is_not_retried_again(self, tmp_path, monkeypatch) -> None:
+        """One retry, not a loop: a second race is raised, with the first on ``__context__``."""
+        import importlib
+
+        fig = _RacyFigure(failures=2)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        with pytest.raises(RuntimeError, match="kaleido_scopes is not defined") as caught:
+            save_figure(fig, tmp_path / "fig.png")
+        assert fig.calls == 2, "the retry ran more than once"
+        assert isinstance(caught.value.__context__, RuntimeError), "the first failure was dropped"
+        assert not (tmp_path / "fig.png").exists()
+
+    def test_kaleidos_own_error_wrapped_the_way_plotly_wraps_is_recognised(self, tmp_path, monkeypatch) -> None:
+        """The real type, re-raised as a plain ``RuntimeError`` the way plotly does elsewhere.
+
+        The retry matches on Chrome's text through the whole exception chain rather than on the
+        class, because that wrapping leaves the original only on ``__context__``.
+        """
+        import importlib
+
+        errors = pytest.importorskip("kaleido.errors")
+
+        def wrapped() -> None:
+            try:
+                raise errors.JavascriptError(
+                    "{'result': {'description': 'ReferenceError: kaleido_scopes is not defined'}}"
+                )
+            except errors.JavascriptError:
+                raise RuntimeError("Kaleido failed to render the figure.")  # noqa: B904
+
+        with pytest.raises(RuntimeError) as shape:
+            wrapped()
+        assert isinstance(shape.value.__context__, errors.JavascriptError), (
+            "the fixture must leave kaleido's error on __context__, or it tests nothing"
+        )
+        assert "kaleido_scopes" not in str(shape.value), "the text must be reachable only through the chain"
+
+        fig = _RacyFigure(failures=1, raiser=wrapped)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        assert save_figure(fig, tmp_path / "fig.png").exists()
+        assert fig.calls == 2
+
+    def test_another_javascript_error_is_not_retried(self, tmp_path, monkeypatch) -> None:
+        """A JavaScript error that is not the startup race is a real failure; raise it at once."""
+        import importlib
+
+        errors = pytest.importorskip("kaleido.errors")
+
+        def other() -> None:
+            raise errors.JavascriptError("{'result': {'description': 'TypeError: fig is undefined'}}")
+
+        fig = _RacyFigure(failures=1, raiser=other)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        with pytest.raises(RuntimeError, match="fig is undefined"):
+            save_figure(fig, tmp_path / "fig.png")
+        assert fig.calls == 1, "a non-race JavaScript error was retried"
 
     def test_the_browser_error_is_where_the_wrap_looks_for_it(self) -> None:
         """Two facts the wrap rests on and neither package promises.

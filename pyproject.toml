@@ -28,7 +28,10 @@ dependencies = [
     "pandas>=2.1.2",
     "peptacular>=5,<6",
     "tacular>=2,<3",
-    "paftacular>=2.1,<3",
+    # 2.0.1 is the first release whose immonium parser accepts J, O and U, which the
+    # find_diagnostic_ions() default list needs (IJ, IO, IU); 2.0.0 raises PafParseError on
+    # all three, so that one release is the only one this floor skips.
+    "paftacular>=2.0.1,<3",
     # 5.15.0 is the lowest release the test suite passes on. Static image export needs
     # plotly>=6.1.1 as well, but only when it is asked for, so that requirement lives in the
     # `plotly-export` extra beside kaleido rather than here, where it would constrain every

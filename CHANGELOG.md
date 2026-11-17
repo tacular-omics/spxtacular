@@ -14,8 +14,8 @@ User-visible changes only; implementation details belong in commits and pull req
   (`r[HexNAc]`) are not in it, so pass them by name. The most intense peak within 20 ppm
   (or `tolerance=`/`tolerance_unit=`) is taken, and a missing ion has intensity 0.0 and
   observed m/z NaN. Names that share an m/z all report, and overlapping windows do not raise.
-  The minimum paftacular is now 2.1, the first release that resolves the `IJ`, `IO` and `IU`
-  immonium ions in the default list.
+  The minimum paftacular is now 2.0.1, the first release that resolves the `IJ`, `IO` and
+  `IU` immonium ions in the default list; 2.0.0 raises on all three.
 - `fragmentation_preset_name()` names the peptacular fragmentation preset for an activation
   method, so a reader's `activation_type` can choose the ion series: `cid`, `hcd`, `etd`,
   `ecd`, `ead`, `ethcd` and `uvpd` for the methods they are named after, `ethcd` for `ETciD`,
@@ -60,6 +60,17 @@ User-visible changes only; implementation details belong in commits and pull req
 - The spectrum JSON transport is schema version 3: its metadata gained a `calibration`
   object. Versions 1 and 2 still load and read back with no calibration record, and the
   packaged schema document is now `spxtacular/schemas/spectrum-v3.schema.json`.
+
+### Fixed
+
+- `save_figure()` attempts a plotly static export once more when kaleido loses its own startup
+  race. kaleido 1.5.1 moved `Page.enable` ahead of `Page.navigate` to stop an occasional hang,
+  and the new order lets kaleido evaluate `kaleido_scopes.plotly(...)` before the page it
+  navigated to has defined that name, so Chrome answers `ReferenceError: kaleido_scopes is not
+  defined` and the export fails for no reason of the figure's. Every export starts its own
+  browser, so the second attempt navigates a fresh page rather than the one that lost the race.
+  Only this error is retried, only once; anything else, a second race included, is raised with
+  the first failure on `__context__`.
 
 ## [0.9.5] (2026-11-11)
 
