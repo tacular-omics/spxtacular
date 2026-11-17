@@ -26,7 +26,7 @@ dependencies = [
     # first release that caps numpy<2, so this floor skips exactly one installable release
     # on purpose.
     "pandas>=2.1.2",
-    "peptacular>=5,<6",
+    "peptacular>=5.2,<6",
     "tacular>=2,<3",
     # 2.0.1 is the first release whose immonium parser accepts J, O and U, which the
     # find_diagnostic_ions() default list needs (IJ, IO, IU); 2.0.0 raises PafParseError on
@@ -94,11 +94,11 @@ numba = ["numba>=0.59"]
 # the window (its #62); every earlier release reported it one scan too wide, so adjacent DIA
 # windows shared an edge. `tests/test_dreader.py` asserts the narrow range.
 bruker = ["tdfpy>=5.1,<6"]
-mzml = ["mzmlpy>=0.10,<0.11"]
+mzml = ["mzmlpy>=0.11,<0.12"]
 # thermo additionally needs a .NET runtime on the machine (fisher-py wraps
 # Thermo's RawFileReader .NET assemblies via pythonnet).
 thermo = ["fisher-py>=2.0.2"]
-readers = ["tdfpy>=5.1,<6", "mzmlpy>=0.10,<0.11", "fisher-py>=2.0.2"]
+readers = ["tdfpy>=5.1,<6", "mzmlpy>=0.11,<0.12", "fisher-py>=2.0.2"]
 spectrl = ["spectrl>=3.0,<4"]
 # matchms 0.30.0 is the lowest release that passes the interop tests. Lowering the floor does
 # not free numpy or pandas, because 0.30.0 also requires numpy>=2.0.0 and pandas>=2.2.3. What
@@ -125,7 +125,7 @@ plotly-export = ["kaleido>=1.0", "plotly>=6.1.1"]
 all = [
     "numba>=0.59",
     "tdfpy>=5.1,<6",
-    "mzmlpy>=0.10,<0.11",
+    "mzmlpy>=0.11,<0.12",
     "fisher-py>=2.0.2",
     "spectrl>=3.0,<4",
     "matchms>=0.30",
@@ -165,7 +165,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "matchms>=0.30",
-    "mzmlpy>=0.10,<0.11",
+    "mzmlpy>=0.11,<0.12",
     "numba>=0.59",
     "pyascore>=1.0.1",
     "pytest>=9.0.2",
