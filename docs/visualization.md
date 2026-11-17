@@ -782,7 +782,9 @@ The file extension picks the writer, and the figure type picks the backend:
   `.webp` go through kaleido and raise `ImportError` naming `spxtacular[plotly-export]` if it is
   missing. kaleido then needs a Chrome or Chromium browser to drive and never downloads one; with
   no browser the export raises `RuntimeError` naming `plotly_get_chrome`, which installs one.
-  `scale=` sets the device pixel ratio and overrides `dpi`.
+  `scale=` sets the device pixel ratio and overrides `dpi`. An export that fails on kaleido's own
+  startup race (`kaleido_scopes is not defined`, seen with kaleido 1.5.1) is attempted once more,
+  because every export starts its own browser; no other failure is retried.
 - **`FigureSpec`:** drawn with matplotlib when it is installed, else plotly; `.html` always uses
   plotly.
 
