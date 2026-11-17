@@ -29,8 +29,8 @@ User-visible changes only; implementation details belong in commits and pull req
   own `activation_type`, so an ETD spectrum is scored on c and `z.` ions instead of the b/y
   default. The default is unchanged: a caller who passes no `ion_types` still gets b and y.
   `charges` is never taken from the preset, and the provenance records the series that was
-  used rather than `"auto"`. It raises when the spectrum has no activation method, when the
-  method has no preset, or when the installed peptacular has no `fragmentation_preset()`.
+  used rather than `"auto"`. It raises when the spectrum has no activation method, or when the
+  method has no preset.
 - `localize()` scores which placement of an ambiguous modification a spectrum supports, by
   Ascore (Beausoleil et al. 2006, doi:10.1038/nbt1240). Candidate placements come from the
   ProForma ambiguity alone, through peptacular's `localization_isomers`, so a `#label`
@@ -57,6 +57,16 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Changed
 
+- The minimum peptacular is 5.2, for the fragmentation presets `ion_types="auto"` and
+  `fragmentation_preset_name()` read, and the minimum mzmlpy is 0.11 (`[mzml]`, `[readers]`,
+  `[all]`), for `Spectrum.ion_mobility_array`. Both features were written against those
+  releases, and on the floors before them the first raised and the second did not exist.
+- `MzmlReader` takes the ion mobility array mzmlpy pairs with the peaks rather than choosing
+  one itself: the first in document order holding one value per point, where it used to take
+  the first in accession order whose length matched the m/z array. A spectrum whose arrays are
+  none of them per-point now warns and reads with `im = None`, where a single mismatched array
+  used to raise `SpxtacularError`; the peaks of such a spectrum are therefore still readable.
+  The warning text is mzmlpy's, and names the array it took or the lengths it rejected.
 - The spectrum JSON transport is schema version 3: its metadata gained a `calibration`
   object. Versions 1 and 2 still load and read back with no calibration record, and the
   packaged schema document is now `spxtacular/schemas/spectrum-v3.schema.json`.

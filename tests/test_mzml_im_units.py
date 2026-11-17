@@ -78,10 +78,41 @@ def test_array_unit_decides_im_type(tmp_path, original_im, accession, name, unit
     np.testing.assert_allclose(spec.im, original_im.im * scale)
 
 
-def test_multiple_im_arrays_use_first_matching_and_warn(tmp_path, original_im):
+def _im_block_bounds(text: str) -> tuple[int, int]:
+    """Where the ion-mobility ``binaryDataArray`` starts and ends in the fixture."""
+    start = text.rindex("<binaryDataArray arrayLength=", 0, text.index(ARRAY_TERM))
+    return start, text.index("</binaryDataArray>", start) + len("</binaryDataArray>")
+
+
+def test_the_array_is_the_one_mzmlpy_pairs_with_the_peaks(original_im):
+    """The combined-IM fixture: the values are mzmlpy's own choice, not a second selection.
+
+    The reader asks :attr:`mzmlpy.Spectrum.ion_mobility_array` which array goes with the peaks
+    and only reads the unit itself, so the array it reports must be that one element for
+    element. Scaling would show up here too: this fixture's unit is Vs/cm², which is ook0, so
+    the factor is 1.
+    """
+    import mzmlpy as mzp
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with mzp.Mzml(str(FIXTURE)) as handle:
+            theirs = handle.spectra[0].ion_mobility_array
+
+    assert theirs is not None
+    assert len(theirs) == len(original_im.mz)
+    np.testing.assert_array_equal(original_im.im, theirs.astype(np.float64))
+
+
+def test_multiple_im_arrays_take_the_first_in_document_order_and_warn(tmp_path, original_im):
+    """With two per-point arrays, mzmlpy returns the first in document order, and says so.
+
+    It was the first in *accession* order until the choice moved to mzmlpy, so this fixture,
+    whose second array is appended after the first, now reports the original 1/K0 array rather
+    than the drift-time one inserted below it.
+    """
     text = FIXTURE.read_text()
-    start = text.index("<binaryDataArray arrayLength=")
-    end = text.index("</binaryDataArray>", start) + len("</binaryDataArray>")
+    start, end = _im_block_bounds(text)
     block = text[start:end]
     second = block.replace(ARRAY_TERM, 'accession="MS:1002477" name="mean ion mobility drift time array"').replace(
         OOK0_UNIT, S_UNIT
@@ -94,11 +125,62 @@ def test_multiple_im_arrays_use_first_matching_and_warn(tmp_path, original_im):
         warnings.simplefilter("always")
         with MzmlReader(str(path)) as reader:
             spec = next(iter(reader.ms2))
-    assert any("multiple ion mobility arrays" in str(w.message) for w in caught)
-    # accessions are sorted, so MS:1002477 (drift time, seconds) comes first
-    assert spec.im_type == IMType.DRIFT_TIME_MS
+    assert any("ion mobility arrays" in str(w.message) for w in caught), [str(w.message) for w in caught]
+    assert spec.im_type == IMType.OOK0
     assert spec.im is not None
-    np.testing.assert_allclose(spec.im, original_im.im * 1000.0)
+    np.testing.assert_allclose(spec.im, original_im.im)
+
+
+def test_an_array_that_is_not_per_point_warns_and_leaves_im_unset(tmp_path):
+    """A length that cannot be paired with the peaks gives a warning and no ``im``.
+
+    It used to raise ``SpxtacularError``. mzmlpy makes the call now, and it declines to pair
+    the two rather than refusing the spectrum, so the peaks still read. The variant moves the
+    spectrum's ``defaultArrayLength`` instead of touching any array, because an array's own
+    ``arrayLength`` attribute does not change what mzmlpy decodes (measured: setting it to 7
+    still yields 113 values).
+    """
+    text = FIXTURE.read_text().replace('defaultArrayLength="113"', 'defaultArrayLength="112"', 1)
+    path = tmp_path / "mismatched.mzML"
+    path.write_text(text)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with MzmlReader(str(path)) as reader:
+            spec = next(iter(reader.ms2))
+    assert any("none of them is per-point" in str(w.message) for w in caught), [str(w.message) for w in caught]
+    assert spec.im is None
+    assert spec.im_type is None
+    assert len(spec.mz) == 113, "the peaks still read; only the pairing was declined"
+
+
+def test_scan_level_ion_mobility_only_has_no_array(tmp_path):
+    """A spectrum whose mobility is a scan-level value has no ``im`` array and no warning.
+
+    This is the timsTOF PASEF MS2 shape: the frame's 1/K0 sits on the scan, not on a
+    per-point array. Nothing to pair means nothing to warn about.
+    """
+    text = FIXTURE.read_text()
+    start, end = _im_block_bounds(text)
+    text = text[:start] + text[end:]
+    text = text.replace('<binaryDataArrayList count="3">', '<binaryDataArrayList count="2">', 1)
+    ook0 = (
+        '<cvParam cvRef="MS" accession="MS:1002815" name="inverse reduced ion mobility" value="0.88" '
+        + OOK0_UNIT
+        + "/>"
+    )
+    scan_start = '<cvParam cvRef="MS" accession="MS:1000016" name="scan start time"'
+    assert scan_start in text
+    text = text.replace(scan_start, ook0 + "\n" + scan_start, 1)
+    path = tmp_path / "scan_level.mzML"
+    path.write_text(text)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with MzmlReader(str(path)) as reader:
+            spec = next(iter(reader.ms2))
+    assert spec.im is None
+    assert spec.im_type is None
+    assert not [str(w.message) for w in caught if "ion mobility" in str(w.message)]
+    assert len(spec.mz) == 113
 
 
 @pytest.mark.parametrize(

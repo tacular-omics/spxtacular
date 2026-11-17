@@ -233,13 +233,7 @@ def _resolve_ion_types(spectrum: Spectrum, ion_types: Sequence[Any] | str, pt: A
             'ion_types="auto" needs an activation method with a fragmentation preset; this spectrum has '
             f"activation_type={shown!r}. Pass ion_types explicitly."
         )
-    preset = getattr(pt, "fragmentation_preset", None)
-    if preset is None:
-        raise SpxtacularError(
-            'ion_types="auto" needs a peptacular that has fragmentation_preset(); the installed peptacular '
-            f"({getattr(pt, '__version__', 'unknown')}) does not. Upgrade peptacular, or pass ion_types explicitly."
-        )
-    return tuple(preset(name)["ion_types"])
+    return tuple(pt.fragmentation_preset(name)["ion_types"])
 
 
 def localize(
@@ -273,8 +267,7 @@ def localize(
         from the peptacular fragmentation preset for the spectrum's own
         ``activation_type`` (:func:`~spxtacular.fragmentation_preset_name`), so an ETD
         spectrum is scored on c and z. ions; it raises when the spectrum has no activation
-        method, when the method has no preset, or when the installed peptacular has no
-        ``fragmentation_preset``. ``charges`` is never taken from the preset, and no
+        method, or when the method has no preset. ``charges`` is never taken from the preset, and no
         neutral losses are generated either way. The resolved series is what the
         provenance records.
     tolerance, tolerance_unit:

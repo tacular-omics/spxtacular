@@ -811,14 +811,35 @@ def _mzml_im_type(unit_accession: str | None) -> tuple[IMType, float]:
     return _MZML_IM_UNITS.get(unit_accession, (IMType.IM, 1.0))
 
 
-def _mzml_im_array(darr: Any, accession: object) -> tuple[np.ndarray, IMType]:
-    """Decode an ion-mobility binary array, typed and scaled by its declared unit."""
+def _mzml_im_array(darr: Any, accession: object, values: np.ndarray | None = None) -> tuple[np.ndarray, IMType]:
+    """An ion-mobility array, typed and scaled by the unit its ``binaryDataArray`` declares.
+
+    ``values`` is the already-decoded array when the caller has one, as it does when mzmlpy's
+    :attr:`mzmlpy.Spectrum.ion_mobility_array` decoded it to choose it; only the unit is read
+    off ``darr`` then, instead of decoding the same bytes again.
+    """
     param = darr.get_cv_param(str(accession))
     im_type, scale = _mzml_im_type(param.unit_accession if param is not None else None)
-    data = darr.data.astype(np.float64)
+    data = (darr.data if values is None else values).astype(np.float64)
     if scale != 1.0:
         data = data * scale
     return data, im_type
+
+
+def _mzml_im_binary_array(spec: MzmlSpectrum, values: np.ndarray) -> tuple[Any, object] | None:
+    """The ``binaryDataArray`` that :attr:`mzmlpy.Spectrum.ion_mobility_array` returned.
+
+    That property gives the values and not which of ``im_types`` they came from, and
+    ``im_types`` is a set, so the choice is repeated here over ``binary_arrays``, which is in
+    document order: the first ion-mobility array holding one value per point, exactly the rule
+    the property applies. Only the accession is needed, to read the unit off that array.
+    """
+    wanted = set(spec.im_types)
+    for barray in spec.binary_arrays:
+        accession = barray.binary_array_type
+        if accession in wanted and len(barray.data) == len(values):
+            return barray, accession
+    return None
 
 
 def _mzml_scan_number(spec: MzmlSpectrum) -> int | None:
@@ -924,37 +945,21 @@ class MzmlReader:
 
         im_array: np.ndarray | None = None
         im_type: IMType | None = None
-        im_types = sorted(spec.im_types)
-        if len(im_types) == 1:
-            darr = spec.get_binary_array(im_types[0])
-            if darr is None:
-                raise SpxtacularError(f"Spectrum {spec} has ion mobility array type {im_types[0]} but it is None")
-            im_array, im_type = _mzml_im_array(darr, im_types[0])
-            if len(im_array) != len(mz_array):
-                raise SpxtacularError(f"Spectrum {spec} has ion mobility array of different length than m/z array")
-        elif len(im_types) > 1:
-            for candidate_type in im_types:
-                darr = spec.get_binary_array(candidate_type)
-                if darr is None:
-                    raise SpxtacularError(
-                        f"Spectrum {spec}: ion mobility array {candidate_type} is listed but missing. "
-                        f"Array types: {im_types}"
-                    )
-                candidate, candidate_im_type = _mzml_im_array(darr, candidate_type)
-                if len(candidate) == len(mz_array):
-                    im_array = candidate
-                    im_type = candidate_im_type
-                    warnings.warn(
-                        f"Spectrum {spec} has multiple ion mobility arrays {im_types}; using {candidate_type}, "
-                        "the first whose length matches the m/z array",
-                        stacklevel=3,
-                    )
-                    break
-            if im_array is None:
-                warnings.warn(
-                    f"Spectrum {spec}: no ion mobility array length matches m/z array. Array types: {im_types}",
-                    stacklevel=3,
+        # Which array pairs with the peaks is mzmlpy's decision, not ours: its
+        # ``ion_mobility_array`` takes the first ion-mobility array in document order holding one
+        # value per point, warns when a spectrum has several, and warns and returns None when
+        # none of them is per-point, so a length that cannot be paired leaves ``im`` unset rather
+        # than raising. Reading the unit, and so the IMType, stays here.
+        values = spec.ion_mobility_array
+        if values is not None:
+            found = _mzml_im_binary_array(spec, values)
+            if found is None:
+                raise SpxtacularError(
+                    f"Spectrum {spec}: mzmlpy returned an ion mobility array of length {len(values)}, "
+                    f"but none of {sorted(spec.im_types)} has that length"
                 )
+            darr, accession = found
+            im_array, im_type = _mzml_im_array(darr, accession, values)
 
         match spec.spectrum_type:
             case "centroid":

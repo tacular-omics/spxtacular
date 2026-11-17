@@ -13,9 +13,6 @@ from spxtacular.enums import _ACTIVATION_PRESETS
 from spxtacular.errors import SpxtacularError
 from spxtacular.spectrl_bridge import _ACTIVATION_ACCESSIONS
 
-HAS_PRESETS = hasattr(pt, "fragmentation_preset")
-needs_presets = pytest.mark.skipif(not HAS_PRESETS, reason="peptacular has no fragmentation_preset()")
-
 AMBIGUOUS = "PEPT[Phospho#g1]IDES[#g1]K"
 
 
@@ -49,15 +46,10 @@ def test_every_member_is_decided() -> None:
     assert undecided == {ActivationType.NETD, ActivationType.PD}
 
 
-@needs_presets
 def test_every_preset_name_exists_in_peptacular() -> None:
-    """The cross-package drift guard: peptacular owns the preset names.
-
-    Read through ``getattr`` because the released peptacular has neither name, and the
-    package's own lint job type-checks against that release.
-    """
-    presets: dict[str, Any] = getattr(pt, "FRAGMENTATION_PRESETS", {})
-    assert presets, "peptacular has fragmentation_preset() but no FRAGMENTATION_PRESETS"
+    """The cross-package drift guard: peptacular owns the preset names."""
+    presets = pt.FRAGMENTATION_PRESETS
+    assert presets, "peptacular has no FRAGMENTATION_PRESETS"
     for member, name in _ACTIVATION_PRESETS.items():
         assert name in presets, f"{member!r} -> {name!r} is not a peptacular preset"
 
@@ -107,7 +99,6 @@ def test_default_ion_types_are_unchanged_by_the_feature() -> None:
     assert result.provenance.ion_types == ("b", "y")
 
 
-@needs_presets
 def test_auto_follows_the_activation_method() -> None:
     etd = _spectrum(("c", "z."), "ETD")
     auto = localize(etd, AMBIGUOUS, ion_types="auto", tolerance=0.05)
@@ -119,14 +110,12 @@ def test_auto_follows_the_activation_method() -> None:
     assert default.ascore == 0.0
 
 
-@needs_presets
 @pytest.mark.parametrize(("activation", "expected"), [("HCD", ("b", "y")), ("EAD", ("a", "b", "c", "x", "y", "z."))])
 def test_auto_series_per_method(activation: str, expected: tuple[str, ...]) -> None:
     spec = _spectrum(("b", "y"), activation)
     assert localize(spec, AMBIGUOUS, ion_types="auto", tolerance=0.05).provenance.ion_types == expected
 
 
-@needs_presets
 def test_auto_is_case_insensitive() -> None:
     spec = _spectrum(("b", "y"), "HCD")
     assert localize(spec, AMBIGUOUS, ion_types=" AUTO ", tolerance=0.05).provenance.ion_types == ("b", "y")
@@ -150,13 +139,3 @@ def test_a_string_that_is_not_auto_is_refused() -> None:
     spec = _spectrum(("b", "y"), "HCD")
     with pytest.raises(SpxtacularError, match='sequence of ion types or "auto"'):
         localize(spec, AMBIGUOUS, ion_types="by", tolerance=0.05)
-
-
-def test_auto_refuses_a_peptacular_without_presets(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The guard that keeps the released peptacular working, with its failure measured."""
-    monkeypatch.delattr(pt, "fragmentation_preset", raising=False)
-    spec = _spectrum(("b", "y"), "HCD")
-    with pytest.raises(SpxtacularError, match="fragmentation_preset"):
-        localize(spec, AMBIGUOUS, ion_types="auto", tolerance=0.05)
-    # and the explicit path still works on that peptacular
-    assert localize(spec, AMBIGUOUS, ion_types=("b", "y"), tolerance=0.05).provenance.ion_types == ("b", "y")
