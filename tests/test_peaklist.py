@@ -304,6 +304,63 @@ END IONS
     assert spec.rt == 120.0
 
 
+def test_mgf_unassigned_peak_charge_writes_no_token(tmp_path):
+    spec = MsnSpectrum(
+        mz=np.array([100.0, 200.0, 300.0, 400.0]),
+        intensity=np.array([10.0, 20.0, 30.0, 40.0]),
+        charge=np.array([1, 2, -1, -1], dtype=np.int32),
+        spectrum_type=SpectrumType.CENTROID,
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=500.0, intensity=1.0, charge=2)],
+    )
+    path = write_mgf([spec], tmp_path / "mixed.mgf")
+    lines = path.read_text().splitlines()
+    assert "CHARGE=2+" in lines
+    assert lines[lines.index("CHARGE=2+") + 1 :][:4] == ["100.0 10.0 1+", "200.0 20.0 2+", "300.0 30.0", "400.0 40.0"]
+    restored = next(iter(MgfReader(path)))
+    np.testing.assert_array_equal(restored.charge, np.array([1, 2, -1, -1], dtype=np.int32))
+
+
+@pytest.mark.parametrize("precursor_charge", [2, -2])
+def test_mgf_peak_charge_column_is_magnitude_in_both_polarities(tmp_path, precursor_charge):
+    spec = MsnSpectrum(
+        mz=np.array([100.0, 200.0]),
+        intensity=np.array([1.0, 2.0]),
+        charge=np.array([1, 2], dtype=np.int32),
+        spectrum_type=SpectrumType.CENTROID,
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=500.0, intensity=1.0, charge=precursor_charge)],
+    )
+    path = write_mgf([spec], tmp_path / "out.mgf")
+    text = path.read_text()
+    assert "100.0 1.0 1+" in text
+    assert "200.0 2.0 2+" in text
+    restored = next(iter(MgfReader(path)))
+    np.testing.assert_array_equal(restored.charge, np.array([1, 2], dtype=np.int32))
+
+
+def test_mgf_partly_charged_block_keeps_array(tmp_path):
+    path = write_text(
+        tmp_path / "partial.mgf",
+        """
+BEGIN IONS
+PEPMASS=400.0
+100.0 1.0 1+
+200.0 2.0
+300.0 3.0 2+
+END IONS
+BEGIN IONS
+PEPMASS=400.0
+100.0 1.0
+200.0 2.0
+END IONS
+""",
+    )
+    partial, bare = list(MgfReader(path))
+    np.testing.assert_array_equal(partial.charge, np.array([1, -1, 2], dtype=np.int32))
+    assert bare.charge is None
+
+
 def test_mgf_comma_and_charge_column_variants(tmp_path):
     path = write_text(
         tmp_path / "variants.mgf",
