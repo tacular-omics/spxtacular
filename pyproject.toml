@@ -145,6 +145,23 @@ dev = [
     "fisher-py>=2.0.2",
     "hypothesis>=6.100",
     "jsonschema>=4.25.1",
+    # CI and development only, deliberately NOT a cap in the `plotly-export` extra, which still
+    # allows 1.5.1 so users are not held back. kaleido 1.5.1 loses its own startup race on a
+    # quarter of static exports on GitHub's macos-26-arm64 runners, with `ReferenceError:
+    # kaleido_scopes is not defined`; 1.5.0 never did. Measured on the runners themselves, same
+    # job, same browser, same plotly 7.1.0, 1.5.1 taken first in the second run so the order of
+    # the two blocks could not be the effect:
+    #
+    #   image 20261102.0473.1, Chrome 156.0.8078.80:  1.5.1  4 of 24 exports failed, 1.5.0 0 of 24
+    #   image 20261112.0504.1, Chrome 157.0.8103.79:  1.5.1 10 of 40 exports failed, 1.5.0 0 of 40
+    #
+    # Pooled, every one of the 14 failures is 1.5.1 and none is 1.5.0, which lands by chance
+    # with probability 2.8e-05. The cause is visible in the diff: 1.5.1's only change from
+    # 1.5.0 is one hunk in `kaleido/_kaleido_tab/_tab.py` moving `Page.enable` ahead of
+    # `Page.navigate`, which reorders the readiness signals `navigate()` waits on, so kaleido
+    # can evaluate `kaleido_scopes.plotly(...)` before the page it navigated to has defined
+    # that name. Lift this cap when a kaleido release fixes that, not merely when one appears.
+    "kaleido>=1.0,<1.5.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "matchms>=0.30",
