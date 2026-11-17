@@ -45,9 +45,13 @@ jobs:
               raise SystemExit(0)
           print(f"RESULT {sys.argv[1]} PASSED")
           PY
-          for version in 1.5.0 1.5.1; do
-            echo "=== kaleido $version ==="
-            uv run --isolated --no-project --with "plotly==7.1.0" --with "kaleido==$version" \
-              python export_probe.py "$version" || echo "RESULT $version ERRORED (not the export's own failure)"
-            rm -f out.png
+          # Three goes each, because 1.5.1 is not reliably deterministic: one pass of 1.5.0
+          # would not tell a working version from a lucky roll.
+          for attempt in 1 2 3; do
+            for version in 1.5.0 1.5.1; do
+              echo "=== attempt $attempt, kaleido $version ==="
+              uv run --isolated --no-project --with "plotly==7.1.0" --with "kaleido==$version" \
+                python export_probe.py "$version" || echo "RESULT $version ERRORED (not the export's own failure)"
+              rm -f out.png
+            done
           done
