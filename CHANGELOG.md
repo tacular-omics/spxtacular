@@ -63,6 +63,15 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Fixed
 
+- `write_mgf()` no longer writes an unassigned peak charge (`-1`, what `deconvolute()` leaves on
+  peaks it could not assign) as a negative-mode token such as `1-`, which told any other MGF
+  reader that a fragment of a `CHARGE=2+` precursor was singly deprotonated. A peak with
+  charge `-1` now gets no charge token, and an assigned charge is always written as magnitude
+  plus `+` (`2+`), in both polarities: polarity rides on the precursor `CHARGE=`.
+  `MgfReader` reads an ion line with no token, in a block where other lines have one, as `-1`
+  and keeps the array, instead of discarding every peak charge in the block. A block where no
+  line has a token still has `charge = None`. A signed token is still read as written, so an
+  older file's `1-` reads as `-1`.
 - `save_figure()` attempts a plotly static export once more when kaleido loses its own startup
   race. kaleido 1.5.1 moved `Page.enable` ahead of `Page.navigate` to stop an occasional hang,
   and the new order lets kaleido evaluate `kaleido_scopes.plotly(...)` before the page it
