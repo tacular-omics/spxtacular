@@ -29,7 +29,7 @@ jobs:
         run: |
           echo "ImageOS=$ImageOS ImageVersion=$ImageVersion ARCH=$(uname -m)"
           "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version || echo "no Google Chrome at the usual path"
-      - name: Twenty exports with each kaleido, tallied
+      - name: Forty exports with each kaleido, tallied, reversed order
         run: |
           cat > export_probe.py <<'PY'
           import sys
@@ -52,9 +52,12 @@ jobs:
           if first:
               print(f"  first failure: {first}")
           PY
-          for version in 1.5.0 1.5.1; do
-            echo "=== kaleido $version, 20 exports ==="
+          # 1.5.1 first this time: the previous run took the versions in the other order, so a
+          # difference that is really the order of the blocks would show up as the two runs
+          # disagreeing rather than as a version effect.
+          for version in 1.5.1 1.5.0; do
+            echo "=== kaleido $version, 40 exports ==="
             uv run --isolated --no-project --with "plotly==7.1.0" --with "kaleido==$version" \
-              python export_probe.py "$version" 20 || echo "TALLY $version ERRORED"
+              python export_probe.py "$version" 40 || echo "TALLY $version ERRORED"
             rm -f out.png
           done
