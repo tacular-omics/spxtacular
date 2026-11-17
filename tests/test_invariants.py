@@ -116,7 +116,11 @@ def msn_spectra(draw, *, peak_charges: bool = False) -> MsnSpectrum:
         im = np.asarray(draw(st.lists(st.floats(0.5, 1.8), min_size=n, max_size=n)), dtype=np.float64)
     charge = None
     if peak_charges and draw(st.booleans()):
-        charge = np.asarray(draw(st.lists(st.sampled_from([-1, 1, 2, 3, 4]), min_size=n, max_size=n)), dtype=np.int32)
+        # -2 is outside the deconvolution model (a peak charge is a positive magnitude
+        # or -1, unassigned), but ``MgfReader`` yields one from a third-party
+        # negative-mode file's signed tokens, so the round trip has to carry it.
+        values = st.sampled_from([-2, -1, 1, 2, 3, 4])
+        charge = np.asarray(draw(st.lists(values, min_size=n, max_size=n)), dtype=np.int32)
     precs = draw(st.one_of(st.none(), st.lists(precursors(), min_size=1, max_size=3)))
     first_charge = precs[0].charge if precs else None
     # Polarity never contradicts the sign of a known precursor charge.
@@ -181,6 +185,22 @@ def _assert_peaks_and_precursor(original: MsnSpectrum, read: MsnSpectrum) -> int
 
 
 @given(st.lists(msn_spectra(peak_charges=True), min_size=1, max_size=3))
+# A spectrum whose peaks are all unassigned is the one case where the charge array does
+# not come back, and the draw that produces it is rare enough that the branch below was
+# never exercised. Pinned, so it has a failing direction: writing a token for -1 again
+# makes this example fail.
+@example(
+    [
+        MsnSpectrum(
+            mz=np.array([100.0, 200.0]),
+            intensity=np.array([1.0, 2.0]),
+            charge=np.array([-1, -1], dtype=np.int32),
+            spectrum_type=None,
+            ms_level=2,
+            precursors=[Precursor(precursor_mz=500.0, intensity=1.0, charge=2)],
+        )
+    ]
+)
 def test_mgf_round_trip_invariants(spectra: list[MsnSpectrum]) -> None:
     read = _round_trip(write_mgf, MgfReader, spectra)
     assert len(read) == len(spectra)

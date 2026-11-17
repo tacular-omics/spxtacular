@@ -71,7 +71,12 @@ User-visible changes only; implementation details belong in commits and pull req
   `MgfReader` reads an ion line with no token, in a block where other lines have one, as `-1`
   and keeps the array, instead of discarding every peak charge in the block. A block where no
   line has a token still has `charge = None`. A signed token is still read as written, so an
-  older file's `1-` reads as `-1`.
+  older file's `1-` reads as `-1`, and a negative-mode file's `2-` as `-2`. Only `-1` is
+  written without a token: a charge below `-1` is outside the model but arrives from such a
+  file, and is written back signed (`-2` as `2-`), so reading one and writing it out keeps its
+  peak charges. An ion line whose charge token is `0` reads as `-1` too, since `0` is a
+  decharged spectrum's neutral masses, which no peak-list writer accepts — the same remapping
+  `ThermoReader` applies to a vendor "charge unknown".
 - `save_figure()` attempts a plotly static export once more when kaleido loses its own startup
   race. kaleido 1.5.1 moved `Page.enable` ahead of `Page.navigate` to stop an occasional hang,
   and the new order lets kaleido evaluate `kaleido_scopes.plotly(...)` before the page it
