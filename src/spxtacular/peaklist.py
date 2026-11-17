@@ -185,6 +185,20 @@ def _parse_charge(text: str, *, path: Path, line_no: int) -> int:
     return -int(digits) if sign == "-" else int(digits)
 
 
+def _peak_charge(text: str, *, path: Path, line_no: int) -> int:
+    """Parse an ion line's charge token, reading ``0`` as unassigned.
+
+    A converter that has no charge for a peak writes ``0`` (or ``0+``) rather than
+    leaving the column out. Here 0 means a decharged spectrum's neutral masses, and
+    :func:`_check_writable` refuses to write one, so a 0 token would otherwise read
+    back as a spectrum this package cannot write out again. It is read as the
+    unassigned marker instead, the same remapping
+    :class:`~spxtacular.thermo.ThermoReader` applies to a vendor "charge unknown".
+    """
+    charge = _parse_charge(text, path=path, line_no=line_no)
+    return _UNASSIGNED_CHARGE if charge == 0 else charge
+
+
 def _first_charge(text: str, *, path: Path, line_no: int) -> int | None:
     """First charge of a possibly multi-charge value; ``None`` if there is none.
 
@@ -270,7 +284,7 @@ def _iter_mgf(lines: Iterable[str], path: Path, *, first_line: int = 1) -> Itera
         block.mz.append(_parse_float(parts[0], field_name="peak m/z", path=path, line_no=line_no))
         block.intensity.append(_parse_float(parts[1], field_name="peak intensity", path=path, line_no=line_no))
         # A third column is an optional per-peak charge (``100.0 25.0 1+``).
-        block.charge.append(_parse_charge(parts[2], path=path, line_no=line_no) if len(parts) > 2 else None)
+        block.charge.append(_peak_charge(parts[2], path=path, line_no=line_no) if len(parts) > 2 else None)
 
     if block is not None:
         raise SpxtacularError(f"{path}:{block.begin_line}: unterminated spectrum block (missing 'END IONS')")
@@ -325,9 +339,9 @@ def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
             )
         ]
 
-    # Per-peak charges are kept when any peak carries one; a peak without a token
-    # is unassigned (-1), the same marker ``deconvolute`` uses. A block where no
-    # peak has a token has no charge array.
+    # Per-peak charges are kept when any peak carries one; a peak without a token,
+    # and one whose token is 0, are unassigned (-1), the same marker ``deconvolute``
+    # uses. A block where no peak has a token has no charge array.
     charge_array: np.ndarray | None = None
     if block.mz and any(z is not None for z in block.charge):
         charge_array = np.asarray([_UNASSIGNED_CHARGE if z is None else z for z in block.charge], dtype=np.int32)
@@ -1207,10 +1221,17 @@ def write_mgf(
                 line = f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}"
                 if peak_charges is not None:
                     z = int(peak_charges[i])
-                    # The peak column carries magnitude only, whatever the polarity;
-                    # an unassigned peak (-1) gets no token.
+                    # An assigned charge is magnitude plus ``+``, whatever the polarity,
+                    # and the unassigned marker (-1) gets no token. A charge below -1 is
+                    # outside this package's model (peak charges are positive magnitudes;
+                    # see :class:`~spxtacular.ionization.IonizationModel`) but reaches here
+                    # from a third-party negative-mode file, whose signed tokens the reader
+                    # keeps, so it is written signed as it has always been: dropping it
+                    # would make reading such a file and writing it back lose the charges.
                     if z > 0:
                         line += f" {z}+"
+                    elif z < _UNASSIGNED_CHARGE:
+                        line += f" {abs(z)}-"
                 if texts is not None and texts[i] is not None:
                     line += f' "{texts[i]}"'
                 fh.write(line + "\n")

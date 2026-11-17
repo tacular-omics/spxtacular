@@ -361,6 +361,78 @@ END IONS
     assert bare.charge is None
 
 
+def test_mgf_negative_mode_peak_charges_survive_a_round_trip(tmp_path):
+    """A third-party negative-mode file read and written out keeps its peak charges.
+
+    Its signed tokens are read as written, so a charge below ``-1`` arrives even though
+    this package's own arrays hold positive magnitudes and ``-1``. Writing it must put
+    that charge back, or reading such a file and writing it again loses the whole array
+    (every token gone leaves the block with ``charge = None``).
+    """
+    path = write_text(
+        tmp_path / "negmode.mgf",
+        """
+BEGIN IONS
+TITLE=neg
+PEPMASS=500.0
+CHARGE=2-
+100.0 1.0 1-
+200.0 2.0 2-
+300.0 3.0 1-
+END IONS
+""",
+    )
+    read = next(iter(MgfReader(path)))
+    np.testing.assert_array_equal(read.charge, np.array([-1, -2, -1], dtype=np.int32))
+    assert read.polarity == "negative"
+
+    again = next(iter(MgfReader(write_mgf([read], tmp_path / "rewritten.mgf"))))
+    np.testing.assert_array_equal(again.charge, np.array([-1, -2, -1], dtype=np.int32))
+
+
+def test_mgf_charge_below_minus_one_is_written_signed(tmp_path):
+    """The tokens themselves: nothing for ``-1``, a signed token for ``-2``."""
+    spec = MsnSpectrum(
+        mz=np.array([100.0, 200.0, 300.0]),
+        intensity=np.array([1.0, 2.0, 3.0]),
+        charge=np.array([-1, -2, 3], dtype=np.int32),
+        spectrum_type=SpectrumType.CENTROID,
+        ms_level=2,
+        precursors=[Precursor(precursor_mz=500.0, intensity=1.0, charge=-2)],
+    )
+    path = write_mgf([spec], tmp_path / "signed.mgf")
+    ions = [line for line in path.read_text().splitlines() if line[:1].isdigit()]
+    assert ions == ["100.0 1.0", "200.0 2.0 2-", "300.0 3.0 3+"]
+
+
+def test_mgf_zero_peak_charge_token_reads_as_unassigned(tmp_path):
+    """A ``0`` token is unassigned, not a neutral mass, so the array can be written back.
+
+    ``write_mgf`` refuses any peak charge of 0 (0 is a decharged spectrum's neutral
+    masses), so reading a converter's ``0`` through would give a spectrum this package
+    cannot write out again.
+    """
+    path = write_text(
+        tmp_path / "zero.mgf",
+        """
+BEGIN IONS
+PEPMASS=400.0
+100.0 1.0 0+
+200.0 2.0
+300.0 3.0 2+
+400.0 4.0 0
+END IONS
+""",
+    )
+    spec = next(iter(MgfReader(path)))
+    np.testing.assert_array_equal(spec.charge, np.array([-1, -1, 2, -1], dtype=np.int32))
+    assert not spec.is_decharged
+
+    # Writable, and the one assigned charge is what comes back.
+    again = next(iter(MgfReader(write_mgf([spec], tmp_path / "zero-out.mgf"))))
+    np.testing.assert_array_equal(again.charge, np.array([-1, -1, 2, -1], dtype=np.int32))
+
+
 def test_mgf_comma_and_charge_column_variants(tmp_path):
     path = write_text(
         tmp_path / "variants.mgf",
