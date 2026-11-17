@@ -86,6 +86,16 @@ User-visible changes only; implementation details belong in commits and pull req
   Only this error is retried, only once; anything else, a second race included, is raised with
   the first failure on `__context__`.
 
+### Documentation
+
+- The mzML reader's field table documents every field the reader fills, including `im_type`,
+  `injection_time`, `total_ion_current` and MS2's `isolation_mz_range`, and the `im` row now
+  says which array the reader takes when a spectrum has several: the first in accession order
+  whose length matches the m/z array, with a warning naming it, and `None` when none matches.
+  The row said it took the first array, which the reader has never done.
+- The localization and recalibration guides are listed in the README, the documentation index
+  and `llms.txt`, so the two new guides are where a reader looks for them.
+
 ## [0.9.5] (2026-11-11)
 
 ### Documentation
