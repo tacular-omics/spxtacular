@@ -713,7 +713,7 @@ result.
 | Field | Source |
 |---|---|
 | `mz` / `intensity` | Ion lines inside `BEGIN IONS` … `END IONS` |
-| `charge` (array) | Optional third column on the ion lines — kept only when **every** peak has one |
+| `charge` (array) | Optional third column on the ion lines (`2+`). A peak with no token reads as `-1` (unassigned), so a block where some peaks have one keeps the array; a block where none do has `charge = None`. A signed token is read as written, so an older file's `1-` reads as `-1` |
 | `scan_number` | `SCANS` (a range such as `1024-1030` collapses to its first scan) |
 | `ms_level` | Always `2` |
 | `native_id` | `TITLE`, verbatim |
@@ -820,6 +820,7 @@ The reader cannot infer an MSP time unit.
 |---|---|
 | Profile data is refused | A `SpectrumType.PROFILE` spectrum raises `ValueError` — peak lists are centroid data. Call `.centroid()` first |
 | Polarity rides on the charge sign | Neither format has a polarity field. A negative-polarity spectrum is written with a negative charge (`CHARGE=2-`, `Z -2`) and reads back with `charge = -2` |
+| MGF peak charges | The peak column carries magnitude only, in both polarities: an assigned charge is written `2+` even under `CHARGE=2-`. A peak whose charge is `-1` (unassigned) is written with no token, and a peak with no token reads back as `-1`. Polarity rides on the precursor `CHARGE=` (and on MSP's `Ion_mode`) rather than on the peak column, because a signed peak column would make `1-` ambiguous with unassigned. A spectrum whose peaks are all unassigned writes no tokens and reads back with `charge = None` |
 | Missing metadata is omitted | A plain `Spectrum` writes just its peaks. MS2's `S` line has no optional fields, so an absent precursor m/z becomes `0.0` |
 | Missing scan number | An absent `scan_number` (a plain `Spectrum`, or mzML ids such as Bruker `frame=…` that carry no unique one) leaves MGF `SCANS` out, so a position never collides with a real scan number. MS2's `S` line needs one, so there it is the 1-based position in the input. The native id still goes out as MGF `TITLE` and as an MS2 `I NativeID` line |
 | MGF `TITLE` / MSP `Name` | `native_id`, falling back to `scan=<scan_number>` |

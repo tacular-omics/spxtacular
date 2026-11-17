@@ -165,6 +165,10 @@ def _scan_int(text: str, *, path: Path, line_no: int) -> int:
     raise SpxtacularError(f"{path}:{line_no}: could not parse SCANS from {text!r}")
 
 
+# Per-peak charge marker for "not assigned", which an MGF ion line writes as no token.
+_UNASSIGNED_CHARGE = -1
+
+
 def _parse_charge(text: str, *, path: Path, line_no: int) -> int:
     """Parse one charge token: ``2``, ``2+``, ``+2``, ``3-`` all work.
 
@@ -321,12 +325,12 @@ def _mgf_spectrum(block: _MgfBlock, *, path: Path) -> MsnSpectrum:
             )
         ]
 
-    # Per-peak charges are only kept when every peak carries one — a partly
-    # charged array cannot be represented, and the parallel-array contract
-    # forbids a shorter one.
+    # Per-peak charges are kept when any peak carries one; a peak without a token
+    # is unassigned (-1), the same marker ``deconvolute`` uses. A block where no
+    # peak has a token has no charge array.
     charge_array: np.ndarray | None = None
-    if block.mz and all(z is not None for z in block.charge):
-        charge_array = np.asarray(block.charge, dtype=np.int32)
+    if block.mz and any(z is not None for z in block.charge):
+        charge_array = np.asarray([_UNASSIGNED_CHARGE if z is None else z for z in block.charge], dtype=np.int32)
 
     return MsnSpectrum(
         mz=np.asarray(block.mz, dtype=np.float64),
@@ -1203,7 +1207,10 @@ def write_mgf(
                 line = f"{_fmt(spec.mz[i])} {_fmt(spec.intensity[i])}"
                 if peak_charges is not None:
                     z = int(peak_charges[i])
-                    line += f" {abs(z)}{'-' if z < 0 else '+'}"
+                    # The peak column carries magnitude only, whatever the polarity;
+                    # an unassigned peak (-1) gets no token.
+                    if z > 0:
+                        line += f" {z}+"
                 if texts is not None and texts[i] is not None:
                     line += f' "{texts[i]}"'
                 fh.write(line + "\n")
