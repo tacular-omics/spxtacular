@@ -786,6 +786,10 @@ The file extension picks the writer, and the figure type picks the backend:
   startup race (`kaleido_scopes is not defined`, seen with kaleido 1.5.1) is attempted up to
   three times in all, a quarter of a second apart, because every export starts its own browser;
   no other failure is retried, and a third race is raised with the other two on its chain.
+  kaleido 1.5.1 loses that race on about a quarter of exports on macOS, measured on GitHub's
+  arm64 runners against Chrome 156.0.8078.80 and 157.0.8103.79, where 1.5.0 lost none of 64;
+  install `kaleido==1.5.0` if the retries are not enough for you, which is what this project's
+  own test environment does.
 - **`FigureSpec`:** drawn with matplotlib when it is installed, else plotly; `.html` always uses
   plotly.
 
