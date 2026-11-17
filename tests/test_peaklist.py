@@ -14,12 +14,14 @@ from spxtacular import (
     MgfReader,
     Ms2Reader,
     MsnSpectrum,
+    MspReader,
     Precursor,
     Reader,
     Spectrum,
     SpectrumType,
     write_mgf,
     write_ms2,
+    write_msp,
 )
 from spxtacular.errors import SpxtacularError
 
@@ -709,6 +711,71 @@ def test_reader_interface_len_index_and_lookups(tmp_path):
             reader[-1]
         with pytest.raises(KeyError, match="native_id"):
             reader["missing"]
+
+
+_NATIVE_ID_FORMATS = [(write_mgf, MgfReader, ".mgf"), (write_ms2, Ms2Reader, ".ms2"), (write_msp, MspReader, ".msp")]
+
+
+def _same_spectrum(a: MsnSpectrum, b: MsnSpectrum) -> bool:
+    return a.native_id == b.native_id and np.array_equal(a.mz, b.mz) and np.array_equal(a.intensity, b.intensity)
+
+
+@pytest.mark.parametrize(("writer", "reader_cls", "suffix"), _NATIVE_ID_FORMATS)
+def test_getitem_native_id_matches_get_by_native_id(tmp_path, writer, reader_cls, suffix):
+    spectra = [
+        make_spectrum(scan=i, native_id=f"id{i}", mz=[100.0 + i, 200.0 + i], intensity=[10.0 + i, 20.0 + i])
+        for i in range(1, 6)
+    ]
+    reader = reader_cls(writer(spectra, tmp_path / f"out{suffix}"))
+    for spec in spectra:
+        expected = reader.get_by_native_id(spec.native_id)
+        assert _same_spectrum(reader[spec.native_id], expected)
+        assert _same_spectrum(reader.ms2[spec.native_id], expected)
+
+
+@pytest.mark.parametrize(("writer", "reader_cls", "suffix"), _NATIVE_ID_FORMATS)
+def test_getitem_native_id_does_not_reread_the_file(tmp_path, monkeypatch, writer, reader_cls, suffix):
+    spectra = [make_spectrum(scan=i, native_id=f"id{i}") for i in range(1, 4)]
+    reader = reader_cls(writer(spectra, tmp_path / f"out{suffix}"))
+    assert reader._index is None
+    assert reader["id1"].native_id == "id1"
+    assert reader._index is not None  # the first lookup built the index
+
+    def fail(*args, **kwargs):
+        raise AssertionError("the file was walked again")
+
+    monkeypatch.setattr(reader, "_walk_records", fail)
+    monkeypatch.setattr(reader, "_iter_spectra", fail)
+    assert reader["id3"].native_id == "id3"
+    assert reader.ms2["id2"].native_id == "id2"
+
+
+@pytest.mark.parametrize(("writer", "reader_cls", "suffix"), _NATIVE_ID_FORMATS)
+def test_getitem_native_id_returns_first_of_duplicates(tmp_path, writer, reader_cls, suffix):
+    spectra = [
+        make_spectrum(scan=1, native_id="other"),
+        make_spectrum(scan=2, native_id="dup", mz=[100.0, 200.0], intensity=[1.0, 2.0]),
+        make_spectrum(scan=3, native_id="dup", mz=[300.0, 400.0], intensity=[3.0, 4.0]),
+    ]
+    reader = reader_cls(writer(spectra, tmp_path / f"out{suffix}"))
+    for lookup in (reader, reader.ms2):
+        first = lookup["dup"]
+        assert first.mz.tolist() == [100.0, 200.0]
+        assert lookup["dup"].mz.tolist() == [100.0, 200.0]  # again, now from the cached index
+    with pytest.raises(SpxtacularError, match="more than one"):
+        reader.get_by_native_id("dup")
+    assert reader["other"].native_id == "other"
+    with pytest.raises(KeyError, match="native_id"):
+        reader["missing"]
+
+
+def test_getitem_native_id_after_the_file_changes(tmp_path):
+    path = write_mgf([make_spectrum(scan=1, native_id="a")], tmp_path / "out.mgf")
+    reader = MgfReader(path)
+    assert reader["a"].native_id == "a"
+    write_mgf([make_spectrum(scan=1, native_id="b"), make_spectrum(scan=2, native_id="a")], path)
+    assert reader["a"].scan_number == 2
+    assert reader["b"].scan_number == 1
 
 
 def test_ms2_reader_len_counts_scans(tmp_path):
