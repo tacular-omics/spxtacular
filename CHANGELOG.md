@@ -4,6 +4,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+## [0.10.0] (2026-11-16)
+
 ### Added
 
 - `find_diagnostic_ions()` reports which named mzPAF reference (`r[TMT126]`) and immonium

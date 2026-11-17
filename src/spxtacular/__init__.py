@@ -1,4 +1,4 @@
-__version__ = "0.9.5"
+__version__ = "0.10.0"
 
 from .calibration import CalibrationProvenance, recalibrate
 from .chromatogram import Chromatogram, extract_chromatogram, extract_xic
