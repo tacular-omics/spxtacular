@@ -1,0 +1,53 @@
+# TEMPORARY, for the branch `experiment/kaleido-dev-cap` only, and deleted before anything
+# here is folded into another branch. It answers one question that the ordinary test matrix
+# cannot: whether kaleido 1.5.1's static export fails on the macOS runner image released
+# 2026-11-12 (Google Chrome 156.0.8078.80) where 1.5.0 succeeds.
+#
+# The ordinary job cannot answer it because which image a job lands on is GitHub's choice, not
+# ours: two runs today landed on 20261112.0504 and failed with 1.5.1, and every run since has
+# landed on 20261102.0473, which was already green with 1.5.1. So this probe tries BOTH
+# versions on whatever machine it gets and prints the image and the browser version beside the
+# results, which makes one roll of the dice conclusive either way.
+name: kaleido probe (temporary)
+
+on:
+  push:
+    branches: [experiment/kaleido-dev-cap]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: kaleido 1.5.0 vs 1.5.1 on this runner
+    runs-on: macos-latest
+    steps:
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+      - name: What this machine is
+        run: |
+          echo "ImageOS=$ImageOS ImageVersion=$ImageVersion ARCH=$(uname -m)"
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version || echo "no Google Chrome at the usual path"
+      - name: Export a figure with each kaleido
+        run: |
+          cat > export_probe.py <<'PY'
+          import sys
+          import plotly.graph_objects as go
+          fig = go.Figure(go.Scatter(x=[1, 2, 3], y=[1, 4, 9]))
+          try:
+              fig.write_image("out.png")
+          except Exception as exc:  # noqa: BLE001 - the probe reports, it does not handle
+              text = str(exc)
+              race = "kaleido_scopes is not defined" in text
+              print(f"RESULT {sys.argv[1]} FAILED race={race}")
+              print(text[:400])
+              raise SystemExit(0)
+          print(f"RESULT {sys.argv[1]} PASSED")
+          PY
+          for version in 1.5.0 1.5.1; do
+            echo "=== kaleido $version ==="
+            uv run --isolated --no-project --with "plotly==7.1.0" --with "kaleido==$version" \
+              python export_probe.py "$version" || echo "RESULT $version ERRORED (not the export's own failure)"
+            rm -f out.png
+          done
