@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("mzmlpy")
 
 from spxtacular import IMType  # noqa: E402
+from spxtacular.errors import SpxtacularError  # noqa: E402
 from spxtacular.reader import MzmlReader  # noqa: E402
 
 FIXTURE = pathlib.Path(__file__).parent / "data" / "bruker_im_one_spectrum.mzML"
@@ -151,6 +152,45 @@ def test_an_array_that_is_not_per_point_warns_and_leaves_im_unset(tmp_path):
     assert spec.im is None
     assert spec.im_type is None
     assert len(spec.mz) == 113, "the peaks still read; only the pairing was declined"
+
+
+def test_the_identifier_declines_a_length_no_array_has():
+    """``_mzml_im_binary_array`` answers None rather than guessing.
+
+    Its rule is mzmlpy's: among the ion-mobility arrays, in document order, the one holding as
+    many values as the property returned. Handed a length none of them has, there is no such
+    array, and the reader turns that answer into the refusal below.
+    """
+    import mzmlpy as mzp
+
+    from spxtacular import reader as reader_module
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with mzp.Mzml(str(FIXTURE)) as handle:
+            spec = handle.spectra[0]
+            assert spec.im_types, "the fixture must have an ion mobility array for this to mean anything"
+            assert reader_module._mzml_im_binary_array(spec, np.zeros(3)) is None
+            found = reader_module._mzml_im_binary_array(spec, spec.ion_mobility_array)
+            assert found is not None, "and it finds the real one"
+
+
+def test_an_unidentifiable_array_is_refused(monkeypatch):
+    """If mzmlpy's array cannot be matched to one of ``im_types``, the reader says so.
+
+    The guard exists because the two facts it joins are mzmlpy's, not ours: the property
+    returns values without naming their array, and the rule for finding it again (document
+    order, one value per point) is repeated here. Should mzmlpy ever return an array this side
+    cannot identify, the unit would be unknown and the ``IMType`` a guess, so it refuses rather
+    than reporting an untyped array. Nothing in a real file reaches it, which is why it is
+    reached here by hand.
+    """
+    from spxtacular import reader as reader_module
+
+    monkeypatch.setattr(reader_module, "_mzml_im_binary_array", lambda _spec, _values: None)
+    with pytest.raises(SpxtacularError, match=r"none of .* has that length"):
+        with MzmlReader(str(FIXTURE)) as reader:
+            next(iter(reader.ms2))
 
 
 def test_scan_level_ion_mobility_only_has_no_array(tmp_path):

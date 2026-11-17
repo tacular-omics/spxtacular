@@ -811,16 +811,16 @@ def _mzml_im_type(unit_accession: str | None) -> tuple[IMType, float]:
     return _MZML_IM_UNITS.get(unit_accession, (IMType.IM, 1.0))
 
 
-def _mzml_im_array(darr: Any, accession: object, values: np.ndarray | None = None) -> tuple[np.ndarray, IMType]:
-    """An ion-mobility array, typed and scaled by the unit its ``binaryDataArray`` declares.
+def _mzml_im_array(darr: Any, accession: object, values: np.ndarray) -> tuple[np.ndarray, IMType]:
+    """``values``, typed and scaled by the unit its ``binaryDataArray`` declares.
 
-    ``values`` is the already-decoded array when the caller has one, as it does when mzmlpy's
-    :attr:`mzmlpy.Spectrum.ion_mobility_array` decoded it to choose it; only the unit is read
-    off ``darr`` then, instead of decoding the same bytes again.
+    The values come in already decoded, because mzmlpy's
+    :attr:`mzmlpy.Spectrum.ion_mobility_array` decoded them to choose them; only the unit is
+    read off ``darr``, instead of decoding the same bytes again.
     """
     param = darr.get_cv_param(str(accession))
     im_type, scale = _mzml_im_type(param.unit_accession if param is not None else None)
-    data = (darr.data if values is None else values).astype(np.float64)
+    data = values.astype(np.float64)
     if scale != 1.0:
         data = data * scale
     return data, im_type
