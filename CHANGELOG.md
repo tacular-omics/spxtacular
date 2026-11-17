@@ -82,9 +82,11 @@ User-visible changes only; implementation details belong in commits and pull req
   and the new order lets kaleido evaluate `kaleido_scopes.plotly(...)` before the page it
   navigated to has defined that name, so Chrome answers `ReferenceError: kaleido_scopes is not
   defined` and the export fails for no reason of the figure's. Every export starts its own
-  browser, so the second attempt navigates a fresh page rather than the one that lost the race.
-  Only this error is retried, only once; anything else, a second race included, is raised with
-  the first failure on `__context__`.
+  browser, so each later attempt navigates a fresh page rather than the one that lost the race.
+  Only this error is retried, and up to three attempts in all, a quarter of a second apart: one
+  retry was not enough, because the race took both attempts of the same export on macOS CI.
+  Anything else, a third race included, is raised, with every attempt that failed before it on
+  `__context__`.
 
 ### Documentation
 

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from spxtacular import theme
+from spxtacular import theme, visualization
 from spxtacular._layout import label_boxes, resolve_figure
 from spxtacular.core import Spectrum
 from spxtacular.plot_table import build_annot_plot_table, build_plot_table, plot_from_table, table_view
@@ -749,30 +749,49 @@ class TestSaveFigure:
         assert "plotly_get_chrome" not in str(caught.value)
         assert caught.value.__cause__ is None, "the original was re-raised, not wrapped"
 
-    def test_the_kaleido_startup_race_is_retried_once(self, tmp_path, monkeypatch) -> None:
+    def test_the_kaleido_startup_race_is_retried_until_it_passes(self, tmp_path, monkeypatch) -> None:
         """kaleido 1.5.1 can evaluate its own script before the page defines it; try again.
 
-        Every export starts its own browser, so the second attempt is a fresh navigate rather
-        than the same broken page. Only this one error is retried.
+        Every export starts its own browser, so each attempt is a fresh navigate rather than
+        the same broken page. Two races in a row is not hypothetical: that is what run
+        44009392488 did on macOS, which is why one retry was not enough. Only this one error is
+        retried, and the attempts are spaced.
         """
         import importlib
 
-        fig = _RacyFigure(failures=1)
-        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
-        out = save_figure(fig, tmp_path / "fig.png")
-        assert fig.calls == 2, "the export was not attempted a second time"
-        assert out.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-
-    def test_a_second_startup_race_is_not_retried_again(self, tmp_path, monkeypatch) -> None:
-        """One retry, not a loop: a second race is raised, with the first on ``__context__``."""
-        import importlib
-
+        slept: list[float] = []
         fig = _RacyFigure(failures=2)
         monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        monkeypatch.setattr(visualization.time, "sleep", slept.append)
+        out = save_figure(fig, tmp_path / "fig.png")
+        assert fig.calls == 3, "the export gave up before its third attempt"
+        assert slept == [visualization._KALEIDO_SCOPE_RACE_PAUSE_S] * 2, "the attempts were not spaced"
+        assert out.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_the_startup_race_runs_out_of_attempts(self, tmp_path, monkeypatch) -> None:
+        """Bounded, not a loop: the last race is raised, with the earlier ones on its chain.
+
+        Python chains nothing here by itself -- each attempt runs outside the previous
+        attempt's ``except`` block -- so the chain below is only there if ``save_figure``
+        attaches it, which is what keeps a report from naming one attempt out of three.
+        """
+        import importlib
+
+        fig = _RacyFigure(failures=visualization._KALEIDO_SCOPE_RACE_ATTEMPTS)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        monkeypatch.setattr(visualization.time, "sleep", lambda _seconds: None)
         with pytest.raises(RuntimeError, match="kaleido_scopes is not defined") as caught:
             save_figure(fig, tmp_path / "fig.png")
-        assert fig.calls == 2, "the retry ran more than once"
-        assert isinstance(caught.value.__context__, RuntimeError), "the first failure was dropped"
+        assert fig.calls == visualization._KALEIDO_SCOPE_RACE_ATTEMPTS, "the attempts were not bounded"
+        chain = []
+        item: BaseException | None = caught.value
+        while item is not None:
+            chain.append(item)
+            item = item.__context__
+        assert len(chain) == visualization._KALEIDO_SCOPE_RACE_ATTEMPTS, (
+            f"every attempt should be on the chain, got {len(chain)}"
+        )
+        assert all("kaleido_scopes is not defined" in str(item) for item in chain)
         assert not (tmp_path / "fig.png").exists()
 
     def test_kaleidos_own_error_wrapped_the_way_plotly_wraps_is_recognised(self, tmp_path, monkeypatch) -> None:
@@ -819,6 +838,34 @@ class TestSaveFigure:
         with pytest.raises(RuntimeError, match="fig is undefined"):
             save_figure(fig, tmp_path / "fig.png")
         assert fig.calls == 1, "a non-race JavaScript error was retried"
+
+    def test_a_real_failure_after_a_race_is_not_retried(self, tmp_path, monkeypatch) -> None:
+        """The second attempt's genuine error is raised at once, race on its chain or not.
+
+        The match walks ``__context__``, and ``save_figure`` attaches the earlier attempt
+        there, so the two together could make any later failure look like the race. The order
+        of those two steps is what stops it, and this is the test that notices if it changes.
+        """
+        import importlib
+
+        errors = pytest.importorskip("kaleido.errors")
+        seen = {"calls": 0}
+
+        def race_then_a_real_error() -> None:
+            seen["calls"] += 1
+            if seen["calls"] == 1:
+                _raise_scope_race()
+            raise errors.JavascriptError("{'result': {'description': 'TypeError: fig is undefined'}}")
+
+        fig = _RacyFigure(failures=visualization._KALEIDO_SCOPE_RACE_ATTEMPTS, raiser=race_then_a_real_error)
+        monkeypatch.setattr(importlib, "import_module", lambda _name: object())
+        monkeypatch.setattr(visualization.time, "sleep", lambda _seconds: None)
+        with pytest.raises(RuntimeError, match="fig is undefined") as caught:
+            save_figure(fig, tmp_path / "fig.png")
+        assert fig.calls == 2, "a real failure was retried because an earlier race was on its chain"
+        assert "kaleido_scopes is not defined" in str(caught.value.__context__), (
+            "the earlier race should still be reported, just not retried on"
+        )
 
     def test_the_browser_error_is_where_the_wrap_looks_for_it(self) -> None:
         """Two facts the wrap rests on and neither package promises.
