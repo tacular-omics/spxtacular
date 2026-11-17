@@ -187,7 +187,12 @@ def test_mgf_round_trip_invariants(spectra: list[MsnSpectrum]) -> None:
     for original, got in zip(spectra, read, strict=True):
         _assert_peaks_and_precursor(original, got)
         if original.charge is not None and len(original.mz):
-            np.testing.assert_array_equal(got.charge, original.charge)
+            if np.all(original.charge == -1):
+                # Unassigned peaks are written with no token, so a block of only
+                # those has nothing to read back.
+                assert got.charge is None
+            else:
+                np.testing.assert_array_equal(got.charge, original.charge)
         expected_title = original.native_id
         if expected_title is None and original.scan_number is not None:
             expected_title = f"scan={original.scan_number}"
