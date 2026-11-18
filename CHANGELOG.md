@@ -6,19 +6,17 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Fixed
 
-- An mzML ion-mobility value whose element declares no unit is now typed from its own
-  PSI-MS term, when the controlled vocabulary gives that term exactly one unit
-  (`relationship: has_units`, psi-ms.obo 4.2.17). The three inverse-reduced array terms
-  (`MS:1003006`, `MS:1003008`, `MS:1003155`) name volt-second per square centimetre alone,
-  so such an array now reads as `im_type="ook0"` instead of the generic `"im"`; the
-  precursor term `MS:1002476` names millisecond alone, so an undeclared precursor drift
-  time now reads as `"drift_time_ms"` instead of `"im"`. **Who sees a difference:** anyone
-  reading a file that carries one of those four terms without repeating its unit gets a
-  more specific `im_type` than before, and values are unchanged in every case (the unit the
-  CV names is the unit those types are already in, so no conversion is applied). The CV's
-  other six ion-mobility array terms each name both millisecond and second, or name those
-  while being defined as mobility values, so they cannot be typed from the term and are
-  unchanged.
+- An mzML ion-mobility array whose element declares no unit is now typed from its own
+  PSI-MS term, for the three terms whose CV definition states the unit of the values:
+  `MS:1003006`, `MS:1003008` and `MS:1003155`, each "reported in volt-second per square
+  centimeter" (psi-ms.obo 4.2.17). Such an array now reads as `im_type="ook0"` instead of
+  the generic `"im"`. **Who sees a difference:** anyone reading a file that carries one of
+  those three terms without repeating its unit gets a more specific `im_type` than before,
+  and no values move (that unit is the one `"ook0"` is already in, so nothing is
+  converted). Unchanged: the CV's other six ion-mobility array terms, which name both
+  millisecond and second or name those while being defined as mobility values, and a
+  precursor drift time (`MS:1002476`) with no declared unit, because that term's definition
+  states no unit and no source says what an absent unit means.
 
 ## [0.10.0] (2026-11-16)
 

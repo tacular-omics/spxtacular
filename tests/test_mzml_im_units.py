@@ -229,10 +229,14 @@ def test_scan_level_ion_mobility_only_has_no_array(tmp_path):
     [
         (MS_UNIT, IMType.DRIFT_TIME_MS, 12.5),
         (S_UNIT, IMType.DRIFT_TIME_MS, 12500.0),
-        # No unit on the element: the CV names exactly one for MS:1002476, millisecond
-        # (psi-ms.obo 4.2.17, `relationship: has_units UO:0000028`), so that is the unit.
-        # See tests/test_mzml_im_array_term_units.py, which reads that from the CV itself.
-        (None, IMType.DRIFT_TIME_MS, 12.5),
+        # No unit on the element stays generic. The CV does name millisecond alone for
+        # MS:1002476 (psi-ms.obo 4.2.17, `relationship: has_units UO:0000028`), but that
+        # term's definition states no unit, and no source says what an absent unit means:
+        # `has_units` is a bare Typedef with no def, mzML1.1.0.xsd calls unitAccession
+        # optional "if any", and the validator's ms-mapping.xml never mentions units. The
+        # array terms in tests/test_mzml_im_array_term_units.py differ: their definitions
+        # state the unit of the values.
+        (None, IMType.IM, 12.5),
     ],
 )
 def test_precursor_drift_time_unit(tmp_path, unit, expected, value):
