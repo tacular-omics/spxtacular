@@ -1,0 +1,139 @@
+! Trimmed excerpt of the PSI-MS controlled vocabulary, the outside source for
+! tests/test_mzml_im_array_term_units.py. Nothing here was written by spxtacular.
+!
+! Source: https://raw.githubusercontent.com/HUPO-PSI/psi-ms-CV/master/psi-ms.obo
+! data-version: 4.2.17
+! Downloaded: 2026-11-17
+!
+! Kept: "ion mobility array" (MS:1002893) and every term that is_a it, the two
+! precursor ion-mobility terms (MS:1002476, MS:1002815), and the unit term they
+! name (MS:1002814). The blocks below are byte-for-byte as published; refresh by
+! re-downloading the file above and re-extracting these ids.
+
+format-version: 1.2
+data-version: 4.2.17
+default-namespace: MS
+
+[Term]
+id: MS:1002476
+name: ion mobility drift time
+def: "Drift time of an ion or spectrum of ions as measured in an ion mobility mass spectrometer. This time might refer to the central value of a bin into which all ions within a narrow range of drift time have been aggregated." [PSI:MS]
+subset: core
+is_a: MS:1000455 ! ion selection attribute
+is_a: MS:1002892 ! ion mobility attribute
+is_a: MS:1003254 ! peak attribute
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1002477
+name: mean ion mobility drift time array
+def: "Array of population mean ion mobility values from a drift time device, reported in seconds (or milliseconds), corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1002814
+name: volt-second per square centimeter
+def: "An electrical mobility unit that equals the speed [cm/s] an ion reaches when pulled through a gas by a Voltage[V] over a certain distance [cm]." [PSI:PI]
+subset: core
+synonym: "Vs/cm^2" EXACT []
+is_a: UO:0000000 ! unit
+
+[Term]
+id: MS:1002815
+name: inverse reduced ion mobility
+def: "Ion mobility measurement for an ion or spectrum of ions as measured in an ion mobility mass spectrometer. This might refer to the central value of a bin into which all ions within a narrow range of mobilities have been aggregated." [PSI:MS]
+subset: core
+is_a: MS:1000455 ! ion selection attribute
+is_a: MS:1002892 ! ion mobility attribute
+is_a: MS:1003254 ! peak attribute
+relationship: has_units MS:1002814 ! volt-second per square centimeter
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1002816
+name: mean ion mobility array
+def: "Array of population mean ion mobility values (K or K0) based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1002893
+name: ion mobility array
+def: "Abstract array of ion mobility data values. A more specific child term concept should be specified in data files to make precise the nature of the data being provided." [PSI:PI]
+subset: core
+is_a: MS:1000513 ! binary data array
+
+[Term]
+id: MS:1003006
+name: mean inverse reduced ion mobility array
+def: "Array of population mean ion mobility values based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, normalized for the local conditions and reported in volt-second per square centimeter, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units MS:1002814 ! volt-second per square centimeter
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003007
+name: raw ion mobility array
+def: "Array of raw ion mobility values (K or K0) based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003008
+name: raw inverse reduced ion mobility array
+def: "Array of raw ion mobility values based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, normalized for the local conditions and reported in volt-second per square centimeter, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units MS:1002814 ! volt-second per square centimeter
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003153
+name: raw ion mobility drift time array
+def: "Array of raw ion mobility values from a drift time device, reported in seconds (or milliseconds), corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003154
+name: deconvoluted ion mobility array
+def: "Array of ion mobility values (K or K0) based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, as an average property of an analyte post peak-detection, weighted charge state reduction, and/or adduct aggregation, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003155
+name: deconvoluted inverse reduced ion mobility array
+def: "Array of ion mobility values based on ion separation in gaseous phase due to different ion mobilities under an electric field based on ion size, m/z and shape, normalized for the local conditions and reported in volt-second per square centimeter, as an average property of an analyte post peak-detection, weighted charge state reduction, and/or adduct aggregation, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units MS:1002814 ! volt-second per square centimeter
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term
+
+[Term]
+id: MS:1003156
+name: deconvoluted ion mobility drift time array
+def: "Array of mean ion mobility values from a drift time device, reported in seconds (or milliseconds), as an average property of an analyte post peak-detection, weighted charge state reduction, and/or adduct aggregation, corresponding to a spectrum of individual peaks encoded with an m/z array." [PSI:MS]
+subset: core
+is_a: MS:1002893 ! ion mobility array
+relationship: has_units UO:0000028 ! millisecond
+relationship: has_units UO:0000010 ! second
+relationship: has_value_type xsd:float ! The allowed value-type for this CV term

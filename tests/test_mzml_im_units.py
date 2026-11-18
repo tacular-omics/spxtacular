@@ -229,7 +229,10 @@ def test_scan_level_ion_mobility_only_has_no_array(tmp_path):
     [
         (MS_UNIT, IMType.DRIFT_TIME_MS, 12.5),
         (S_UNIT, IMType.DRIFT_TIME_MS, 12500.0),
-        (None, IMType.IM, 12.5),
+        # No unit on the element: the CV names exactly one for MS:1002476, millisecond
+        # (psi-ms.obo 4.2.17, `relationship: has_units UO:0000028`), so that is the unit.
+        # See tests/test_mzml_im_array_term_units.py, which reads that from the CV itself.
+        (None, IMType.DRIFT_TIME_MS, 12.5),
     ],
 )
 def test_precursor_drift_time_unit(tmp_path, unit, expected, value):
