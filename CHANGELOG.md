@@ -6,6 +6,10 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Documentation
 
+- Both authors' affiliation in `CITATION.cff` and `.zenodo.json` is now
+  "The Scripps Research Institute, La Jolla, CA 92037, USA", the string the JOSS paper
+  carries, so the next archived version's metadata matches the paper. Citation metadata only;
+  no code, API or behaviour change.
 - Document what the MGF peak charge column means, in `MgfReader`, in `write_mgf` and in the
   readers guide: the format defines the third value on an ion line only as "fragment charge,
   which is optional", so a peak without one is a peak for which no charge was given, and
