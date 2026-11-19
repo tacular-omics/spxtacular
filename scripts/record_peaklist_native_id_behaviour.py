@@ -20,11 +20,11 @@ import subprocess
 import sys
 import tempfile
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
-
-from peaklist_native_id_corpus import PROBE_KEYS, build_corpus
+# Run from anywhere: the package root holds the `tests` package the corpus lives in.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from spxtacular import MgfReader, Ms2Reader, MsnSpectrum, MspReader
+from tests.peaklist_native_id_corpus import PROBE_KEYS, build_corpus
 
 READERS = {"mgf": MgfReader, "ms2": Ms2Reader, "msp": MspReader}
 

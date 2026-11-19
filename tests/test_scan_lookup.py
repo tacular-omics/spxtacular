@@ -476,3 +476,40 @@ def test_dreader_prm_lookups() -> None:
             reader.get_by_native_id(f"{transition.scan_number}@w0")
         with pytest.raises(SpxtacularError, match="DDA runs only"):
             reader.get_by_sage_scannr(0)
+
+
+def test_getitem_native_id_checks_the_record_it_seeks_to(mgf_path: Path) -> None:
+    """reader[native_id] after a rewrite that keeps size and mtime: the stale offset is caught and re-indexed."""
+    reader = MgfReader(mgf_path)
+    assert reader["run.19.19.2"].mz.tolist() == [100.0]
+    stat = mgf_path.stat()
+    swapped = (
+        MGF.replace("run.19.19.2", "run.XX").replace("run.21.21.2", "run.19.19.2").replace("run.XX", "run.21.21.2")
+    )
+    write_text(mgf_path, swapped)
+    os.utime(mgf_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert mgf_path.stat().st_size == stat.st_size
+    assert reader["run.19.19.2"].mz.tolist() == [300.0]
+    assert reader.ms2["run.21.21.2"].mz.tolist() == [100.0]
+
+
+def test_getitem_native_id_skips_records_without_one(tmp_path: Path) -> None:
+    """A record with no TITLE has no native id: it is not indexed, and the ids around it still resolve."""
+    block = "BEGIN IONS\nPEPMASS=400.0\n50.0 5.0\nEND IONS\n"
+    path = write_text(tmp_path / "some.mgf", block + MGF + block)
+    reader = MgfReader(path)
+    assert [s.native_id for s in reader] == [None, "run.19.19.2", "run.20.20.3", "run.21.21.2", None]
+    assert reader["run.19.19.2"].mz.tolist() == [100.0]
+    assert reader.ms2["run.21.21.2"].mz.tolist() == [300.0]
+    with pytest.raises(KeyError, match="native_id"):
+        reader["missing"]
+    with pytest.raises(KeyError, match="native_id"):
+        reader["None"]  # the id-less records are not filed under a stringified None
+    # ...and the index itself must be checked, not only that KeyError. Since reader[key]
+    # falls back to a streaming search whenever the index cannot answer, filing the id-less
+    # records under "None" would still end in KeyError here: the stale entry fails the
+    # post-seek id check, the retry re-indexes, and the fallback then finds nothing. Measured:
+    # with that mutation the two public assertions above still pass, so only this one fails.
+    reader._id_index()
+    assert "None" not in reader._first_ids
+    assert sorted(reader._first_ids) == ["run.19.19.2", "run.20.20.3", "run.21.21.2"]
