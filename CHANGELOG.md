@@ -4,6 +4,13 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Documentation
+
+- Both authors' affiliation in `CITATION.cff` and `.zenodo.json` is now
+  "The Scripps Research Institute, La Jolla, CA 92037, USA", the string the JOSS paper
+  carries, so the next archived version's metadata matches the paper. Citation metadata only;
+  no code, API or behaviour change.
+
 ### Fixed
 
 - An mzML ion-mobility array whose element declares no unit is now typed from its own

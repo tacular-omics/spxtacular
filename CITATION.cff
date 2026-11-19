@@ -24,12 +24,12 @@ authors:
   - given-names: Patrick T.
     family-names: Garrett
     orcid: https://orcid.org/0000-0002-8434-9693
-    affiliation: Scripps Research Institute
+    affiliation: 'The Scripps Research Institute, La Jolla, CA 92037, USA'
   - given-names: John R.
     family-names: Yates
     name-suffix: III
     orcid: https://orcid.org/0000-0001-5267-1672
-    affiliation: Scripps Research Institute
+    affiliation: 'The Scripps Research Institute, La Jolla, CA 92037, USA'
 repository-code: "https://github.com/tacular-omics/spxtacular"
 url: "https://tacular-omics.github.io/spxtacular/"
 license: MIT
