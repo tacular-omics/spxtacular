@@ -713,7 +713,7 @@ result.
 | Field | Source |
 |---|---|
 | `mz` / `intensity` | Ion lines inside `BEGIN IONS` … `END IONS` |
-| `charge` (array) | Optional third column on the ion lines (`2+`). A peak with no token, and a peak whose token is `0`, read as `-1` (unassigned), so a block where some peaks have one keeps the array; a block where none do has `charge = None`. A signed token is otherwise read as written, so an older file's `1-` reads as `-1` and a negative-mode file's `2-` reads as `-2` |
+| `charge` (array) | Optional third column on the ion lines (`2+`). A peak with no token, and a peak whose token is `0`, read as `-1` (no charge given), so a block where some peaks have one keeps the array; a block where none do has `charge = None`. Every other token is read as written, sign included, so a `1-` reads as `-1` and a `2-` as `-2`. See [The MGF peak charge column](#the-mgf-peak-charge-column) before trusting this array from a third-party file |
 | `scan_number` | `SCANS` (a range such as `1024-1030` collapses to its first scan) |
 | `ms_level` | Always `2` |
 | `native_id` | `TITLE`, verbatim |
@@ -721,6 +721,46 @@ result.
 | `polarity` | Implied by the sign of `CHARGE` (`2+` → positive, `2-` → negative) |
 | `precursors` | One `Precursor` from `PEPMASS` (m/z, optional intensity) and `CHARGE` |
 | `spectrum_type` | Always `CENTROID` |
+
+### The MGF peak charge column
+
+Of the third value on an ion line, [Matrix Science's *Data file format*](https://www.matrixscience.com/help/data_file_help.html)
+says only this, in rule 7 of The Rules:
+
+```text
+The third value is fragment charge, which is optional.
+```
+
+That is the whole of the specification for this column. Two things follow, and both matter
+when the file came from somewhere else.
+
+**A missing value means no charge was given.** The column is optional, so a peak without one
+says nothing about its charge. spxtacular stores that absence as `-1` in the `charge` array,
+which is the same value `ThermoReader` uses for a vendor "charge unknown".
+
+**A `1-` token reads as `-1` too, and nothing can separate the two.** `-1` is what the signed
+token says taken at face value, and it is also the array's "no charge given", so once the file
+is read the two are the same number. The format does not help: it never says whether this
+column may carry a sign. There is also a specific reason such tokens are common — **spxtacular
+0.5.0 through 0.9.5 wrote "no charge given" as `1-`**. Writing was fixed in 0.10.0, which now
+leaves the column out, but files produced by those versions still carry the ambiguous token.
+
+So: a `-1` in a `charge` array read from an MGF means "no charge was given, or the file said
+`1-`". If you need the distinction, it has to come from outside the file — how it was produced.
+Treating `-1` as unassigned (`charge > 0` to select assigned peaks) is safe either way, which
+is what every transform here does.
+
+What the writer puts in that column, for a charge array that came from anywhere:
+
+| `charge` value | Written |
+|---|---|
+| `-1` (no charge given) | no third value, as the format's "optional" intends |
+| a positive magnitude | `z+`, e.g. `2+` |
+| below `-1` (not produced by this package, but accepted) | `{abs(z)}-`, e.g. `2-`, so a hand-set value is not silently dropped |
+| `0` (a decharged spectrum's neutral mass) | refused: `write_mgf` raises `SpxtacularError` |
+
+Separating "no charge given" from a charge of `-1` would change what `Spectrum.charge` means
+for every reader and transform, so it is not done here.
 
 ### Metadata populated from MS2
 

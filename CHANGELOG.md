@@ -4,6 +4,16 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Documentation
+
+- Document what the MGF peak charge column means, in `MgfReader`, in `write_mgf` and in the
+  readers guide: the format defines the third value on an ion line only as "fragment charge,
+  which is optional", so a peak without one is a peak for which no charge was given, and
+  spxtacular stores that as `-1`. A `1-` token therefore also reads as `-1` and the two cannot
+  be told apart once read, which matters because spxtacular 0.5.0 through 0.9.5 wrote "no
+  charge given" as `1-` (0.10.0 writes no token). Selecting assigned peaks with `charge > 0`
+  is unaffected. No behaviour change.
+
 ### Fixed
 
 - An mzML ion-mobility array whose element declares no unit is now typed from its own
