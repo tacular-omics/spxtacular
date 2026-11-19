@@ -24,7 +24,7 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from spxtacular import MgfReader, Ms2Reader, MsnSpectrum, MspReader
-from tests.peaklist_native_id_corpus import PROBE_KEYS, build_corpus
+from tests.peaklist_native_id_corpus import PROBE_KEYS, build_corpus, mask_path
 
 READERS = {"mgf": MgfReader, "ms2": Ms2Reader, "msp": MspReader}
 
@@ -42,7 +42,7 @@ def digest(spec: MsnSpectrum) -> str:
     return hashlib.sha256(json.dumps(spec.to_dict(), sort_keys=True, default=repr).encode()).hexdigest()[:16]
 
 
-def outcome(case: str, path: pathlib.Path, key: object, root: pathlib.Path) -> dict:
+def outcome(case: str, path: pathlib.Path, key: object) -> dict:
     """What ``reader[key]`` does: which spectrum came back, or the exception it raised.
 
     A returned spectrum is recorded as the few fields a reader of the fixture can check by
@@ -53,7 +53,7 @@ def outcome(case: str, path: pathlib.Path, key: object, root: pathlib.Path) -> d
         spec = reader_for(case, path)[key]  # type: ignore[index]
     except Exception as exc:
         # Paths differ per run, so the message is recorded with the corpus dir masked.
-        return {"error": type(exc).__name__, "message": str(exc).replace(str(root), "<corpus>")}
+        return {"error": type(exc).__name__, "message": mask_path(str(exc), path)}
     return {
         "spectrum": {
             "native_id": spec.native_id,
@@ -73,7 +73,7 @@ def main() -> int:
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False, cwd=pathlib.Path(__file__).parent
     ).stdout.strip()
     records = {
-        case: {repr(key): outcome(case, path, key, root) for key in PROBE_KEYS} for case, path in sorted(files.items())
+        case: {repr(key): outcome(case, path, key) for key in PROBE_KEYS} for case, path in sorted(files.items())
     }
     payload = {
         "recorded_from_commit": rev,

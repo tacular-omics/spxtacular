@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import gzip
 import pathlib
+import re
 
 # Three MGF records with distinct peaks, so a wrong record is obvious in the comparison.
 MGF = (
@@ -52,6 +53,23 @@ DAMAGED_TAIL = {
     "ms2": "S\t14\t14\tabc\nZ\t2\t1399.0\n400.0 40.0\n",
     "msp": "Name: fourth\nNum Peaks: 2\n400.0 40.0\n\n",  # declares 2 peaks, has 1
 }
+
+
+def mask_path(message: str, path: pathlib.Path) -> str:
+    """``message`` with any spelling of ``path`` replaced by ``<file>``.
+
+    Error messages name the file, and the corpus lives in a temporary directory, so the
+    message cannot be compared as it stands. Masking only ``str(path)`` is not enough: the
+    separator survives it (``<corpus>/x.mgf`` on POSIX, ``<corpus>\\x.mgf`` on Windows) and a
+    path can reach the message in another spelling than the one used to build it. So every
+    run of non-space characters ending in the file's name goes, separator and all. Measured:
+    without this, the equivalence test failed on windows-latest with the full
+    ``C:\\Users\\runneradmin\\...`` path in the message while the recording held
+    ``<corpus>/...``.
+
+    Both the recorder and the test import this, so the two cannot drift apart.
+    """
+    return re.sub(r"[^\s'\"]*" + re.escape(path.name), "<file>", message)
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:

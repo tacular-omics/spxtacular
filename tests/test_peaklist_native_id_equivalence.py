@@ -30,7 +30,7 @@ import pathlib
 import pytest
 
 from spxtacular import MgfReader, Ms2Reader, MsnSpectrum, MspReader
-from tests.peaklist_native_id_corpus import PROBE_KEYS, build_corpus
+from tests.peaklist_native_id_corpus import PROBE_KEYS, build_corpus, mask_path
 
 BEHAVIOUR = pathlib.Path(__file__).parent / "data" / "peaklist_native_id_behaviour.json"
 RECORDED_FROM = "ffeee283eeaa29ac1eeb0df746628b44357c58af"
@@ -50,12 +50,12 @@ def _digest(spec: MsnSpectrum) -> str:
     return hashlib.sha256(json.dumps(spec.to_dict(), sort_keys=True, default=repr).encode()).hexdigest()[:16]
 
 
-def _outcome(case: str, path: pathlib.Path, key: object, root: pathlib.Path) -> dict:
+def _outcome(case: str, path: pathlib.Path, key: object) -> dict:
     """What this tree does, in the recorder's shape so the two can be compared directly."""
     try:
         spec = _reader(case, path)[key]  # type: ignore[index]
     except Exception as exc:  # noqa: BLE001 - the recorded expectation may be an exception
-        return {"error": type(exc).__name__, "message": str(exc).replace(str(root), "<corpus>")}
+        return {"error": type(exc).__name__, "message": mask_path(str(exc), path)}
     return {
         "spectrum": {
             "native_id": spec.native_id,
@@ -102,7 +102,7 @@ def test_every_lookup_matches_what_main_returned(recorded, corpus):
     for case, path in sorted(files.items()):
         for key in PROBE_KEYS:
             want = recorded["results"][case][repr(key)]
-            got = _outcome(case, path, key, root)
+            got = _outcome(case, path, key)
             if got == want:
                 identical += 1
                 continue
@@ -136,7 +136,7 @@ def test_the_classes_the_index_cannot_answer(recorded, corpus, case):
     recoverable = [k for k in PROBE_KEYS if "spectrum" in recorded["results"][case][repr(k)]]
     assert recoverable, f"{case} records no successful lookup, so this case proves nothing"
     for key in recoverable:
-        assert _outcome(case, files[case], key, root) == recorded["results"][case][repr(key)]
+        assert _outcome(case, files[case], key) == recorded["results"][case][repr(key)]
 
 
 def test_reader_none_still_finds_an_id_less_record(recorded, corpus):
@@ -149,4 +149,4 @@ def test_reader_none_still_finds_an_id_less_record(recorded, corpus):
     for case in ("no_id_block_first.mgf", "no_id_block_first.msp"):
         want = recorded["results"][case]["None"]
         assert "spectrum" in want, f"{case} should have an id-less record for None to find"
-        assert _outcome(case, files[case], None, root) == want
+        assert _outcome(case, files[case], None) == want
