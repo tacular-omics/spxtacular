@@ -194,6 +194,15 @@ def _peak_charge(text: str, *, path: Path, line_no: int) -> int:
     back as a spectrum this package cannot write out again. It is read as the
     unassigned marker instead, the same remapping
     :class:`~spxtacular.thermo.ThermoReader` applies to a vendor "charge unknown".
+
+    Every other token is read as written, sign included, which the format neither
+    requires nor forbids: rule 7 of Matrix Science's *Data file format* says only
+    "The third value is fragment charge, which is optional"
+    (https://www.matrixscience.com/help/data_file_help.html), and says nothing about a
+    sign on that column. A ``1-`` token therefore arrives as ``-1``, the same value
+    this package uses for "no charge given", and nothing in the file can separate the
+    two - see :class:`MgfReader` for why files written by 0.5.0 to 0.9.5 make that
+    collision common.
     """
     charge = _parse_charge(text, path=path, line_no=line_no)
     return _UNASSIGNED_CHARGE if charge == 0 else charge
@@ -1005,6 +1014,28 @@ class MgfReader(_PeakListReader):
     ``PEPMASS``, ``CHARGE``, ``TITLE``, ``SCANS``, ``RTINSECONDS`` and the
     non-standard ``RTINMINUTES`` are mapped onto ``MsnSpectrum`` fields; see the
     Readers documentation for the table.
+
+    The peak charge column
+    ----------------------
+    Of the third value on an ion line, Matrix Science says only: "The third value is
+    fragment charge, which is optional." (*Data file format*, The Rules, rule 7,
+    https://www.matrixscience.com/help/data_file_help.html). So a peak with no third
+    value is a peak for which **no charge was given**, and this package stores that
+    absence as ``-1`` in the ``charge`` array.
+
+    Two consequences worth knowing before trusting a ``charge`` array from someone
+    else's file:
+
+    - A ``1-`` token also reads as ``-1``. That is what the signed token says taken at
+      face value, and it is indistinguishable from "no charge given" once it is in the
+      array, because this package uses the same ``-1`` for both. The format offers
+      nothing to tell them apart: it never says whether this column may carry a sign.
+    - spxtacular 0.5.0 through 0.9.5 *wrote* "no charge given" as ``1-``, so files from
+      those versions are full of the ambiguous token. 0.10.0 fixed the writer, which now
+      leaves the column out, as the format's "optional" intends.
+
+    Separating "no charge given" from a charge of ``-1`` would change what
+    :attr:`~spxtacular.core.Spectrum.charge` means, so it is not done here.
     """
 
     def _parse_records(self, lines: Iterable[str], *, first_line: int = 1) -> Iterator[tuple[int, MsnSpectrum]]:
@@ -1181,6 +1212,22 @@ def write_mgf(
     -----
     ``mz`` and ``intensity`` are written at repr precision, so reading the file
     back reproduces them exactly. :class:`MgfReader` skips peak annotations.
+
+    The peak charge column follows Matrix Science's "The third value is fragment
+    charge, which is optional" (*Data file format*, The Rules, rule 7,
+    https://www.matrixscience.com/help/data_file_help.html):
+
+    - a charge of ``-1``, this package's "no charge given", writes **no third value**,
+      which is how the format says nothing about a peak's charge;
+    - a positive charge writes ``z+``;
+    - a charge below ``-1`` writes ``{abs(z)}-``, so a value set by hand is not
+      silently dropped;
+    - a charge of ``0`` cannot be written at all: ``0`` means a decharged spectrum's
+      neutral mass, and such a spectrum is refused with a ``SpxtacularError``.
+
+    spxtacular 0.5.0 through 0.9.5 wrote ``1-`` for "no charge given", which a reader
+    cannot distinguish from a singly charged negative fragment. 0.10.0 changed that to
+    no token. Files written by the older versions keep the ambiguous token.
     """
     out = Path(path)
     feed = _AnnotationFeed(annotations, "MGF")
