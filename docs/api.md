@@ -1033,7 +1033,7 @@ MspReader(path: str | Path)
 |---|---|---|
 | `iter(reader)` | `Iterator[MsnSpectrum]` | Every spectrum, in file order |
 | `len(reader)` | `int` | Spectra in the file — one counting pass, then cached |
-| `reader[key]` | `MsnSpectrum` | Spectrum by 0-based position (`reader[0]`) or `native_id` (`reader["scan=19"]`); a `native_id` is indexed (first match wins), a position is O(n) |
+| `reader[key]` | `MsnSpectrum` | Spectrum by 0-based position (`reader[0]`) or `native_id` (`reader["scan=19"]`); a `native_id` is indexed (first match wins), falling back to a streaming search when the index cannot answer, a position is O(n) |
 | `.get_by_scan(n, *, ms_level=None)` / `.get_by_native_id(id)` / `.get_by_sage_scannr(s)` | `MsnSpectrum` | Indexed: the first call parses the file once, later calls seek. MSP has no scan numbers |
 | `.ms1` | `PeakListLookup` | Always empty — peak lists carry no survey scans |
 | `.ms2` | `PeakListLookup` | Every spectrum — iterate or index |
