@@ -755,7 +755,22 @@ class PeakListLookup:
             yield spec
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
-        """Fetch a single spectrum by 0-based index or native ID string."""
+        """Fetch a single spectrum by 0-based index or native ID string.
+
+        A string key tries the native-id index first, which seeks straight to the record.
+        The index is only a fast path: whenever it cannot answer — it holds no entry for
+        this id, or building it failed because something later in the file is unreadable —
+        the search below runs instead, streaming the file and returning the first spectrum
+        whose ``native_id`` equals the key. That is what this method did before the index
+        existed, so a lookup that worked without the index still works with it: a file with
+        bare-CR line endings (invisible to the index, which splits on ``\n``), a damaged
+        record *after* the one asked for, and a non-string key such as ``None`` matching a
+        record that has no native id all behave as they did.
+
+        A key that no record matches therefore costs a full pass, as it did before, plus
+        the index build. :meth:`_PeakListReader.get_by_native_id` and
+        :meth:`_PeakListReader.get_by_scan` have no such fallback and are unchanged.
+        """
         if isinstance(key, int):
             if key < 0:
                 raise IndexError(f"negative indices are not supported by {type(self._reader).__name__}: {key}")
@@ -763,7 +778,21 @@ class PeakListLookup:
                 if i == key:
                     return spec
             raise IndexError(f"spectrum index {key} out of range for {self._reader.path}")
-        return self._reader._get_first_by_native_id(key)
+        if isinstance(key, str):
+            try:
+                return self._reader._get_first_by_native_id(key)
+            except (KeyError, ValueError, OSError, EOFError):
+                # Every way the index can fail to answer: KeyError (no entry for this id),
+                # SpxtacularError and UnicodeDecodeError (ValueError — an unreadable record
+                # elsewhere in the file), OSError and its gzip.BadGzipFile, EOFError (a
+                # truncated gzip stream). Nothing is swallowed: if the id really is absent
+                # or the file really is damaged where it matters, the search below raises
+                # it, with the message this method has always produced.
+                pass
+        for spec in self._reader._iter_spectra():
+            if spec.native_id == key:
+                return spec
+        raise KeyError(f"no spectrum with native_id {key!r} in {self._reader.path}")
 
 
 # ---------------------------------------------------------------------------
