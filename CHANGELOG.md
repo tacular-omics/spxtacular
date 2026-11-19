@@ -4,6 +4,20 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Fixed
+
+- An mzML ion-mobility array whose element declares no unit is now typed from its own
+  PSI-MS term, for the three terms whose CV definition states the unit of the values:
+  `MS:1003006`, `MS:1003008` and `MS:1003155`, each "reported in volt-second per square
+  centimeter" (psi-ms.obo 4.2.17). Such an array now reads as `im_type="ook0"` instead of
+  the generic `"im"`. **Who sees a difference:** anyone reading a file that carries one of
+  those three terms without repeating its unit gets a more specific `im_type` than before,
+  and no values move (that unit is the one `"ook0"` is already in, so nothing is
+  converted). Unchanged: the CV's other six ion-mobility array terms, which name both
+  millisecond and second or name those while being defined as mobility values, and a
+  precursor drift time (`MS:1002476`) with no declared unit, because that term's definition
+  states no unit and no source says what an absent unit means.
+
 ## [0.10.0] (2026-11-16)
 
 ### Added

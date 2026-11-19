@@ -790,36 +790,79 @@ def _deconvolution_refs(handle: Any) -> _DeconvolutionRefs:
 
 
 # Ion-mobility unit accessions -> the IMType of the values, and the factor that
-# converts them to that type's unit. The unit decides, not the array accession:
-# PSI-MS allows several units on most ion-mobility array terms (MS:1002816 "mean
-# ion mobility array" can hold 1/K0 or a drift time in ms or s).
+# converts them to that type's unit. A declared unit always decides, because most
+# ion-mobility array terms accept more than one (see _MZML_IM_ARRAY_UNITS).
 _MZML_IM_UNITS: dict[str, tuple[IMType, float]] = {
     "MS:1002814": (IMType.OOK0, 1.0),  # volt-second per square centimeter
     "UO:0000028": (IMType.DRIFT_TIME_MS, 1.0),  # millisecond
     "UO:0000010": (IMType.DRIFT_TIME_MS, 1000.0),  # second
 }
 
+# Array accessions whose CV definition states the unit of the values themselves, so an array
+# carrying the term says what its unit is even when the element does not repeat it. All three
+# are the inverse-reduced terms, and each definition ends "... normalized for the local
+# conditions and reported in volt-second per square centimeter, corresponding to a spectrum of
+# individual peaks encoded with an m/z array."; each also names ``has_units MS:1002814`` and no
+# other unit.
+#
+# What no source says, and therefore what this table does not rest on: the CV does not define
+# what a reader should assume when a unit is absent. ``has_units`` is declared in psi-ms.obo as
+# a bare Typedef with no def and no comment; mzML1.1.0.xsd calls unitAccession "An optional CV
+# accession number for the unit term associated with the value, if any"; and the semantic
+# validator's ms-mapping.xml constrains accessions only and never mentions units. So the step
+# from "the values of this term are reported in X" to "read an undeclared one as X" is this
+# package's reading, and it is taken only where the definition states the unit.
+#
+# Left out on purpose:
+#   MS:1002477, MS:1003153, MS:1003156  -- each names millisecond and second, and each
+#       definition says "reported in seconds (or milliseconds)", so the scale stays open.
+#   MS:1002816, MS:1003007, MS:1003154  -- each names those same two time units while being
+#       defined as mobility "values (K or K0)": definition and units disagree.
+#   MS:1002476 "ion mobility drift time" (a precursor value, not an array) -- names
+#       millisecond alone, but its definition states no unit, so the only support would be
+#       ``has_units``, whose meaning the CV never defines. An undeclared precursor drift time
+#       therefore keeps the generic IMType.IM, unchanged by this table.
+#
+# Source: psi-ms.obo, data-version 4.2.17, excerpted byte-for-byte in
+# tests/data/psi-ms-im-array-terms.obo, which drives tests/test_mzml_im_array_term_units.py.
+_MZML_IM_ARRAY_UNITS: dict[str, str] = {
+    "MS:1003006": "MS:1002814",  # mean inverse reduced ion mobility array
+    "MS:1003008": "MS:1002814",  # raw inverse reduced ion mobility array
+    "MS:1003155": "MS:1002814",  # deconvoluted inverse reduced ion mobility array
+}
 
-def _mzml_im_type(unit_accession: str | None) -> tuple[IMType, float]:
+
+def _mzml_im_type(unit_accession: str | None, array_accession: str | None = None) -> tuple[IMType, float]:
     """``(im_type, scale)`` for an ion-mobility value with this unit.
 
-    A missing or unrecognised unit gives the generic :attr:`IMType.IM`, unscaled,
-    rather than a guess.
+    Parameters
+    ----------
+    unit_accession:
+        The unit the ``binaryDataArray`` (or the precursor's CV param) declares, if any.
+    array_accession:
+        The ion-mobility array term, used only when no unit is declared and the term's own
+        CV definition states the unit of its values, as :data:`_MZML_IM_ARRAY_UNITS` records.
+
+    A unit that is still unknown after that gives the generic :attr:`IMType.IM`,
+    unscaled, rather than a guess.
     """
+    if unit_accession is None and array_accession is not None:
+        unit_accession = _MZML_IM_ARRAY_UNITS.get(array_accession)
     if unit_accession is None:
         return IMType.IM, 1.0
     return _MZML_IM_UNITS.get(unit_accession, (IMType.IM, 1.0))
 
 
 def _mzml_im_array(darr: Any, accession: object, values: np.ndarray) -> tuple[np.ndarray, IMType]:
-    """``values``, typed and scaled by the unit its ``binaryDataArray`` declares.
+    """``values``, typed and scaled by the unit its ``binaryDataArray`` declares, or by the
+    one its array term names when the file declares none.
 
     The values come in already decoded, because mzmlpy's
     :attr:`mzmlpy.Spectrum.ion_mobility_array` decoded them to choose them; only the unit is
     read off ``darr``, instead of decoding the same bytes again.
     """
     param = darr.get_cv_param(str(accession))
-    im_type, scale = _mzml_im_type(param.unit_accession if param is not None else None)
+    im_type, scale = _mzml_im_type(param.unit_accession if param is not None else None, str(accession))
     data = values.astype(np.float64)
     if scale != 1.0:
         data = data * scale
@@ -1017,7 +1060,10 @@ class MzmlReader:
             prec_im = ion.ook0
             prec_im_type: IMType | None = IMType.OOK0 if prec_im is not None else None
             if prec_im is None and ion.drift_time is not None:
-                # MS:1002476 "ion mobility drift time" is in ms or s; the unit decides.
+                # The declared unit decides, and nothing stands in for an absent one: the CV
+                # names millisecond alone for MS:1002476 "ion mobility drift time", but that
+                # term's definition states no unit and the CV never defines what a missing
+                # unit means, so an undeclared drift time stays the generic IMType.IM.
                 drift_param = ion.get_cv_param("MS:1002476")
                 prec_im_type, scale = _mzml_im_type(drift_param.unit_accession if drift_param is not None else None)
                 prec_im = ion.drift_time * scale
