@@ -13,6 +13,7 @@ bytes; copy that file alongside when recording on an older checkout that lacks i
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -23,7 +24,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests")
 
 from peaklist_native_id_corpus import PROBE_KEYS, build_corpus
 
-from spxtacular import MgfReader, Ms2Reader, MspReader
+from spxtacular import MgfReader, Ms2Reader, MsnSpectrum, MspReader
 
 READERS = {"mgf": MgfReader, "ms2": Ms2Reader, "msp": MspReader}
 
@@ -36,14 +37,32 @@ def reader_for(case: str, path: pathlib.Path):
     return READERS[fmt](path)
 
 
+def digest(spec: MsnSpectrum) -> str:
+    """A hash of the whole serialised spectrum, so a change in any other field still shows up."""
+    return hashlib.sha256(json.dumps(spec.to_dict(), sort_keys=True, default=repr).encode()).hexdigest()[:16]
+
+
 def outcome(case: str, path: pathlib.Path, key: object, root: pathlib.Path) -> dict:
-    """What ``reader[key]`` does: the spectrum as a dict, or the exception it raised."""
+    """What ``reader[key]`` does: which spectrum came back, or the exception it raised.
+
+    A returned spectrum is recorded as the few fields a reader of the fixture can check by
+    eye, plus a digest of the complete ``to_dict()``, so the file stays legible and a change
+    in any field it does not spell out still fails the comparison.
+    """
     try:
         spec = reader_for(case, path)[key]  # type: ignore[index]
     except Exception as exc:
         # Paths differ per run, so the message is recorded with the corpus dir masked.
         return {"error": type(exc).__name__, "message": str(exc).replace(str(root), "<corpus>")}
-    return {"spectrum": spec.to_dict()}
+    return {
+        "spectrum": {
+            "native_id": spec.native_id,
+            "scan_number": spec.scan_number,
+            "mz": [float(v) for v in spec.mz],
+            "intensity": [float(v) for v in spec.intensity],
+            "digest": digest(spec),
+        }
+    }
 
 
 def main() -> int:
