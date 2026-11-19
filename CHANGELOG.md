@@ -4,6 +4,14 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Changed
+
+- `MgfReader`, `Ms2Reader` and `MspReader` `reader[native_id]` (and `reader.ms2[native_id]`)
+  now seek through the same offset index as `get_by_native_id()` instead of re-reading the
+  file from the start on every lookup. It still returns the first spectrum when several share
+  a native id; `get_by_native_id()` still raises for that. `reader[0]`-style position lookups
+  are unchanged and still O(n).
+
 ### Documentation
 
 - Both authors' affiliation in `CITATION.cff` and `.zenodo.json` is now
