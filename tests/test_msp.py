@@ -159,6 +159,31 @@ def test_duplicate_names_first_wins(tmp_path):
     assert MspReader(path)["PEP/2"].collision_energy == 25.0
 
 
+@pytest.mark.parametrize(
+    ("ce_token", "expected"),
+    [
+        ("35", 35.0),
+        ("35%", 35.0),
+        ("35 eV", 35.0),
+        ("HCD 35%", 35.0),  # MassBank / MoNA style
+        ("CID 30%", 30.0),  # NIST / GNPS style
+        ("NCE 28", 28.0),   # Orbitrap normalized collision energy style
+        ("hcd35.0", 35.0),  # compact activation tag
+    ],
+)
+def test_collision_energy_activation_prefixes(tmp_path, ce_token, expected):
+    # Test issue 133: Collision_energy values with activation prefixes (e.g. from MassBank / MoNA / GNPS libraries)
+    path = tmp_path / "ce.msp"
+    path.write_text(
+        f"Name: peptide\nMW: 1000.0\nComment: Parent=500.0\nCollision_energy: {ce_token}\n"
+        "Num Peaks: 1\n100.0 10.0\n\n"
+    )
+    with MspReader(path) as reader:
+        spec = next(iter(reader))
+        assert spec.collision_energy == expected
+
+
+
 def test_ms1_empty_ms2_full(two_dialects):
     with MspReader(two_dialects) as reader:
         assert list(reader.ms1) == []
