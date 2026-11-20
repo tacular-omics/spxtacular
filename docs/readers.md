@@ -53,7 +53,7 @@ Index semantics differ per backend:
 | `DReader.ms1[frame_id]` | MS1 spectrum by tdfpy `frame_id` |
 | `DReader.ms2[precursor_id]` | MS2 spectrum by tdfpy `precursor_id` — **DDA only**. DIA and PRM raise `NotImplementedError` (their MS2 records are not keyed by a single id); use `get_by_native_id` or iterate |
 | `ThermoReader.ms1[scan]` / `.ms2[scan]` | Spectrum by native **1-based scan number**; `KeyError` if the scan does not exist or is not of that MS level. `ThermoReader[scan]` fetches any level |
-| `MgfReader[key]` / `Ms2Reader[key]` / `MspReader[key]` | Spectrum by 0-based position in the file, or by `native_id` string (first match wins — library files repeat names across collision energies). Each lookup streams the file from the start, so it is O(n) — iterate when you want them all |
+| `MgfReader[key]` / `Ms2Reader[key]` / `MspReader[key]` | Spectrum by 0-based position in the file, or by `native_id` string (first match wins — library files repeat names across collision energies). A `native_id` lookup uses the same offset index as `get_by_native_id` (one pass on first use, then a seek), and falls back to streaming the file whenever the index cannot answer — a key it holds no entry for, or a file it could not index because a later record is unreadable — so a lookup answers as it did before the index existed. A position lookup streams the file from the start, so it is O(n) — iterate when you want them all |
 
 `DReader` and `ThermoReader` lookups raise `SpxtacularError` if the reader has not been opened.
 

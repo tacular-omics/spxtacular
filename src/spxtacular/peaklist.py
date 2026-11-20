@@ -737,8 +737,11 @@ class PeakListLookup:
 
     Index access (``lookup[int]`` or ``lookup[str]``) fetches by 0-based position
     in the file or by ``native_id``, and is *not* level-filtered (matching
-    ``MzmlSpectraLookup``). Both forms stream from the start of the file, so
-    random access is O(n) — iterate when you want every spectrum.
+    ``MzmlSpectraLookup``). The ``int`` form streams from the start of the file,
+    so it is O(n) — iterate when you want every spectrum. The ``str`` form uses
+    the reader's native-id index (built by one pass on first use, then a seek per
+    lookup) and returns the first spectrum with that ``native_id``, even if
+    several share it.
     """
 
     def __init__(self, reader: _PeakListReader, *, ms_level: int | None = None) -> None:
@@ -752,7 +755,22 @@ class PeakListLookup:
             yield spec
 
     def __getitem__(self, key: int | str) -> MsnSpectrum:
-        """Fetch a single spectrum by 0-based index or native ID string."""
+        """Fetch a single spectrum by 0-based index or native ID string.
+
+        A string key tries the native-id index first, which seeks straight to the record.
+        The index is only a fast path: whenever it cannot answer — it holds no entry for
+        this id, or building it failed because something later in the file is unreadable —
+        the search below runs instead, streaming the file and returning the first spectrum
+        whose ``native_id`` equals the key. That is what this method did before the index
+        existed, so a lookup that worked without the index still works with it: a file with
+        bare-CR line endings (invisible to the index, which splits on ``\n``), a damaged
+        record *after* the one asked for, and a non-string key such as ``None`` matching a
+        record that has no native id all behave as they did.
+
+        A key that no record matches therefore costs a full pass, as it did before, plus
+        the index build. :meth:`_PeakListReader.get_by_native_id` and
+        :meth:`_PeakListReader.get_by_scan` have no such fallback and are unchanged.
+        """
         if isinstance(key, int):
             if key < 0:
                 raise IndexError(f"negative indices are not supported by {type(self._reader).__name__}: {key}")
@@ -760,6 +778,17 @@ class PeakListLookup:
                 if i == key:
                     return spec
             raise IndexError(f"spectrum index {key} out of range for {self._reader.path}")
+        if isinstance(key, str):
+            try:
+                return self._reader._get_first_by_native_id(key)
+            except (KeyError, ValueError, OSError, EOFError):
+                # Every way the index can fail to answer: KeyError (no entry for this id),
+                # SpxtacularError and UnicodeDecodeError (ValueError — an unreadable record
+                # elsewhere in the file), OSError and its gzip.BadGzipFile, EOFError (a
+                # truncated gzip stream). Nothing is swallowed: if the id really is absent
+                # or the file really is damaged where it matters, the search below raises
+                # it, with the message this method has always produced.
+                pass
         for spec in self._reader._iter_spectra():
             if spec.native_id == key:
                 return spec
@@ -792,6 +821,7 @@ class _PeakListReader:
         self._n_spectra: int | None = None
         self._index: IdIndex[_Record] | None = None
         self._index_stamp: tuple[int, int] | None = None
+        self._first_ids: dict[str, _Record] = {}
 
     # -- interface symmetry with DReader / MzmlReader -------------------------
 
@@ -880,7 +910,16 @@ class _PeakListReader:
         stat = self.path.stat()
         stamp = (stat.st_mtime_ns, stat.st_size)
         if self._index is None or self._index_stamp != stamp:
-            self._index = build_id_index(self._walk_records())
+            first_ids: dict[str, _Record] = {}
+
+            def records() -> Iterator[tuple[int | None, str | None, _Record]]:
+                for scan_number, native_id, record in self._walk_records():
+                    if native_id is not None:
+                        first_ids.setdefault(native_id, record)
+                    yield scan_number, native_id, record
+
+            self._index = build_id_index(records())
+            self._first_ids = first_ids
             self._index_stamp = stamp
         return self._index
 
@@ -929,6 +968,23 @@ class _PeakListReader:
             if record is None:
                 if native_id in index.duplicate_ids:
                     raise SpxtacularError(f"{self.path}: native id {native_id!r} is used by more than one spectrum")
+                raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
+            spec = self._read_checked(record, lambda s: s.native_id == native_id)
+            if spec is not None:
+                return spec
+            self._index = None
+        raise SpxtacularError(f"{self.path}: native id {native_id!r} moved while it was being read")
+
+    def _get_first_by_native_id(self, native_id: str) -> MsnSpectrum:
+        """Like :meth:`get_by_native_id`, but a native id shared by several spectra returns the first.
+
+        This is what ``reader[native_id]`` does. ``get_by_native_id`` keeps raising for
+        a shared id, because there the caller asked for the one spectrum with that id.
+        """
+        for _ in range(2):
+            self._id_index()
+            record = self._first_ids.get(native_id)
+            if record is None:
                 raise KeyError(f"no spectrum with native_id {native_id!r} in {self.path}")
             spec = self._read_checked(record, lambda s: s.native_id == native_id)
             if spec is not None:

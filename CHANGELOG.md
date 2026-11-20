@@ -4,6 +4,27 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ## [Unreleased]
 
+### Changed
+
+- `MgfReader`, `Ms2Reader` and `MspReader` `reader[native_id]` (and `reader.ms2[native_id]`)
+  now seek through the same offset index as `get_by_native_id()` instead of re-reading the
+  file from the start on every lookup. It still returns the first spectrum when several share
+  a native id; `get_by_native_id()` still raises for that. `reader[0]`-style position lookups
+  are unchanged and still O(n). Thanks to [@ritanjay](https://github.com/ritanjay) (#128).
+
+  **The first `reader[native_id]` on a reader now reads the whole file once** to build that
+  index, so the cost moves from every lookup to the first one. Measured on a 50,000-spectrum,
+  31 MB MGF (non-exclusive runs, so treat them as the shape): the first lookup of a random id
+  0.9 s → 2.8 s; one lookup of the *first* record on a fresh reader 0.000 s → 2.7 s; and every
+  later lookup 906 ms → 0.064 ms, about 14,000 times faster. Break-even is the third lookup.
+
+  A key that no record matches still streams the whole file, as it always did, but now after
+  the index build: 2.1 s → 5.0 s on a fresh reader, and 2.1 s → 2.4 s on one whose index is
+  already built. That streaming search is also what keeps every lookup answering as it did
+  before the index — a file with bare-CR line endings, a damaged record *after* the one asked
+  for, or a non-string key such as `None` matching a record with no native id all return what
+  they returned in 0.10.0.
+
 ### Documentation
 
 - Both authors' affiliation in `CITATION.cff` and `.zenodo.json` is now
