@@ -872,3 +872,37 @@ def test_ms2_z_line_explicit_model_polarity_mismatch_raises(tmp_path):
     spec = make_spectrum(precursor_mz=500.0, charge=-2)
     with pytest.raises(SpxtacularError, match="polarity"):
         write_ms2([spec], tmp_path / "neg.ms2", ionization_model="protonated")
+
+
+def test_utf8_bom_support(tmp_path):
+    # Test issue 134: UTF-8 BOM at the beginning of MGF, MS2, and MSP files
+    mgf_content = b"\xef\xbb\xbfBEGIN IONS\nTITLE=spec_bom\nPEPMASS=500.0\n100.0 10.0\nEND IONS\n"
+    mgf_file = tmp_path / "test_bom.mgf"
+    mgf_file.write_bytes(mgf_content)
+
+    with MgfReader(mgf_file) as reader:
+        spectra = list(reader)
+        assert len(spectra) == 1
+        assert len(reader) == 1
+        assert reader.get_by_native_id("spec_bom").native_id == "spec_bom"
+
+    ms2_content = b"\xef\xbb\xbfH\tCreationDate\tToday\nS\t1\t1\t500.0\nZ\t1\t501.0\n100.0 10.0\n"
+    ms2_file = tmp_path / "test_bom.ms2"
+    ms2_file.write_bytes(ms2_content)
+
+    with Ms2Reader(ms2_file) as reader:
+        spectra = list(reader)
+        assert len(spectra) == 1
+        assert len(reader) == 1
+        assert reader.get_by_scan(1).scan_number == 1
+
+    msp_content = b"\xef\xbb\xbfName: peptide_bom\nMW: 1000.0\nComment: Parent=500.0\nNum Peaks: 1\n100.0 10.0\n\n"
+    msp_file = tmp_path / "test_bom.msp"
+    msp_file.write_bytes(msp_content)
+
+    with MspReader(msp_file) as reader:
+        spectra = list(reader)
+        assert len(spectra) == 1
+        assert len(reader) == 1
+        assert reader.get_by_native_id("peptide_bom").native_id == "peptide_bom"
+
