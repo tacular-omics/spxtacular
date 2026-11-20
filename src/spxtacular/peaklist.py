@@ -91,10 +91,11 @@ def _open_text(path: Path) -> IO[str]:
     Detection is by magic bytes, so a gzipped file keeps working under any name.
     Undecodable bytes are replaced rather than raising — vendor TITLE lines carry
     all sorts of encodings and a spectrum file should not be unreadable over one.
+    UTF-8 byte order mark (BOM) is stripped automatically via utf-8-sig.
     """
     if _is_gzip(path):
-        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
-    return open(path, encoding="utf-8", errors="replace")
+        return gzip.open(path, "rt", encoding="utf-8-sig", errors="replace")
+    return open(path, encoding="utf-8-sig", errors="replace")
 
 
 @contextmanager
@@ -896,7 +897,7 @@ class _PeakListReader:
             for line_no, raw in enumerate(handle, start=1):
                 pending.append((line_no, offset))
                 offset += len(raw)
-                yield raw.decode("utf-8", errors="replace")
+                yield raw.decode("utf-8-sig", errors="replace")
 
         with _open_binary(self.path) as handle:
             for start_line, spec in self._parse_records(lines(handle)):
@@ -927,7 +928,7 @@ class _PeakListReader:
         """Parse the one record that starts at ``record``."""
         with _open_binary(self.path) as handle:
             handle.seek(record.offset)
-            lines = (raw.decode("utf-8", errors="replace") for raw in handle)
+            lines = (raw.decode("utf-8-sig", errors="replace") for raw in handle)
             for _, spec in self._parse_records(lines, first_line=record.line):
                 return spec
         raise SpxtacularError(f"{self.path}:{record.line}: no record here; the file changed after it was indexed")
