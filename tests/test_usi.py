@@ -18,7 +18,8 @@ import numpy as np
 import pytest
 
 from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType
-from spxtacular.usi import _parse_proxi_response, fetch_usi, spectrum_from_proxi_response
+from spxtacular.errors import SpxtacularError
+from spxtacular.usi import ParsedUsi, _parse_proxi_response, fetch_usi, parse_usi, spectrum_from_proxi_response
 
 USI = "mzspec:TEST:test:scan:1"
 
@@ -248,3 +249,67 @@ class TestFetchUsi:
         with patch("spxtacular.usi.urllib.request.urlopen", return_value=_response(payload)):
             result = fetch_usi(USI)
         assert len(result.mz) == 3
+
+
+SPEC_RUN = "Adult_Frontalcortex_bRP_Elite_85_f09"
+
+
+class TestParseUsi:
+    @pytest.mark.parametrize(
+        ("usi", "expected"),
+        [
+            # The example USI from the USI 1.0 specification, without and with an interpretation.
+            (f"mzspec:PXD000561:{SPEC_RUN}:scan:17555", ParsedUsi("PXD000561", SPEC_RUN, "scan", "17555")),
+            (
+                f"mzspec:PXD000561:{SPEC_RUN}:scan:17555:VLHPLEGAVVIIFK/2",
+                ParsedUsi("PXD000561", SPEC_RUN, "scan", "17555", "VLHPLEGAVVIIFK/2"),
+            ),
+            # Colons inside the interpretation (ProForma modification accessions) stay in the interpretation.
+            (
+                f"mzspec:PXD000561:{SPEC_RUN}:scan:17555:M[UNIMOD:35]PEPTIDE/2",
+                ParsedUsi("PXD000561", SPEC_RUN, "scan", "17555", "M[UNIMOD:35]PEPTIDE/2"),
+            ),
+            ("mzspec:TEST:test:INDEX:3", ParsedUsi("TEST", "test", "index", "3")),
+            ("mzspec:TEST:test:nativeId:scan=4", ParsedUsi("TEST", "test", "nativeId", "scan=4")),
+        ],
+    )
+    def test_parses_usi(self, usi: str, expected: ParsedUsi) -> None:
+        assert parse_usi(usi) == expected
+
+    @pytest.mark.parametrize(
+        ("usi", "expected"),
+        [
+            # USI 1.0 section 3.3.4: colons in the msRun name are not escaped; the parser finds the
+            # run's end by the index type that follows it.
+            (
+                "mzspec:PXD000561:run:with:colon:scan:17555:VLHPLEGAVVIIFK/2",
+                ParsedUsi("PXD000561", "run:with:colon", "scan", "17555", "VLHPLEGAVVIIFK/2"),
+            ),
+            ("mzspec:PXD000561:a:b:index:7", ParsedUsi("PXD000561", "a:b", "index", "7")),
+            (
+                "mzspec:PXD000561:C:\\data\\run:nativeId:scan=5",
+                ParsedUsi("PXD000561", "C:\\data\\run", "nativeId", "scan=5"),
+            ),
+        ],
+    )
+    def test_run_name_may_contain_colons(self, usi: str, expected: ParsedUsi) -> None:
+        assert parse_usi(usi) == expected
+
+    @pytest.mark.parametrize(
+        ("usi", "message"),
+        [
+            ("", "non-empty"),
+            ("mzspec:PXD000561:run:scan", "Expected"),
+            ("mzpsec:PXD000561:run:scan:1", "prefix"),
+            ("mzspec::run:scan:1", "Collection identifier is empty"),
+            ("mzspec:PXD000561::scan:1", "Run identifier is empty"),
+            ("mzspec:PXD000561:run:frame:1", "Unknown index flag 'frame'"),
+            ("mzspec:PXD000561:run:with:colon:frame:1", "Unknown index flag 'with'"),
+            ("mzspec:PXD000561:run:scan:", "Index value is empty"),
+            ("mzspec:PXD000561:run:scan:x", "must be an integer"),
+            ("mzspec:PXD000561:run:scan:-1", "non-negative"),
+        ],
+    )
+    def test_rejects_invalid_usi(self, usi: str, message: str) -> None:
+        with pytest.raises(SpxtacularError, match=message):
+            parse_usi(usi)

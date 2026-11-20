@@ -41,6 +41,9 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Fixed
 
+- `parse_usi` (and so `fetch_usi` / `Spectrum.from_usi`) accepts a run name that contains
+  colons, as USI 1.0 section 3.3.4 requires: the run ends at the first following field that is
+  `scan`, `index`, `nativeId` or `trace`. Every USI that parsed before parses the same (#138).
 - An mzML ion-mobility array whose element declares no unit is now typed from its own
   PSI-MS term, for the three terms whose CV definition states the unit of the values:
   `MS:1003006`, `MS:1003008` and `MS:1003155`, each "reported in volt-second per square

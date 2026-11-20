@@ -111,15 +111,21 @@ def parse_usi(usi: str) -> ParsedUsi:
     if not isinstance(usi, str) or not usi.strip():
         raise SpxtacularError("USI must be a non-empty string")
 
-    parts = usi.strip().split(":", 5)
+    parts = usi.strip().split(":")
     if len(parts) < 5:
         raise SpxtacularError(
             f"Invalid USI: {usi!r}. Expected "
             "'mzspec:<collection>:<run>:<scan|index|nativeId|trace>:<n>[:<interpretation>]'"
         )
 
-    prefix, collection, run, index_flag, index = parts[:5]
-    interpretation = parts[5] if len(parts) > 5 and parts[5] else None
+    # Colons in the run name are not escaped (USI 1.0, section 3.3.4): the run ends at the first
+    # field after it that is an index flag. With no such field, report the one after the run's
+    # first field, as a run without colons would.
+    flag_at = next((i for i in range(3, len(parts) - 1) if parts[i].lower() in _INDEX_FLAGS), 3)
+    prefix, collection = parts[:2]
+    run = ":".join(parts[2:flag_at])
+    index_flag, index = parts[flag_at], parts[flag_at + 1]
+    interpretation = ":".join(parts[flag_at + 2 :]) or None
 
     if prefix != "mzspec":
         raise SpxtacularError(f"Invalid USI: {usi!r}. Must start with the 'mzspec' prefix, got {prefix!r}")
