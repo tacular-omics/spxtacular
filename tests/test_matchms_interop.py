@@ -1,5 +1,7 @@
 """Interoperability tests for matchms."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -13,6 +15,22 @@ from tests.matchms_gate import REQUIRE_MATCHMS, MatchmsApi, matchms_api_or_skip
 # so the nine are collected either way. Each carries `slow` on itself rather than the module
 # carrying `pytestmark`, so that the two gate tests at the end of this file - which never import
 # matchms - still run in the default suite.
+
+
+@pytest.mark.parametrize(
+    ("source", "missing"),
+    [
+        (object(), "peaks"),
+        (SimpleNamespace(peaks=SimpleNamespace(mz=[])), "peaks.intensities"),
+        (SimpleNamespace(peaks=SimpleNamespace(intensities=[])), "peaks.mz"),
+    ],
+)
+def test_from_matchms_reports_received_type_and_missing_attributes(source: object, missing: str) -> None:
+    with pytest.raises(TypeError) as exc_info:
+        from_matchms(source)
+    message = str(exc_info.value)
+    assert f"received {type(source).__name__}" in message
+    assert f"missing {missing}" in message
 
 
 def _rich_msn() -> MsnSpectrum:

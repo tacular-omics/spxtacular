@@ -41,6 +41,8 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Fixed
 
+- Invalid inputs to `from_matchms()` and `to_spectrum_utils()` now report the received type
+  and missing attributes in their error messages.
 - An mzML ion-mobility array whose element declares no unit is now typed from its own
   PSI-MS term, for the three terms whose CV definition states the unit of the values:
   `MS:1003006`, `MS:1003008` and `MS:1003155`, each "reported in volt-second per square
