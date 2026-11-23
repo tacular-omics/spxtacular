@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 
 import numpy as np
 import pytest
@@ -24,6 +25,7 @@ from spxtacular import (
     write_msp,
 )
 from spxtacular.errors import SpxtacularError
+from spxtacular.peaklist import _iter_raw_lines
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -776,6 +778,74 @@ def test_getitem_native_id_after_the_file_changes(tmp_path):
     write_mgf([make_spectrum(scan=1, native_id="b"), make_spectrum(scan=2, native_id="a")], path)
     assert reader["a"].scan_number == 2
     assert reader["b"].scan_number == 1
+
+
+# Bare carriage returns (classic Mac line endings), alone and after a first record that ends
+# its lines with "\n". The iterator reads both with universal newlines; the index must too.
+_BARE_CR_BODIES = {
+    ".mgf": (
+        "".join(f"BEGIN IONS\nTITLE={n}\nPEPMASS=500.0\n{100.0 + i} 10.0\nEND IONS\n" for i, n in enumerate("abc"))
+    ),
+    ".ms2": "".join(
+        f"S\t{i + 1}\t{i + 1}\t500.0\nI\tNativeID\t{n}\nZ\t2\t999.0\n{100.0 + i} 10.0\n" for i, n in enumerate("abc")
+    ),
+    ".msp": "".join(
+        f"Name: {n}\nMW: 999.0\nComment: Parent=500.0\nNum Peaks: 1\n{100.0 + i} 10.0\n\n" for i, n in enumerate("abc")
+    ),
+}
+_BARE_CR_READERS = [(MgfReader, ".mgf"), (Ms2Reader, ".ms2"), (MspReader, ".msp")]
+
+
+@pytest.mark.parametrize(("reader_cls", "suffix"), _BARE_CR_READERS)
+@pytest.mark.parametrize("ending", ["\r", "\r\n", "\n"])
+def test_get_by_native_id_reads_every_line_ending(tmp_path, reader_cls, suffix, ending):
+    path = tmp_path / f"endings{suffix}"
+    path.write_bytes(_BARE_CR_BODIES[suffix].replace("\n", ending).encode())
+
+    reader = reader_cls(path)
+    assert [s.native_id for s in reader] == ["a", "b", "c"]
+    for i, native_id in enumerate("abc"):
+        spec = reader.get_by_native_id(native_id)
+        assert spec.native_id == native_id
+        assert spec.mz.tolist() == [100.0 + i]
+        assert _same_spectrum(reader[native_id], spec)
+    with pytest.raises(KeyError, match="native_id"):
+        reader.get_by_native_id("missing")
+
+
+@pytest.mark.parametrize(("reader_cls", "suffix"), _BARE_CR_READERS)
+def test_get_by_native_id_bare_cr_names_the_line_of_a_bad_record(tmp_path, reader_cls, suffix):
+    # Line numbers come from the same line split, so a bare-CR file must count lines as the iterator does.
+    path = tmp_path / f"cr{suffix}"
+    path.write_bytes(_BARE_CR_BODIES[suffix].replace("\n", "\r").encode())
+    reader = reader_cls(path)
+    reader.get_by_native_id("a")
+    lines_per_record = _BARE_CR_BODIES[suffix].count("\n") // 3
+    assert reader._index is not None
+    assert [record.line for record in reader._index.ids.values()] == [1 + lines_per_record * i for i in range(3)]
+
+
+@pytest.mark.parametrize(("reader_cls", "suffix"), _BARE_CR_READERS)
+def test_get_by_native_id_mixed_line_endings(tmp_path, reader_cls, suffix):
+    first, sep, rest = _BARE_CR_BODIES[suffix].partition("\n" + _BARE_CR_BODIES[suffix].split("\n")[0])
+    path = tmp_path / f"mixed{suffix}"
+    path.write_bytes((first + sep.replace("\n", "\r\n", 1) + rest.replace("\n", "\r")).encode())
+
+    reader = reader_cls(path)
+    assert [s.native_id for s in reader] == ["a", "b", "c"]
+    assert [reader.get_by_native_id(n).mz.tolist() for n in "abc"] == [[100.0], [101.0], [102.0]]
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 5, 64])
+@pytest.mark.parametrize(
+    "data",
+    [b"", b"a", b"a\n", b"a\r", b"a\r\n", b"\r\n\r\r\n\n", b"a\rb\r\nc\nd", b"a\x0bb\x0cc\x1cd\x85e\r"],
+)
+def test_iter_raw_lines_splits_like_universal_newlines(data, chunk_size):
+    lines = list(_iter_raw_lines(io.BytesIO(data), chunk_size=chunk_size))
+    assert b"".join(lines) == data  # nothing lost, so byte offsets add up
+    text = io.TextIOWrapper(io.BytesIO(data), encoding="latin-1", newline=None)
+    assert [line.decode("latin-1").rstrip("\r\n") for line in lines] == [line.rstrip("\n") for line in text]
 
 
 def test_ms2_reader_len_counts_scans(tmp_path):

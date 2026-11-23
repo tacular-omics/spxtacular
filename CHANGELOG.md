@@ -25,6 +25,14 @@ User-visible changes only; implementation details belong in commits and pull req
   for, or a non-string key such as `None` matching a record with no native id all return what
   they returned in 0.10.0.
 
+### Fixed
+
+- `MgfReader`, `Ms2Reader` and `MspReader` `get_by_native_id()`, `get_by_scan()` and
+  `get_by_sage_scannr()` now find the spectra in a file whose lines end with a bare carriage
+  return (`\r`, classic Mac line endings). Iteration already read such a file, but the
+  lookup index split lines on `\n` only, saw the file as one line, and raised `KeyError` for
+  every id. The index now splits lines the way iteration does (`\n`, `\r\n` and `\r`).
+
 ### Documentation
 
 - Both authors' affiliation in `CITATION.cff` and `.zenodo.json` is now

@@ -85,6 +85,27 @@ def _open_binary(path: Path) -> gzip.GzipFile | BinaryIO:
     return open(path, "rb")
 
 
+def _iter_raw_lines(handle: gzip.GzipFile | BinaryIO, *, chunk_size: int = 1 << 16) -> Iterator[bytes]:
+    """Yield the lines of a binary handle, each with its ending, split the way text mode splits them.
+
+    Iterating a binary handle splits on ``\\n`` only, so a file with bare ``\\r`` endings
+    is one long line there but many lines to :func:`_open_text`, which reads with universal
+    newlines. The native-id index reads binary (it needs byte offsets) and must see the same
+    lines the iterator sees, so it reads through this: ``\\n``, ``\\r\\n`` and a bare
+    ``\\r`` each end a line. It reads in chunks, so a file with no ``\\n`` at all is never
+    held whole.
+    """
+    tail = b""
+    while chunk := handle.read(chunk_size):
+        lines = (tail + chunk).splitlines(keepends=True)
+        # Only a line that ends in "\n" is known to be whole: one with no ending may go on in
+        # the next chunk, and after a final "\r" the next chunk may open with its "\n".
+        tail = b"" if lines[-1].endswith(b"\n") else lines.pop()
+        yield from lines
+    if tail:
+        yield tail
+
+
 def _open_text(path: Path) -> IO[str]:
     """Open a peak-list file for reading, transparently decompressing gzip.
 
@@ -762,10 +783,9 @@ class PeakListLookup:
         this id, or building it failed because something later in the file is unreadable —
         the search below runs instead, streaming the file and returning the first spectrum
         whose ``native_id`` equals the key. That is what this method did before the index
-        existed, so a lookup that worked without the index still works with it: a file with
-        bare-CR line endings (invisible to the index, which splits on ``\n``), a damaged
+        existed, so a lookup that worked without the index still works with it: a damaged
         record *after* the one asked for, and a non-string key such as ``None`` matching a
-        record that has no native id all behave as they did.
+        record that has no native id, both behave as they did.
 
         A key that no record matches therefore costs a full pass, as it did before, plus
         the index build. :meth:`_PeakListReader.get_by_native_id` and
@@ -893,7 +913,7 @@ class _PeakListReader:
 
         def lines(handle: gzip.GzipFile | BinaryIO) -> Iterator[str]:
             offset = 0
-            for line_no, raw in enumerate(handle, start=1):
+            for line_no, raw in enumerate(_iter_raw_lines(handle), start=1):
                 pending.append((line_no, offset))
                 offset += len(raw)
                 yield raw.decode("utf-8", errors="replace")
@@ -927,7 +947,7 @@ class _PeakListReader:
         """Parse the one record that starts at ``record``."""
         with _open_binary(self.path) as handle:
             handle.seek(record.offset)
-            lines = (raw.decode("utf-8", errors="replace") for raw in handle)
+            lines = (raw.decode("utf-8", errors="replace") for raw in _iter_raw_lines(handle))
             for _, spec in self._parse_records(lines, first_line=record.line):
                 return spec
         raise SpxtacularError(f"{self.path}:{record.line}: no record here; the file changed after it was indexed")
