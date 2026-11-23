@@ -38,11 +38,7 @@ A mass spectrometer reports a spectrum as a list of peaks, each with a mass-to-c
 
 # Statement of need
 
-Most mass spectrometry data are analysed by complete pipelines that take raw files and return identifications and quantities. The steps in between, such as deconvolution, fragment matching and scoring, decide whether a method works, yet their intermediate results are rarely seen. A researcher checking a doubtful identification, or a developer testing a new deconvolution setting, needs to look at one spectrum after each step and see what changed.
-
-In Python this is harder than it should be. The steps are spread across libraries with different spectrum representations, so a workflow converts at every boundary. What each step learns about individual peaks, such as charge, isotope score and ion mobility, is carried by hand. Nothing checks that those results still describe the same peaks after filtering, or records which steps were applied, so a step run out of order yields a number rather than an error. Existing packages each cover part of this chain, and none carries per-peak results and processing state on one spectrum object through all of it.
-
-spxtacular was written to fill that gap. The peaks, the per-peak results of every step and the processing state are one object, and every method returns another spectrum, so a workflow can be stopped after any step and the result inspected, plotted or passed to another library. The intended users are researchers who examine individual spectra, method developers who need to see the effect of each processing step, and software authors who need one stage of processing without a complete analysis pipeline.
+A workflow assembled from several libraries converts between their representations at every boundary, and what processing produces has to be carried across by hand: per-peak charge, isotope scores, ion mobility, and which steps have already been applied. spxtacular keeps all of it on one object, and every method returns another spectrum, so the chain continues and any stage can be inspected. The intended users are mass spectrometry researchers, method developers, and software authors who need to inspect or transform spectra without adopting a complete analysis pipeline.
 
 # State of the field
 
