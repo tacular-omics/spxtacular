@@ -83,7 +83,7 @@ def test_to_spectrum_utils_warns_about_rich_fields_and_extra_precursors() -> Non
 
 def test_to_spectrum_utils_rejects_plain_profile_or_missing_precursor_data() -> None:
     plain = Spectrum(mz=np.array([100.0]), intensity=np.array([1.0]))
-    with pytest.raises(TypeError, match="MsnSpectrum"):
+    with pytest.raises(TypeError, match="received Spectrum; missing precursors"):
         to_spectrum_utils(plain)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
     with pytest.raises(ValueError, match="profile"):
@@ -96,6 +96,14 @@ def test_to_spectrum_utils_rejects_plain_profile_or_missing_precursor_data() -> 
         to_spectrum_utils(
             _msn(precursors=[Precursor(precursor_mz=500.25, intensity=1.0, charge=None, is_monoisotopic=None)])
         )
+
+
+def test_to_spectrum_utils_reports_received_type_and_missing_attributes() -> None:
+    with pytest.raises(TypeError) as exc_info:
+        to_spectrum_utils(object())  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+    message = str(exc_info.value)
+    assert "received object" in message
+    assert "missing mz, intensity, precursors" in message
 
 
 def test_identifier_can_be_explicit_or_derived_from_scan_number() -> None:

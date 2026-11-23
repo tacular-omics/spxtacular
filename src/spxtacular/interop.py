@@ -315,8 +315,13 @@ def from_matchms(spectrum: object, *, prefer_spxtacular_metadata: bool = True) -
     metadata fields and become :class:`MsnSpectrum` when MSn metadata exists.
     """
     peaks = getattr(spectrum, "peaks", None)
-    if peaks is None or not hasattr(peaks, "mz") or not hasattr(peaks, "intensities"):
-        raise TypeError("expected a matchms Spectrum with peaks.mz and peaks.intensities")
+    if peaks is None:
+        missing = ["peaks"]
+    else:
+        missing = [f"peaks.{name}" for name in ("mz", "intensities") if not hasattr(peaks, name)]
+    if missing:
+        detail = ", ".join(missing)
+        raise TypeError(f"expected a matchms Spectrum; received {type(spectrum).__name__}; missing {detail}")
     mz = np.asarray(cast(Any, peaks).mz, dtype=np.float64)
     intensity = np.asarray(cast(Any, peaks).intensities, dtype=np.float64)
     metadata = _matchms_metadata(spectrum)
@@ -459,7 +464,11 @@ def to_spectrum_utils(
     invented; fields outside its model are reported with ``UserWarning``.
     """
     if not isinstance(spectrum, MsnSpectrum):
-        raise TypeError("spectrum_utils conversion requires an MsnSpectrum")
+        missing = [name for name in ("mz", "intensity", "precursors") if not hasattr(spectrum, name)]
+        detail = ", ".join(missing) if missing else "MsnSpectrum type"
+        raise TypeError(
+            f"spectrum_utils conversion requires an MsnSpectrum; received {type(spectrum).__name__}; missing {detail}"
+        )
     if spectrum.spectrum_type == SpectrumType.PROFILE or spectrum.spectrum_type == "profile":
         raise SpxtacularError("spectrum_utils.MsmsSpectrum requires centroided fragment peaks, not profile data")
     if not spectrum.precursors:
