@@ -42,7 +42,7 @@ Identification and quantification pipelines take raw files and return results, b
 
 # State of the field
 
-Five Python packages overlap with spxtacular's scope. Pyteomics [@levitsky2019pyteomics] emphasizes file access and proteomics utilities, while pyOpenMS [@rost2014pyopenms] provides a broader data model and collection of mass spectrometry algorithms. `ms_deisotope` [@msdeisotope] supports averagine-based deisotoping and charge-state deconvolution, matchms [@huber2020matchms] supports composable spectrum processing and similarity calculations, and spectrum_utils [@bittremieux2023spectrumutils] focuses on spectrum annotation and plotting. spxtacular differs by covering the path from vendor file to annotated figure in one NumPy-based object whose methods chain.
+The five packages named above each cover part of this path. spxtacular differs by covering the path from vendor file to annotated figure in one NumPy-based object whose methods chain.
 
 spxtacular began as spectrum-processing functions in `peptacular` [@peptacular], split out to keep that package focused on peptide chemistry. Building a separate package rather than contributing to pyOpenMS or matchms was a choice about implementation and data models, not features. pyOpenMS algorithms are implemented in C++ and exposed through generated Python bindings, so a new processing step is a C++ contribution that also needs bindings and platform-specific builds. spxtacular is written in Python on NumPy arrays, is distributed as one pure-Python wheel, and can be extended in Python. matchms is built for spectral similarity networking in metabolomics, with spectrum-level metadata and no place for peak-level metadata or for a state recording whether data are profile, centroid, or deconvoluted.
 
