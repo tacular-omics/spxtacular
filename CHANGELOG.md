@@ -46,6 +46,13 @@ User-visible changes only; implementation details belong in commits and pull req
   be told apart once read, which matters because spxtacular 0.5.0 through 0.9.5 wrote "no
   charge given" as `1-` (0.10.0 writes no token). Selecting assigned peaks with `charge > 0`
   is unaffected. No behaviour change.
+- The readers guide's list of what a peak-list round trip loses is now a table per format
+  (MGF, MS2, MSP), measured by writing one fully populated `MsnSpectrum` and reading it back.
+  The old list said `collision_energy` never survives, but MSP keeps it; it left out `im_type`,
+  `im_range`, `ramp_time` and `isolation_ook0_range`, which survive nothing; and it did not say
+  that the per-peak `charge` array is MGF only or that `activation_type`, `injection_time` and
+  `total_ion_current` survive MS2 only. No behaviour change. Thanks to
+  [@200msEthan](https://github.com/200msEthan) (#109).
 
 ### Fixed
 

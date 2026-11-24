@@ -869,10 +869,29 @@ The reader cannot infer an MSP time unit.
 | `rt` in MSP | Written verbatim under `RetentionTime:` (spxtacular's `rt` is seconds; MSP has no unit convention), so it round-trips exactly |
 | Polarity in MSP | Written as an explicit `Ion_mode: P`/`N` line — MSP has its own field, so unlike MGF/MS2 the charge keeps its sign |
 
-Things that do **not** survive a round trip, by design: `im`, `iso_score`, `mz_range`,
-`isolation_mz_range`, `collision_energy`, `resolution`, `analyzer`, and `MsnSpectrum.ms_level` for
-anything other than MS2 — no peak-list format has a field for them. A `DECONVOLUTED` spectrum
-written to MGF comes back as `CENTROID` with a per-peak charge array.
+What survives a round trip depends on the format. Each writer emits only the fields its format
+(as these readers and writers map it) has a place for, and the rest come back as `None`. Measured
+by writing one fully populated `MsnSpectrum` to each format and reading it back:
+
+| Field | MGF | MS2 | MSP |
+|---|---|---|---|
+| `charge` (per-peak array) | kept | lost | lost |
+| `scan_number` | kept | kept | lost |
+| precursor `intensity` | kept | kept | lost (reads back as `0.0`) |
+| `injection_time` | lost | kept | lost |
+| `total_ion_current` | lost | kept | lost |
+| `activation_type` | lost | kept | lost |
+| `collision_energy` | lost | lost | kept |
+
+`mz`, `intensity`, `native_id`, `rt`, polarity, and the precursor m/z and charge survive all
+three, with the notes in the table above (`rt` in MS2 returns to within floating-point noise).
+
+These survive **none** of the three: `im`, `iso_score`, `im_type`, `im_range`, `mz_range`,
+`resolution`, `analyzer`, `ramp_time`, `isolation_mz_range`, `isolation_ook0_range`, and
+`MsnSpectrum.ms_level` for anything other than MS2.
+
+The per-peak `charge` array is MGF only. A `DECONVOLUTED` spectrum written to MGF comes back as
+`CENTROID` with that array.
 
 ---
 
