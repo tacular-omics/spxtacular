@@ -161,6 +161,14 @@ def _first_float(text: str, *, field_name: str, path: Path, line_no: int) -> flo
     return float(match.group())
 
 
+def _extract_float(text: str, *, field_name: str, path: Path, line_no: int) -> float:
+    """First float anywhere in a value, tolerating prefixes like ``"HCD 35%"`` or ``"NCE 28"``."""
+    match = _FLOAT_RE.search(text)
+    if match is None:
+        raise SpxtacularError(f"{path}:{line_no}: could not parse {field_name} from {text!r}")
+    return float(match.group())
+
+
 def _first_int(text: str, *, field_name: str, path: Path, line_no: int) -> int:
     """Leading integer of a value, tolerating ranges such as ``"1024-1030"``."""
     match = _INT_RE.match(text.strip())
@@ -712,9 +720,9 @@ def _msp_spectrum(block: _MspBlock, *, path: Path) -> MsnSpectrum:
     found = header("COLLISIONENERGY", "CE")
     if found is not None:
         # Real files hold "35", "35 eV", "HCD 35%": the first number is the energy.
-        collision_energy = _first_float(found[0], field_name="Collision_energy", path=path, line_no=found[1])
+        collision_energy = _extract_float(found[0], field_name="Collision_energy", path=path, line_no=found[1])
     elif "CE" in comment:
-        collision_energy = _first_float(comment["CE"], field_name="Comment CE", path=path, line_no=block.start_line)
+        collision_energy = _extract_float(comment["CE"], field_name="Comment CE", path=path, line_no=block.start_line)
 
     precursors = None
     if precursor_mz is not None:
