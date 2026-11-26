@@ -87,6 +87,54 @@ class ParsedUsi(NamedTuple):
         return f"{self.index_flag}={self.index}"
 
 
+def _split_run_with_colons(usi: str) -> ParsedUsi | None:
+    """Parse a USI whose run name contains colons, or return ``None`` to use the plain split.
+
+    USI 1.0 section 3.3.4: colons in the msRun name are not escaped, and parsers find
+    where the name ends by triggering on the next field, which can only be ``scan``,
+    ``index``, ``nativeId`` or ``trace``. This looks for the first ``:<index flag>:``
+    after a non-empty run whose index value is valid for that flag. When the run starts
+    with a ``[subFolder]`` (section 3.6.1), the search starts after its closing bracket,
+    since a subfolder may contain colons too.
+
+    :func:`parse_usi` calls this only after the plain ``split(":", 5)`` has rejected the
+    USI, so every USI that parsed before parses the same way. Returns ``None`` when no
+    index flag with a valid value can be found, and :func:`parse_usi` then raises the
+    plain split's error unchanged.
+    """
+    prefix, sep, after_prefix = usi.partition(":")
+    collection, sep2, rest = after_prefix.partition(":")
+    if prefix != "mzspec" or not sep or not sep2 or not collection:
+        return None
+    start = 1
+    if rest.startswith("["):
+        close = rest.find("]")
+        if close != -1:
+            start = close + 1
+    segments = rest.split(":")
+    offset = 0
+    for i, segment in enumerate(segments):
+        position = offset
+        offset += len(segment) + 1
+        if position <= start or i + 1 >= len(segments):
+            continue
+        flag = _INDEX_FLAGS.get(segment.lower())
+        if flag is None:
+            continue
+        index = segments[i + 1]
+        if not index or (flag in ("scan", "index") and not (index.isdecimal() and index.isascii())):
+            continue
+        interpretation = ":".join(segments[i + 2 :]) or None
+        return ParsedUsi(
+            collection=collection,
+            run=rest[: position - 1],
+            index_flag=flag,
+            index=index,
+            interpretation=interpretation,
+        )
+    return None
+
+
 def parse_usi(usi: str) -> ParsedUsi:
     """Parse and validate a Universal Spectrum Identifier.
 
@@ -102,6 +150,10 @@ def parse_usi(usi: str) -> ParsedUsi:
         The ``collection``, ``run``, ``index_flag``, ``index`` and optional
         ``interpretation`` components.
 
+    The run name may contain colons: as USI 1.0 section 3.3.4 requires, the end of the run
+    is found by the next field, the index flag (``scan``, ``index``, ``nativeId`` or
+    ``trace``). A ``[subFolder]`` prefix on the run may contain colons as well.
+
     Raises
     ------
     ValueError
@@ -111,6 +163,22 @@ def parse_usi(usi: str) -> ParsedUsi:
     if not isinstance(usi, str) or not usi.strip():
         raise SpxtacularError("USI must be a non-empty string")
 
+    try:
+        plain = _parse_plain_usi(usi)
+    except SpxtacularError:
+        split = _split_run_with_colons(usi.strip())
+        if split is None:
+            raise
+        return split
+    if plain.run.startswith("[") and "]" not in plain.run:
+        # A [subFolder] (USI 1.0 section 3.6.1) that holds a colon: the plain split cut the
+        # run inside the brackets, so it read part of the subfolder as the index.
+        return _split_run_with_colons(usi.strip()) or plain
+    return plain
+
+
+def _parse_plain_usi(usi: str) -> ParsedUsi:
+    """Parse a USI whose run name has no colon, raising :class:`SpxtacularError` otherwise."""
     parts = usi.strip().split(":", 5)
     if len(parts) < 5:
         raise SpxtacularError(
