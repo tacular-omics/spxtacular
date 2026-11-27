@@ -138,11 +138,6 @@ def _build(
     return finish(spec, key)
 
 
-def _first_precursor_mz(spectrum: Spectrum) -> float | None:
-    precursors = getattr(spectrum, "precursors", None) or []
-    return float(precursors[0].precursor_mz) if precursors else None
-
-
 def _precursor_label(mz: float, charge: int | None, polarity: Any, style: FigureStyle) -> RichText:
     """``precursor 500.2500 (2+)`` on screen, ``[M+2H]²⁺`` in print."""
     if style.name == "screen":
@@ -758,12 +753,9 @@ def _similarity_value(
     if name == "cosine":
         return "cosine", cosine(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
     if name == "modified_cosine":
-        mzs = [_first_precursor_mz(s) for s in (top, bottom)]
-        if mzs[0] is None or mzs[1] is None:
-            raise SpxtacularError("similarity='modified_cosine' needs a precursor m/z on both spectra")
-        return "modified cosine", modified_cosine(
-            top, bottom, mzs[0], mzs[1], tolerance=tolerance, tolerance_unit=tolerance_unit
-        )
+        # The upper spectrum is the query and the lower one the reference; modified_cosine
+        # reads each one's precursor m/z and names the side that has none.
+        return "modified cosine", modified_cosine(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
     if name == "entropy":
         return "entropy similarity", entropy_similarity(top, bottom, tolerance=tolerance, tolerance_unit=tolerance_unit)
     raise SpxtacularError(
