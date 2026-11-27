@@ -474,12 +474,12 @@ Spectrum-to-spectrum similarity (one-to-one peak matching, values 0..1):
 
 ```python
 cosine(query, reference, tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
-modified_cosine(query, reference, query_precursor_mz, reference_precursor_mz,
+modified_cosine(query, reference, query_precursor_mz=None, reference_precursor_mz=None,
                 tolerance=0.02, tolerance_unit="da", transform="sqrt") -> float
 entropy_similarity(query, reference, tolerance=0.02, tolerance_unit="da") -> float
 ```
 - `cosine` — cosine on transformed intensities.
-- `modified_cosine` — also matches peaks shifted by the precursor mass difference (analogues).
+- `modified_cosine` — also matches peaks shifted by the precursor mass difference (analogues). Omitted precursor m/z come from each spectrum's first precursor; explicit ones override.
 - `entropy_similarity` — unweighted spectral entropy similarity.
 
 Isobaric reporter ions (TMT 0/2/6/10/11, TMTpro 0/16/18, iTRAQ 4/8; channels and m/z come
