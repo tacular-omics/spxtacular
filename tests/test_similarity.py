@@ -12,7 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from spxtacular.core import Spectrum
+from spxtacular.core import MsnSpectrum, Precursor, Spectrum
+from spxtacular.errors import SpxtacularError
 from spxtacular.similarity import cosine, entropy_similarity, modified_cosine
 
 MZ = np.array([100.0, 200.0, 300.0, 400.0, 500.0], dtype=np.float64)
@@ -139,6 +140,104 @@ class TestModifiedCosine:
         a = _spec(mz=mz, intensity=np.array([100.0, 50.0, 25.0, 10.0]))
         b = _spec(mz=np.array([100.0, 250.0, 350.0, 450.0]), intensity=np.array([100.0, 50.0, 25.0, 10.0]))
         assert modified_cosine(a, b, 300.0, 350.0, tolerance=0.02) >= cosine(a, b, tolerance=0.02) - 1e-12
+
+
+MOD = 79.96633
+SHIFT_MZ = np.array([100.0, 200.0, 300.0, 400.0, 500.0, 600.0])
+SHIFT_INTENSITY = np.array([100.0, 80.0, 60.0, 90.0, 70.0, 50.0])
+
+
+def _msn(mz, intensity, precursor_mz: float | None) -> MsnSpectrum:
+    """An MsnSpectrum with one precursor at ``precursor_mz``, or none when it is ``None``."""
+    precursors = [] if precursor_mz is None else [Precursor(precursor_mz=precursor_mz, charge=2)]
+    return MsnSpectrum(
+        mz=np.asarray(mz, dtype=np.float64), intensity=np.asarray(intensity, dtype=np.float64), precursors=precursors
+    )
+
+
+def _shifted_pair(query_mz: float | None = 500.0, reference_mz: float | None = 500.0 + MOD):
+    """A query and a reference whose upper half is displaced by ``MOD`` (#108)."""
+    shifted = SHIFT_MZ.copy()
+    shifted[3:] += MOD
+    order = np.argsort(shifted)
+    return (
+        _msn(SHIFT_MZ, SHIFT_INTENSITY, query_mz),
+        _msn(shifted[order], SHIFT_INTENSITY[order], reference_mz),
+    )
+
+
+class TestModifiedCosinePrecursorDefaults:
+    """#108: the precursor m/z default to each spectrum's first precursor."""
+
+    def test_two_argument_call_equals_the_explicit_one(self) -> None:
+        a, b = _shifted_pair()
+        explicit = modified_cosine(a, b, 500.0, 500.0 + MOD, tolerance=0.02)
+        assert modified_cosine(a, b, tolerance=0.02) == explicit
+        assert explicit > 0.99 > cosine(a, b, tolerance=0.02)
+
+    def test_the_first_precursor_is_used(self) -> None:
+        a, b = _shifted_pair()
+        b.precursors.append(Precursor(precursor_mz=900.0, charge=3))
+        assert modified_cosine(a, b, tolerance=0.02) == modified_cosine(a, b, 500.0, 500.0 + MOD, tolerance=0.02)
+
+    def test_an_explicit_precursor_mz_overrides_the_spectrums_own(self) -> None:
+        a, b = _shifted_pair()
+        # Equal explicit precursors leave no shift to recover, whatever the spectra carry.
+        assert modified_cosine(a, b, 500.0, 500.0, tolerance=0.02) == pytest.approx(cosine(a, b, tolerance=0.02))
+        # Each side can be overridden on its own: here the reference keeps its own m/z.
+        assert modified_cosine(a, b, query_precursor_mz=500.0 + MOD, tolerance=0.02) == pytest.approx(
+            cosine(a, b, tolerance=0.02)
+        )
+        # ... and here the query does.
+        assert modified_cosine(a, b, reference_precursor_mz=500.0, tolerance=0.02) == pytest.approx(
+            cosine(a, b, tolerance=0.02)
+        )
+
+    def test_plain_spectra_still_take_explicit_values(self) -> None:
+        a, b = _shifted_pair()
+        plain_a, plain_b = _spec(mz=a.mz, intensity=a.intensity), _spec(mz=b.mz, intensity=b.intensity)
+        assert modified_cosine(plain_a, plain_b, 500.0, 500.0 + MOD, tolerance=0.02) == modified_cosine(
+            a, b, tolerance=0.02
+        )
+
+    @pytest.mark.parametrize(
+        ("query_mz", "reference_mz", "side"),
+        [(None, 500.0, "query"), (500.0, None, "reference"), (None, None, "query")],
+    )
+    def test_a_spectrum_without_a_precursor_raises_naming_its_side(self, query_mz, reference_mz, side) -> None:
+        a, b = _shifted_pair(query_mz, reference_mz)
+        with pytest.raises(SpxtacularError, match=f"for the {side} spectrum") as info:
+            modified_cosine(a, b)
+        assert f"{side}_precursor_mz" in str(info.value)
+
+    def test_a_plain_spectrum_without_explicit_values_raises(self) -> None:
+        with pytest.raises(SpxtacularError, match="for the query spectrum"):
+            modified_cosine(_spec(), _msn(MZ, INTENSITY, 500.0))
+
+    def test_an_explicit_value_covers_a_missing_precursor(self) -> None:
+        a, b = _shifted_pair(None, None)
+        assert modified_cosine(a, b, 500.0, 500.0 + MOD, tolerance=0.02) > 0.99
+
+    def test_mirror_plot_similarity_uses_the_same_code_path(self, monkeypatch) -> None:
+        from spxtacular import similarity, visualization
+
+        a, b = _shifted_pair()
+        calls = []
+        real = similarity.modified_cosine
+
+        def spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(similarity, "modified_cosine", spy)
+        result = visualization._similarity_value(a, b, "modified_cosine", 0.02, "da")
+        assert result == ("modified cosine", real(a, b, tolerance=0.02))
+        # No precursor m/z of its own: modified_cosine reads them from the spectra.
+        assert calls == [((a, b), {"tolerance": 0.02, "tolerance_unit": "da"})]
+
+        monkeypatch.undo()
+        with pytest.raises(SpxtacularError, match="for the reference spectrum"):
+            visualization._similarity_value(a, _msn(b.mz, b.intensity, None), "modified_cosine", 0.02, "da")
 
 
 class TestEntropySimilarity:
