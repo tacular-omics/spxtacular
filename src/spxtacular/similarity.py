@@ -6,7 +6,7 @@ spectrum". These functions answer "how alike are these two *spectra*", which is
 what spectral library search, replicate comparison and clustering are built on.
 
     cosine(query, reference, tolerance=20)                  # 0-1
-    modified_cosine(query, reference, 500.25, 508.28)       # tolerates a mass shift
+    modified_cosine(query, reference)                       # tolerates a mass shift
     entropy_similarity(query, reference)                    # unweighted entropy
 
 All three align peaks within a tolerance, **one-to-one**: a peak may back at most
@@ -146,11 +146,27 @@ def cosine(
     return float(min(1.0, max(0.0, total)))
 
 
+def _precursor_mz_of(spectrum: Spectrum, side: str) -> float:
+    """Return the m/z of ``spectrum``'s first precursor, for :func:`modified_cosine`.
+
+    ``side`` names the argument (``"query"``, ``"reference"``) in the error raised
+    when the spectrum carries no precursor: a plain :class:`~spxtacular.core.Spectrum`,
+    or an :class:`~spxtacular.core.MsnSpectrum` whose ``precursors`` is empty.
+    """
+    precursors = getattr(spectrum, "precursors", None) or []
+    if not precursors:
+        raise SpxtacularError(
+            f"modified_cosine needs a precursor m/z for the {side} spectrum, which has no precursor: "
+            f"pass {side}_precursor_mz, or give the spectrum a precursor"
+        )
+    return float(precursors[0].precursor_mz)
+
+
 def modified_cosine(
     query: Spectrum,
     reference: Spectrum,
-    query_precursor_mz: float,
-    reference_precursor_mz: float,
+    query_precursor_mz: float | None = None,
+    reference_precursor_mz: float | None = None,
     *,
     tolerance: float = DEFAULT_FRAGMENT_TOLERANCE,
     tolerance_unit: ToleranceUnit = DEFAULT_FRAGMENT_TOLERANCE_UNIT,
@@ -170,20 +186,32 @@ def modified_cosine(
         Spectra to compare.
     query_precursor_mz, reference_precursor_mz:
         Precursor m/z of each. Their difference is the extra offset considered.
+        When omitted (``None``), the m/z of the spectrum's first precursor is
+        used, as on an :class:`~spxtacular.core.MsnSpectrum` read from a file;
+        a value given here overrides the spectrum's own.
     tolerance, tolerance_unit, transform:
         As for :func:`cosine`.
 
     Returns
     -------
     float in ``[0, 1]``. Equals :func:`cosine` when the precursors match.
+
+    Raises
+    ------
+    SpxtacularError
+        If a precursor m/z is omitted and that spectrum has no precursor.
     """
+    query_mz = _precursor_mz_of(query, "query") if query_precursor_mz is None else float(query_precursor_mz)
+    reference_mz = (
+        _precursor_mz_of(reference, "reference") if reference_precursor_mz is None else float(reference_precursor_mz)
+    )
     tol_unit = check_tolerance_unit(tolerance_unit)
     mz_a, int_a = _prepared(query, transform)
     mz_b, int_b = _prepared(reference, transform)
     if mz_a.size == 0 or mz_b.size == 0 or int_a.sum() == 0 or int_b.sum() == 0:
         return 0.0
 
-    shift = float(reference_precursor_mz) - float(query_precursor_mz)
+    shift = reference_mz - query_mz
     shifts = (0.0,) if shift == 0.0 else (0.0, shift)
 
     total = sum(int_a[i] * int_b[j] for i, j in _greedy_align(mz_a, int_a, mz_b, int_b, tolerance, tol_unit, shifts))

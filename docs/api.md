@@ -2570,8 +2570,8 @@ cosine(
 modified_cosine(
     query: Spectrum,
     reference: Spectrum,
-    query_precursor_mz: float,
-    reference_precursor_mz: float,
+    query_precursor_mz: float | None = None,
+    reference_precursor_mz: float | None = None,
     *,
     tolerance: float = 0.02,
     tolerance_unit: Literal["da", "ppm"] = "da",
@@ -2588,7 +2588,10 @@ entropy_similarity(
 ```
 
 All three return values in `[0, 1]`, accept unsorted spectra, and use one-to-one peak matching.
-`modified_cosine()` also considers the precursor-mass displacement. Full documentation:
+`modified_cosine()` also considers the precursor-mass displacement. Called as
+`modified_cosine(a, b)`, it takes each spectrum's precursor m/z from its first precursor; an
+explicit `query_precursor_mz` or `reference_precursor_mz` overrides the spectrum's own, and a
+spectrum with neither raises `SpxtacularError`. Full documentation:
 [Spectrum-to-spectrum similarity](scoring.md#spectrum-to-spectrum-similarity).
 
 ---
