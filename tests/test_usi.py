@@ -18,7 +18,8 @@ import numpy as np
 import pytest
 
 from spxtacular.core import MsnSpectrum, Spectrum, SpectrumType
-from spxtacular.usi import _parse_proxi_response, fetch_usi, spectrum_from_proxi_response
+from spxtacular.errors import SpxtacularError
+from spxtacular.usi import _parse_proxi_response, fetch_usi, parse_usi, spectrum_from_proxi_response
 
 USI = "mzspec:TEST:test:scan:1"
 
@@ -248,3 +249,121 @@ class TestFetchUsi:
         with patch("spxtacular.usi.urllib.request.urlopen", return_value=_response(payload)):
             result = fetch_usi(USI)
         assert len(result.mz) == 3
+
+
+# ---------------------------------------------------------------------------
+# parse_usi: run names that contain colons (USI 1.0 section 3.3.4)
+# ---------------------------------------------------------------------------
+
+# Real USIs quoted in the USI 1.0 specification (HUPO-PSI/usi,
+# Specification/USI_FullSpecification_1.0.0_final.pdf), with the components it gives for each.
+SPEC_USIS = [
+    (
+        "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555:VLHPLEGAVVIIFK/2",
+        ("PXD000561", "Adult_Frontalcortex_bRP_Elite_85_f09", "scan", "17555", "VLHPLEGAVVIIFK/2"),
+    ),
+    (
+        "mzspec:PXD005175:CRC_iTRAQ_06:scan:11803:VEYTLGEESEAPGQR/3",
+        ("PXD005175", "CRC_iTRAQ_06", "scan", "11803", "VEYTLGEESEAPGQR/3"),
+    ),
+    (
+        "mzspec:PXD007592:good_responder_1_2.mgf:index:22627:TLM+15.994915TQIDGVNLAANSLVESGHPR/3",
+        ("PXD007592", "good_responder_1_2.mgf", "index", "22627", "TLM+15.994915TQIDGVNLAANSLVESGHPR/3"),
+    ),
+    (
+        "mzspec:PXD001464:CL_1hRP_rep3:nativeId:1,1,2740,10",
+        ("PXD001464", "CL_1hRP_rep3", "nativeId", "1,1,2740,10", None),
+    ),
+    (
+        "mzspec:PXD001587:18300_REP2_500ng_HumanLysate_SWATH_1:scan:4974:M[+15.994915]SAEDIEK",
+        ("PXD001587", "18300_REP2_500ng_HumanLysate_SWATH_1", "scan", "4974", "M[+15.994915]SAEDIEK"),
+    ),
+    (
+        # Provenance suffix (section 4): everything after the index stays in the interpretation.
+        "mzspec:PXD000561:Adult_Frontalcortex_bRP_Elite_85_f09:scan:17555:VLHPLEGAVVIIFK/2:PR-G47",
+        ("PXD000561", "Adult_Frontalcortex_bRP_Elite_85_f09", "scan", "17555", "VLHPLEGAVVIIFK/2:PR-G47"),
+    ),
+]
+
+
+@pytest.mark.parametrize(("usi", "expected"), SPEC_USIS)
+def test_parse_usi_specification_examples(usi: str, expected: tuple[str, ...]) -> None:
+    assert tuple(parse_usi(usi)) == expected
+
+
+def test_parse_usi_run_name_with_colons() -> None:
+    parsed = parse_usi("mzspec:PXD000561:run:with:colon:scan:17555:VLHPLEGAVVIIFK/2")
+    assert parsed.collection == "PXD000561"
+    assert parsed.run == "run:with:colon"
+    assert parsed.index_flag == "scan"
+    assert parsed.index == "17555"
+    assert parsed.interpretation == "VLHPLEGAVVIIFK/2"
+    assert parsed.scan_number == 17555
+
+
+@pytest.mark.parametrize(
+    ("usi", "run", "flag", "index", "interpretation"),
+    [
+        ("mzspec:PXD1:a:b:index:7", "a:b", "index", "7", None),
+        ("mzspec:PXD1:a:b:nativeId:1,1,2740,10", "a:b", "nativeId", "1,1,2740,10", None),
+        ("mzspec:PXD1:a:b:trace:3", "a:b", "trace", "3", None),
+        ("mzspec:PXD1:a:b:NativeID:1,2", "a:b", "nativeId", "1,2", None),  # flags stay case-insensitive
+        # A run segment that looks like a flag but is not followed by a valid index stays in the run.
+        ("mzspec:PXD1:x:scan:y:scan:12", "x:scan:y", "scan", "12", None),
+        # Colons in the interpretation are kept there.
+        ("mzspec:PXD1:a:b:scan:5:PEP[UNIMOD:35]TIDE/2", "a:b", "scan", "5", "PEP[UNIMOD:35]TIDE/2"),
+    ],
+)
+def test_parse_usi_colon_run_variants(usi: str, run: str, flag: str, index: str, interpretation: str | None) -> None:
+    parsed = parse_usi(usi)
+    assert (parsed.run, parsed.index_flag, parsed.index, parsed.interpretation) == (run, flag, index, interpretation)
+
+
+@pytest.mark.parametrize(
+    ("usi", "run"),
+    [
+        # Section 3.6.1: a [subFolder] prefix may contain colons, even ones that look like an index.
+        ("mzspec:PXD123456:[CaCo01]A01_100ng:scan:5", "[CaCo01]A01_100ng"),
+        ("mzspec:PXD123456:[Ca:Co01]A01_100ng:scan:5", "[Ca:Co01]A01_100ng"),
+        ("mzspec:PXD123456:[a:scan:1:x]A01_100ng:scan:5", "[a:scan:1:x]A01_100ng"),
+        ("mzspec:PXD123456:[a:b]run:with:colon:scan:5", "[a:b]run:with:colon"),
+    ],
+)
+def test_parse_usi_subfolder_with_colons(usi: str, run: str) -> None:
+    parsed = parse_usi(usi)
+    assert parsed.run == run
+    assert (parsed.index_flag, parsed.index) == ("scan", "5")
+
+
+@pytest.mark.parametrize(
+    ("usi", "message"),
+    [
+        ("mzspec:PXD1:run:x:bogus:5", "Unknown index flag 'x'"),
+        ("mzspec:PXD1:run:x:scan:abc", "Unknown index flag 'x'"),
+        ("mzspec:PXD1:run:scan:abc", "scan index must be an integer"),
+        ("mzspec:PXD1:run:scan:-1", "scan index must be non-negative"),
+        ("mzspec:PXD1:run:scan:", "Index value is empty"),
+        ("mzspec:PXD1::scan:5", "Run identifier is empty"),
+        ("mzspec::run:scan:5", "Collection identifier is empty"),
+        ("mzspc:PXD1:run:scan:5", "'mzspec' prefix"),
+        ("mzspec:PXD1:run", "Expected"),
+    ],
+)
+def test_parse_usi_errors_unchanged(usi: str, message: str) -> None:
+    with pytest.raises(SpxtacularError, match=message):
+        parse_usi(usi)
+
+
+def test_parse_usi_matches_the_plain_split_whenever_the_run_has_no_colon() -> None:
+    """Every USI that parsed before (run without a colon) gives the same components as before."""
+    for flag in ("scan", "index", "nativeId", "trace", "SCAN"):
+        for run in ("r", "scan", "index", "run.mzML", "[sub]run", "a[b"):
+            for index in ("0", "17555", "1,1,2740,10"):
+                if flag.lower() in ("scan", "index") and not index.isdecimal():
+                    continue
+                for tail in ("", ":PEPTIDE/2", ":PEP[UNIMOD:35]TIDE/2:PR-G47", ":scan:5"):
+                    usi = f"mzspec:PXD1:{run}:{flag}:{index}{tail}"
+                    _, collection, plain_run, _, plain_index, *rest = usi.split(":", 5)
+                    parsed = parse_usi(usi)
+                    assert (parsed.collection, parsed.run, parsed.index) == (collection, plain_run, plain_index)
+                    assert parsed.interpretation == (rest[0] if rest and rest[0] else None)

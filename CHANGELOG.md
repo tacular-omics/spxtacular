@@ -32,6 +32,12 @@ User-visible changes only; implementation details belong in commits and pull req
   return (`\r`, classic Mac line endings). Iteration already read such a file, but the
   lookup index split lines on `\n` only, saw the file as one line, and raised `KeyError` for
   every id. The index now splits lines the way iteration does (`\n`, `\r\n` and `\r`).
+- `parse_usi` now reads a USI whose run name contains colons, as USI 1.0 section 3.3.4 requires:
+  `mzspec:PXD000561:run:with:colon:scan:17555:VLHPLEGAVVIIFK/2` gives run `run:with:colon`, index
+  flag `scan` and index `17555` instead of raising "Unknown index flag 'with'". The run ends at the
+  first `:scan:`, `:index:`, `:nativeId:` or `:trace:` that is followed by a valid index, and a
+  `[subFolder]` prefix (section 3.6.1) may hold colons too. A USI whose run has no colon parses
+  exactly as before, and a USI that still cannot be read raises the same error as before (#138).
 
 ### Documentation
 
