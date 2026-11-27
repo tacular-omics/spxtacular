@@ -6,6 +6,12 @@ User-visible changes only; implementation details belong in commits and pull req
 
 ### Changed
 
+- `modified_cosine(a, b)` now works without the two precursor m/z: each defaults to the m/z of
+  that spectrum's first precursor, as `mirror_plot(..., similarity="modified_cosine")` already
+  did. An explicit `query_precursor_mz` or `reference_precursor_mz` still overrides the
+  spectrum's own, so every existing call gives the same result. A spectrum with no precursor
+  and no explicit m/z raises `SpxtacularError` naming the query or reference side, where the
+  call used to fail with a `TypeError`. `mirror_plot` now goes through the same code path (#108).
 - `MgfReader`, `Ms2Reader` and `MspReader` `reader[native_id]` (and `reader.ms2[native_id]`)
   now seek through the same offset index as `get_by_native_id()` instead of re-reading the
   file from the start on every lookup. It still returns the first spectrum when several share
