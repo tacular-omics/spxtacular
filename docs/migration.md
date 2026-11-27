@@ -104,7 +104,7 @@ public functions and methods below. `spec.normalize("tic")` becomes
 | `Spectrum.mass_error_plot`, `Spectrum.facet_plot` | all optional parameters, including `fragments` and `mirror_spectrum` for `facet_plot` |
 | `Spectrum.to_spectrl_url`, `to_spectrl_url` | `base` |
 | `Spectrum.from_usi`, `fetch_usi` | `backend`, `timeout` |
-| `cosine`, `modified_cosine`, `entropy_similarity` | `tolerance`, `tolerance_unit` (and `transform`); the two precursor m/z of `modified_cosine` stay positional |
+| `cosine`, `modified_cosine`, `entropy_similarity` | `tolerance`, `tolerance_unit` (and `transform`); the two precursor m/z of `modified_cosine` stay positional (and may be omitted to use each spectrum's own) |
 | `extract_chromatogram` | `mode`, `mz_range` |
 | `extract_xic`, `plot_xic` | `tolerance`, `tolerance_unit`, `im_window`, `aggregate` (and plot options) |
 | `brain_isotopic_distribution` | `max_isotopes`, `isotope_abundances` |
