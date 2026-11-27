@@ -42,7 +42,11 @@ phospho = pt.parse("LAQANGWGVMVS[Phospho]HR/1")
 def _theoretical(form):
     frags = form.fragment(ion_types=("b", "y"), charges=[1])
     mz = np.sort(np.array([f.mz for f in frags], dtype=float))
-    return spx.Spectrum(mz=mz, intensity=np.linspace(100.0, 20.0, len(mz)))
+    return spx.MsnSpectrum(
+        mz=mz,
+        intensity=np.linspace(100.0, 20.0, len(mz)),
+        precursors=[spx.Precursor(precursor_mz=form.mz(), charge=1)],
+    )
 
 
 a, b = _theoretical(plain), _theoretical(phospho)
@@ -270,10 +274,15 @@ from spxtacular import cosine, modified_cosine
 
 # same peptide, one +79.966 phospho on the C-terminal half
 cosine(a, b, tolerance=0.02)                                           # 0.59 - looks unrelated
-modified_cosine(a, b, a_precursor_mz, b_precursor_mz, tolerance=0.02)  # 1.00 - recovered
+modified_cosine(a, b, tolerance=0.02)                                  # 1.00 - recovered
+modified_cosine(a, b, a_precursor_mz, b_precursor_mz, tolerance=0.02)  # the same, m/z given
 ```
 
-It reduces exactly to `cosine` when the two precursors are equal.
+The precursor m/z of each spectrum comes from its first precursor (`spectrum.precursors[0]`), so
+`MsnSpectrum` objects from a reader need nothing more. Pass `query_precursor_mz` and
+`reference_precursor_mz` (third and fourth arguments) for a plain `Spectrum`, or to override a
+spectrum's own value; a spectrum with no precursor and no explicit m/z raises `SpxtacularError`
+naming that side. It reduces exactly to `cosine` when the two precursors are equal.
 
 `entropy_similarity` uses the unweighted entropy expression. It does not apply
 entropy-dependent intensity weights or automatically remove precursor and noise peaks.
